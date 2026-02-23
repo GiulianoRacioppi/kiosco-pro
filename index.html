@@ -357,6 +357,10 @@
                 </button>
             </div>
             
+            <div class="mt-4 text-xs text-gray-400">
+                Versión 2.3 | Datos sincronizados en la nube
+            </div>
+            
             <!-- Formulario Admin -->
             <div id="admin-login-form" class="hidden space-y-4">
                 <button onclick="backToLoginOptions()" class="text-gray-500 hover:text-gray-700 flex items-center gap-2">
@@ -6154,16 +6158,18 @@ RESULTADOS:
                 // Actualizar badge de usuario
                 const userBadge = document.getElementById('user-badge');
                 const userName = document.getElementById('user-name');
+                console.log('👤 Actualizando badge:', appState.currentUser);
                 if (userBadge && userName && appState.currentUser) {
-                    userName.textContent = appState.currentUser.name;
                     if (appState.currentUser.role === 'admin') {
-                        userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-purple-500 text-white rounded text-xs';
-                        userBadge.innerHTML = '<i class="fas fa-user-shield"></i> <span id="user-name">' + appState.currentUser.name + '</span>';
+                        userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-purple-500 text-white rounded text-xs font-bold';
+                        userBadge.innerHTML = '<i class="fas fa-user-shield"></i> <span>Administrador</span>';
                     } else {
                         // Modo demo - invitado
-                        userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-orange-500 text-white rounded text-xs';
-                        userBadge.innerHTML = '<i class="fas fa-gamepad"></i> <span id="user-name">' + appState.currentUser.name + '</span> (Demo)';
+                        userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-orange-500 text-white rounded text-xs font-bold';
+                        userBadge.innerHTML = '<i class="fas fa-gamepad"></i> <span>' + appState.currentUser.name + ' (Demo)</span>';
                     }
+                } else {
+                    console.log('❌ No se pudo actualizar badge:', {userBadge, userName, currentUser: appState.currentUser});
                 }
                 
             } catch (e) {
@@ -6559,6 +6565,8 @@ RESULTADOS:
                 if (window.db && navigator.onLine) {
                     try {
                         const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                        
+                        // Cargar datos principales
                         const docRef = doc(window.db, "kioscos", "main");
                         const docSnap = await getDoc(docRef);
                         
@@ -6568,20 +6576,37 @@ RESULTADOS:
                             mergeFirebaseData(data);
                             console.log('📥 Datos reales cargados desde Firebase');
                         }
+                        
+                        // Cargar logs de invitados
+                        const logsRef = doc(window.db, "kioscos", "guestLogs");
+                        const logsSnap = await getDoc(logsRef);
+                        if (logsSnap.exists()) {
+                            const logsData = logsSnap.data();
+                            appState.guestLogs = logsData.logs || [];
+                            console.log('📋 Logs de invitados cargados:', appState.guestLogs.length);
+                        }
                     } catch (err) {
                         console.log('Usando datos locales:', err);
                     }
                 }
                 
-                renderAll();
+                // Forzar actualización del sidebar y renderizado
+                setTimeout(() => {
+                    updateSidebar();
+                    renderAll();
+                    console.log('✅ Admin - Render completo');
+                }, 100);
+                
                 showNotification('💼 Modo Administrador - Datos reales cargados', 'success');
                 
                 // Mostrar mensaje según el estado de los datos
-                if (appState.inventory.length === 0 && appState.sales.length === 0) {
-                    showNotification('📦 No tienes productos cargados. Agregá tu inventario en la sección Inventario.', 'info');
-                } else {
-                    showNotification(`📊 ${appState.inventory.length} productos y ${appState.sales.length} ventas cargadas`, 'success');
-                }
+                setTimeout(() => {
+                    if (appState.inventory.length === 0 && appState.sales.length === 0) {
+                        showNotification('📦 No tienes productos cargados. Agregá tu inventario en la sección Inventario.', 'info');
+                    } else {
+                        showNotification(`📊 ${appState.inventory.length} productos y ${appState.sales.length} ventas cargadas`, 'success');
+                    }
+                }, 500);
             } else {
                 document.getElementById('admin-login-error').classList.remove('hidden');
             }
@@ -6641,10 +6666,19 @@ RESULTADOS:
             isLoggedIn = true;
             
             // Cargar datos de demo temporales
+            console.log('🎮 Cargando datos de demo...');
             loadDemoData();
+            console.log('📦 Productos cargados:', appState.inventory.length);
+            console.log('🛒 Ventas cargadas:', appState.sales.length);
             
             closeLoginModal();
-            renderAll();
+            
+            // Forzar actualización del sidebar con el nombre
+            setTimeout(() => {
+                updateSidebar();
+                renderAll();
+                console.log('✅ Render completo');
+            }, 100);
             showNotification(`🎮 Modo Demo activado. Los cambios no se guardan permanentemente.`, 'success');
             
             // Agregar indicador visual de modo demo
@@ -6862,15 +6896,20 @@ RESULTADOS:
             ];
             
             console.log('📊 Datos de demo cargados:', {
-                productos: demoProducts.length,
-                ventas: sales.length,
+                productos: appState.inventory.length,
+                ventas: appState.sales.length,
                 caja: appState.cash,
                 banco: appState.bank,
                 dias: 40
             });
             
-            // NO guardar en localStorage - datos temporales
-            // saveToLocalStorage(false);
+            // Verificación final
+            if (appState.inventory.length === 0) {
+                console.error('❌ ERROR: No se cargaron productos');
+            }
+            if (appState.sales.length === 0) {
+                console.error('❌ ERROR: No se cargaron ventas');
+            }
         }
         
         // ==================== LOCAL STORAGE ====================

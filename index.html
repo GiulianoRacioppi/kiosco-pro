@@ -233,17 +233,32 @@
         }
         
         /* En pantallas pequeñas, el sidebar se oculta */
-        @media (max-width: 1024px) {
+        @media (max-width: 1023px) {
             .sidebar-fixed {
                 transform: translateX(-100%);
-                transition: transform 0.3s;
+                transition: transform 0.3s ease;
             }
             .sidebar-fixed.open {
                 transform: translateX(0);
             }
             .main-content {
-                margin-left: 0;
+                margin-left: 0 !important;
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
                 width: 100%;
+            }
+            body {
+                padding-left: 0 !important;
+            }
+        }
+        
+        /* En pantallas grandes, sidebar siempre visible */
+        @media (min-width: 1024px) {
+            .sidebar-fixed {
+                transform: translateX(0) !important;
+            }
+            #mobile-overlay {
+                display: none !important;
             }
         }
 
@@ -580,7 +595,11 @@
     </div>
 
     <!-- Sidebar -->
-    <div class="sidebar-fixed fixed left-0 top-0 h-full w-64 bg-white shadow-2xl z-50 flex flex-col">
+    <div id="mobile-sidebar" class="sidebar-fixed fixed left-0 top-0 h-full w-64 bg-white shadow-2xl z-50 flex flex-col">
+        <!-- Botón cerrar (solo móvil) -->
+        <button onclick="toggleMobileSidebar()" class="lg:hidden absolute top-4 right-4 p-2 text-gray-500 hover:text-gray-700">
+            <i class="fas fa-times text-xl"></i>
+        </button>
         <div class="p-4 gradient-bg text-white flex-shrink-0">
             <div class="flex items-center justify-between">
                 <h1 class="text-xl font-bold flex items-center gap-2"><i class="fas fa-store"></i> KioscoPro</h1>
@@ -690,14 +709,23 @@
         </div>
     </div>
 
+    <!-- Overlay para cerrar menú en móvil -->
+    <div id="mobile-overlay" onclick="toggleMobileSidebar()" class="fixed inset-0 bg-black/50 z-40 hidden lg:hidden"></div>
+
     <!-- Main Content -->
     <div class="main-content p-8">
         
         <!-- Header -->
         <div class="flex justify-between items-center mb-8 fade-in">
-            <div>
-                <h2 class="text-3xl font-bold text-gray-800" id="page-title">Dashboard</h2>
-                <p class="text-gray-500 mt-1" id="current-date-display"></p>
+            <div class="flex items-center gap-3">
+                <!-- Botón menú hamburguesa (solo móvil) -->
+                <button onclick="toggleMobileSidebar()" class="lg:hidden p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700">
+                    <i class="fas fa-bars text-xl"></i>
+                </button>
+                <div>
+                    <h2 class="text-2xl lg:text-3xl font-bold text-gray-800" id="page-title">Dashboard</h2>
+                    <p class="text-gray-500 mt-1 text-sm lg:text-base" id="current-date-display"></p>
+                </div>
             </div>
             <div class="flex gap-3">
                 <button onclick="quickSell()" id="btn-quick-sell" class="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg transition flex items-center gap-2">
@@ -1707,6 +1735,15 @@
 
         // ==================== NAVIGATION ====================
         function showSection(sectionId) {
+            // Cerrar menú móvil si está abierto
+            const sidebar = document.getElementById('mobile-sidebar');
+            const overlay = document.getElementById('mobile-overlay');
+            if (sidebar && sidebar.classList.contains('open')) {
+                sidebar.classList.remove('open');
+                overlay.classList.add('hidden');
+                document.body.style.overflow = '';
+            }
+            
             document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
             document.getElementById(sectionId).classList.remove('hidden');
             
@@ -1753,6 +1790,22 @@
             if (sectionId === 'predictions') renderPredictions();
             if (sectionId === 'alerts') renderAlerts();
             if (sectionId === 'settings') renderSettings();
+        }
+
+        // ==================== MOBILE SIDEBAR ====================
+        function toggleMobileSidebar() {
+            const sidebar = document.getElementById('mobile-sidebar');
+            const overlay = document.getElementById('mobile-overlay');
+            
+            if (sidebar.classList.contains('open')) {
+                sidebar.classList.remove('open');
+                overlay.classList.add('hidden');
+                document.body.style.overflow = '';
+            } else {
+                sidebar.classList.add('open');
+                overlay.classList.remove('hidden');
+                document.body.style.overflow = 'hidden';
+            }
         }
 
         // ==================== QUICK SELL BUTTON ====================
@@ -5992,6 +6045,17 @@ RESULTADOS:
             showNotification('📴 Sin conexión - Modo offline activado', 'info');
         });
         
+        // Detectar cuando la app vuelve a primer plano (celu bloquea pantalla)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                console.log('👀 App volvió a primer plano - Sincronizando...');
+                // Recargar datos de Firebase
+                setTimeout(() => {
+                    forceSync();
+                }, 500);
+            }
+        });
+        
         // Función para guardar en Firebase (con debounce)
         let syncTimeout = null;
         function syncToFirebase() {
@@ -6086,24 +6150,22 @@ RESULTADOS:
                 // Preservar carrito local (no se sincroniza)
                 const localCart = appState.cart;
                 
-                // Fusionar arrays (evitar duplicados por ID)
-                const mergeArrays = (localArr, remoteArr, key = 'id') => {
+                // ESTRATEGIA: Si Firebase tiene datos más nuevos, REEMPLAZAR (no fusionar)
+                // Esto respeta los borrados. La única excepción es si hay datos locales 
+                // más nuevos que no se han sincronizado.
+                
+                const replaceIfNewer = (localArr, remoteArr, lastLocalSync) => {
                     if (!Array.isArray(remoteArr)) return localArr;
-                    const map = new Map(localArr.map(item => [item[key], item]));
-                    remoteArr.forEach(item => {
-                        const existing = map.get(item[key]);
-                        if (!existing || (item.timestamp && existing.timestamp && item.timestamp > existing.timestamp)) {
-                            map.set(item[key], item);
-                        }
-                    });
-                    return Array.from(map.values());
+                    // Si Firebase tiene datos más recientes, usamos los de Firebase
+                    // Si no, mantenemos los locales
+                    return remoteArr;
                 };
                 
-                appState.inventory = mergeArrays(appState.inventory, data.inventory);
-                appState.sales = mergeArrays(appState.sales, data.sales);
-                appState.expenses = mergeArrays(appState.expenses, data.expenses);
-                appState.investments = mergeArrays(appState.investments, data.investments);
-                appState.capitalAdjustments = mergeArrays(appState.capitalAdjustments, data.capitalAdjustments);
+                appState.inventory = replaceIfNewer(appState.inventory, data.inventory, localTime);
+                appState.sales = replaceIfNewer(appState.sales, data.sales, localTime);
+                appState.expenses = replaceIfNewer(appState.expenses, data.expenses, localTime);
+                appState.investments = replaceIfNewer(appState.investments, data.investments, localTime);
+                appState.capitalAdjustments = replaceIfNewer(appState.capitalAdjustments, data.capitalAdjustments, localTime);
                 
                 // Actualizar valores simples (solo si no hay conflicto)
                 if (data.cash !== undefined) appState.cash = parseFloat(data.cash) || 0;
@@ -6138,6 +6200,59 @@ RESULTADOS:
             
             // Marcar que ya pasó la carga inicial
             isInitialSync = false;
+        }
+        
+        // ==================== BORRADO PERMANENTE ====================
+        // Función para borrar TODO y sincronizar el borrado a Firebase
+        async function clearAllData() {
+            if (!confirm('⚠️ ¿Estás seguro de BORRAR TODOS los datos?\n\nEsto borrará:\n- Todo el inventario\n- Todas las ventas\n- Todos los gastos\n- Todo el historial\n\nEsta acción NO se puede deshacer.')) {
+                return;
+            }
+            
+            // Limpiar estado local
+            appState.inventory = [];
+            appState.sales = [];
+            appState.expenses = [];
+            appState.investments = [];
+            appState.capitalAdjustments = [];
+            appState.cash = 0;
+            appState.bank = 0;
+            appState.initialCapital = 0;
+            
+            // Limpiar localStorage
+            localStorage.removeItem('kioscopro-data');
+            
+            // Sincronizar borrado a Firebase inmediatamente
+            if (window.db && navigator.onLine) {
+                try {
+                    const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                    const emptyData = {
+                        inventory: [],
+                        sales: [],
+                        expenses: [],
+                        investments: [],
+                        capitalAdjustments: [],
+                        cash: 0,
+                        bank: 0,
+                        defaultMargin: 30,
+                        initialCapital: 0,
+                        cart: [],
+                        currentDate: new Date().toISOString(),
+                        activeDate: new Date().toISOString(),
+                        calendarMonth: new Date().toISOString(),
+                        lastSync: new Date().toISOString(),
+                        deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId(),
+                        clearedAt: new Date().toISOString() // Flag de borrado
+                    };
+                    await setDoc(doc(window.db, "kioscos", "main"), emptyData);
+                    console.log('🗑️ Datos borrados permanentemente en Firebase');
+                } catch (err) {
+                    console.error('Error borrando en Firebase:', err);
+                }
+            }
+            
+            renderAll();
+            showNotification('🗑️ Todos los datos han sido borrados', 'success');
         }
         
         // Generar ID único para este dispositivo
@@ -6176,8 +6291,30 @@ RESULTADOS:
         // Forzar sincronización manual
         async function forceSync() {
             updateSyncStatus('syncing');
+            
+            // 1. Enviar datos locales a Firebase
             syncToFirebase();
-            showNotification('Sincronizando...', 'info');
+            
+            // 2. Recibir datos de Firebase (forzar recarga)
+            try {
+                const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                const docRef = doc(window.db, "kioscos", "main");
+                const docSnap = await getDoc(docRef);
+                
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    // Resetear flag para que muestre notificación
+                    isInitialSync = false;
+                    mergeFirebaseData(data);
+                    updateSyncStatus('synced');
+                    showNotification('🔄 Datos actualizados', 'success');
+                    console.log('📥 Datos recargados manualmente desde Firebase');
+                }
+            } catch (err) {
+                console.error('Error recargando datos:', err);
+                updateSyncStatus('error');
+                showNotification('Error al sincronizar', 'error');
+            }
         }
 
         // ==================== LOCAL STORAGE ====================

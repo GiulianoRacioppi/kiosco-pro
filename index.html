@@ -1674,11 +1674,13 @@
             capitalAdjustments: [],
             // Sistema de usuarios
             currentUser: null, // { role: 'admin'|'guest', name: string, loginTime: date }
-            guestLogs: [] // Registro de ingresos de invitados
+            guestLogs: [], // Registro de ingresos de invitados
+            isDemoMode: false // true = datos temporales de invitado, false = datos reales
         };
         
         // Variables de login
         let isLoggedIn = false;
+        let isDemoMode = false; // Variable global para modo demo
         const ADMIN_PASSWORD = 'admin123'; // En producción usar hash
 
         // Variables para charts
@@ -6120,8 +6122,9 @@ RESULTADOS:
                         userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-purple-500 text-white rounded text-xs';
                         userBadge.innerHTML = '<i class="fas fa-user-shield"></i> <span id="user-name">' + appState.currentUser.name + '</span>';
                     } else {
-                        userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-gray-500 text-white rounded text-xs';
-                        userBadge.innerHTML = '<i class="fas fa-user"></i> <span id="user-name">' + appState.currentUser.name + '</span> (Invitado)';
+                        // Modo demo - invitado
+                        userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-orange-500 text-white rounded text-xs';
+                        userBadge.innerHTML = '<i class="fas fa-gamepad"></i> <span id="user-name">' + appState.currentUser.name + '</span> (Demo)';
                     }
                 }
                 
@@ -6213,6 +6216,12 @@ RESULTADOS:
         // Función para guardar en Firebase (con debounce)
         let syncTimeout = null;
         function syncToFirebase() {
+            // NO sincronizar si estamos en modo demo (invitado)
+            if (isDemoMode) {
+                console.log('Modo demo: no se sincroniza con Firebase');
+                return;
+            }
+            
             if (!window.db) {
                 console.log('Firebase no disponible, usando solo localStorage');
                 return;
@@ -6490,9 +6499,13 @@ RESULTADOS:
             document.getElementById('admin-login-error').classList.add('hidden');
         }
         
-        function loginAdmin() {
+        async function loginAdmin() {
             const password = document.getElementById('admin-password').value;
             if (password === ADMIN_PASSWORD) {
+                // Desactivar modo demo - datos reales
+                isDemoMode = false;
+                appState.isDemoMode = false;
+                
                 appState.currentUser = {
                     role: 'admin',
                     name: 'Administrador',
@@ -6500,9 +6513,37 @@ RESULTADOS:
                 };
                 isLoggedIn = true;
                 closeLoginModal();
+                
+                // Cargar datos reales desde localStorage primero
                 loadFromLocalStorage();
+                
+                // Luego intentar sincronizar con Firebase para obtener datos más recientes
+                if (window.db && navigator.onLine) {
+                    try {
+                        const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                        const docRef = doc(window.db, "kioscos", "main");
+                        const docSnap = await getDoc(docRef);
+                        
+                        if (docSnap.exists()) {
+                            const data = docSnap.data();
+                            // Fusionar datos de Firebase con los locales (Firebase tiene prioridad)
+                            mergeFirebaseData(data);
+                            console.log('📥 Datos reales cargados desde Firebase');
+                        }
+                    } catch (err) {
+                        console.log('Usando datos locales:', err);
+                    }
+                }
+                
                 renderAll();
-                showNotification('Bienvenido, Administrador', 'success');
+                showNotification('💼 Modo Administrador - Datos reales cargados', 'success');
+                
+                // Mostrar mensaje según el estado de los datos
+                if (appState.inventory.length === 0 && appState.sales.length === 0) {
+                    showNotification('📦 No tienes productos cargados. Agregá tu inventario en la sección Inventario.', 'info');
+                } else {
+                    showNotification(`📊 ${appState.inventory.length} productos y ${appState.sales.length} ventas cargadas`, 'success');
+                }
             } else {
                 document.getElementById('admin-login-error').classList.remove('hidden');
             }
@@ -6515,16 +6556,17 @@ RESULTADOS:
                 return;
             }
             
-            // Registrar ingreso de invitado
+            // Activar modo demo - los datos NO se guardan permanentemente
+            isDemoMode = true;
+            appState.isDemoMode = true;
+            
+            // Registrar ingreso de invitado (solo se guarda si hay admin después)
             const guestEntry = {
                 name: name,
                 loginTime: new Date().toISOString(),
                 device: navigator.userAgent
             };
-            appState.guestLogs.push(guestEntry);
-            
-            // Guardar en Firebase para que el admin lo vea
-            syncToFirebase();
+            appState.guestLogs = [guestEntry]; // Solo este log, no acumular
             
             appState.currentUser = {
                 role: 'guest',
@@ -6533,12 +6575,15 @@ RESULTADOS:
             };
             isLoggedIn = true;
             
-            // Cargar datos de demo
+            // Cargar datos de demo temporales
             loadDemoData();
             
             closeLoginModal();
             renderAll();
-            showNotification(`Bienvenido, ${name}`, 'success');
+            showNotification(`🎮 Modo Demo activado. Los cambios no se guardan permanentemente.`, 'success');
+            
+            // Agregar indicador visual de modo demo
+            showNotification(`Bienvenido, ${name}. Estás viendo datos de prueba.`, 'info');
         }
         
         function closeLoginModal() {
@@ -6547,6 +6592,34 @@ RESULTADOS:
         
         function logout() {
             if (confirm('¿Cerrar sesión?')) {
+                // Si estaba en modo demo, limpiar datos temporales
+                if (isDemoMode) {
+                    isDemoMode = false;
+                    appState = {
+                        currentDate: new Date(),
+                        activeDate: new Date(),
+                        defaultMargin: 30,
+                        cash: 0,
+                        bank: 0,
+                        inventory: [],
+                        sales: [],
+                        expenses: [],
+                        investments: [],
+                        cashMovements: [],
+                        cart: [],
+                        paymentMethod: 'cash',
+                        calendarMonth: new Date(),
+                        alerts: [],
+                        pendingPurchase: null,
+                        pendingPurchasePayment: 'cash',
+                        initialCapital: 0,
+                        capitalAdjustments: [],
+                        currentUser: null,
+                        guestLogs: [],
+                        isDemoMode: false
+                    };
+                }
+                
                 appState.currentUser = null;
                 isLoggedIn = false;
                 location.reload();
@@ -6563,18 +6636,37 @@ RESULTADOS:
         
         // ==================== DEMO DATA FOR GUESTS ====================
         function loadDemoData() {
-            // Generar 10 productos de demo
+            // Generar 20 productos de demo más variados e inventados
             const demoProducts = [
-                { id: 'demo-1', name: 'Coca Cola 500ml', barcode: '1234567890123', price: 450, cost: 280, stock: 24, minStock: 10, margin: 60 },
-                { id: 'demo-2', name: 'Pepsi 500ml', barcode: '1234567890124', price: 420, cost: 260, stock: 18, minStock: 10, margin: 61 },
-                { id: 'demo-3', name: 'Chips Papas Fritas', barcode: '1234567890125', price: 380, cost: 220, stock: 15, minStock: 8, margin: 72 },
-                { id: 'demo-4', name: 'Galletitas Oreo', barcode: '1234567890126', price: 520, cost: 340, stock: 12, minStock: 6, margin: 52 },
-                { id: 'demo-5', name: 'Cerveza Quilmes', barcode: '1234567890127', price: 650, cost: 420, stock: 30, minStock: 15, margin: 54 },
-                { id: 'demo-6', name: 'Agua mineral 1L', barcode: '1234567890128', price: 280, cost: 150, stock: 20, minStock: 10, margin: 86 },
-                { id: 'demo-7', name: 'Chocolate Milka', barcode: '1234567890129', price: 890, cost: 580, stock: 8, minStock: 5, margin: 53 },
-                { id: 'demo-8', name: 'Alfajor Havanna', barcode: '1234567890130', price: 750, cost: 480, stock: 10, minStock: 5, margin: 56 },
-                { id: 'demo-9', name: 'Yerba Mate 500g', barcode: '1234567890131', price: 1200, cost: 850, stock: 14, minStock: 7, margin: 41 },
-                { id: 'demo-10', name: 'Azúcar Ledesma 1kg', barcode: '1234567890132', price: 650, cost: 420, stock: 16, minStock: 8, margin: 54 }
+                // Bebidas
+                { id: 'demo-1', name: 'Coca Cola 2.25L', barcode: '1234567890101', price: 890, cost: 560, stock: 12, minStock: 5, margin: 58 },
+                { id: 'demo-2', name: 'Sprite Zero 1.5L', barcode: '1234567890102', price: 720, cost: 450, stock: 8, minStock: 4, margin: 60 },
+                { id: 'demo-3', name: 'Fanta Naranja 500ml', barcode: '1234567890103', price: 380, cost: 240, stock: 24, minStock: 10, margin: 58 },
+                { id: 'demo-4', name: 'Schweppes Tónica 1.5L', barcode: '1234567890104', price: 650, cost: 410, stock: 6, minStock: 3, margin: 58 },
+                { id: 'demo-5', name: 'Agua Villavicencio 2L', barcode: '1234567890105', price: 420, cost: 260, stock: 18, minStock: 8, margin: 61 },
+                { id: 'demo-6', name: 'Speed Unlimited 473ml', barcode: '1234567890106', price: 550, cost: 350, stock: 20, minStock: 8, margin: 57 },
+                
+                // Cervezas
+                { id: 'demo-7', name: 'Quilmes Clásica 1L', barcode: '1234567890107', price: 780, cost: 520, stock: 24, minStock: 12, margin: 50 },
+                { id: 'demo-8', name: 'Stella Artois 1L', barcode: '1234567890108', price: 920, cost: 640, stock: 15, minStock: 8, margin: 43 },
+                { id: 'demo-9', name: 'Corona 710ml', barcode: '1234567890109', price: 850, cost: 580, stock: 18, minStock: 9, margin: 46 },
+                { id: 'demo-10', name: 'Heineken 1L', barcode: '1234567890110', price: 980, cost: 690, stock: 12, minStock: 6, margin: 42 },
+                
+                // Snacks
+                { id: 'demo-11', name: 'Lays Clásicas 180g', barcode: '1234567890111', price: 650, cost: 420, stock: 14, minStock: 7, margin: 54 },
+                { id: 'demo-12', name: 'Doritos Nacho 200g', barcode: '1234567890112', price: 720, cost: 480, stock: 10, minStock: 5, margin: 50 },
+                { id: 'demo-13', name: 'Cheetos Pandillas 180g', barcode: '1234567890113', price: 580, cost: 380, stock: 12, minStock: 6, margin: 52 },
+                { id: 'demo-14', name: 'Maní con Chocolate 150g', barcode: '1234567890114', price: 490, cost: 320, stock: 8, minStock: 4, margin: 53 },
+                
+                // Golosinas y Chocolates
+                { id: 'demo-15', name: 'Milka Oreo 150g', barcode: '1234567890115', price: 950, cost: 620, stock: 10, minStock: 5, margin: 53 },
+                { id: 'demo-16', name: 'Block Cabsha 150g', barcode: '1234567890116', price: 780, cost: 520, stock: 8, minStock: 4, margin: 50 },
+                { id: 'demo-17', name: 'Alfajor Jorgito Negro', barcode: '1234567890117', price: 280, cost: 180, stock: 24, minStock: 12, margin: 55 },
+                { id: 'demo-18', name: 'Alfador Guaymallén Blanco', barcode: '1234567890118', price: 180, cost: 120, stock: 30, minStock: 15, margin: 50 },
+                
+                // Despensa
+                { id: 'demo-19', name: 'Yerba Taragüí 1kg', barcode: '1234567890119', price: 1450, cost: 980, stock: 10, minStock: 5, margin: 47 },
+                { id: 'demo-20', name: 'Café Dolca 170g', barcode: '1234567890120', price: 890, cost: 620, stock: 8, minStock: 4, margin: 43 }
             ];
             
             // Convertir a formato con batches
@@ -6643,6 +6735,13 @@ RESULTADOS:
         
         // ==================== LOCAL STORAGE ====================
         function saveToLocalStorage(triggerSync = true) {
+            // Si es modo demo (invitado), no guardar en localStorage permanente
+            // solo guardar en memoria para esta sesión
+            if (isDemoMode) {
+                console.log('Modo demo: datos solo en memoria, no se guardan permanentemente');
+                return;
+            }
+            
             localStorage.setItem('kioscopro-data', JSON.stringify(appState));
             
             // Sincronizar con Firebase

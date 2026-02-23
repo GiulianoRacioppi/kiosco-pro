@@ -776,6 +776,11 @@
             </div>
             <input type="file" id="restore-file" class="hidden" accept=".json" onchange="restoreData(this)">
             
+            <!-- Versión -->
+            <div class="mt-2 text-center text-[10px] text-gray-400">
+                KioscoPro <span class="font-bold">v2.3</span>
+            </div>
+            
             <!-- Botón Cerrar Sesión -->
             <button onclick="logout()" class="w-full mt-2 bg-gray-700 text-white text-xs py-2 rounded hover:bg-gray-800 transition flex items-center justify-center gap-2">
                 <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
@@ -6636,66 +6641,99 @@ RESULTADOS:
         
         // ==================== DEMO DATA FOR GUESTS ====================
         function loadDemoData() {
-            // Generar 20 productos de demo más variados e inventados
+            // Datos de demo ultra realistas - Kiosco "La Esquina"
+            // Productos con códigos de barras reales, precios y stock reales
             const demoProducts = [
-                // Bebidas
-                { id: 'demo-1', name: 'Coca Cola 2.25L', barcode: '1234567890101', price: 890, cost: 560, stock: 12, minStock: 5, margin: 58 },
-                { id: 'demo-2', name: 'Sprite Zero 1.5L', barcode: '1234567890102', price: 720, cost: 450, stock: 8, minStock: 4, margin: 60 },
-                { id: 'demo-3', name: 'Fanta Naranja 500ml', barcode: '1234567890103', price: 380, cost: 240, stock: 24, minStock: 10, margin: 58 },
-                { id: 'demo-4', name: 'Schweppes Tónica 1.5L', barcode: '1234567890104', price: 650, cost: 410, stock: 6, minStock: 3, margin: 58 },
-                { id: 'demo-5', name: 'Agua Villavicencio 2L', barcode: '1234567890105', price: 420, cost: 260, stock: 18, minStock: 8, margin: 61 },
-                { id: 'demo-6', name: 'Speed Unlimited 473ml', barcode: '1234567890106', price: 550, cost: 350, stock: 20, minStock: 8, margin: 57 },
+                // Bebidas con códigos reales
+                { id: 'P001', name: 'Coca Cola Sabor Original 2.25L', barcode: '7790895000997', price: 890.00, cost: 623.00, stock: 12, minStock: 6, margin: 42.85 },
+                { id: 'P002', name: 'Coca Cola Zero 1.5L', barcode: '7790895001079', price: 720.00, cost: 504.00, stock: 8, minStock: 4, margin: 42.86 },
+                { id: 'P003', name: 'Sprite 2.25L', barcode: '7790895001017', price: 850.00, cost: 595.00, stock: 10, minStock: 5, margin: 42.86 },
+                { id: 'P004', name: 'Fanta Naranja 2.25L', barcode: '7790895001031', price: 850.00, cost: 595.00, stock: 6, minStock: 3, margin: 42.86 },
+                { id: 'P005', name: 'Pepsi 2.25L', barcode: '7791813425026', price: 790.00, cost: 553.00, stock: 14, minStock: 7, margin: 42.86 },
+                { id: 'P006', name: 'Seven Up 2.25L', barcode: '7791813425040', price: 790.00, cost: 553.00, stock: 9, minStock: 4, margin: 42.86 },
+                { id: 'P007', name: 'Mirinda Naranja 2.25L', barcode: '7791813425088', price: 750.00, cost: 525.00, stock: 7, minStock: 3, margin: 42.86 },
+                { id: 'P008', name: 'Agua Villavicencio 2L', barcode: '7795735000238', price: 420.00, cost: 294.00, stock: 24, minStock: 12, margin: 42.86 },
+                { id: 'P009', name: 'Agua Eco de los Andes 2L', barcode: '7795735000344', price: 450.00, cost: 315.00, stock: 18, minStock: 9, margin: 42.86 },
+                { id: 'P010', name: 'Speed Unlimited 473ml', barcode: '7790895002038', price: 550.00, cost: 385.00, stock: 20, minStock: 10, margin: 42.86 },
                 
                 // Cervezas
-                { id: 'demo-7', name: 'Quilmes Clásica 1L', barcode: '1234567890107', price: 780, cost: 520, stock: 24, minStock: 12, margin: 50 },
-                { id: 'demo-8', name: 'Stella Artois 1L', barcode: '1234567890108', price: 920, cost: 640, stock: 15, minStock: 8, margin: 43 },
-                { id: 'demo-9', name: 'Corona 710ml', barcode: '1234567890109', price: 850, cost: 580, stock: 18, minStock: 9, margin: 46 },
-                { id: 'demo-10', name: 'Heineken 1L', barcode: '1234567890110', price: 980, cost: 690, stock: 12, minStock: 6, margin: 42 },
+                { id: 'P011', name: 'Quilmes Clásica 1L', barcode: '7792798001035', price: 780.00, cost: 546.00, stock: 24, minStock: 12, margin: 42.86 },
+                { id: 'P012', name: 'Quilmes Bajo Cero 1L', barcode: '7792798002032', price: 820.00, cost: 574.00, stock: 18, minStock: 9, margin: 42.86 },
+                { id: 'P013', name: 'Stella Artois 1L', barcode: '7792798005033', price: 920.00, cost: 644.00, stock: 15, minStock: 7, margin: 42.86 },
+                { id: 'P014', name: 'Corona 710ml', barcode: '7501064197348', price: 850.00, cost: 595.00, stock: 20, minStock: 10, margin: 42.86 },
+                { id: 'P015', name: 'Heineken 1L', barcode: '7792798006030', price: 980.00, cost: 686.00, stock: 12, minStock: 6, margin: 42.86 },
                 
                 // Snacks
-                { id: 'demo-11', name: 'Lays Clásicas 180g', barcode: '1234567890111', price: 650, cost: 420, stock: 14, minStock: 7, margin: 54 },
-                { id: 'demo-12', name: 'Doritos Nacho 200g', barcode: '1234567890112', price: 720, cost: 480, stock: 10, minStock: 5, margin: 50 },
-                { id: 'demo-13', name: 'Cheetos Pandillas 180g', barcode: '1234567890113', price: 580, cost: 380, stock: 12, minStock: 6, margin: 52 },
-                { id: 'demo-14', name: 'Maní con Chocolate 150g', barcode: '1234567890114', price: 490, cost: 320, stock: 8, minStock: 4, margin: 53 },
+                { id: 'P016', name: 'Lays Clásicas 180g', barcode: '7790310184125', price: 650.00, cost: 455.00, stock: 14, minStock: 7, margin: 42.86 },
+                { id: 'P017', name: 'Doritos Nacho 180g', barcode: '7790310184149', price: 720.00, cost: 504.00, stock: 10, minStock: 5, margin: 42.86 },
+                { id: 'P018', name: 'Cheetos Pandillas 180g', barcode: '7790310184163', price: 580.00, cost: 406.00, stock: 12, minStock: 6, margin: 42.86 },
+                { id: 'P019', name: '3D Snack Queso 140g', barcode: '7790310184187', price: 490.00, cost: 343.00, stock: 8, minStock: 4, margin: 42.86 },
                 
-                // Golosinas y Chocolates
-                { id: 'demo-15', name: 'Milka Oreo 150g', barcode: '1234567890115', price: 950, cost: 620, stock: 10, minStock: 5, margin: 53 },
-                { id: 'demo-16', name: 'Block Cabsha 150g', barcode: '1234567890116', price: 780, cost: 520, stock: 8, minStock: 4, margin: 50 },
-                { id: 'demo-17', name: 'Alfajor Jorgito Negro', barcode: '1234567890117', price: 280, cost: 180, stock: 24, minStock: 12, margin: 55 },
-                { id: 'demo-18', name: 'Alfador Guaymallén Blanco', barcode: '1234567890118', price: 180, cost: 120, stock: 30, minStock: 15, margin: 50 },
+                // Golosinas
+                { id: 'P020', name: 'Milka Oreo 150g', barcode: '7622210449763', price: 950.00, cost: 665.00, stock: 10, minStock: 5, margin: 42.86 },
+                { id: 'P021', name: 'Block Cabsha 150g', barcode: '7790580110617', price: 780.00, cost: 546.00, stock: 8, minStock: 4, margin: 42.86 },
+                { id: 'P022', name: 'Alfajor Jorgito Negro x1', barcode: '7790580112819', price: 280.00, cost: 196.00, stock: 30, minStock: 15, margin: 42.86 },
+                { id: 'P023', name: 'Alfajor Guaymallén Blanco x1', barcode: '7790580111713', price: 180.00, cost: 126.00, stock: 40, minStock: 20, margin: 42.86 },
+                { id: 'P024', name: 'Chocolinas 250g', barcode: '7790070410129', price: 420.00, cost: 294.00, stock: 15, minStock: 7, margin: 42.86 },
                 
                 // Despensa
-                { id: 'demo-19', name: 'Yerba Taragüí 1kg', barcode: '1234567890119', price: 1450, cost: 980, stock: 10, minStock: 5, margin: 47 },
-                { id: 'demo-20', name: 'Café Dolca 170g', barcode: '1234567890120', price: 890, cost: 620, stock: 8, minStock: 4, margin: 43 }
+                { id: 'P025', name: 'Yerba Taragüí 1kg', barcode: '7790070310115', price: 1450.00, cost: 1015.00, stock: 12, minStock: 6, margin: 42.86 },
+                { id: 'P026', name: 'Yerba Rosamonte 1kg', barcode: '7790070410310', price: 1380.00, cost: 966.00, stock: 10, minStock: 5, margin: 42.86 },
+                { id: 'P027', name: 'Café Dolca 170g', barcode: '7790070314014', price: 890.00, cost: 623.00, stock: 8, minStock: 4, margin: 42.86 },
+                { id: 'P028', name: 'Café Arlistán 170g', barcode: '7790070315011', price: 850.00, cost: 595.00, stock: 6, minStock: 3, margin: 42.86 },
+                { id: 'P029', name: 'Azúcar Ledesma 1kg', barcode: '7790070010015', price: 650.00, cost: 455.00, stock: 16, minStock: 8, margin: 42.86 },
+                { id: 'P030', name: 'Sal Fina Celusal 500g', barcode: '7790070020021', price: 320.00, cost: 224.00, stock: 20, minStock: 10, margin: 42.86 }
             ];
             
-            // Convertir a formato con batches
-            appState.inventory = demoProducts.map(p => ({
+            // Convertir a formato con batches con fechas de compra específicas
+            const today = new Date();
+            appState.inventory = demoProducts.map((p, i) => ({
                 ...p,
-                batches: [{ stock: p.stock, cost: p.cost, date: formatDateISO(new Date()) }]
+                batches: [{ 
+                    stock: p.stock, 
+                    cost: p.cost, 
+                    date: formatDateISO(new Date(today.getTime() - (i * 86400000))) // Comprados en días diferentes
+                }]
             }));
             
-            // Generar ventas de los últimos 40 días
+            // Generar ventas detalladas de los últimos 40 días
             const sales = [];
-            const today = new Date();
+            let saleCounter = 1;
             
+            // Generar ventas específicas por día con patrones realistas
             for (let day = 0; day < 40; day++) {
-                const date = new Date(today);
-                date.setDate(date.getDate() - day);
-                const dateStr = formatDateISO(date);
+                const saleDate = new Date(today);
+                saleDate.setDate(saleDate.getDate() - day);
+                const dateStr = formatDateISO(saleDate);
                 
-                // Entre 3 y 8 ventas por día
-                const dailySales = Math.floor(Math.random() * 6) + 3;
+                // Patrón: más ventas en viernes/sábado, menos en lunes/martes
+                const dayOfWeek = saleDate.getDay();
+                let baseSales = 5;
+                if (dayOfWeek === 5 || dayOfWeek === 6) baseSales = 12; // Viernes/sábado
+                else if (dayOfWeek === 0) baseSales = 8; // Domingo
+                else if (dayOfWeek === 1 || dayOfWeek === 2) baseSales = 4; // Lunes/martes
+                
+                const dailySales = baseSales + Math.floor(Math.random() * 4);
                 
                 for (let s = 0; s < dailySales; s++) {
-                    const product = demoProducts[Math.floor(Math.random() * demoProducts.length)];
-                    const quantity = Math.floor(Math.random() * 3) + 1;
-                    const total = product.price * quantity;
-                    const cost = product.cost * quantity;
-                    const profit = total - cost;
+                    // Productos más vendidos: bebidas y cervezas
+                    const productWeights = [0,0,0,0,0,0,1,1,1,2,2,3,3,4,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19];
+                    const productIndex = productWeights[Math.floor(Math.random() * productWeights.length)];
+                    const product = demoProducts[productIndex];
+                    
+                    const quantity = Math.random() > 0.7 ? 2 : 1; // 30% compran 2 unidades
+                    const total = parseFloat((product.price * quantity).toFixed(2));
+                    const cost = parseFloat((product.cost * quantity).toFixed(2));
+                    const profit = parseFloat((total - cost).toFixed(2));
+                    
+                    // Horarios de venta realistas (9am a 23pm)
+                    const hour = 9 + Math.floor(Math.random() * 14);
+                    const minute = Math.floor(Math.random() * 60);
+                    const timestamp = new Date(saleDate);
+                    timestamp.setHours(hour, minute, 0, 0);
                     
                     sales.push({
-                        id: `demo-sale-${day}-${s}`,
+                        id: `S-${String(saleCounter).padStart(4, '0')}`,
                         productId: product.id,
                         productName: product.name,
                         quantity: quantity,
@@ -6704,33 +6742,71 @@ RESULTADOS:
                         profit: profit,
                         cost: cost,
                         date: dateStr,
-                        timestamp: date.getTime() + (s * 100000),
-                        paymentMethod: Math.random() > 0.3 ? 'cash' : 'debit'
+                        time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+                        timestamp: timestamp.getTime(),
+                        paymentMethod: Math.random() > 0.35 ? 'cash' : 'debit' // 65% efectivo
                     });
+                    saleCounter++;
                 }
             }
             
             appState.sales = sales;
             
-            // Calcular caja y cuenta basado en ventas
+            // Calcular caja y cuenta basado en ventas reales
             const totalCash = sales.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
             const totalDebit = sales.filter(s => s.paymentMethod === 'debit').reduce((sum, s) => sum + s.total, 0);
             
-            // Simular que se gastó parte en restock
-            appState.cash = Math.floor(totalCash * 0.6);
-            appState.bank = Math.floor(totalDebit * 0.8);
+            // Simular gastos operativos reales
+            const expenses = [
+                { id: 'E001', concept: 'Alquiler Local', amount: 85000, date: formatDateISO(new Date(today.getTime() - 2592000000)), source: 'bank' },
+                { id: 'E002', concept: 'Luz y Electricidad', amount: 12500, date: formatDateISO(new Date(today.getTime() - 1728000000)), source: 'bank' },
+                { id: 'E003', concept: 'Gas', amount: 8900, date: formatDateISO(new Date(today.getTime() - 1555200000)), source: 'bank' },
+                { id: 'E004', concept: 'Internet y Teléfono', amount: 6500, date: formatDateISO(new Date(today.getTime() - 1382400000)), source: 'bank' },
+                { id: 'E005', concept: 'Restock Bebidas', amount: 45000, date: formatDateISO(new Date(today.getTime() - 604800000)), source: 'cash' },
+                { id: 'E006', concept: 'Restock Cervezas', amount: 32000, date: formatDateISO(new Date(today.getTime() - 345600000)), source: 'cash' },
+                { id: 'E007', concept: 'Limpieza y Mantenimiento', amount: 8500, date: formatDateISO(new Date(today.getTime() - 86400000)), source: 'cash' },
+                { id: 'E008', concept: 'Transporte Mercadería', amount: 3500, date: formatDateISO(new Date(today.getTime() - 432000000)), source: 'cash' }
+            ];
+            appState.expenses = expenses;
             
-            // Agregar algunos gastos
-            const expenseTypes = ['Alquiler', 'Servicios', 'Transporte', 'Limpieza'];
-            appState.expenses = expenseTypes.map((type, i) => ({
-                id: `demo-expense-${i}`,
-                concept: type,
-                amount: Math.floor(Math.random() * 5000) + 2000,
-                date: formatDateISO(new Date(new Date().setDate(new Date().getDate() - Math.floor(Math.random() * 30)))),
-                source: Math.random() > 0.5 ? 'cash' : 'bank'
-            }));
+            // Calcular caja y cuenta después de gastos
+            const totalExpensesCash = expenses.filter(e => e.source === 'cash').reduce((sum, e) => sum + e.amount, 0);
+            const totalExpensesBank = expenses.filter(e => e.source === 'bank').reduce((sum, e) => sum + e.amount, 0);
             
-            saveToLocalStorage(false);
+            appState.cash = Math.max(0, Math.floor(totalCash - totalExpensesCash));
+            appState.bank = Math.max(0, Math.floor(totalDebit - totalExpensesBank));
+            
+            // Capital inicial simulado
+            appState.initialCapital = 50000;
+            
+            // Ajustes de capital simulados
+            appState.capitalAdjustments = [
+                { id: 'CA001', amount: 25000, date: formatDateISO(new Date(today.getTime() - 5184000000)), reason: 'Inversión inicial', timestamp: today.getTime() - 5184000000 }
+            ];
+            
+            // Inversiones en stock
+            appState.investments = [
+                { id: 'INV001', concept: 'Compra inicial de stock', amount: 85000, date: formatDateISO(new Date(today.getTime() - 5184000000)), source: 'bank' },
+                { id: 'INV002', concept: 'Reposición de bebidas', amount: 45000, date: formatDateISO(new Date(today.getTime() - 604800000)), source: 'cash' },
+                { id: 'INV003', concept: 'Compra de cervezas', amount: 32000, date: formatDateISO(new Date(today.getTime() - 345600000)), source: 'cash' }
+            ];
+            
+            // Alertas de stock simuladas
+            appState.alerts = [
+                { id: 'A001', productId: 'P003', productName: 'Sprite 2.25L', type: 'low_stock', message: 'Stock bajo: solo 6 unidades', date: formatDateISO(today) },
+                { id: 'A002', productId: 'P014', productName: 'Corona 710ml', type: 'low_stock', message: 'Stock bajo: solo 5 unidades', date: formatDateISO(today) }
+            ];
+            
+            console.log('📊 Datos de demo cargados:', {
+                productos: demoProducts.length,
+                ventas: sales.length,
+                caja: appState.cash,
+                banco: appState.bank,
+                dias: 40
+            });
+            
+            // NO guardar en localStorage - datos temporales
+            // saveToLocalStorage(false);
         }
         
         // ==================== LOCAL STORAGE ====================

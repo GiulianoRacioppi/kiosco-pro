@@ -5788,12 +5788,35 @@ Total de productos a comprar: ${shoppingList.length}
             }
         }
         
-        function renderGuestLogs() {
+        async function renderGuestLogs() {
             const container = document.getElementById('guest-logs-container');
             if (!container) return;
             
-            // Cargar logs desde Firebase (si hay)
-            const logs = appState.guestLogs || [];
+            container.innerHTML = '<p class="text-gray-500 text-center py-4"><i class="fas fa-spinner fa-spin"></i> Cargando registros...</p>';
+            
+            let logs = [];
+            
+            // Intentar cargar desde Firebase primero
+            if (window.db) {
+                try {
+                    const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                    const logsRef = doc(window.db, "kioscos", "guestLogs");
+                    const docSnap = await getDoc(logsRef);
+                    
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        logs = data.logs || [];
+                        console.log('📋 Logs cargados desde Firebase:', logs.length);
+                    }
+                } catch (err) {
+                    console.error('Error cargando logs:', err);
+                }
+            }
+            
+            // Si no hay logs en Firebase, usar los locales
+            if (logs.length === 0) {
+                logs = appState.guestLogs || [];
+            }
             
             if (logs.length === 0) {
                 container.innerHTML = '<p class="text-gray-500 text-center py-4">No hay registros de invitados aún</p>';
@@ -5840,10 +5863,20 @@ Total de productos a comprar: ${shoppingList.length}
             `;
         }
         
-        function clearGuestLogs() {
+        async function clearGuestLogs() {
             if (!confirm('¿Eliminar todos los registros de invitados?')) return;
+            
+            // Limpiar en Firebase
+            if (window.db) {
+                try {
+                    const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                    await setDoc(doc(window.db, "kioscos", "guestLogs"), { logs: [] });
+                } catch (err) {
+                    console.error('Error limpiando logs:', err);
+                }
+            }
+            
             appState.guestLogs = [];
-            saveToLocalStorage();
             renderGuestLogs();
             showNotification('Registros eliminados', 'success');
         }
@@ -6554,7 +6587,7 @@ RESULTADOS:
             }
         }
         
-        function loginGuest() {
+        async function loginGuest() {
             const name = document.getElementById('guest-name').value.trim();
             if (!name) {
                 showNotification('Por favor ingresa tu nombre', 'error');
@@ -6565,13 +6598,40 @@ RESULTADOS:
             isDemoMode = true;
             appState.isDemoMode = true;
             
-            // Registrar ingreso de invitado (solo se guarda si hay admin después)
+            // Registrar ingreso de invitado
             const guestEntry = {
                 name: name,
                 loginTime: new Date().toISOString(),
-                device: navigator.userAgent
+                device: navigator.userAgent,
+                ip: 'oculta' // Por privacidad
             };
-            appState.guestLogs = [guestEntry]; // Solo este log, no acumular
+            
+            // Guardar log en Firebase para que el admin lo vea
+            if (window.db) {
+                try {
+                    const { doc, getDoc, setDoc, updateDoc, arrayUnion } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                    const logsRef = doc(window.db, "kioscos", "guestLogs");
+                    
+                    // Intentar obtener logs existentes
+                    const docSnap = await getDoc(logsRef);
+                    if (docSnap.exists()) {
+                        // Agregar al array existente
+                        await updateDoc(logsRef, {
+                            logs: arrayUnion(guestEntry)
+                        });
+                    } else {
+                        // Crear nuevo documento con el primer log
+                        await setDoc(logsRef, {
+                            logs: [guestEntry]
+                        });
+                    }
+                    console.log('✅ Log de invitado guardado en Firebase');
+                } catch (err) {
+                    console.error('Error guardando log:', err);
+                }
+            }
+            
+            appState.guestLogs = [guestEntry];
             
             appState.currentUser = {
                 role: 'guest',
@@ -6642,47 +6702,47 @@ RESULTADOS:
         // ==================== DEMO DATA FOR GUESTS ====================
         function loadDemoData() {
             // Datos de demo ultra realistas - Kiosco "La Esquina"
-            // Productos con códigos de barras reales, precios y stock reales
+            // Productos con códigos de barras reales, precios, stock y CATEGORÍAS
             const demoProducts = [
                 // Bebidas con códigos reales
-                { id: 'P001', name: 'Coca Cola Sabor Original 2.25L', barcode: '7790895000997', price: 890.00, cost: 623.00, stock: 12, minStock: 6, margin: 42.85 },
-                { id: 'P002', name: 'Coca Cola Zero 1.5L', barcode: '7790895001079', price: 720.00, cost: 504.00, stock: 8, minStock: 4, margin: 42.86 },
-                { id: 'P003', name: 'Sprite 2.25L', barcode: '7790895001017', price: 850.00, cost: 595.00, stock: 10, minStock: 5, margin: 42.86 },
-                { id: 'P004', name: 'Fanta Naranja 2.25L', barcode: '7790895001031', price: 850.00, cost: 595.00, stock: 6, minStock: 3, margin: 42.86 },
-                { id: 'P005', name: 'Pepsi 2.25L', barcode: '7791813425026', price: 790.00, cost: 553.00, stock: 14, minStock: 7, margin: 42.86 },
-                { id: 'P006', name: 'Seven Up 2.25L', barcode: '7791813425040', price: 790.00, cost: 553.00, stock: 9, minStock: 4, margin: 42.86 },
-                { id: 'P007', name: 'Mirinda Naranja 2.25L', barcode: '7791813425088', price: 750.00, cost: 525.00, stock: 7, minStock: 3, margin: 42.86 },
-                { id: 'P008', name: 'Agua Villavicencio 2L', barcode: '7795735000238', price: 420.00, cost: 294.00, stock: 24, minStock: 12, margin: 42.86 },
-                { id: 'P009', name: 'Agua Eco de los Andes 2L', barcode: '7795735000344', price: 450.00, cost: 315.00, stock: 18, minStock: 9, margin: 42.86 },
-                { id: 'P010', name: 'Speed Unlimited 473ml', barcode: '7790895002038', price: 550.00, cost: 385.00, stock: 20, minStock: 10, margin: 42.86 },
+                { id: 'P001', name: 'Coca Cola Sabor Original 2.25L', barcode: '7790895000997', price: 890.00, cost: 623.00, stock: 12, minStock: 6, margin: 42.85, category: 'bebidas' },
+                { id: 'P002', name: 'Coca Cola Zero 1.5L', barcode: '7790895001079', price: 720.00, cost: 504.00, stock: 8, minStock: 4, margin: 42.86, category: 'bebidas' },
+                { id: 'P003', name: 'Sprite 2.25L', barcode: '7790895001017', price: 850.00, cost: 595.00, stock: 10, minStock: 5, margin: 42.86, category: 'bebidas' },
+                { id: 'P004', name: 'Fanta Naranja 2.25L', barcode: '7790895001031', price: 850.00, cost: 595.00, stock: 6, minStock: 3, margin: 42.86, category: 'bebidas' },
+                { id: 'P005', name: 'Pepsi 2.25L', barcode: '7791813425026', price: 790.00, cost: 553.00, stock: 14, minStock: 7, margin: 42.86, category: 'bebidas' },
+                { id: 'P006', name: 'Seven Up 2.25L', barcode: '7791813425040', price: 790.00, cost: 553.00, stock: 9, minStock: 4, margin: 42.86, category: 'bebidas' },
+                { id: 'P007', name: 'Mirinda Naranja 2.25L', barcode: '7791813425088', price: 750.00, cost: 525.00, stock: 7, minStock: 3, margin: 42.86, category: 'bebidas' },
+                { id: 'P008', name: 'Agua Villavicencio 2L', barcode: '7795735000238', price: 420.00, cost: 294.00, stock: 24, minStock: 12, margin: 42.86, category: 'bebidas' },
+                { id: 'P009', name: 'Agua Eco de los Andes 2L', barcode: '7795735000344', price: 450.00, cost: 315.00, stock: 18, minStock: 9, margin: 42.86, category: 'bebidas' },
+                { id: 'P010', name: 'Speed Unlimited 473ml', barcode: '7790895002038', price: 550.00, cost: 385.00, stock: 20, minStock: 10, margin: 42.86, category: 'bebidas' },
                 
                 // Cervezas
-                { id: 'P011', name: 'Quilmes Clásica 1L', barcode: '7792798001035', price: 780.00, cost: 546.00, stock: 24, minStock: 12, margin: 42.86 },
-                { id: 'P012', name: 'Quilmes Bajo Cero 1L', barcode: '7792798002032', price: 820.00, cost: 574.00, stock: 18, minStock: 9, margin: 42.86 },
-                { id: 'P013', name: 'Stella Artois 1L', barcode: '7792798005033', price: 920.00, cost: 644.00, stock: 15, minStock: 7, margin: 42.86 },
-                { id: 'P014', name: 'Corona 710ml', barcode: '7501064197348', price: 850.00, cost: 595.00, stock: 20, minStock: 10, margin: 42.86 },
-                { id: 'P015', name: 'Heineken 1L', barcode: '7792798006030', price: 980.00, cost: 686.00, stock: 12, minStock: 6, margin: 42.86 },
+                { id: 'P011', name: 'Quilmes Clásica 1L', barcode: '7792798001035', price: 780.00, cost: 546.00, stock: 24, minStock: 12, margin: 42.86, category: 'cervezas' },
+                { id: 'P012', name: 'Quilmes Bajo Cero 1L', barcode: '7792798002032', price: 820.00, cost: 574.00, stock: 18, minStock: 9, margin: 42.86, category: 'cervezas' },
+                { id: 'P013', name: 'Stella Artois 1L', barcode: '7792798005033', price: 920.00, cost: 644.00, stock: 15, minStock: 7, margin: 42.86, category: 'cervezas' },
+                { id: 'P014', name: 'Corona 710ml', barcode: '7501064197348', price: 850.00, cost: 595.00, stock: 20, minStock: 10, margin: 42.86, category: 'cervezas' },
+                { id: 'P015', name: 'Heineken 1L', barcode: '7792798006030', price: 980.00, cost: 686.00, stock: 12, minStock: 6, margin: 42.86, category: 'cervezas' },
                 
                 // Snacks
-                { id: 'P016', name: 'Lays Clásicas 180g', barcode: '7790310184125', price: 650.00, cost: 455.00, stock: 14, minStock: 7, margin: 42.86 },
-                { id: 'P017', name: 'Doritos Nacho 180g', barcode: '7790310184149', price: 720.00, cost: 504.00, stock: 10, minStock: 5, margin: 42.86 },
-                { id: 'P018', name: 'Cheetos Pandillas 180g', barcode: '7790310184163', price: 580.00, cost: 406.00, stock: 12, minStock: 6, margin: 42.86 },
-                { id: 'P019', name: '3D Snack Queso 140g', barcode: '7790310184187', price: 490.00, cost: 343.00, stock: 8, minStock: 4, margin: 42.86 },
+                { id: 'P016', name: 'Lays Clásicas 180g', barcode: '7790310184125', price: 650.00, cost: 455.00, stock: 14, minStock: 7, margin: 42.86, category: 'snacks' },
+                { id: 'P017', name: 'Doritos Nacho 180g', barcode: '7790310184149', price: 720.00, cost: 504.00, stock: 10, minStock: 5, margin: 42.86, category: 'snacks' },
+                { id: 'P018', name: 'Cheetos Pandillas 180g', barcode: '7790310184163', price: 580.00, cost: 406.00, stock: 12, minStock: 6, margin: 42.86, category: 'snacks' },
+                { id: 'P019', name: '3D Snack Queso 140g', barcode: '7790310184187', price: 490.00, cost: 343.00, stock: 8, minStock: 4, margin: 42.86, category: 'snacks' },
                 
                 // Golosinas
-                { id: 'P020', name: 'Milka Oreo 150g', barcode: '7622210449763', price: 950.00, cost: 665.00, stock: 10, minStock: 5, margin: 42.86 },
-                { id: 'P021', name: 'Block Cabsha 150g', barcode: '7790580110617', price: 780.00, cost: 546.00, stock: 8, minStock: 4, margin: 42.86 },
-                { id: 'P022', name: 'Alfajor Jorgito Negro x1', barcode: '7790580112819', price: 280.00, cost: 196.00, stock: 30, minStock: 15, margin: 42.86 },
-                { id: 'P023', name: 'Alfajor Guaymallén Blanco x1', barcode: '7790580111713', price: 180.00, cost: 126.00, stock: 40, minStock: 20, margin: 42.86 },
-                { id: 'P024', name: 'Chocolinas 250g', barcode: '7790070410129', price: 420.00, cost: 294.00, stock: 15, minStock: 7, margin: 42.86 },
+                { id: 'P020', name: 'Milka Oreo 150g', barcode: '7622210449763', price: 950.00, cost: 665.00, stock: 10, minStock: 5, margin: 42.86, category: 'golosinas' },
+                { id: 'P021', name: 'Block Cabsha 150g', barcode: '7790580110617', price: 780.00, cost: 546.00, stock: 8, minStock: 4, margin: 42.86, category: 'golosinas' },
+                { id: 'P022', name: 'Alfajor Jorgito Negro x1', barcode: '7790580112819', price: 280.00, cost: 196.00, stock: 30, minStock: 15, margin: 42.86, category: 'golosinas' },
+                { id: 'P023', name: 'Alfajor Guaymallén Blanco x1', barcode: '7790580111713', price: 180.00, cost: 126.00, stock: 40, minStock: 20, margin: 42.86, category: 'golosinas' },
+                { id: 'P024', name: 'Chocolinas 250g', barcode: '7790070410129', price: 420.00, cost: 294.00, stock: 15, minStock: 7, margin: 42.86, category: 'golosinas' },
                 
                 // Despensa
-                { id: 'P025', name: 'Yerba Taragüí 1kg', barcode: '7790070310115', price: 1450.00, cost: 1015.00, stock: 12, minStock: 6, margin: 42.86 },
-                { id: 'P026', name: 'Yerba Rosamonte 1kg', barcode: '7790070410310', price: 1380.00, cost: 966.00, stock: 10, minStock: 5, margin: 42.86 },
-                { id: 'P027', name: 'Café Dolca 170g', barcode: '7790070314014', price: 890.00, cost: 623.00, stock: 8, minStock: 4, margin: 42.86 },
-                { id: 'P028', name: 'Café Arlistán 170g', barcode: '7790070315011', price: 850.00, cost: 595.00, stock: 6, minStock: 3, margin: 42.86 },
-                { id: 'P029', name: 'Azúcar Ledesma 1kg', barcode: '7790070010015', price: 650.00, cost: 455.00, stock: 16, minStock: 8, margin: 42.86 },
-                { id: 'P030', name: 'Sal Fina Celusal 500g', barcode: '7790070020021', price: 320.00, cost: 224.00, stock: 20, minStock: 10, margin: 42.86 }
+                { id: 'P025', name: 'Yerba Taragüí 1kg', barcode: '7790070310115', price: 1450.00, cost: 1015.00, stock: 12, minStock: 6, margin: 42.86, category: 'despensa' },
+                { id: 'P026', name: 'Yerba Rosamonte 1kg', barcode: '7790070410310', price: 1380.00, cost: 966.00, stock: 10, minStock: 5, margin: 42.86, category: 'despensa' },
+                { id: 'P027', name: 'Café Dolca 170g', barcode: '7790070314014', price: 890.00, cost: 623.00, stock: 8, minStock: 4, margin: 42.86, category: 'despensa' },
+                { id: 'P028', name: 'Café Arlistán 170g', barcode: '7790070315011', price: 850.00, cost: 595.00, stock: 6, minStock: 3, margin: 42.86, category: 'despensa' },
+                { id: 'P029', name: 'Azúcar Ledesma 1kg', barcode: '7790070010015', price: 650.00, cost: 455.00, stock: 16, minStock: 8, margin: 42.86, category: 'despensa' },
+                { id: 'P030', name: 'Sal Fina Celusal 500g', barcode: '7790070020021', price: 320.00, cost: 224.00, stock: 20, minStock: 10, margin: 42.86, category: 'despensa' }
             ];
             
             // Convertir a formato con batches con fechas de compra específicas
@@ -6732,12 +6792,16 @@ RESULTADOS:
                     const timestamp = new Date(saleDate);
                     timestamp.setHours(hour, minute, 0, 0);
                     
+                    // Estructura compatible con los gráficos (con items array)
                     sales.push({
                         id: `S-${String(saleCounter).padStart(4, '0')}`,
-                        productId: product.id,
-                        productName: product.name,
-                        quantity: quantity,
-                        price: product.price,
+                        items: [{
+                            productId: product.id,
+                            productName: product.name,
+                            quantity: quantity,
+                            price: product.price,
+                            cost: product.cost
+                        }],
                         total: total,
                         profit: profit,
                         cost: cost,

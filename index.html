@@ -727,14 +727,15 @@
                     <p class="text-gray-500 mt-1 text-sm lg:text-base" id="current-date-display"></p>
                 </div>
             </div>
-            <div class="flex gap-3">
-                <button onclick="quickSell()" id="btn-quick-sell" class="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg transition flex items-center gap-2">
-                    <i class="fas fa-plus"></i> Nueva Venta
+            <!-- Botones de acción rápida - Responsive -->
+            <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                <button onclick="quickSell()" id="btn-quick-sell" class="bg-green-500 hover:bg-green-600 text-white px-3 sm:px-6 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-lg transition flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap">
+                    <i class="fas fa-plus"></i> <span class="hidden sm:inline">Nueva Venta</span><span class="sm:hidden">Venta</span>
                 </button>
-                <button onclick="showSection('inventory')" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg transition flex items-center gap-2">
-                    <i class="fas fa-shopping-cart"></i> Compra Stock
+                <button onclick="showSection('inventory')" class="bg-blue-500 hover:bg-blue-600 text-white px-3 sm:px-6 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-lg transition flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap">
+                    <i class="fas fa-shopping-cart"></i> <span class="hidden sm:inline">Compra Stock</span><span class="sm:hidden">Stock</span>
                 </button>
-                <button onclick="openExpenseModal()" class="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg transition flex items-center gap-2">
+                <button onclick="openExpenseModal()" class="bg-red-500 hover:bg-red-600 text-white px-3 sm:px-6 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-lg transition flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap">
                     <i class="fas fa-minus"></i> Gasto
                 </button>
             </div>

@@ -678,8 +678,8 @@
                 </button>
             </div>
             <p class="text-xs opacity-80 mt-1">Gestión Inteligente</p>
-            <div id="user-badge" class="mt-2 inline-flex items-center gap-1 px-2 py-1 bg-white/20 rounded text-xs">
-                <i class="fas fa-user"></i> <span id="user-name">No logueado</span>
+            <div id="user-badge" class="mt-2 inline-flex items-center gap-1 px-2 py-1 bg-gray-500 text-white rounded text-xs" style="display: none;">
+                <i class="fas fa-user"></i> <span id="user-name">Cargando...</span>
             </div>
         </div>
         
@@ -6157,19 +6157,22 @@ RESULTADOS:
                 
                 // Actualizar badge de usuario
                 const userBadge = document.getElementById('user-badge');
-                const userName = document.getElementById('user-name');
-                console.log('👤 Actualizando badge:', appState.currentUser);
-                if (userBadge && userName && appState.currentUser) {
-                    if (appState.currentUser.role === 'admin') {
-                        userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-purple-500 text-white rounded text-xs font-bold';
-                        userBadge.innerHTML = '<i class="fas fa-user-shield"></i> <span>Administrador</span>';
+                console.log('👤 Actualizando badge, currentUser:', appState.currentUser);
+                
+                if (userBadge) {
+                    if (appState.currentUser) {
+                        userBadge.style.display = 'inline-flex';
+                        if (appState.currentUser.role === 'admin') {
+                            userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-purple-500 text-white rounded text-xs font-bold';
+                            userBadge.innerHTML = '<i class="fas fa-user-shield"></i> <span>Administrador</span>';
+                        } else {
+                            // Modo demo - invitado
+                            userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-orange-500 text-white rounded text-xs font-bold';
+                            userBadge.innerHTML = '<i class="fas fa-gamepad"></i> <span>' + appState.currentUser.name + ' (Demo)</span>';
+                        }
                     } else {
-                        // Modo demo - invitado
-                        userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-orange-500 text-white rounded text-xs font-bold';
-                        userBadge.innerHTML = '<i class="fas fa-gamepad"></i> <span>' + appState.currentUser.name + ' (Demo)</span>';
+                        userBadge.style.display = 'none';
                     }
-                } else {
-                    console.log('❌ No se pudo actualizar badge:', {userBadge, userName, currentUser: appState.currentUser});
                 }
                 
             } catch (e) {
@@ -6550,16 +6553,21 @@ RESULTADOS:
                 isDemoMode = false;
                 appState.isDemoMode = false;
                 
-                appState.currentUser = {
+                // GUARDAR el usuario antes de cargar datos (loadFromLocalStorage lo sobreescribe)
+                const loggedUser = {
                     role: 'admin',
                     name: 'Administrador',
                     loginTime: new Date().toISOString()
                 };
+                
                 isLoggedIn = true;
                 closeLoginModal();
                 
                 // Cargar datos reales desde localStorage primero
                 loadFromLocalStorage();
+                
+                // RESTAURAR el usuario después de cargar datos
+                appState.currentUser = loggedUser;
                 
                 // Luego intentar sincronizar con Firebase para obtener datos más recientes
                 if (window.db && navigator.onLine) {

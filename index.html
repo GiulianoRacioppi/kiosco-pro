@@ -319,76 +319,6 @@
 
     <div id="notifications"></div>
 
-    <!-- LOGIN MODAL -->
-    <div id="login-modal" class="fixed inset-0 bg-gradient-to-br from-purple-600 via-purple-700 to-indigo-800 z-[100] flex items-center justify-center">
-        <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 text-center">
-            <div class="mb-6">
-                <div class="w-20 h-20 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <i class="fas fa-store text-3xl text-white"></i>
-                </div>
-                <h1 class="text-2xl font-bold text-gray-800">KioscoPro</h1>
-                <p class="text-gray-500">Sistema de Gestión</p>
-            </div>
-            
-            <div id="login-options" class="space-y-4">
-                <button onclick="showLoginForm('admin')" class="w-full py-4 px-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition flex items-center justify-center gap-3">
-                    <i class="fas fa-user-shield text-xl"></i>
-                    <div class="text-left">
-                        <div class="font-bold">Administrador</div>
-                        <div class="text-xs opacity-80">Acceso completo al sistema</div>
-                    </div>
-                </button>
-                
-                <div class="relative">
-                    <div class="absolute inset-0 flex items-center">
-                        <div class="w-full border-t border-gray-200"></div>
-                    </div>
-                    <div class="relative flex justify-center text-sm">
-                        <span class="px-2 bg-white text-gray-500">o</span>
-                    </div>
-                </div>
-                
-                <button onclick="showLoginForm('guest')" class="w-full py-4 px-6 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition flex items-center justify-center gap-3">
-                    <i class="fas fa-user text-xl"></i>
-                    <div class="text-left">
-                        <div class="font-bold">Invitado</div>
-                        <div class="text-xs opacity-80">Modo demo con datos de prueba</div>
-                    </div>
-                </button>
-            </div>
-            
-            <div class="mt-4 text-xs text-gray-400">
-                Versión 2.3 | Datos sincronizados en la nube
-            </div>
-            
-            <!-- Formulario Admin -->
-            <div id="admin-login-form" class="hidden space-y-4">
-                <button onclick="backToLoginOptions()" class="text-gray-500 hover:text-gray-700 flex items-center gap-2">
-                    <i class="fas fa-arrow-left"></i> Volver
-                </button>
-                <h3 class="text-lg font-bold text-gray-800">Acceso Administrador</h3>
-                <input type="password" id="admin-password" placeholder="Contraseña" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                <button onclick="loginAdmin()" class="w-full py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition">
-                    Ingresar
-                </button>
-                <p id="admin-login-error" class="text-red-500 text-sm hidden">Contraseña incorrecta</p>
-            </div>
-            
-            <!-- Formulario Invitado -->
-            <div id="guest-login-form" class="hidden space-y-4">
-                <button onclick="backToLoginOptions()" class="text-gray-500 hover:text-gray-700 flex items-center gap-2">
-                    <i class="fas fa-arrow-left"></i> Volver
-                </button>
-                <h3 class="text-lg font-bold text-gray-800">Modo Invitado</h3>
-                <p class="text-sm text-gray-500">Ingresa tu nombre para continuar</p>
-                <input type="text" id="guest-name" placeholder="Tu nombre" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                <button onclick="loginGuest()" class="w-full py-3 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-800 transition">
-                    Entrar como Invitado
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- Loading/Success Overlay -->
     <div id="loading-overlay" class="loading-overlay">
         <div class="text-center">
@@ -678,9 +608,6 @@
                 </button>
             </div>
             <p class="text-xs opacity-80 mt-1">Gestión Inteligente</p>
-            <div id="user-badge" class="mt-2 inline-flex items-center gap-1 px-2 py-1 bg-gray-500 text-white rounded text-xs" style="display: none;">
-                <i class="fas fa-user"></i> <span id="user-name">Cargando...</span>
-            </div>
         </div>
         
         <div class="px-3 py-2 bg-indigo-50 border-b border-indigo-100 flex-shrink-0">
@@ -779,16 +706,6 @@
                 </button>
             </div>
             <input type="file" id="restore-file" class="hidden" accept=".json" onchange="restoreData(this)">
-            
-            <!-- Versión -->
-            <div class="mt-2 text-center text-[10px] text-gray-400">
-                KioscoPro <span class="font-bold">v2.3</span>
-            </div>
-            
-            <!-- Botón Cerrar Sesión -->
-            <button onclick="logout()" class="w-full mt-2 bg-gray-700 text-white text-xs py-2 rounded hover:bg-gray-800 transition flex items-center justify-center gap-2">
-                <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
-            </button>
         </div>
     </div>
 
@@ -1626,16 +1543,6 @@
                 </div>
             </div>
 
-            <!-- Registro de Invitados (Solo Admin) -->
-            <div id="guest-logs-section" class="bg-white rounded-2xl p-6 shadow-lg">
-                <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-blue-600">
-                    <i class="fas fa-users"></i> Registro de Invitados
-                </h3>
-                <div id="guest-logs-container">
-                    <p class="text-gray-500 text-center py-4">Cargando registros...</p>
-                </div>
-            </div>
-
             <!-- Zona de Peligro - Reiniciar Todo -->
             <div class="bg-red-50 rounded-2xl p-6 shadow-lg border-2 border-red-200">
                 <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-red-600">
@@ -1679,18 +1586,9 @@
             alerts: [],
             pendingPurchase: null,
             pendingPurchasePayment: 'cash',
-            initialCapital: 0,
-            capitalAdjustments: [],
-            // Sistema de usuarios
-            currentUser: null, // { role: 'admin'|'guest', name: string, loginTime: date }
-            guestLogs: [], // Registro de ingresos de invitados
-            isDemoMode: false // true = datos temporales de invitado, false = datos reales
+            initialCapital: 0, // Capital inicial inyectado por el usuario
+            capitalAdjustments: [] // Historial de ajustes de capital
         };
-        
-        // Variables de login
-        let isLoggedIn = false;
-        let isDemoMode = false; // Variable global para modo demo
-        const ADMIN_PASSWORD = 'admin123'; // En producción usar hash
 
         // Variables para charts
         let salesChartInstance = null;
@@ -1706,11 +1604,60 @@
 
         // ==================== INITIALIZATION ====================
         document.addEventListener('DOMContentLoaded', function() {
-            // Mostrar login modal - El usuario debe iniciar sesión primero
-            document.getElementById('login-modal').classList.remove('hidden');
+            // FIX: Asegurar que el body tenga el padding correcto
+            document.body.style.paddingLeft = '16rem';
             
-            // No cargamos datos ni renderizamos hasta que se loguee
-            console.log('Esperando inicio de sesión...');
+            loadFromLocalStorage();
+            updateDateDisplay();
+            renderAll();
+            
+            // Debug: mostrar valores cargados
+            console.log('Inicialización completa - Caja:', appState.cash, 'Cuenta:', appState.bank);
+            
+            // Asegurar que el sidebar se actualice correctamente después de un momento
+            setTimeout(() => {
+                updateSidebar();
+                updateInventoryValues();
+                // Inicializar período de cashflow
+                setCashflowPeriod('month');
+                // Inicializar modo de gráfico
+                setChartMode('money');
+            }, 100);
+            
+            // Inicializar display de margen en formulario
+            const marginDisplay = document.getElementById('inv-margin-display');
+            const marginInput = document.getElementById('inv-margin');
+            if (marginDisplay) {
+                marginDisplay.textContent = `${appState.defaultMargin || 30}%`;
+            }
+            if (marginInput) {
+                marginInput.value = appState.defaultMargin || 30;
+            }
+            
+            // Verificar si hay datos guardados
+            const hasData = localStorage.getItem('kioscopro-data');
+            if (hasData) {
+                console.log('✅ Datos cargados desde localStorage');
+                console.log('💵 Caja:', appState.cash);
+                console.log('🏦 Banco:', appState.bank);
+                console.log('📦 Productos:', appState.inventory.length);
+                console.log('🛒 Ventas:', appState.sales.length);
+            } else {
+                console.log('⚠️ Primera vez - No hay datos guardados');
+                // Guardar estado inicial
+                saveToLocalStorage();
+            }
+            
+            // Mostrar estado de sincronización
+            setTimeout(() => {
+                if (!navigator.onLine) {
+                    showNotification('📴 Sin internet - Trabajando en modo offline', 'info');
+                } else if (window.db) {
+                    showNotification('☁️ Conectado - Tus datos se sincronizan en la nube', 'success');
+                } else {
+                    showNotification('📴 Firebase no disponible - Modo offline', 'info');
+                }
+            }, 2000);
             
             // Inventory form handler
             document.getElementById('add-inventory-form').addEventListener('submit', function(e) {
@@ -5779,136 +5726,6 @@ Total de productos a comprar: ${shoppingList.length}
             document.getElementById('settings-product-count').textContent = appState.inventory.length;
             document.getElementById('settings-sales-count').textContent = appState.sales.length;
             document.getElementById('settings-expenses-count').textContent = appState.expenses.length;
-            
-            // Mostrar/ocultar sección de logs según el rol
-            const guestLogsSection = document.getElementById('guest-logs-section');
-            if (guestLogsSection) {
-                if (isAdmin()) {
-                    guestLogsSection.classList.remove('hidden');
-                    renderGuestLogs();
-                } else {
-                    guestLogsSection.classList.add('hidden');
-                }
-            }
-        }
-        
-        async function renderGuestLogs() {
-            const container = document.getElementById('guest-logs-container');
-            if (!container) return;
-            
-            container.innerHTML = '<p class="text-gray-500 text-center py-4"><i class="fas fa-spinner fa-spin"></i> Cargando registros...</p>';
-            
-            let logs = [];
-            
-            // Intentar cargar desde Firebase primero
-            if (window.db) {
-                try {
-                    const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
-                    const logsRef = doc(window.db, "kioscos", "guestLogs");
-                    const docSnap = await getDoc(logsRef);
-                    
-                    if (docSnap.exists()) {
-                        const data = docSnap.data();
-                        logs = data.logs || [];
-                        console.log('📋 Logs cargados desde Firebase:', logs.length);
-                    }
-                } catch (err) {
-                    console.error('Error cargando logs:', err);
-                }
-            }
-            
-            // Si no hay logs en Firebase, usar los locales
-            if (logs.length === 0) {
-                logs = appState.guestLogs || [];
-            }
-            
-            if (logs.length === 0) {
-                container.innerHTML = '<p class="text-gray-500 text-center py-4">No hay registros de invitados aún</p>';
-                return;
-            }
-            
-            // Ordenar por fecha (más reciente primero)
-            const sortedLogs = [...logs].sort((a, b) => new Date(b.loginTime) - new Date(a.loginTime));
-            
-            container.innerHTML = `
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
-                        <thead class="bg-gray-50 text-gray-600">
-                            <tr>
-                                <th class="px-4 py-2 text-left">Nombre</th>
-                                <th class="px-4 py-2 text-left">Fecha</th>
-                                <th class="px-4 py-2 text-left">Hora</th>
-                                <th class="px-4 py-2 text-left">Dispositivo</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y">
-                            ${sortedLogs.map(log => {
-                                const date = new Date(log.loginTime);
-                                return `
-                                    <tr class="hover:bg-gray-50">
-                                        <td class="px-4 py-3 font-medium">${log.name}</td>
-                                        <td class="px-4 py-3">${date.toLocaleDateString('es-ES')}</td>
-                                        <td class="px-4 py-3">${date.toLocaleTimeString('es-ES', {hour: '2-digit', minute:'2-digit'})}</td>
-                                        <td class="px-4 py-3 text-gray-500 text-xs truncate max-w-[150px]">${log.device || 'N/A'}</td>
-                                    </tr>
-                                `;
-                            }).join('')}
-                        </tbody>
-                    </table>
-                </div>
-                <div class="mt-4 flex gap-2">
-                    <button onclick="clearGuestLogs()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg text-sm hover:bg-red-200 transition">
-                        <i class="fas fa-trash"></i> Limpiar Registros
-                    </button>
-                    <button onclick="exportGuestLogs()" class="bg-blue-100 text-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-200 transition">
-                        <i class="fas fa-download"></i> Exportar
-                    </button>
-                </div>
-            `;
-        }
-        
-        async function clearGuestLogs() {
-            if (!confirm('¿Eliminar todos los registros de invitados?')) return;
-            
-            // Limpiar en Firebase
-            if (window.db) {
-                try {
-                    const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
-                    await setDoc(doc(window.db, "kioscos", "guestLogs"), { logs: [] });
-                } catch (err) {
-                    console.error('Error limpiando logs:', err);
-                }
-            }
-            
-            appState.guestLogs = [];
-            renderGuestLogs();
-            showNotification('Registros eliminados', 'success');
-        }
-        
-        function exportGuestLogs() {
-            const logs = appState.guestLogs || [];
-            if (logs.length === 0) {
-                showNotification('No hay registros para exportar', 'error');
-                return;
-            }
-            
-            const csv = [
-                ['Nombre', 'Fecha', 'Hora', 'Dispositivo'],
-                ...logs.map(log => [
-                    log.name,
-                    new Date(log.loginTime).toLocaleDateString('es-ES'),
-                    new Date(log.loginTime).toLocaleTimeString('es-ES'),
-                    `"${log.device || 'N/A'}"`
-                ])
-            ].map(row => row.join(',')).join('\n');
-            
-            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = `registro-invitados-${formatDateISO(new Date())}.csv`;
-            link.click();
-            
-            showNotification('Registros exportados', 'success');
         }
 
         function saveMarginFromSettings() {
@@ -6155,26 +5972,6 @@ RESULTADOS:
                 
                 console.log('Sidebar actualizado - Caja:', cash, 'Cuenta:', bank, 'Ventas hoy:', todayTotal);
                 
-                // Actualizar badge de usuario
-                const userBadge = document.getElementById('user-badge');
-                console.log('👤 Actualizando badge, currentUser:', appState.currentUser);
-                
-                if (userBadge) {
-                    if (appState.currentUser) {
-                        userBadge.style.display = 'inline-flex';
-                        if (appState.currentUser.role === 'admin') {
-                            userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-purple-500 text-white rounded text-xs font-bold';
-                            userBadge.innerHTML = '<i class="fas fa-user-shield"></i> <span>Administrador</span>';
-                        } else {
-                            // Modo demo - invitado
-                            userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-orange-500 text-white rounded text-xs font-bold';
-                            userBadge.innerHTML = '<i class="fas fa-gamepad"></i> <span>' + appState.currentUser.name + ' (Demo)</span>';
-                        }
-                    } else {
-                        userBadge.style.display = 'none';
-                    }
-                }
-                
             } catch (e) {
                 console.error('Error en updateSidebar:', e);
             }
@@ -6263,12 +6060,6 @@ RESULTADOS:
         // Función para guardar en Firebase (con debounce)
         let syncTimeout = null;
         function syncToFirebase() {
-            // NO sincronizar si estamos en modo demo (invitado)
-            if (isDemoMode) {
-                console.log('Modo demo: no se sincroniza con Firebase');
-                return;
-            }
-            
             if (!window.db) {
                 console.log('Firebase no disponible, usando solo localStorage');
                 return;
@@ -6527,408 +6318,8 @@ RESULTADOS:
             }
         }
 
-        // ==================== LOGIN SYSTEM ====================
-        function showLoginForm(type) {
-            document.getElementById('login-options').classList.add('hidden');
-            if (type === 'admin') {
-                document.getElementById('admin-login-form').classList.remove('hidden');
-                document.getElementById('admin-password').focus();
-            } else {
-                document.getElementById('guest-login-form').classList.remove('hidden');
-                document.getElementById('guest-name').focus();
-            }
-        }
-        
-        function backToLoginOptions() {
-            document.getElementById('admin-login-form').classList.add('hidden');
-            document.getElementById('guest-login-form').classList.add('hidden');
-            document.getElementById('login-options').classList.remove('hidden');
-            document.getElementById('admin-login-error').classList.add('hidden');
-        }
-        
-        async function loginAdmin() {
-            const password = document.getElementById('admin-password').value;
-            if (password === ADMIN_PASSWORD) {
-                // Desactivar modo demo - datos reales
-                isDemoMode = false;
-                appState.isDemoMode = false;
-                
-                // GUARDAR el usuario antes de cargar datos (loadFromLocalStorage lo sobreescribe)
-                const loggedUser = {
-                    role: 'admin',
-                    name: 'Administrador',
-                    loginTime: new Date().toISOString()
-                };
-                
-                isLoggedIn = true;
-                closeLoginModal();
-                
-                // Cargar datos reales desde localStorage primero
-                loadFromLocalStorage();
-                
-                // RESTAURAR el usuario después de cargar datos
-                appState.currentUser = loggedUser;
-                
-                // Luego intentar sincronizar con Firebase para obtener datos más recientes
-                if (window.db && navigator.onLine) {
-                    try {
-                        const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
-                        
-                        // Cargar datos principales
-                        const docRef = doc(window.db, "kioscos", "main");
-                        const docSnap = await getDoc(docRef);
-                        
-                        if (docSnap.exists()) {
-                            const data = docSnap.data();
-                            // Fusionar datos de Firebase con los locales (Firebase tiene prioridad)
-                            mergeFirebaseData(data);
-                            console.log('📥 Datos reales cargados desde Firebase');
-                        }
-                        
-                        // Cargar logs de invitados
-                        const logsRef = doc(window.db, "kioscos", "guestLogs");
-                        const logsSnap = await getDoc(logsRef);
-                        if (logsSnap.exists()) {
-                            const logsData = logsSnap.data();
-                            appState.guestLogs = logsData.logs || [];
-                            console.log('📋 Logs de invitados cargados:', appState.guestLogs.length);
-                        }
-                    } catch (err) {
-                        console.log('Usando datos locales:', err);
-                    }
-                }
-                
-                // Forzar actualización del sidebar y renderizado
-                setTimeout(() => {
-                    updateSidebar();
-                    renderAll();
-                    console.log('✅ Admin - Render completo');
-                }, 100);
-                
-                showNotification('💼 Modo Administrador - Datos reales cargados', 'success');
-                
-                // Mostrar mensaje según el estado de los datos
-                setTimeout(() => {
-                    if (appState.inventory.length === 0 && appState.sales.length === 0) {
-                        showNotification('📦 No tienes productos cargados. Agregá tu inventario en la sección Inventario.', 'info');
-                    } else {
-                        showNotification(`📊 ${appState.inventory.length} productos y ${appState.sales.length} ventas cargadas`, 'success');
-                    }
-                }, 500);
-            } else {
-                document.getElementById('admin-login-error').classList.remove('hidden');
-            }
-        }
-        
-        async function loginGuest() {
-            const name = document.getElementById('guest-name').value.trim();
-            if (!name) {
-                showNotification('Por favor ingresa tu nombre', 'error');
-                return;
-            }
-            
-            // Activar modo demo - los datos NO se guardan permanentemente
-            isDemoMode = true;
-            appState.isDemoMode = true;
-            
-            // Registrar ingreso de invitado
-            const guestEntry = {
-                name: name,
-                loginTime: new Date().toISOString(),
-                device: navigator.userAgent,
-                ip: 'oculta' // Por privacidad
-            };
-            
-            // Guardar log en Firebase para que el admin lo vea
-            if (window.db) {
-                try {
-                    const { doc, getDoc, setDoc, updateDoc, arrayUnion } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
-                    const logsRef = doc(window.db, "kioscos", "guestLogs");
-                    
-                    // Intentar obtener logs existentes
-                    const docSnap = await getDoc(logsRef);
-                    if (docSnap.exists()) {
-                        // Agregar al array existente
-                        await updateDoc(logsRef, {
-                            logs: arrayUnion(guestEntry)
-                        });
-                    } else {
-                        // Crear nuevo documento con el primer log
-                        await setDoc(logsRef, {
-                            logs: [guestEntry]
-                        });
-                    }
-                    console.log('✅ Log de invitado guardado en Firebase');
-                } catch (err) {
-                    console.error('Error guardando log:', err);
-                }
-            }
-            
-            appState.guestLogs = [guestEntry];
-            
-            appState.currentUser = {
-                role: 'guest',
-                name: name,
-                loginTime: new Date().toISOString()
-            };
-            isLoggedIn = true;
-            
-            // Cargar datos de demo temporales
-            console.log('🎮 Cargando datos de demo...');
-            loadDemoData();
-            console.log('📦 Productos cargados:', appState.inventory.length);
-            console.log('🛒 Ventas cargadas:', appState.sales.length);
-            
-            closeLoginModal();
-            
-            // Forzar actualización del sidebar con el nombre
-            setTimeout(() => {
-                updateSidebar();
-                renderAll();
-                console.log('✅ Render completo');
-            }, 100);
-            showNotification(`🎮 Modo Demo activado. Los cambios no se guardan permanentemente.`, 'success');
-            
-            // Agregar indicador visual de modo demo
-            showNotification(`Bienvenido, ${name}. Estás viendo datos de prueba.`, 'info');
-        }
-        
-        function closeLoginModal() {
-            document.getElementById('login-modal').classList.add('hidden');
-        }
-        
-        function logout() {
-            if (confirm('¿Cerrar sesión?')) {
-                // Si estaba en modo demo, limpiar datos temporales
-                if (isDemoMode) {
-                    isDemoMode = false;
-                    appState = {
-                        currentDate: new Date(),
-                        activeDate: new Date(),
-                        defaultMargin: 30,
-                        cash: 0,
-                        bank: 0,
-                        inventory: [],
-                        sales: [],
-                        expenses: [],
-                        investments: [],
-                        cashMovements: [],
-                        cart: [],
-                        paymentMethod: 'cash',
-                        calendarMonth: new Date(),
-                        alerts: [],
-                        pendingPurchase: null,
-                        pendingPurchasePayment: 'cash',
-                        initialCapital: 0,
-                        capitalAdjustments: [],
-                        currentUser: null,
-                        guestLogs: [],
-                        isDemoMode: false
-                    };
-                }
-                
-                appState.currentUser = null;
-                isLoggedIn = false;
-                location.reload();
-            }
-        }
-        
-        function isAdmin() {
-            return appState.currentUser && appState.currentUser.role === 'admin';
-        }
-        
-        function isGuest() {
-            return appState.currentUser && appState.currentUser.role === 'guest';
-        }
-        
-        // ==================== DEMO DATA FOR GUESTS ====================
-        function loadDemoData() {
-            // Datos de demo ultra realistas - Kiosco "La Esquina"
-            // Productos con códigos de barras reales, precios, stock y CATEGORÍAS
-            const demoProducts = [
-                // Bebidas con códigos reales
-                { id: 'P001', name: 'Coca Cola Sabor Original 2.25L', barcode: '7790895000997', price: 890.00, cost: 623.00, stock: 12, minStock: 6, margin: 42.85, category: 'bebidas' },
-                { id: 'P002', name: 'Coca Cola Zero 1.5L', barcode: '7790895001079', price: 720.00, cost: 504.00, stock: 8, minStock: 4, margin: 42.86, category: 'bebidas' },
-                { id: 'P003', name: 'Sprite 2.25L', barcode: '7790895001017', price: 850.00, cost: 595.00, stock: 10, minStock: 5, margin: 42.86, category: 'bebidas' },
-                { id: 'P004', name: 'Fanta Naranja 2.25L', barcode: '7790895001031', price: 850.00, cost: 595.00, stock: 6, minStock: 3, margin: 42.86, category: 'bebidas' },
-                { id: 'P005', name: 'Pepsi 2.25L', barcode: '7791813425026', price: 790.00, cost: 553.00, stock: 14, minStock: 7, margin: 42.86, category: 'bebidas' },
-                { id: 'P006', name: 'Seven Up 2.25L', barcode: '7791813425040', price: 790.00, cost: 553.00, stock: 9, minStock: 4, margin: 42.86, category: 'bebidas' },
-                { id: 'P007', name: 'Mirinda Naranja 2.25L', barcode: '7791813425088', price: 750.00, cost: 525.00, stock: 7, minStock: 3, margin: 42.86, category: 'bebidas' },
-                { id: 'P008', name: 'Agua Villavicencio 2L', barcode: '7795735000238', price: 420.00, cost: 294.00, stock: 24, minStock: 12, margin: 42.86, category: 'bebidas' },
-                { id: 'P009', name: 'Agua Eco de los Andes 2L', barcode: '7795735000344', price: 450.00, cost: 315.00, stock: 18, minStock: 9, margin: 42.86, category: 'bebidas' },
-                { id: 'P010', name: 'Speed Unlimited 473ml', barcode: '7790895002038', price: 550.00, cost: 385.00, stock: 20, minStock: 10, margin: 42.86, category: 'bebidas' },
-                
-                // Cervezas
-                { id: 'P011', name: 'Quilmes Clásica 1L', barcode: '7792798001035', price: 780.00, cost: 546.00, stock: 24, minStock: 12, margin: 42.86, category: 'cervezas' },
-                { id: 'P012', name: 'Quilmes Bajo Cero 1L', barcode: '7792798002032', price: 820.00, cost: 574.00, stock: 18, minStock: 9, margin: 42.86, category: 'cervezas' },
-                { id: 'P013', name: 'Stella Artois 1L', barcode: '7792798005033', price: 920.00, cost: 644.00, stock: 15, minStock: 7, margin: 42.86, category: 'cervezas' },
-                { id: 'P014', name: 'Corona 710ml', barcode: '7501064197348', price: 850.00, cost: 595.00, stock: 20, minStock: 10, margin: 42.86, category: 'cervezas' },
-                { id: 'P015', name: 'Heineken 1L', barcode: '7792798006030', price: 980.00, cost: 686.00, stock: 12, minStock: 6, margin: 42.86, category: 'cervezas' },
-                
-                // Snacks
-                { id: 'P016', name: 'Lays Clásicas 180g', barcode: '7790310184125', price: 650.00, cost: 455.00, stock: 14, minStock: 7, margin: 42.86, category: 'snacks' },
-                { id: 'P017', name: 'Doritos Nacho 180g', barcode: '7790310184149', price: 720.00, cost: 504.00, stock: 10, minStock: 5, margin: 42.86, category: 'snacks' },
-                { id: 'P018', name: 'Cheetos Pandillas 180g', barcode: '7790310184163', price: 580.00, cost: 406.00, stock: 12, minStock: 6, margin: 42.86, category: 'snacks' },
-                { id: 'P019', name: '3D Snack Queso 140g', barcode: '7790310184187', price: 490.00, cost: 343.00, stock: 8, minStock: 4, margin: 42.86, category: 'snacks' },
-                
-                // Golosinas
-                { id: 'P020', name: 'Milka Oreo 150g', barcode: '7622210449763', price: 950.00, cost: 665.00, stock: 10, minStock: 5, margin: 42.86, category: 'golosinas' },
-                { id: 'P021', name: 'Block Cabsha 150g', barcode: '7790580110617', price: 780.00, cost: 546.00, stock: 8, minStock: 4, margin: 42.86, category: 'golosinas' },
-                { id: 'P022', name: 'Alfajor Jorgito Negro x1', barcode: '7790580112819', price: 280.00, cost: 196.00, stock: 30, minStock: 15, margin: 42.86, category: 'golosinas' },
-                { id: 'P023', name: 'Alfajor Guaymallén Blanco x1', barcode: '7790580111713', price: 180.00, cost: 126.00, stock: 40, minStock: 20, margin: 42.86, category: 'golosinas' },
-                { id: 'P024', name: 'Chocolinas 250g', barcode: '7790070410129', price: 420.00, cost: 294.00, stock: 15, minStock: 7, margin: 42.86, category: 'golosinas' },
-                
-                // Despensa
-                { id: 'P025', name: 'Yerba Taragüí 1kg', barcode: '7790070310115', price: 1450.00, cost: 1015.00, stock: 12, minStock: 6, margin: 42.86, category: 'despensa' },
-                { id: 'P026', name: 'Yerba Rosamonte 1kg', barcode: '7790070410310', price: 1380.00, cost: 966.00, stock: 10, minStock: 5, margin: 42.86, category: 'despensa' },
-                { id: 'P027', name: 'Café Dolca 170g', barcode: '7790070314014', price: 890.00, cost: 623.00, stock: 8, minStock: 4, margin: 42.86, category: 'despensa' },
-                { id: 'P028', name: 'Café Arlistán 170g', barcode: '7790070315011', price: 850.00, cost: 595.00, stock: 6, minStock: 3, margin: 42.86, category: 'despensa' },
-                { id: 'P029', name: 'Azúcar Ledesma 1kg', barcode: '7790070010015', price: 650.00, cost: 455.00, stock: 16, minStock: 8, margin: 42.86, category: 'despensa' },
-                { id: 'P030', name: 'Sal Fina Celusal 500g', barcode: '7790070020021', price: 320.00, cost: 224.00, stock: 20, minStock: 10, margin: 42.86, category: 'despensa' }
-            ];
-            
-            // Convertir a formato con batches con fechas de compra específicas
-            const today = new Date();
-            appState.inventory = demoProducts.map((p, i) => ({
-                ...p,
-                batches: [{ 
-                    stock: p.stock, 
-                    cost: p.cost, 
-                    date: formatDateISO(new Date(today.getTime() - (i * 86400000))) // Comprados en días diferentes
-                }]
-            }));
-            
-            // Generar ventas detalladas de los últimos 40 días
-            const sales = [];
-            let saleCounter = 1;
-            
-            // Generar ventas específicas por día con patrones realistas
-            for (let day = 0; day < 40; day++) {
-                const saleDate = new Date(today);
-                saleDate.setDate(saleDate.getDate() - day);
-                const dateStr = formatDateISO(saleDate);
-                
-                // Patrón: más ventas en viernes/sábado, menos en lunes/martes
-                const dayOfWeek = saleDate.getDay();
-                let baseSales = 5;
-                if (dayOfWeek === 5 || dayOfWeek === 6) baseSales = 12; // Viernes/sábado
-                else if (dayOfWeek === 0) baseSales = 8; // Domingo
-                else if (dayOfWeek === 1 || dayOfWeek === 2) baseSales = 4; // Lunes/martes
-                
-                const dailySales = baseSales + Math.floor(Math.random() * 4);
-                
-                for (let s = 0; s < dailySales; s++) {
-                    // Productos más vendidos: bebidas y cervezas
-                    const productWeights = [0,0,0,0,0,0,1,1,1,2,2,3,3,4,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19];
-                    const productIndex = productWeights[Math.floor(Math.random() * productWeights.length)];
-                    const product = demoProducts[productIndex];
-                    
-                    const quantity = Math.random() > 0.7 ? 2 : 1; // 30% compran 2 unidades
-                    const total = parseFloat((product.price * quantity).toFixed(2));
-                    const cost = parseFloat((product.cost * quantity).toFixed(2));
-                    const profit = parseFloat((total - cost).toFixed(2));
-                    
-                    // Horarios de venta realistas (9am a 23pm)
-                    const hour = 9 + Math.floor(Math.random() * 14);
-                    const minute = Math.floor(Math.random() * 60);
-                    const timestamp = new Date(saleDate);
-                    timestamp.setHours(hour, minute, 0, 0);
-                    
-                    // Estructura compatible con los gráficos (con items array)
-                    sales.push({
-                        id: `S-${String(saleCounter).padStart(4, '0')}`,
-                        items: [{
-                            productId: product.id,
-                            productName: product.name,
-                            quantity: quantity,
-                            price: product.price,
-                            cost: product.cost
-                        }],
-                        total: total,
-                        profit: profit,
-                        cost: cost,
-                        date: dateStr,
-                        time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
-                        timestamp: timestamp.getTime(),
-                        paymentMethod: Math.random() > 0.35 ? 'cash' : 'debit' // 65% efectivo
-                    });
-                    saleCounter++;
-                }
-            }
-            
-            appState.sales = sales;
-            
-            // Calcular caja y cuenta basado en ventas reales
-            const totalCash = sales.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
-            const totalDebit = sales.filter(s => s.paymentMethod === 'debit').reduce((sum, s) => sum + s.total, 0);
-            
-            // Simular gastos operativos reales
-            const expenses = [
-                { id: 'E001', concept: 'Alquiler Local', amount: 85000, date: formatDateISO(new Date(today.getTime() - 2592000000)), source: 'bank' },
-                { id: 'E002', concept: 'Luz y Electricidad', amount: 12500, date: formatDateISO(new Date(today.getTime() - 1728000000)), source: 'bank' },
-                { id: 'E003', concept: 'Gas', amount: 8900, date: formatDateISO(new Date(today.getTime() - 1555200000)), source: 'bank' },
-                { id: 'E004', concept: 'Internet y Teléfono', amount: 6500, date: formatDateISO(new Date(today.getTime() - 1382400000)), source: 'bank' },
-                { id: 'E005', concept: 'Restock Bebidas', amount: 45000, date: formatDateISO(new Date(today.getTime() - 604800000)), source: 'cash' },
-                { id: 'E006', concept: 'Restock Cervezas', amount: 32000, date: formatDateISO(new Date(today.getTime() - 345600000)), source: 'cash' },
-                { id: 'E007', concept: 'Limpieza y Mantenimiento', amount: 8500, date: formatDateISO(new Date(today.getTime() - 86400000)), source: 'cash' },
-                { id: 'E008', concept: 'Transporte Mercadería', amount: 3500, date: formatDateISO(new Date(today.getTime() - 432000000)), source: 'cash' }
-            ];
-            appState.expenses = expenses;
-            
-            // Calcular caja y cuenta después de gastos
-            const totalExpensesCash = expenses.filter(e => e.source === 'cash').reduce((sum, e) => sum + e.amount, 0);
-            const totalExpensesBank = expenses.filter(e => e.source === 'bank').reduce((sum, e) => sum + e.amount, 0);
-            
-            appState.cash = Math.max(0, Math.floor(totalCash - totalExpensesCash));
-            appState.bank = Math.max(0, Math.floor(totalDebit - totalExpensesBank));
-            
-            // Capital inicial simulado
-            appState.initialCapital = 50000;
-            
-            // Ajustes de capital simulados
-            appState.capitalAdjustments = [
-                { id: 'CA001', amount: 25000, date: formatDateISO(new Date(today.getTime() - 5184000000)), reason: 'Inversión inicial', timestamp: today.getTime() - 5184000000 }
-            ];
-            
-            // Inversiones en stock
-            appState.investments = [
-                { id: 'INV001', concept: 'Compra inicial de stock', amount: 85000, date: formatDateISO(new Date(today.getTime() - 5184000000)), source: 'bank' },
-                { id: 'INV002', concept: 'Reposición de bebidas', amount: 45000, date: formatDateISO(new Date(today.getTime() - 604800000)), source: 'cash' },
-                { id: 'INV003', concept: 'Compra de cervezas', amount: 32000, date: formatDateISO(new Date(today.getTime() - 345600000)), source: 'cash' }
-            ];
-            
-            // Alertas de stock simuladas
-            appState.alerts = [
-                { id: 'A001', productId: 'P003', productName: 'Sprite 2.25L', type: 'low_stock', message: 'Stock bajo: solo 6 unidades', date: formatDateISO(today) },
-                { id: 'A002', productId: 'P014', productName: 'Corona 710ml', type: 'low_stock', message: 'Stock bajo: solo 5 unidades', date: formatDateISO(today) }
-            ];
-            
-            console.log('📊 Datos de demo cargados:', {
-                productos: appState.inventory.length,
-                ventas: appState.sales.length,
-                caja: appState.cash,
-                banco: appState.bank,
-                dias: 40
-            });
-            
-            // Verificación final
-            if (appState.inventory.length === 0) {
-                console.error('❌ ERROR: No se cargaron productos');
-            }
-            if (appState.sales.length === 0) {
-                console.error('❌ ERROR: No se cargaron ventas');
-            }
-        }
-        
         // ==================== LOCAL STORAGE ====================
         function saveToLocalStorage(triggerSync = true) {
-            // Si es modo demo (invitado), no guardar en localStorage permanente
-            // solo guardar en memoria para esta sesión
-            if (isDemoMode) {
-                console.log('Modo demo: datos solo en memoria, no se guardan permanentemente');
-                return;
-            }
-            
             localStorage.setItem('kioscopro-data', JSON.stringify(appState));
             
             // Sincronizar con Firebase

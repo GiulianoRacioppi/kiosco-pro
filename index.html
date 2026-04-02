@@ -1893,14 +1893,17 @@
             }
             
             errorEl.classList.add('hidden');
-            isDemoMode = true;
+            isDemoMode = false; // Los colaboradores usan datos reales, no demo
             appState.currentUser = { role: 'collaborator', name: 'Colaborador' };
             isLoggedIn = true;
-            loadCollaboratorData();
+            
+            // Cargar datos reales (igual que admin)
+            loadFromLocalStorage();
+            
             closeLoginModal();
             updateDateDisplay();
             renderAll();
-            updateSidebar(); // Asegurar que el sidebar se actualice
+            updateSidebar();
             showSection('sell'); // Colaboradores van directo a vender
             showNotification('Modo Colaborador activado', 'success');
         }
@@ -1923,97 +1926,6 @@
         }
         
         // ==================== DEMO DATA ====================
-        function loadCollaboratorData() {
-            // LIMPIAR COMPLETAMENTE el estado anterior - esto evita montos "trabados"
-            appState.cash = 0;
-            appState.bank = 0;
-            appState.expenses = [];
-            appState.investments = [];
-            appState.capitalAdjustments = [];
-            appState.initialCapital = 0;
-            
-            // 10 productos de ejemplo
-            const demoProducts = [
-                { id: 'P001', name: 'Coca Cola 2.25L', barcode: '7790895000997', price: 890, cost: 600, stock: 12, minStock: 5, category: 'bebidas', buyDays: [1, 4] },
-                { id: 'P002', name: 'Pepsi 2.25L', barcode: '7791813425026', price: 790, cost: 530, stock: 8, minStock: 4, category: 'bebidas', buyDays: [1, 4] },
-                { id: 'P003', name: 'Quilmes 1L', barcode: '7792798001035', price: 780, cost: 520, stock: 24, minStock: 10, category: 'cervezas', buyDays: [2, 5] },
-                { id: 'P004', name: 'Corona 710ml', barcode: '7501064197348', price: 850, cost: 570, stock: 15, minStock: 6, category: 'cervezas', buyDays: [2, 5] },
-                { id: 'P005', name: 'Lays Clásicas', barcode: '7790310184125', price: 650, cost: 420, stock: 10, minStock: 4, category: 'snacks', buyDays: [1, 3, 5] },
-                { id: 'P006', name: 'Alfajor Jorgito', barcode: '7790580112819', price: 280, cost: 180, stock: 30, minStock: 15, category: 'golosinas', buyDays: [1, 3, 5] },
-                { id: 'P007', name: 'Yerba Taragüí 1kg', barcode: '7790070310115', price: 1450, cost: 980, stock: 8, minStock: 3, category: 'despensa', buyDays: [2, 4] },
-                { id: 'P008', name: 'Café Dolca', barcode: '7790070314014', price: 890, cost: 600, stock: 6, minStock: 3, category: 'despensa', buyDays: [2, 4] },
-                { id: 'P009', name: 'Azúcar Ledesma', barcode: '7790070010015', price: 650, cost: 440, stock: 12, minStock: 5, category: 'despensa', buyDays: [2, 4] },
-                { id: 'P010', name: 'Leche La Serenísima', barcode: '7790072000014', price: 520, cost: 350, stock: 20, minStock: 8, category: 'lacteos', buyDays: [1, 3, 5] }
-            ];
-            
-            appState.inventory = demoProducts.map(p => ({
-                ...p,
-                salePrice: p.price,
-                batches: [{ stock: p.stock, cost: p.cost, date: formatDateISO(new Date()), expiry: formatDateISO(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)) }]
-            }));
-            
-            // Generar 40 días de ventas realistas
-            const sales = [];
-            const today = new Date();
-            
-            for (let day = 39; day >= 0; day--) {
-                const date = new Date(today);
-                date.setDate(date.getDate() - day);
-                const dateStr = formatDateISO(date);
-                
-                // 3-8 ventas por día
-                const dailySales = 3 + Math.floor(Math.random() * 6);
-                
-                for (let i = 0; i < dailySales; i++) {
-                    const product = demoProducts[Math.floor(Math.random() * demoProducts.length)];
-                    const quantity = Math.random() > 0.7 ? 2 : 1; // 30% de probabilidad de comprar 2
-                    
-                    sales.push({
-                        id: `S${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                        items: [{ 
-                            productId: product.id, 
-                            productName: product.name, 
-                            quantity: quantity, 
-                            price: product.price,
-                            cost: product.cost
-                        }],
-                        total: product.price * quantity,
-                        profit: (product.price - product.cost) * quantity,
-                        date: dateStr,
-                        time: `${9 + Math.floor(Math.random() * 12)}:${Math.floor(Math.random() * 60).toString().padStart(2, '0')}`,
-                        paymentMethod: Math.random() > 0.3 ? 'cash' : 'debit',
-                        timestamp: date.getTime()
-                    });
-                }
-            }
-            
-            appState.sales = sales;
-            
-            // Calcular caja y banco
-            appState.cash = sales.filter(s => s.paymentMethod === 'cash').reduce((a, s) => a + s.total, 0);
-            appState.bank = sales.filter(s => s.paymentMethod === 'debit').reduce((a, s) => a + s.total, 0);
-            
-            // Generar algunos gastos
-            const expenses = [
-                { name: 'Alquiler', amount: 50000, category: 'fijos' },
-                { name: 'Luz', amount: 8500, category: 'servicios' },
-                { name: 'Agua', amount: 3200, category: 'servicios' },
-                { name: 'Internet', amount: 4500, category: 'servicios' },
-                { name: 'Sueldo', amount: 80000, category: 'fijos' }
-            ];
-            
-            appState.expenses = expenses.map((e, i) => ({
-                id: `E${i}`,
-                name: e.name,
-                amount: e.amount,
-                category: e.category,
-                date: formatDateISO(new Date(Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000)),
-                paymentMethod: 'cash'
-            }));
-            
-            console.log(`Datos colaborador cargados: ${sales.length} ventas en 40 días, ${demoProducts.length} productos`);
-        }
-
         // ==================== NAVIGATION ====================
         function showSection(sectionId) {
             // Cerrar menú móvil si está abierto

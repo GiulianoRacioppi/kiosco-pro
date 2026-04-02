@@ -214,7 +214,13 @@
             top: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 10000 !important;
+            z-index: 99999 !important;
+        }
+        
+        .modal.active {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
         }
         
         /* FIX: Las secciones deben estar una encima de la otra sin superponerse */
@@ -3168,6 +3174,7 @@
 
         function preparePurchase() {
             console.log('preparePurchase llamado');
+            alert('DEBUG: preparePurchase() fue llamado');
             
             // Normalizar: reemplazar coma por punto para parseFloat (soporte español)
             const cost = parseFloat(document.getElementById('inv-cost').value.replace(',', '.')) || 0;

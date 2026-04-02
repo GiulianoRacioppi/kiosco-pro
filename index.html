@@ -370,7 +370,8 @@
                     <i class="fas fa-arrow-left"></i> Volver
                 </button>
                 <h3 class="text-lg font-bold text-gray-800">Acceso Colaborador</h3>
-                <input type="text" id="collaborator-name" placeholder="Tu nombre (opcional)" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                <input type="password" id="collaborator-password" placeholder="Contraseña" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" onkeypress="if(event.key==='Enter')loginCollaborator()">
+                <p id="collaborator-login-error" class="text-red-500 text-sm hidden">Contraseña incorrecta</p>
                 <button onclick="loginCollaborator()" class="w-full py-3 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-800 transition">Entrar como Colaborador</button>
             </div>
         </div>
@@ -654,7 +655,7 @@
     </div>
 
     <!-- Sidebar -->
-    <div id="mobile-sidebar" class="sidebar-fixed fixed left-0 top-0 h-full w-64 bg-white shadow-2xl z-50 flex flex-col">
+    <div id="mobile-sidebar" class="sidebar-fixed fixed left-0 top-0 h-full w-64 bg-white shadow-2xl z-50 flex flex-col hidden">
         <!-- Botón cerrar (solo móvil) -->
         <button onclick="toggleMobileSidebar()" class="lg:hidden absolute top-4 right-4 p-2 text-gray-500 hover:text-gray-700">
             <i class="fas fa-times text-xl"></i>
@@ -1875,6 +1876,7 @@
                 loadFromLocalStorage();
                 updateDateDisplay();
                 renderAll();
+                updateSidebar(); // Asegurar que se muestren todas las opciones de admin
                 showNotification('Bienvenido, Administrador', 'success');
             } else {
                 document.getElementById('admin-login-error').classList.remove('hidden');
@@ -1882,20 +1884,32 @@
         }
         
         function loginCollaborator() {
-            const name = document.getElementById('collaborator-name').value.trim() || 'Colaborador';
+            const password = document.getElementById('collaborator-password').value;
+            const errorEl = document.getElementById('collaborator-login-error');
+            
+            if (password !== 'colab123') {
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            
+            errorEl.classList.add('hidden');
             isDemoMode = true;
-            appState.currentUser = { role: 'collaborator', name: name };
+            appState.currentUser = { role: 'collaborator', name: 'Colaborador' };
             isLoggedIn = true;
             loadCollaboratorData();
             closeLoginModal();
             updateDateDisplay();
             renderAll();
+            updateSidebar(); // Asegurar que el sidebar se actualice
             showSection('sell'); // Colaboradores van directo a vender
             showNotification('Modo Colaborador activado', 'success');
         }
         
         function closeLoginModal() {
             document.getElementById('login-modal').classList.add('hidden');
+            // Mostrar sidebar después de login exitoso
+            const sidebar = document.getElementById('mobile-sidebar');
+            if (sidebar) sidebar.classList.remove('hidden');
         }
         
         function logout() {
@@ -1910,6 +1924,14 @@
         
         // ==================== DEMO DATA ====================
         function loadCollaboratorData() {
+            // LIMPIAR COMPLETAMENTE el estado anterior - esto evita montos "trabados"
+            appState.cash = 0;
+            appState.bank = 0;
+            appState.expenses = [];
+            appState.investments = [];
+            appState.capitalAdjustments = [];
+            appState.initialCapital = 0;
+            
             // 10 productos de ejemplo
             const demoProducts = [
                 { id: 'P001', name: 'Coca Cola 2.25L', barcode: '7790895000997', price: 890, cost: 600, stock: 12, minStock: 5, category: 'bebidas', buyDays: [1, 4] },
@@ -7165,6 +7187,7 @@ RESULTADOS:
         let syncListener = null;
         let isInitialSync = true; // Flag para evitar notificación en carga inicial
         let isOnline = navigator.onLine;
+        let lastKnownDeviceId = null; // Para detectar nuevos dispositivos
         
         // Detectar cambios de conexión del navegador
         window.addEventListener('online', () => {
@@ -7276,6 +7299,12 @@ RESULTADOS:
         function mergeFirebaseData(data) {
             const deviceId = localStorage.getItem('kioscopro-device-id') || generateDeviceId();
             const isSameDevice = data.deviceId === deviceId;
+            
+            // Detectar nuevo dispositivo conectado
+            if (lastKnownDeviceId && lastKnownDeviceId !== data.deviceId && !isInitialSync) {
+                showNotification('📱 Nuevo dispositivo conectado: ' + (data.deviceId || 'Desconocido').substring(0, 20), 'info');
+            }
+            lastKnownDeviceId = data.deviceId;
             
             // Actualizar solo si los datos de Firebase son más recientes
             const firebaseTime = new Date(data.lastSync || 0).getTime();

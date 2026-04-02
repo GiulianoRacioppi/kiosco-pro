@@ -22,8 +22,8 @@
         #notifications > * { pointer-events: auto; }
         .notification { animation: slideIn 0.3s ease; }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 50; align-items: center; justify-content: center; }
-        .modal.active { display: flex; }
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99999; align-items: center; justify-content: center; }
+        .modal.active { display: flex !important; }
         .calendar-day { min-height: 80px; transition: all 0.2s; cursor: pointer; }
         .calendar-day:hover { transform: scale(1.05); z-index: 10; }
         .calendar-today { border: 2px solid #667eea; }
@@ -1156,7 +1156,7 @@
                         <input type="number" id="inv-price" class="w-full border rounded-lg px-3 py-2 text-sm font-bold text-green-700" step="0.01" oninput="calculateInventoryMargin()">
                     </div>
                     <div class="lg:col-span-4 flex items-end">
-                        <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold shadow">
+                        <button type="button" onclick="preparePurchase()" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold shadow">
                             <i class="fas fa-check"></i> Confirmar Compra
                         </button>
                     </div>
@@ -1772,10 +1772,17 @@
             }, 2000);
             
             // Inventory form handler
-            document.getElementById('add-inventory-form').addEventListener('submit', function(e) {
-                e.preventDefault();
-                preparePurchase();
-            });
+            const invForm = document.getElementById('add-inventory-form');
+            if (invForm) {
+                invForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    console.log('Form submit detected, calling preparePurchase');
+                    preparePurchase();
+                });
+                console.log('Inventory form handler attached');
+            } else {
+                console.error('Inventory form NOT FOUND!');
+            }
             
             // Confirmar al salir con carrito activo
             window.addEventListener('beforeunload', (e) => {

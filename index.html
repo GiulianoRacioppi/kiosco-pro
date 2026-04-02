@@ -689,6 +689,11 @@
         </div>
 
         <nav class="flex-1 p-2 space-y-1 overflow-y-auto">
+            <!-- DASHBOARD: Inicio/Resumen -->
+            <button onclick="showSection('dashboard')" id="nav-dashboard" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="dashboard">
+                <i class="fas fa-home w-4 text-xs"></i> Inicio
+            </button>
+            
             <!-- VENDER: Pantalla principal -->
             <button onclick="showSection('sell')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-purple-700 font-medium bg-purple-50 text-sm" data-section="sell">
                 <i class="fas fa-cash-register w-4 text-xs"></i> Vender
@@ -856,7 +861,7 @@
         </div>
 
         <!-- Sell Section -->
-        <div id="sell" class="section space-y-6 fade-in">
+        <div id="sell" class="section hidden space-y-6 fade-in">
             <!-- Alertas en sección Ventas -->
             <div id="sell-alerts" class="space-y-3"></div>
             
@@ -1877,6 +1882,7 @@
                 updateDateDisplay();
                 renderAll();
                 updateSidebar(); // Asegurar que se muestren todas las opciones de admin
+                showSection('dashboard'); // Admin va al dashboard con métricas completas
                 showNotification('Bienvenido, Administrador', 'success');
             } else {
                 document.getElementById('admin-login-error').classList.remove('hidden');
@@ -2017,6 +2023,9 @@
 
         // ==================== DASHBOARD ====================
         function renderDashboard() {
+            // Si no hay usuario logueado, no renderizar
+            if (!appState.currentUser) return;
+            
             const today = formatDateISO(appState.activeDate);
             const todaySales = appState.sales.filter(s => s.date === today);
             const todayExpenses = appState.expenses.filter(e => e.date === today);
@@ -6944,6 +6953,14 @@ RESULTADOS:
                 
                 // Mostrar/ocultar opciones de admin en el sidebar y botones superiores
                 const isAdmin = appState.currentUser && appState.currentUser.role === 'admin';
+                
+                // Dashboard: Visible para ambos, pero con contenido diferente
+                const dashboardNav = document.getElementById('nav-dashboard');
+                if (dashboardNav) {
+                    dashboardNav.style.display = 'block';
+                }
+                
+                // Opciones solo para admin
                 const adminNavs = ['nav-cashflow', 'nav-reports', 'nav-settings'];
                 adminNavs.forEach(id => {
                     const el = document.getElementById(id);

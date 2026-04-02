@@ -7432,8 +7432,16 @@ RESULTADOS:
                     const initialCash = appState.cash;
                     const initialBank = appState.bank;
                     
+                    // Preservar currentUser (puede ser una sesión activa)
+                    const currentUserBackup = appState.currentUser;
+                    
                     // Fusionar datos guardados con estado inicial
                     appState = { ...appState, ...data };
+                    
+                    // Restaurar currentUser si estaba establecido (sesión activa)
+                    if (currentUserBackup) {
+                        appState.currentUser = currentUserBackup;
+                    }
                     
                     // Asegurar que los valores numéricos sean números válidos
                     appState.cash = parseFloat(appState.cash);

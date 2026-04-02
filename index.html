@@ -18,8 +18,10 @@
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
         .fade-in { animation: fadeIn 0.3s ease-in; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .notification { position: fixed; top: 20px; right: 20px; z-index: 100; animation: slideIn 0.3s ease; }
-        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        #notifications { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        #notifications > * { pointer-events: auto; }
+        .notification { animation: slideIn 0.3s ease; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 50; align-items: center; justify-content: center; }
         .modal.active { display: flex; }
         .calendar-day { min-height: 80px; transition: all 0.2s; cursor: pointer; }
@@ -317,6 +319,63 @@
 </head>
 <body class="text-gray-800">
 
+    <!-- LOGIN MODAL -->
+    <div id="login-modal" class="fixed inset-0 bg-gradient-to-br from-purple-600 via-purple-700 to-indigo-800 z-[100] flex items-center justify-center">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 text-center">
+            <div class="mb-6">
+                <div class="w-20 h-20 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-store text-3xl text-white"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-800">KioscoPro</h1>
+                <p class="text-gray-500">Sistema de Gestión <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">v2.3</span></p>
+            </div>
+            
+            <div id="login-options" class="space-y-4">
+                <button onclick="showLoginForm('admin')" class="w-full py-4 px-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition flex items-center justify-center gap-3">
+                    <i class="fas fa-user-shield text-xl"></i>
+                    <div class="text-left">
+                        <div class="font-bold">Administrador</div>
+                        <div class="text-xs opacity-80">Acceso completo al sistema</div>
+                    </div>
+                </button>
+                
+                <div class="relative my-4">
+                    <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-200"></div></div>
+                    <div class="relative flex justify-center text-sm"><span class="px-2 bg-white text-gray-500">o</span></div>
+                </div>
+                
+                <button onclick="showLoginForm('guest')" class="w-full py-4 px-6 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition flex items-center justify-center gap-3">
+                    <i class="fas fa-user text-xl"></i>
+                    <div class="text-left">
+                        <div class="font-bold">Colaborador</div>
+                        <div class="text-xs opacity-80">Acceso para empleados</div>
+                    </div>
+                </button>
+            </div>
+            
+            <!-- Formulario Admin -->
+            <div id="admin-login-form" class="hidden space-y-4">
+                <button onclick="backToLoginOptions()" class="text-gray-500 hover:text-gray-700 flex items-center gap-2 text-sm">
+                    <i class="fas fa-arrow-left"></i> Volver
+                </button>
+                <h3 class="text-lg font-bold text-gray-800">Acceso Administrador</h3>
+                <input type="password" id="admin-password" placeholder="Contraseña" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" onkeypress="handleAdminKeypress(event)">
+                <button onclick="loginAdmin()" class="w-full py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition">Ingresar</button>
+                <p id="admin-login-error" class="text-red-500 text-sm hidden">Contraseña incorrecta</p>
+            </div>
+            
+            <!-- Formulario Colaborador -->
+            <div id="collaborator-login-form" class="hidden space-y-4">
+                <button onclick="backToLoginOptions()" class="text-gray-500 hover:text-gray-700 flex items-center gap-2 text-sm">
+                    <i class="fas fa-arrow-left"></i> Volver
+                </button>
+                <h3 class="text-lg font-bold text-gray-800">Acceso Colaborador</h3>
+                <input type="text" id="collaborator-name" placeholder="Tu nombre (opcional)" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                <button onclick="loginCollaborator()" class="w-full py-3 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-800 transition">Entrar como Colaborador</button>
+            </div>
+        </div>
+    </div>
+
     <div id="notifications"></div>
 
     <!-- Loading/Success Overlay -->
@@ -455,7 +514,7 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">📅 Días de Compra del Proveedor</label>
-                    <div class="flex gap-1 flex-wrap" id="edit-prod-buy-days">
+                    <div class="flex gap-1 flex-wrap" id="edit-buy-days">
                         <button type="button" onclick="toggleBuyDay('edit', 1)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="1">Lun</button>
                         <button type="button" onclick="toggleBuyDay('edit', 2)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="2">Mar</button>
                         <button type="button" onclick="toggleBuyDay('edit', 3)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="3">Mié</button>
@@ -603,11 +662,11 @@
         <div class="p-4 gradient-bg text-white flex-shrink-0">
             <div class="flex items-center justify-between">
                 <h1 class="text-xl font-bold flex items-center gap-2"><i class="fas fa-store"></i> KioscoPro</h1>
-                <button id="sync-status-indicator" onclick="forceSync()" class="text-sm p-1 rounded hover:bg-white/20 transition" title="Sincronización">
-                    <i class="fas fa-cloud-slash text-white/70"></i>
-                </button>
             </div>
             <p class="text-xs opacity-80 mt-1">Gestión Inteligente</p>
+            <div id="user-badge" class="mt-2 inline-flex items-center gap-1 px-2 py-1 bg-white/20 rounded text-xs">
+                <i class="fas fa-user"></i> <span id="user-name">Cargando...</span>
+            </div>
         </div>
         
         <div class="px-3 py-2 bg-indigo-50 border-b border-indigo-100 flex-shrink-0">
@@ -629,36 +688,42 @@
         </div>
 
         <nav class="flex-1 p-2 space-y-1 overflow-y-auto">
-            <button onclick="showSection('dashboard')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-purple-700 font-medium bg-purple-50 text-sm" data-section="dashboard">
-                <i class="fas fa-chart-line w-4 text-xs"></i> Dashboard
-            </button>
-            <button onclick="showSection('sell')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="sell">
+            <!-- VENDER: Pantalla principal -->
+            <button onclick="showSection('sell')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-purple-700 font-medium bg-purple-50 text-sm" data-section="sell">
                 <i class="fas fa-cash-register w-4 text-xs"></i> Vender
                 <span class="ml-auto bg-green-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center hidden text-[10px]" id="cart-badge">0</span>
             </button>
+            
+            <!-- HISTORIAL: Calendario de ventas -->
             <button onclick="showSection('sales-calendar')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="sales-calendar">
                 <i class="fas fa-calendar-alt w-4 text-xs"></i> Historial
             </button>
+            
+            <!-- REPONER: Inventario + alertas -->
             <button onclick="showSection('inventory')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="inventory">
-                <i class="fas fa-boxes w-4 text-xs"></i> Inventario
+                <i class="fas fa-boxes w-4 text-xs"></i> Reponer
+                <span id="restock-badge" class="ml-auto bg-orange-500 text-white text-xs rounded-full px-1.5 hidden text-[10px]">0</span>
             </button>
-            <button onclick="showSection('cashflow')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="cashflow">
-                <i class="fas fa-wallet w-4 text-xs"></i> Finanzas
+            
+            <!-- FINANZAS: Solo admin -->
+            <button onclick="showSection('cashflow')" id="nav-cashflow" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="cashflow">
+                <i class="fas fa-chart-line w-4 text-xs"></i> Finanzas
             </button>
-            <button onclick="showSection('predictions')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="predictions">
-                <i class="fas fa-boxes w-4 text-xs"></i> Control de Stock
+            
+            <!-- REPORTES: Solo admin -->
+            <button onclick="showSection('reports')" id="nav-reports" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="reports">
+                <i class="fas fa-chart-pie w-4 text-xs"></i> Reportes
             </button>
-            <button onclick="showSection('alerts')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 relative text-sm" data-section="alerts">
-                <i class="fas fa-bell w-4 text-xs"></i> Alertas
-                <span id="alert-badge" class="absolute right-2 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center pulse-alert hidden text-[10px]">0</span>
-            </button>
-            <button onclick="showSection('reports')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="reports">
-                <i class="fas fa-file-export w-4 text-xs"></i> Reportes
-            </button>
-            <button onclick="showSection('settings')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="settings">
+            
+            <!-- CONFIGURACIÓN: Solo admin -->
+            <button onclick="showSection('settings')" id="nav-settings" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="settings">
                 <i class="fas fa-cog w-4 text-xs"></i> Configuración
             </button>
             
+            <!-- CERRAR SESIÓN -->
+            <button onclick="logout()" class="w-full text-left px-3 py-2 rounded-xl hover:bg-red-50 transition flex items-center gap-2 text-red-600 text-sm mt-4">
+                <i class="fas fa-sign-out-alt w-4 text-xs"></i> Cerrar Sesión
+            </button>
 
         </nav>
 
@@ -732,17 +797,17 @@
                 <button onclick="quickSell()" id="btn-quick-sell" class="bg-green-500 hover:bg-green-600 text-white px-3 sm:px-6 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-lg transition flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap">
                     <i class="fas fa-plus"></i> <span class="hidden sm:inline">Nueva Venta</span><span class="sm:hidden">Venta</span>
                 </button>
-                <button onclick="showSection('inventory')" class="bg-blue-500 hover:bg-blue-600 text-white px-3 sm:px-6 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-lg transition flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap">
+                <button onclick="showSection('inventory')" id="btn-top-inventory" class="bg-blue-500 hover:bg-blue-600 text-white px-3 sm:px-6 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-lg transition flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap">
                     <i class="fas fa-shopping-cart"></i> <span class="hidden sm:inline">Compra Stock</span><span class="sm:hidden">Stock</span>
                 </button>
-                <button onclick="openExpenseModal()" class="bg-red-500 hover:bg-red-600 text-white px-3 sm:px-6 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-lg transition flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap">
+                <button onclick="openExpenseModal()" id="btn-top-expense" class="bg-red-500 hover:bg-red-600 text-white px-3 sm:px-6 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-lg transition flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap">
                     <i class="fas fa-minus"></i> Gasto
                 </button>
             </div>
         </div>
 
         <!-- Dashboard -->
-        <div id="dashboard" class="section space-y-6 fade-in">
+        <div id="dashboard" class="section hidden space-y-6 fade-in">
             
             <!-- Smart Alerts Section -->
             <div id="dashboard-alerts" class="space-y-3">
@@ -790,7 +855,7 @@
         </div>
 
         <!-- Sell Section -->
-        <div id="sell" class="section hidden space-y-6 fade-in">
+        <div id="sell" class="section space-y-6 fade-in">
             <!-- Alertas en sección Ventas -->
             <div id="sell-alerts" class="space-y-3"></div>
             
@@ -969,33 +1034,80 @@
             </div>
         </div>
 
-        <!-- Inventory -->
+        <!-- REPONER - Alertas + Lista de Compras + Agregar Stock -->
         <div id="inventory" class="section hidden space-y-6 fade-in">
-            <!-- Quick Add Stock Section -->
+            
+            <!-- KPIs de Stock -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-red-50 rounded-xl p-4 border border-red-200 text-center">
+                    <p class="text-red-600 text-xs font-bold uppercase">🚨 Crítico</p>
+                    <p class="text-3xl font-bold text-red-700" id="critical-stock-count">0</p>
+                    <p class="text-xs text-red-500">Agotados o casi</p>
+                </div>
+                <div class="bg-orange-50 rounded-xl p-4 border border-orange-200 text-center">
+                    <p class="text-orange-600 text-xs font-bold uppercase">⚠️ Bajo</p>
+                    <p class="text-3xl font-bold text-orange-700" id="low-stock-count">0</p>
+                    <p class="text-xs text-orange-500">Debajo del mínimo</p>
+                </div>
+                <div class="bg-blue-50 rounded-xl p-4 border border-blue-200 text-center">
+                    <p class="text-blue-600 text-xs font-bold uppercase">📦 A Comprar</p>
+                    <p class="text-3xl font-bold text-blue-700" id="total-buy-units">0</p>
+                    <p class="text-xs text-blue-500">Unidades sugeridas</p>
+                </div>
+                <div class="bg-green-50 rounded-xl p-4 border border-green-200 text-center">
+                    <p class="text-green-600 text-xs font-bold uppercase">💰 Inversión</p>
+                    <p class="text-xl font-bold text-green-700" id="total-buy-investment">$0</p>
+                    <p class="text-xs text-green-500">Para stock óptimo</p>
+                </div>
+            </div>
+
+            <!-- Lista de Compras Sugerida -->
+            <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div class="p-4 border-b flex justify-between items-center bg-gradient-to-r from-purple-50 to-blue-50">
+                    <h3 class="font-bold flex items-center gap-2">
+                        <i class="fas fa-clipboard-list text-purple-600"></i> Lista de Compras Sugerida
+                    </h3>
+                    <button onclick="exportShoppingList()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-bold">
+                        <i class="fas fa-download"></i> Descargar
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-purple-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-purple-700 uppercase">Producto</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-purple-700 uppercase">Stock (días)</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-purple-700 uppercase">Comprar</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-purple-700 uppercase">Alerta</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-purple-700 uppercase">Inversión</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auto-shopping-list" class="divide-y divide-gray-200">
+                            <tr><td colspan="5" class="text-center py-8 text-gray-400">Calculando sugerencias...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Quick Add Stock -->
             <div class="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl shadow-lg p-6 border-2 border-blue-200">
                 <h3 class="text-lg font-bold mb-4 flex items-center gap-2 text-blue-800">
-                    <i class="fas fa-plus-circle text-blue-600"></i> 
-                    Agregar Stock Rápido
+                    <i class="fas fa-plus-circle text-blue-600"></i> Agregar Stock Rápido
                 </h3>
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        <i class="fas fa-search mr-1"></i> Buscar por nombre o escanear código
-                    </label>
                     <input type="text" id="quick-stock-search" class="barcode-input w-full border-2 border-blue-300 rounded-lg px-4 py-3 text-lg" 
-                           placeholder="Escribe el nombre o escanea el código de barras..." 
-                           oninput="filterQuickStockProducts()"
-                           onkeypress="handleQuickStockKeypress(event)">
-                    <p class="text-xs text-gray-500 mt-1">💡 Escribe para buscar por nombre, o escanea para ir directo al producto</p>
+                           placeholder="Escribe nombre o escanea código..." 
+                           oninput="filterQuickStockProducts()">
                 </div>
                 <div id="quick-stock-results" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-64 overflow-y-auto">
                     <p class="text-gray-400 text-center py-4 col-span-3">Escribe para buscar productos</p>
                 </div>
             </div>
 
-            <!-- Add New Product Form -->
+            <!-- Agregar Producto Nuevo (Compra) -->
             <div class="bg-white rounded-2xl shadow-lg p-6">
                 <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
-                    <i class="fas fa-box text-green-600"></i> Agregar Nuevo Producto (Compra)
+                    <i class="fas fa-box text-green-600"></i> Nuevo Producto (Compra)
                 </h3>
                 <form id="add-inventory-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" onsubmit="event.preventDefault(); preparePurchase();">
                     <div>
@@ -1003,41 +1115,22 @@
                         <input type="text" id="inv-barcode" class="barcode-input w-full border rounded-lg px-3 py-2 text-sm" placeholder="Escanea..." required>
                     </div>
                     <div class="lg:col-span-2">
-                        <label class="block text-xs font-medium text-gray-600 mb-1">Nombre del producto</label>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
                         <input type="text" id="inv-name" class="w-full border rounded-lg px-3 py-2 text-sm" required>
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Categoría</label>
                         <select id="inv-category" class="w-full border rounded-lg px-3 py-2 text-sm">
-                            <option value="snacks">Snacks</option>
                             <option value="bebidas">Bebidas</option>
-                            <option value="basicos">Básicos</option>
-                            <option value="limpieza">Limpieza</option>
-                            <option value="combos">Combos</option>
+                            <option value="cervezas">Cervezas</option>
+                            <option value="snacks">Snacks</option>
+                            <option value="golosinas">Golosinas</option>
+                            <option value="despensa">Despensa</option>
+                            <option value="lacteos">Lácteos</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs font-medium text-gray-600 mb-1">Proveedor</label>
-                        <input type="text" id="inv-supplier" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nombre">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-600 mb-1">WhatsApp proveedor</label>
-                        <input type="text" id="inv-supplier-phone" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="5491123456789">
-                    </div>
-                    <div class="lg:col-span-2">
-                        <label class="block text-xs font-medium text-gray-600 mb-1">📅 Días de compra (proveedor pasa)</label>
-                        <div class="flex gap-1 flex-wrap" id="inv-buy-days">
-                            <button type="button" onclick="toggleBuyDay('inv', 1)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="1">Lun</button>
-                            <button type="button" onclick="toggleBuyDay('inv', 2)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="2">Mar</button>
-                            <button type="button" onclick="toggleBuyDay('inv', 3)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="3">Mié</button>
-                            <button type="button" onclick="toggleBuyDay('inv', 4)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="4">Jue</button>
-                            <button type="button" onclick="toggleBuyDay('inv', 5)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="5">Vie</button>
-                            <button type="button" onclick="toggleBuyDay('inv', 6)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="6">Sáb</button>
-                            <button type="button" onclick="toggleBuyDay('inv', 0)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="0">Dom</button>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-600 mb-1">Costo unitario</label>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Costo ($)</label>
                         <input type="number" id="inv-cost" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" required oninput="calculateInventoryPrice()">
                     </div>
                     <div>
@@ -1048,28 +1141,26 @@
                         <label class="block text-xs font-medium text-gray-600 mb-1">Vencimiento</label>
                         <input type="date" id="inv-expiry" class="w-full border rounded-lg px-3 py-2 text-sm" required>
                     </div>
-                    <div class="lg:col-span-2">
-                        <label class="block text-xs font-medium text-gray-600 mb-1">Margen de ganancia (%)</label>
-                        <input type="number" id="inv-margin" class="w-full border-2 border-purple-300 rounded-lg px-3 py-2 text-sm font-bold text-purple-700" step="0.1" value="30" oninput="calculateInventoryPriceFromMargin()">
-                        <p class="text-xs text-gray-500 mt-1">Cambiá el margen para recalcular el precio</p>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Margen (%)</label>
+                        <input type="number" id="inv-margin" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.1" value="30" oninput="calculateInventoryPriceFromMargin()">
                     </div>
-                    <div class="lg:col-span-2">
-                        <label class="block text-xs font-medium text-gray-600 mb-1">Precio de venta</label>
-                        <input type="number" id="inv-price" class="w-full border-2 border-purple-300 rounded-lg px-3 py-2 text-sm font-bold text-green-700 bg-green-50" step="0.01" oninput="calculateInventoryMargin()">
-                        <p class="text-xs text-gray-500 mt-1">Margen actual: <span id="inv-margin-display" class="font-bold text-purple-600">30%</span></p>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Precio venta ($)</label>
+                        <input type="number" id="inv-price" class="w-full border rounded-lg px-3 py-2 text-sm font-bold text-green-700" step="0.01" oninput="calculateInventoryMargin()">
                     </div>
-                    <div class="lg:col-span-2 flex items-end">
-                        <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-bold shadow">
-                            <i class="fas fa-plus"></i> Crear y Comprar Producto
+                    <div class="lg:col-span-4 flex items-end">
+                        <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold shadow">
+                            <i class="fas fa-check"></i> Confirmar Compra
                         </button>
                     </div>
                 </form>
             </div>
 
-            <!-- Inventory List -->
+            <!-- Stock Actual -->
             <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
                 <div class="p-4 border-b flex justify-between items-center">
-                    <h3 class="font-bold">Stock Actual</h3>
+                    <h3 class="font-bold">📦 Stock Actual</h3>
                     <input type="text" id="search-inventory" placeholder="Buscar..." class="border rounded-lg px-3 py-1 text-sm" onkeyup="renderInventory()">
                 </div>
                 <div class="overflow-x-auto">
@@ -1078,7 +1169,7 @@
                             <tr>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Código</th>
-                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Stock Total</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500">Stock Total</th>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Lotes/Vencimientos</th>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Costo</th>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Venta</th>
@@ -1142,37 +1233,6 @@
                 </div>
             </div>
 
-            <!-- Selector de Período -->
-            <div class="bg-gray-100 rounded-xl p-2 flex flex-wrap gap-2 justify-center">
-                <button onclick="setCashflowPeriod('today')" id="btn-cf-today" class="cf-period-btn px-4 py-2 rounded-lg text-sm font-bold bg-white text-gray-800 shadow-sm hover:bg-gray-50 transition">
-                    Hoy
-                </button>
-                <button onclick="setCashflowPeriod('week')" id="btn-cf-week" class="cf-period-btn px-4 py-2 rounded-lg text-sm font-bold text-gray-600 hover:bg-white hover:shadow-sm transition">
-                    7 días
-                </button>
-                <button onclick="setCashflowPeriod('month')" id="btn-cf-month" class="cf-period-btn px-4 py-2 rounded-lg text-sm font-bold text-gray-600 hover:bg-white hover:shadow-sm transition">
-                    30 días
-                </button>
-                <button onclick="setCashflowPeriod('year')" id="btn-cf-year" class="cf-period-btn px-4 py-2 rounded-lg text-sm font-bold text-gray-600 hover:bg-white hover:shadow-sm transition">
-                    1 año
-                </button>
-                <button onclick="setCashflowPeriod('all')" id="btn-cf-all" class="cf-period-btn px-4 py-2 rounded-lg text-sm font-bold text-gray-600 hover:bg-white hover:shadow-sm transition">
-                    Todo
-                </button>
-            </div>
-
-            <!-- Selector de Modo: Valor ($) o Porcentaje (%) -->
-            <div class="flex justify-center">
-                <div class="bg-gray-200 rounded-lg p-1 flex">
-                    <button onclick="setChartMode('money')" id="btn-mode-money" class="px-4 py-1.5 rounded-md text-sm font-bold bg-white text-gray-800 shadow-sm transition">
-                        💵 Valor ($)
-                    </button>
-                    <button onclick="setChartMode('percent')" id="btn-mode-percent" class="px-4 py-1.5 rounded-md text-sm font-bold text-gray-600 hover:bg-white hover:shadow-sm transition">
-                        📊 Porcentaje (%)
-                    </button>
-                </div>
-            </div>
-
             <!-- Resumen Financiero Simple -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="bg-blue-50 rounded-xl p-4 border border-blue-200">
@@ -1182,11 +1242,33 @@
                 </div>
                 <div class="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
                     <p class="text-emerald-600 text-xs font-bold uppercase">💵 Ganancia Neta</p>
-                    <p class="text-2xl font-bold text-emerald-800" id="metric-net-profit">$0</p>
+                    <div class="flex items-center gap-2">
+                        <p class="text-2xl font-bold text-emerald-800" id="metric-net-profit">$0</p>
+                        <span class="text-sm font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full" id="metric-avg-margin">0%</span>
+                    </div>
+                    <p class="text-xs text-emerald-500 mt-1">Margen promedio</p>
                 </div>
                 <div class="bg-purple-50 rounded-xl p-4 border border-purple-200">
-                    <p class="text-purple-600 text-xs font-bold uppercase">⏱️ Recuperación</p>
-                    <p class="text-2xl font-bold text-purple-800" id="metric-roi-days">0 días</p>
+                    <p class="text-purple-600 text-xs font-bold uppercase">📈 Retorno de Inversión</p>
+                    <div class="grid grid-cols-2 gap-2 mt-2">
+                        <div>
+                            <p class="text-xl font-bold text-purple-800" id="metric-roi-total">0%</p>
+                            <p class="text-[10px] text-purple-500">ROI Total</p>
+                        </div>
+                        <div>
+                            <p class="text-xl font-bold text-purple-800" id="metric-roi-monthly">0%</p>
+                            <p class="text-[10px] text-purple-500">Mensual</p>
+                        </div>
+                        <div>
+                            <p class="text-xl font-bold text-purple-800" id="metric-roi-recovery">-</p>
+                            <p class="text-[10px] text-purple-500">Recuperación</p>
+                        </div>
+                        <div>
+                            <p class="text-xl font-bold text-purple-800" id="metric-roi-multiplier">0x</p>
+                            <p class="text-[10px] text-purple-500">Multiplicador</p>
+                        </div>
+                    </div>
+                    <p class="text-xs text-purple-500 mt-2 pt-2 border-t border-purple-200" id="metric-roi-detail">Sin inversiones registradas</p>
                 </div>
             </div>
 
@@ -1276,12 +1358,26 @@
             <!-- Gráfico Financiero -->
             <div class="bg-white rounded-2xl p-4 shadow-lg">
                 <div class="flex justify-between items-center mb-3">
-                    <h3 class="text-base font-bold"><i class="fas fa-chart-area text-purple-600"></i> Resumen Financiero</h3>
+                    <h3 class="text-base font-bold"><i class="fas fa-chart-area text-purple-600"></i> Evolución Financiera</h3>
                     <div class="flex bg-gray-100 rounded-lg p-1">
-                        <button onclick="setChartDays(30)" id="btn-chart-30" class="px-3 py-1 text-xs font-bold rounded bg-white text-gray-800 shadow-sm">30 días</button>
-                        <button onclick="setChartDays(365)" id="btn-chart-365" class="px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white">1 año</button>
+                        <button onclick="setChartPeriod('day')" id="btn-period-day" class="px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white">Día</button>
+                        <button onclick="setChartPeriod('week')" id="btn-period-week" class="px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white">Semana</button>
+                        <button onclick="setChartPeriod('month')" id="btn-period-month" class="px-3 py-1 text-xs font-bold rounded bg-white text-gray-800 shadow-sm">Mes</button>
+                        <button onclick="setChartPeriod('year')" id="btn-period-year" class="px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white">Año</button>
                     </div>
                 </div>
+                
+                <!-- Navegación de Período con Flechas -->
+                <div class="flex items-center justify-center gap-4 mb-3">
+                    <button onclick="navigateChartPeriod(-1)" class="w-8 h-8 rounded-full bg-purple-100 hover:bg-purple-200 text-purple-700 flex items-center justify-center transition">
+                        <i class="fas fa-chevron-left text-xs"></i>
+                    </button>
+                    <span id="chart-period-label" class="text-sm font-bold text-gray-700 min-w-[120px] text-center">Marzo 2025</span>
+                    <button onclick="navigateChartPeriod(1)" class="w-8 h-8 rounded-full bg-purple-100 hover:bg-purple-200 text-purple-700 flex items-center justify-center transition">
+                        <i class="fas fa-chevron-right text-xs"></i>
+                    </button>
+                </div>
+                
                 <canvas id="cashFlowChart" height="150"></canvas>
                 <div class="flex justify-center gap-4 mt-2 text-xs">
                     <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-green-500"></span> Facturado</span>
@@ -1586,9 +1682,17 @@
             alerts: [],
             pendingPurchase: null,
             pendingPurchasePayment: 'cash',
-            initialCapital: 0, // Capital inicial inyectado por el usuario
-            capitalAdjustments: [] // Historial de ajustes de capital
+            initialCapital: 0,
+            capitalAdjustments: [],
+            // Login
+            currentUser: null, // { role: 'admin'|'guest', name: string }
+            guestLogs: []
         };
+        
+        // Variables de login
+        let isLoggedIn = false;
+        let isDemoMode = false;
+        const ADMIN_PASSWORD = 'admin123';
 
         // Variables para charts
         let salesChartInstance = null;
@@ -1607,9 +1711,11 @@
             // FIX: Asegurar que el body tenga el padding correcto
             document.body.style.paddingLeft = '16rem';
             
-            loadFromLocalStorage();
-            updateDateDisplay();
-            renderAll();
+            // Mostrar login modal - el usuario debe iniciar sesión primero
+            document.getElementById('login-modal').classList.remove('hidden');
+            
+            // NO cargamos datos ni renderizamos hasta que se loguee
+            console.log('Esperando inicio de sesión...');
             
             // Debug: mostrar valores cargados
             console.log('Inicialización completa - Caja:', appState.cash, 'Cuenta:', appState.bank);
@@ -1620,8 +1726,8 @@
                 updateInventoryValues();
                 // Inicializar período de cashflow
                 setCashflowPeriod('month');
-                // Inicializar modo de gráfico
-                setChartMode('money');
+                // Inicializar período del gráfico
+                setChartPeriod('month');
             }, 100);
             
             // Inicializar display de margen en formulario
@@ -1734,6 +1840,158 @@
             return date.toISOString().split('T')[0];
         }
 
+        // ==================== LOGIN SYSTEM ====================
+        function showLoginForm(type) {
+            document.getElementById('login-options').classList.add('hidden');
+            if (type === 'admin') {
+                document.getElementById('admin-login-form').classList.remove('hidden');
+                document.getElementById('admin-password').focus();
+            } else {
+                document.getElementById('collaborator-login-form').classList.remove('hidden');
+                document.getElementById('collaborator-name').focus();
+            }
+        }
+        
+        function backToLoginOptions() {
+            document.getElementById('admin-login-form').classList.add('hidden');
+            document.getElementById('collaborator-login-form').classList.add('hidden');
+            document.getElementById('login-options').classList.remove('hidden');
+            document.getElementById('admin-login-error').classList.add('hidden');
+        }
+        
+        function handleAdminKeypress(event) {
+            if (event.key === 'Enter') {
+                loginAdmin();
+            }
+        }
+        
+        function loginAdmin() {
+            const password = document.getElementById('admin-password').value;
+            if (password === ADMIN_PASSWORD) {
+                isDemoMode = false;
+                appState.currentUser = { role: 'admin', name: 'Administrador' };
+                isLoggedIn = true;
+                closeLoginModal();
+                loadFromLocalStorage();
+                updateDateDisplay();
+                renderAll();
+                showNotification('Bienvenido, Administrador', 'success');
+            } else {
+                document.getElementById('admin-login-error').classList.remove('hidden');
+            }
+        }
+        
+        function loginCollaborator() {
+            const name = document.getElementById('collaborator-name').value.trim() || 'Colaborador';
+            isDemoMode = true;
+            appState.currentUser = { role: 'collaborator', name: name };
+            isLoggedIn = true;
+            loadCollaboratorData();
+            closeLoginModal();
+            updateDateDisplay();
+            renderAll();
+            showSection('sell'); // Colaboradores van directo a vender
+            showNotification('Modo Colaborador activado', 'success');
+        }
+        
+        function closeLoginModal() {
+            document.getElementById('login-modal').classList.add('hidden');
+        }
+        
+        function logout() {
+            if (confirm('¿Cerrar sesión?')) {
+                location.reload();
+            }
+        }
+        
+        function isAdmin() {
+            return appState.currentUser && appState.currentUser.role === 'admin';
+        }
+        
+        // ==================== DEMO DATA ====================
+        function loadCollaboratorData() {
+            // 10 productos de ejemplo
+            const demoProducts = [
+                { id: 'P001', name: 'Coca Cola 2.25L', barcode: '7790895000997', price: 890, cost: 600, stock: 12, minStock: 5, category: 'bebidas', buyDays: [1, 4] },
+                { id: 'P002', name: 'Pepsi 2.25L', barcode: '7791813425026', price: 790, cost: 530, stock: 8, minStock: 4, category: 'bebidas', buyDays: [1, 4] },
+                { id: 'P003', name: 'Quilmes 1L', barcode: '7792798001035', price: 780, cost: 520, stock: 24, minStock: 10, category: 'cervezas', buyDays: [2, 5] },
+                { id: 'P004', name: 'Corona 710ml', barcode: '7501064197348', price: 850, cost: 570, stock: 15, minStock: 6, category: 'cervezas', buyDays: [2, 5] },
+                { id: 'P005', name: 'Lays Clásicas', barcode: '7790310184125', price: 650, cost: 420, stock: 10, minStock: 4, category: 'snacks', buyDays: [1, 3, 5] },
+                { id: 'P006', name: 'Alfajor Jorgito', barcode: '7790580112819', price: 280, cost: 180, stock: 30, minStock: 15, category: 'golosinas', buyDays: [1, 3, 5] },
+                { id: 'P007', name: 'Yerba Taragüí 1kg', barcode: '7790070310115', price: 1450, cost: 980, stock: 8, minStock: 3, category: 'despensa', buyDays: [2, 4] },
+                { id: 'P008', name: 'Café Dolca', barcode: '7790070314014', price: 890, cost: 600, stock: 6, minStock: 3, category: 'despensa', buyDays: [2, 4] },
+                { id: 'P009', name: 'Azúcar Ledesma', barcode: '7790070010015', price: 650, cost: 440, stock: 12, minStock: 5, category: 'despensa', buyDays: [2, 4] },
+                { id: 'P010', name: 'Leche La Serenísima', barcode: '7790072000014', price: 520, cost: 350, stock: 20, minStock: 8, category: 'lacteos', buyDays: [1, 3, 5] }
+            ];
+            
+            appState.inventory = demoProducts.map(p => ({
+                ...p,
+                salePrice: p.price,
+                batches: [{ stock: p.stock, cost: p.cost, date: formatDateISO(new Date()), expiry: formatDateISO(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)) }]
+            }));
+            
+            // Generar 40 días de ventas realistas
+            const sales = [];
+            const today = new Date();
+            
+            for (let day = 39; day >= 0; day--) {
+                const date = new Date(today);
+                date.setDate(date.getDate() - day);
+                const dateStr = formatDateISO(date);
+                
+                // 3-8 ventas por día
+                const dailySales = 3 + Math.floor(Math.random() * 6);
+                
+                for (let i = 0; i < dailySales; i++) {
+                    const product = demoProducts[Math.floor(Math.random() * demoProducts.length)];
+                    const quantity = Math.random() > 0.7 ? 2 : 1; // 30% de probabilidad de comprar 2
+                    
+                    sales.push({
+                        id: `S${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                        items: [{ 
+                            productId: product.id, 
+                            productName: product.name, 
+                            quantity: quantity, 
+                            price: product.price,
+                            cost: product.cost
+                        }],
+                        total: product.price * quantity,
+                        profit: (product.price - product.cost) * quantity,
+                        date: dateStr,
+                        time: `${9 + Math.floor(Math.random() * 12)}:${Math.floor(Math.random() * 60).toString().padStart(2, '0')}`,
+                        paymentMethod: Math.random() > 0.3 ? 'cash' : 'debit',
+                        timestamp: date.getTime()
+                    });
+                }
+            }
+            
+            appState.sales = sales;
+            
+            // Calcular caja y banco
+            appState.cash = sales.filter(s => s.paymentMethod === 'cash').reduce((a, s) => a + s.total, 0);
+            appState.bank = sales.filter(s => s.paymentMethod === 'debit').reduce((a, s) => a + s.total, 0);
+            
+            // Generar algunos gastos
+            const expenses = [
+                { name: 'Alquiler', amount: 50000, category: 'fijos' },
+                { name: 'Luz', amount: 8500, category: 'servicios' },
+                { name: 'Agua', amount: 3200, category: 'servicios' },
+                { name: 'Internet', amount: 4500, category: 'servicios' },
+                { name: 'Sueldo', amount: 80000, category: 'fijos' }
+            ];
+            
+            appState.expenses = expenses.map((e, i) => ({
+                id: `E${i}`,
+                name: e.name,
+                amount: e.amount,
+                category: e.category,
+                date: formatDateISO(new Date(Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000)),
+                paymentMethod: 'cash'
+            }));
+            
+            console.log(`Datos colaborador cargados: ${sales.length} ventas en 40 días, ${demoProducts.length} productos`);
+        }
+
         // ==================== NAVIGATION ====================
         function showSection(sectionId) {
             // Cerrar menú móvil si está abierto
@@ -1783,13 +2041,17 @@
                 selectedCalendarDate = formatDateISO(appState.activeDate);
                 renderCalendar();
             }
-            if (sectionId === 'inventory') renderInventory();
+            if (sectionId === 'inventory') {
+                renderInventory();
+                updateStockKPIs();
+            }
             if (sectionId === 'cashflow') {
                 renderCashflow();
-                setTimeout(() => renderPerformanceChart(), 100);
+                setTimeout(() => renderCashFlowChartByPeriod(), 100);
             }
             if (sectionId === 'predictions') renderPredictions();
             if (sectionId === 'alerts') renderAlerts();
+            if (sectionId === 'reports') renderReports();
             if (sectionId === 'settings') renderSettings();
         }
 
@@ -1831,28 +2093,68 @@
             const todayExpenseAmount = todayExpenses.reduce((sum, e) => sum + e.amount, 0);
             const todayInvestmentAmount = todayInvestments.reduce((sum, i) => sum + i.amount, 0);
             const netBalance = todayRevenue - todayExpenseAmount - todayInvestmentAmount;
+            
+            const isAdmin = appState.currentUser && appState.currentUser.role === 'admin';
 
-            const kpiData = [
-                { title: 'Ventas Hoy', value: `$${todayRevenue.toFixed(2)}`, icon: 'fa-dollar-sign', color: 'purple', subtext: `${todaySales.length} ventas` },
-                { title: 'Ganancia Neta', value: `$${todayProfit.toFixed(2)}`, icon: 'fa-chart-line', color: 'green', subtext: 'después de costos' },
-                { title: 'Gastos Hoy', value: `$${todayExpenseAmount.toFixed(2)}`, icon: 'fa-receipt', color: 'red', subtext: `${todayExpenses.length} gastos` },
-                { title: 'Inversión Hoy', value: `$${todayInvestmentAmount.toFixed(2)}`, icon: 'fa-boxes', color: 'blue', subtext: `${todayInvestments.length} compras` }
-            ];
+            if (!isAdmin) {
+                // VISTA COLABORADOR: Solo caja inicial y cierre
+                const initialCash = appState.initialCapital || 0;
+                const currentCash = appState.cash || 0;
+                const cashDiff = currentCash - initialCash;
+                
+                const kpiData = [
+                    { title: 'Caja Inicial', value: `$${initialCash.toFixed(2)}`, icon: 'fa-wallet', color: 'blue', subtext: 'Al abrir el día' },
+                    { title: 'Caja Actual', value: `$${currentCash.toFixed(2)}`, icon: 'fa-cash-register', color: 'green', subtext: 'Dinero en caja ahora' },
+                    { title: 'Diferencia', value: `${cashDiff >= 0 ? '+' : ''}$${cashDiff.toFixed(2)}`, icon: 'fa-exchange-alt', color: cashDiff >= 0 ? 'green' : 'red', subtext: cashDiff >= 0 ? 'Sobrante' : 'Faltante' },
+                    { title: 'Ventas Hoy', value: `${todaySales.length}`, icon: 'fa-shopping-cart', color: 'purple', subtext: 'Cantidad de ventas' }
+                ];
 
-            document.getElementById('dashboard-kpis').innerHTML = kpiData.map(kpi => `
-                <div class="kpi-card kpi-${kpi.color} card-hover">
-                    <div class="flex justify-between items-start mb-4">
-                        <div>
-                            <p class="text-gray-500 text-sm font-medium uppercase">${kpi.title}</p>
-                            <p class="text-2xl font-bold text-gray-800 mt-1">${kpi.value}</p>
+                document.getElementById('dashboard-kpis').innerHTML = kpiData.map(kpi => `
+                    <div class="kpi-card kpi-${kpi.color} card-hover">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <p class="text-gray-500 text-sm font-medium uppercase">${kpi.title}</p>
+                                <p class="text-2xl font-bold text-gray-800 mt-1">${kpi.value}</p>
+                            </div>
+                            <div class="kpi-icon bg-${kpi.color}-100 text-${kpi.color}-600">
+                                <i class="fas ${kpi.icon}"></i>
+                            </div>
                         </div>
-                        <div class="kpi-icon bg-${kpi.color}-100 text-${kpi.color}-600">
-                            <i class="fas ${kpi.icon}"></i>
-                        </div>
+                        <p class="text-xs text-gray-400">${kpi.subtext}</p>
                     </div>
-                    <p class="text-xs text-gray-400">${kpi.subtext}</p>
-                </div>
-            `).join('');
+                `).join('');
+                
+                // Ocultar gráficos para colaboradores
+                const chartsRow = document.querySelector('#dashboard .grid.grid-cols-1.lg\\:grid-cols-2');
+                if (chartsRow) chartsRow.style.display = 'none';
+            } else {
+                // VISTA ADMIN: Todo completo
+                const kpiData = [
+                    { title: 'Ventas Hoy', value: `$${todayRevenue.toFixed(2)}`, icon: 'fa-dollar-sign', color: 'purple', subtext: `${todaySales.length} ventas` },
+                    { title: 'Ganancia Neta', value: `$${todayProfit.toFixed(2)}`, icon: 'fa-chart-line', color: 'green', subtext: 'después de costos' },
+                    { title: 'Gastos Hoy', value: `$${todayExpenseAmount.toFixed(2)}`, icon: 'fa-receipt', color: 'red', subtext: `${todayExpenses.length} gastos` },
+                    { title: 'Inversión Hoy', value: `$${todayInvestmentAmount.toFixed(2)}`, icon: 'fa-boxes', color: 'blue', subtext: `${todayInvestments.length} compras` }
+                ];
+
+                document.getElementById('dashboard-kpis').innerHTML = kpiData.map(kpi => `
+                    <div class="kpi-card kpi-${kpi.color} card-hover">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <p class="text-gray-500 text-sm font-medium uppercase">${kpi.title}</p>
+                                <p class="text-2xl font-bold text-gray-800 mt-1">${kpi.value}</p>
+                            </div>
+                            <div class="kpi-icon bg-${kpi.color}-100 text-${kpi.color}-600">
+                                <i class="fas ${kpi.icon}"></i>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-400">${kpi.subtext}</p>
+                    </div>
+                `).join('');
+                
+                // Mostrar gráficos
+                const chartsRow = document.querySelector('#dashboard .grid.grid-cols-1.lg\\:grid-cols-2');
+                if (chartsRow) chartsRow.style.display = 'grid';
+            }
 
             document.getElementById('today-sales-count').textContent = `(${todaySales.length} ventas)`;
             document.getElementById('today-total-sales').textContent = `$${todayRevenue.toFixed(2)}`;
@@ -1868,7 +2170,7 @@
                         </div>
                         <div class="text-right">
                             <p class="font-bold text-lg text-green-600">$${sale.total.toFixed(2)}</p>
-                            <p class="text-xs text-gray-400">Ganancia: $${sale.profit.toFixed(2)}</p>
+                            ${isAdmin ? `<p class="text-xs text-gray-400">Ganancia: $${sale.profit.toFixed(2)}</p>` : ''}
                         </div>
                     </div>
                 `).join('');
@@ -1877,7 +2179,9 @@
             // Renderizar alertas inteligentes
             renderDashboardAlerts();
 
-            renderCharts();
+            if (isAdmin) {
+                renderCharts();
+            }
         }
         
         function renderDashboardAlerts() {
@@ -2242,7 +2546,7 @@
 
         // ==================== BÚSQUEDA EN VENTAS ====================
         function handleSellSearch() {
-            const search = document.getElementById('sell-search-input').value.toLowerCase().trim();
+            const search = document.getElementById('sell-search-input').value.trim();
             const resultsContainer = document.getElementById('sell-search-results');
             
             if (!search) {
@@ -2250,11 +2554,8 @@
                 return;
             }
             
-            // Buscar por nombre o código
-            const results = appState.inventory.filter(p => 
-                p.name.toLowerCase().includes(search) || 
-                p.barcode.toLowerCase().includes(search)
-            ).slice(0, 5);
+            // Buscar usando fuzzy search (ignora tildes y tolera errores)
+            const results = fuzzySearchProducts(search, appState.inventory, 5);
             
             if (results.length === 0) {
                 resultsContainer.innerHTML = '<p class="text-gray-400 text-center py-2">No se encontraron productos</p>';
@@ -2283,20 +2584,20 @@
 
         function handleSellSearchKeypress(e) {
             if (e.key === 'Enter') {
-                const search = e.target.value.trim().toLowerCase();
+                const search = e.target.value.trim();
                 
-                // Intentar encontrar por código exacto primero
-                const productByBarcode = appState.inventory.find(p => p.barcode.toLowerCase() === search);
+                // Intentar encontrar por código exacto primero (normalizado)
+                const normalizedSearch = normalizeText(search);
+                const productByBarcode = appState.inventory.find(p => 
+                    normalizeText(p.barcode) === normalizedSearch
+                );
                 if (productByBarcode) {
                     addToCartFromSearch(productByBarcode.id);
                     return;
                 }
                 
-                // Si no, buscar por nombre exacto o único resultado
-                const results = appState.inventory.filter(p => 
-                    p.name.toLowerCase().includes(search) || 
-                    p.barcode.toLowerCase().includes(search)
-                );
+                // Buscar usando fuzzy search
+                const results = fuzzySearchProducts(search, appState.inventory, 10);
                 
                 if (results.length === 1) {
                     addToCartFromSearch(results[0].id);
@@ -3080,16 +3381,102 @@
             showNotification(`Producto comprado y creado exitosamente. Pagado con ${method === 'cash' ? 'Caja' : 'Cuenta'}`, 'success');
         }
 
+        // ==================== BÚSQUEDA FUZZY Y NORMALIZACIÓN ====================
+        
+        // Normalizar texto: quitar tildes y convertir a minúsculas
+        function normalizeText(text) {
+            if (!text) return '';
+            return text.toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, ''); // Quitar tildes
+        }
+        
+        // Calcular distancia de Levenshtein (para errores ortográficos)
+        function levenshteinDistance(str1, str2) {
+            const matrix = [];
+            for (let i = 0; i <= str2.length; i++) {
+                matrix[i] = [i];
+            }
+            for (let j = 0; j <= str1.length; j++) {
+                matrix[0][j] = j;
+            }
+            for (let i = 1; i <= str2.length; i++) {
+                for (let j = 1; j <= str1.length; j++) {
+                    if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                        matrix[i][j] = matrix[i - 1][j - 1];
+                    } else {
+                        matrix[i][j] = Math.min(
+                            matrix[i - 1][j - 1] + 1,
+                            matrix[i][j - 1] + 1,
+                            matrix[i - 1][j] + 1
+                        );
+                    }
+                }
+            }
+            return matrix[str2.length][str1.length];
+        }
+        
+        // Buscar productos con tolerancia a errores
+        function fuzzySearchProducts(query, products, maxResults = 10) {
+            if (!query || query.trim() === '') return products;
+            
+            const normalizedQuery = normalizeText(query);
+            const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length > 0);
+            
+            return products.map(product => {
+                const normalizedName = normalizeText(product.name);
+                const normalizedBarcode = normalizeText(product.barcode);
+                
+                let score = 0;
+                
+                // Coincidencia exacta (sin tildes)
+                if (normalizedName.includes(normalizedQuery)) {
+                    score += 100;
+                    // Bonus si coincide al inicio
+                    if (normalizedName.startsWith(normalizedQuery)) score += 50;
+                }
+                
+                // Coincidencia por palabras
+                const nameWords = normalizedName.split(/\s+/);
+                queryWords.forEach(qWord => {
+                    nameWords.forEach(nWord => {
+                        if (nWord.includes(qWord)) score += 30;
+                        if (nWord === qWord) score += 50;
+                        
+                        // Tolerancia a errores ortográficos (palabras de 4+ caracteres)
+                        if (qWord.length >= 4 && nWord.length >= 4) {
+                            const distance = levenshteinDistance(qWord, nWord);
+                            const similarity = 1 - (distance / Math.max(qWord.length, nWord.length));
+                            if (similarity >= 0.7) { // 70% similar
+                                score += 20 * similarity;
+                            }
+                        }
+                    });
+                });
+                
+                // Coincidencia de código de barras
+                if (normalizedBarcode.includes(normalizedQuery)) {
+                    score += 200; // Prioridad alta para códigos
+                }
+                
+                return { product, score };
+            })
+            .filter(item => item.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, maxResults)
+            .map(item => item.product);
+        }
+
         function renderInventory() {
-            const search = document.getElementById('search-inventory').value.toLowerCase();
-            const filtered = appState.inventory.filter(p => 
-                p.name.toLowerCase().includes(search) || 
-                p.barcode.includes(search)
-            );
+            const search = document.getElementById('search-inventory').value;
+            const filtered = search 
+                ? fuzzySearchProducts(search, appState.inventory, 100)
+                : appState.inventory;
 
             document.getElementById('inventory-table').innerHTML = filtered.map(p => {
                 // Calcular stock total desde lotes
                 const totalStock = p.batches ? p.batches.reduce((sum, b) => sum + b.stock, 0) : (p.stock || 0);
+                const minStock = p.minStock || 5;
                 
                 // Formatear lotes para mostrar
                 let batchesHtml = '';
@@ -3127,23 +3514,26 @@
                     batchesHtml = `<div class="text-xs text-gray-500">Sin vencimiento registrado</div>`;
                 }
                 
+                // Estado del stock
+                let statusClass = totalStock <= 0 ? 'bg-red-100 text-red-700' : 
+                                  totalStock < minStock ? 'bg-orange-100 text-orange-700' : 
+                                  'bg-green-100 text-green-700';
+                
                 return `
                 <tr class="hover:bg-gray-50">
                     <td class="px-3 py-2">
                         <div class="font-medium text-gray-900">${escapeHtml(p.name)}</div>
-                        <div class="text-xs text-gray-500">${p.category}</div>
+                        <div class="text-xs text-gray-500">${p.category || 'Sin cat.'}</div>
                     </td>
                     <td class="px-3 py-2 text-sm font-mono text-gray-600">${p.barcode}</td>
-                    <td class="px-3 py-2">
-                        <span class="px-2 py-1 rounded-full text-xs font-bold ${totalStock <= 5 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">
-                            ${totalStock}
-                        </span>
+                    <td class="px-3 py-2 text-center">
+                        <span class="px-2 py-1 rounded-full text-xs font-bold ${statusClass}">${totalStock}</span>
                     </td>
                     <td class="px-3 py-2 text-sm">${batchesHtml}</td>
-                    <td class="px-3 py-2 text-sm text-gray-600">$${p.cost.toFixed(2)}</td>
-                    <td class="px-3 py-2 text-sm font-bold text-green-600">$${p.salePrice.toFixed(2)}</td>
+                    <td class="px-3 py-2 text-sm text-gray-600">$${(p.cost || 0).toFixed(2)}</td>
+                    <td class="px-3 py-2 text-sm font-bold text-green-600">$${(p.salePrice || p.price || 0).toFixed(2)}</td>
                     <td class="px-3 py-2">
-                        <button onclick="openAddStockModal('${p.id}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Agregar stock">
+                        <button onclick="openAddStockModal('${p.id}')" class="text-blue-600 hover:text-blue-800 mr-2">
                             <i class="fas fa-plus-circle"></i>
                         </button>
                         <button onclick="openEditProductModal('${p.id}')" class="text-gray-600 hover:text-gray-800" title="Editar">
@@ -3193,6 +3583,210 @@
             } catch (e) {
                 console.error('Error en updateInventoryValues:', e);
             }
+        }
+
+        // Calcular días hasta la próxima compra posible según buyDays del proveedor
+        function getDaysUntilNextBuy(product) {
+            if (!product.buyDays || product.buyDays.length === 0) return null;
+            
+            const today = new Date();
+            const todayDayOfWeek = today.getDay();
+            
+            for (let i = 0; i <= 7; i++) {
+                const checkDay = (todayDayOfWeek + i) % 7;
+                if (product.buyDays.includes(checkDay)) {
+                    return i; // 0 = hoy, 1 = mañana, etc.
+                }
+            }
+            return null;
+        }
+
+        // Calcular días de stock restantes según demanda
+        function getDaysOfStock(product, avgDailyDemand) {
+            const totalStock = product.batches ? 
+                product.batches.reduce((sum, b) => sum + b.stock, 0) : 
+                (product.stock || 0);
+            
+            if (avgDailyDemand <= 0) return 999; // Sin demanda = stock "infinito"
+            return Math.floor(totalStock / avgDailyDemand);
+        }
+
+        // Actualizar KPIs de stock y lista de compras sugerida
+        function updateStockKPIs() {
+            const inventory = Array.isArray(appState.inventory) ? appState.inventory : [];
+            
+            let criticalCount = 0;
+            let warningCount = 0;
+            let totalBuyUnits = 0;
+            let totalInvestment = 0;
+            const shoppingList = [];
+            
+            const today = new Date();
+            
+            inventory.forEach(p => {
+                const totalStock = p.batches ? 
+                    p.batches.reduce((sum, b) => sum + b.stock, 0) : 
+                    (p.stock || 0);
+                
+                // Obtener demanda diaria del producto
+                const stats = calculateProductStats(p.id);
+                const avgDaily = stats ? stats.avgDaily : 0;
+                
+                // Días hasta próxima compra posible
+                const daysUntilBuy = getDaysUntilNextBuy(p);
+                
+                // Días de stock actual
+                const daysOfStock = getDaysOfStock(p, avgDaily);
+                
+                // Calcular necesidad de compra inteligente
+                // Necesito stock para: días hasta próxima compra + 14 días (2 semanas de buffer)
+                const requiredDays = (daysUntilBuy !== null ? daysUntilBuy : 0) + 14;
+                const requiredStock = Math.ceil(avgDaily * requiredDays);
+                
+                // Determinar prioridad basada en si me alcanza el stock hasta la próxima compra
+                let priority = null;
+                let alertColor = null;
+                
+                if (totalStock === 0) {
+                    // Sin stock = CRÍTICO (rojo)
+                    priority = '🔴 SIN STOCK';
+                    alertColor = 'red';
+                    criticalCount++;
+                } else if (daysUntilBuy !== null && daysOfStock < daysUntilBuy) {
+                    // No me alcanza hasta la próxima compra = CRÍTICO (rojo)
+                    priority = `🔴 Faltan ${daysUntilBuy - daysOfStock} días`;
+                    alertColor = 'red';
+                    criticalCount++;
+                } else if (daysUntilBuy !== null && daysOfStock < daysUntilBuy + 7) {
+                    // Me alcanza justo o con poco margen = ADVERTENCIA (naranja)
+                    priority = `🟠 ${daysOfStock - daysUntilBuy} días de margen`;
+                    alertColor = 'orange';
+                    warningCount++;
+                } else if (totalStock < (p.minStock || 5)) {
+                    // Stock bajo el mínimo configurado = ADVERTENCIA (naranja)
+                    priority = '🟠 Stock bajo mínimo';
+                    alertColor = 'orange';
+                    warningCount++;
+                } else if (avgDaily > 0 && daysOfStock < 21) {
+                    // Menos de 3 semanas de stock = PRECAUCIÓN (amarillo)
+                    priority = `🟡 ${daysOfStock} días de stock`;
+                    alertColor = 'yellow';
+                }
+                
+                // Calcular cuánto comprar
+                let toBuy = 0;
+                if (priority && priority.includes('🔴')) {
+                    // Compra urgente: necesito para 2 semanas desde hoy
+                    toBuy = Math.max(0, Math.ceil(avgDaily * 14) - totalStock);
+                    if (toBuy === 0 && totalStock === 0) toBuy = Math.max(2, Math.ceil(avgDaily * 7) || 5);
+                } else if (priority && priority.includes('🟠')) {
+                    // Compra preventiva: stock para 2 semanas
+                    toBuy = Math.max(0, Math.ceil(avgDaily * 14) - totalStock);
+                }
+                
+                // Ajustar por vencimiento si aplica
+                let expiryNote = '';
+                if (p.expiry && toBuy > 0) {
+                    const expiryDate = new Date(p.expiry);
+                    const daysUntilExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+                    
+                    // Si el stock actual se vence antes de la próxima compra
+                    if (daysUntilExpiry < (daysUntilBuy || 7)) {
+                        priority = priority ? priority.replace('🟠', '🔴').replace('🟡', '🔴') : '🔴 Stock se vence pronto';
+                        alertColor = 'red';
+                        criticalCount++;
+                        expiryNote = ` (vence en ${daysUntilExpiry}d)`;
+                    }
+                    
+                    // Calcular vencimiento óptimo para la compra
+                    // El stock nuevo debería durar: toBuy / avgDaily días
+                    const suggestedExpiryDays = avgDaily > 0 ? Math.ceil(toBuy / avgDaily * 1.5) : 30;
+                    const suggestedExpiryDate = new Date(today);
+                    suggestedExpiryDate.setDate(today.getDate() + suggestedExpiryDays);
+                    expiryNote += ` → venc. ideal: ${formatDateISO(suggestedExpiryDate).slice(5)}`;
+                }
+                
+                if (toBuy > 0) {
+                    const buyCost = toBuy * (p.cost || 0);
+                    totalBuyUnits += toBuy;
+                    totalInvestment += buyCost;
+                    
+                    shoppingList.push({
+                        name: p.name,
+                        stock: totalStock,
+                        daysOfStock: daysOfStock,
+                        daysUntilBuy: daysUntilBuy,
+                        toBuy: toBuy,
+                        priority: priority + expiryNote,
+                        alertColor: alertColor,
+                        cost: p.cost || 0,
+                        avgDaily: avgDaily.toFixed(1),
+                        nextBuyDay: daysUntilBuy !== null ? (daysUntilBuy === 0 ? 'Hoy' : daysUntilBuy === 1 ? 'Mañana' : `En ${daysUntilBuy}d`) : 'Sin definir'
+                    });
+                }
+            });
+            
+            // Actualizar KPIs
+            const criticalEl = document.getElementById('critical-stock-count');
+            const lowEl = document.getElementById('low-stock-count');
+            const unitsEl = document.getElementById('total-buy-units');
+            const investmentEl = document.getElementById('total-buy-investment');
+            
+            if (criticalEl) criticalEl.textContent = criticalCount;
+            if (lowEl) lowEl.textContent = warningCount;
+            if (unitsEl) unitsEl.textContent = totalBuyUnits;
+            if (investmentEl) investmentEl.textContent = `$${totalInvestment.toFixed(0)}`;
+            
+            // Actualizar badge del sidebar
+            const restockBadge = document.getElementById('restock-badge');
+            if (restockBadge) {
+                const totalAlerts = criticalCount + warningCount;
+                if (totalAlerts > 0) {
+                    restockBadge.textContent = totalAlerts;
+                    restockBadge.classList.remove('hidden');
+                    restockBadge.className = `ml-auto text-white text-xs rounded-full px-1.5 text-[10px] ${criticalCount > 0 ? 'bg-red-500' : 'bg-orange-500'}`;
+                } else {
+                    restockBadge.classList.add('hidden');
+                }
+            }
+            
+            // Actualizar tabla de compras sugeridas
+            const tableBody = document.getElementById('auto-shopping-list');
+            if (tableBody) {
+                if (shoppingList.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-green-600"><i class="fas fa-check-circle"></i> ¡Stock óptimo! No hay compras pendientes</td></tr>';
+                } else {
+                    // Ordenar: críticos primero, luego naranja, luego amarillo
+                    shoppingList.sort((a, b) => {
+                        const priorityOrder = { 'red': 0, 'orange': 1, 'yellow': 2 };
+                        return priorityOrder[a.alertColor] - priorityOrder[b.alertColor];
+                    });
+                    
+                    tableBody.innerHTML = shoppingList.map(item => {
+                        const colorClass = item.alertColor === 'red' ? 'bg-red-100 text-red-700' : 
+                                          item.alertColor === 'orange' ? 'bg-orange-100 text-orange-700' : 
+                                          'bg-yellow-100 text-yellow-700';
+                        return `
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-3">
+                                <div class="font-medium">${escapeHtml(item.name)}</div>
+                                <div class="text-xs text-gray-500">${item.avgDaily}/día • Próx.compra: ${item.nextBuyDay}</div>
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="font-bold ${item.stock === 0 ? 'text-red-600' : 'text-gray-700'}">${item.stock}</span>
+                                <div class="text-xs text-gray-500">${item.daysOfStock}d</div>
+                            </td>
+                            <td class="px-4 py-3 text-center font-bold text-blue-600">${item.toBuy}</td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="px-2 py-1 rounded-full text-xs font-bold ${colorClass}">${item.priority}</span>
+                            </td>
+                            <td class="px-4 py-3 text-right text-xs text-gray-500">$${(item.toBuy * item.cost).toFixed(0)}</td>
+                        </tr>
+                    `}).join('');
+                }
+            }
+            
+            return { criticalCount, warningCount, shoppingList };
         }
 
         let addStockPaymentMethod = 'cash';
@@ -4080,8 +4674,8 @@
             // Calcular métricas
             calculateFinancialMetrics();
             
-            // Actualizar gráfico con configuración actual
-            renderCashFlowChart(chartDays);
+            // Actualizar gráfico con período actual
+            renderCashFlowChartByPeriod();
         }
         
         function renderCashMovements() {
@@ -4277,11 +4871,11 @@
                 `).join('') || '<tr><td colspan="5" class="text-center py-4 text-gray-400">No hay gastos</td></tr>';
             }
             
-            // Actualizar gráfico (usa configuración de días independiente)
-            renderCashFlowChart(chartDays);
+            // Actualizar gráfico
+            renderCashFlowChartByPeriod();
         }
         
-        // ==================== SELECTOR DE DÍAS PARA GRÁFICO ====================
+        // ==================== SELECTOR DE DÍAS PARA GRÁFICO (DEPRECATED) ====================
         function setChartDays(days) {
             chartDays = days;
             
@@ -4300,6 +4894,313 @@
             
             // Recargar gráfico
             renderCashFlowChart(days);
+        }
+        
+        // ==================== SELECTOR DE PERÍODO PARA GRÁFICO ====================
+        let currentChartPeriod = 'month'; // day, week, month, year
+        let chartPeriodOffset = 0; // 0 = período actual, -1 = anterior, 1 = siguiente
+        
+        function setChartPeriod(period) {
+            chartPeriodOffset = 0; // Resetear offset al cambiar de tipo de período
+            currentChartPeriod = period;
+            
+            // Actualizar botones visuales
+            ['day', 'week', 'month', 'year'].forEach(p => {
+                const btn = document.getElementById('btn-period-' + p);
+                if (btn) {
+                    if (p === period) {
+                        btn.classList.remove('text-gray-600', 'hover:bg-white');
+                        btn.classList.add('bg-white', 'text-gray-800', 'shadow-sm');
+                    } else {
+                        btn.classList.remove('bg-white', 'text-gray-800', 'shadow-sm');
+                        btn.classList.add('text-gray-600', 'hover:bg-white');
+                    }
+                }
+            });
+            
+            // Recargar gráfico
+            renderCashFlowChartByPeriod();
+        }
+        
+        // ==================== NAVEGACIÓN DE PERÍODO CON FLECHAS ====================
+        function navigateChartPeriod(direction) {
+            chartPeriodOffset += direction;
+            renderCashFlowChartByPeriod();
+        }
+        
+        function getPeriodLabel() {
+            const today = new Date();
+            const offset = chartPeriodOffset;
+            
+            switch(currentChartPeriod) {
+                case 'day': {
+                    // Navegar por días de la semana
+                    const currentDay = today.getDay();
+                    const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+                    const monday = new Date(today);
+                    monday.setDate(today.getDate() + diffToMonday);
+                    
+                    const targetDay = new Date(monday);
+                    targetDay.setDate(monday.getDate() + offset);
+                    
+                    const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+                    const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+                    return `${days[targetDay.getDay()]} ${targetDay.getDate()} ${months[targetDay.getMonth()]}`;
+                }
+                
+                case 'week': {
+                    // Navegar por semanas del mes
+                    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+                    const currentWeek = Math.ceil((today.getDate() + firstDayOfMonth.getDay() - 1) / 7);
+                    const targetWeek = currentWeek + offset;
+                    
+                    const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+                    return `Semana ${targetWeek} de ${months[today.getMonth()]}`;
+                }
+                
+                case 'month': {
+                    // Navegar por meses del año
+                    const targetMonth = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+                    const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+                    return `${months[targetMonth.getMonth()]} ${targetMonth.getFullYear()}`;
+                }
+                
+                case 'year': {
+                    // Navegar por años
+                    const targetYear = today.getFullYear() + offset;
+                    return `Año ${targetYear}`;
+                }
+                
+                default:
+                    return '';
+            }
+        }
+        
+        function renderCashFlowChartByPeriod() {
+            const ctx = document.getElementById('cashFlowChart');
+            if (!ctx) return;
+            
+            if (cashFlowChartInstance) {
+                cashFlowChartInstance.destroy();
+                cashFlowChartInstance = null;
+            }
+            
+            // Actualizar label del período
+            const periodLabel = document.getElementById('chart-period-label');
+            if (periodLabel) {
+                periodLabel.textContent = getPeriodLabel();
+            }
+            
+            const today = new Date();
+            const offset = chartPeriodOffset;
+            const labels = [];
+            const salesData = [];
+            const profitData = [];
+            const expenseData = [];
+            
+            // Generar estructura según el período seleccionado
+            switch(currentChartPeriod) {
+                case 'day': {
+                    // Calcular día objetivo según offset (navegar por días de la semana)
+                    const currentDay = today.getDay();
+                    const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+                    const monday = new Date(today);
+                    monday.setDate(today.getDate() + diffToMonday);
+                    
+                    const targetDay = new Date(monday);
+                    targetDay.setDate(monday.getDate() + offset);
+                    const targetDayStr = formatDateISO(targetDay);
+                    
+                    // Mostrar horas del día (00:00 a 23:00)
+                    for (let h = 0; h < 24; h++) {
+                        const hourStr = String(h).padStart(2, '0') + ':00';
+                        labels.push(hourStr);
+                        
+                        const hourSales = appState.sales
+                            .filter(s => s.date === targetDayStr && parseInt((s.time || '00:00').split(':')[0]) === h)
+                            .reduce((sum, s) => sum + (s.total || 0), 0);
+                        const hourProfit = appState.sales
+                            .filter(s => s.date === targetDayStr && parseInt((s.time || '00:00').split(':')[0]) === h)
+                            .reduce((sum, s) => sum + (s.profit || 0), 0);
+                        const hourExpenses = appState.expenses
+                            .filter(e => e.date === targetDayStr && parseInt((e.time || '00:00').split(':')[0]) === h)
+                            .reduce((sum, e) => sum + (e.amount || 0), 0);
+                        const hourInvestments = appState.investments
+                            .filter(i => i.date === targetDayStr && parseInt((i.time || '00:00').split(':')[0]) === h)
+                            .reduce((sum, i) => sum + (i.amount || 0), 0);
+                        
+                        salesData.push(hourSales);
+                        profitData.push(hourProfit);
+                        expenseData.push(hourExpenses + hourInvestments);
+                    }
+                    break;
+                }
+                    
+                case 'week': {
+                    // Calcular semana objetivo según offset
+                    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+                    const currentWeek = Math.ceil((today.getDate() + firstDayOfMonth.getDay() - 1) / 7);
+                    const targetWeek = currentWeek + offset;
+                    
+                    // Encontrar el lunes de la semana objetivo
+                    const weeksFromStart = targetWeek - 1;
+                    const targetMonday = new Date(today.getFullYear(), today.getMonth(), 1 + (weeksFromStart * 7) - (firstDayOfMonth.getDay() - 1));
+                    
+                    const dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+                    for (let d = 0; d < 7; d++) {
+                        const date = new Date(targetMonday);
+                        date.setDate(targetMonday.getDate() + d);
+                        const dateStr = formatDateISO(date);
+                        labels.push(dayNames[d]);
+                        
+                        const daySales = appState.sales
+                            .filter(s => s.date === dateStr)
+                            .reduce((sum, s) => sum + (s.total || 0), 0);
+                        const dayProfit = appState.sales
+                            .filter(s => s.date === dateStr)
+                            .reduce((sum, s) => sum + (s.profit || 0), 0);
+                        const dayExpenses = appState.expenses
+                            .filter(e => e.date === dateStr)
+                            .reduce((sum, e) => sum + (e.amount || 0), 0);
+                        const dayInvestments = appState.investments
+                            .filter(i => i.date === dateStr)
+                            .reduce((sum, i) => sum + (i.amount || 0), 0);
+                        
+                        salesData.push(daySales);
+                        profitData.push(dayProfit);
+                        expenseData.push(dayExpenses + dayInvestments);
+                    }
+                    break;
+                }
+                    
+                case 'month': {
+                    // Calcular mes objetivo según offset
+                    const targetMonth = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+                    const yearMonth = `${targetMonth.getFullYear()}-${String(targetMonth.getMonth() + 1).padStart(2, '0')}`;
+                    const lastDay = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0).getDate();
+                    
+                    for (let d = 1; d <= lastDay; d++) {
+                        const dayStr = String(d).padStart(2, '0');
+                        labels.push(dayStr);
+                        
+                        const dateStr = `${yearMonth}-${dayStr}`;
+                        const daySales = appState.sales
+                            .filter(s => s.date === dateStr)
+                            .reduce((sum, s) => sum + (s.total || 0), 0);
+                        const dayProfit = appState.sales
+                            .filter(s => s.date === dateStr)
+                            .reduce((sum, s) => sum + (s.profit || 0), 0);
+                        const dayExpenses = appState.expenses
+                            .filter(e => e.date === dateStr)
+                            .reduce((sum, e) => sum + (e.amount || 0), 0);
+                        const dayInvestments = appState.investments
+                            .filter(i => i.date === dateStr)
+                            .reduce((sum, i) => sum + (i.amount || 0), 0);
+                        
+                        salesData.push(daySales);
+                        profitData.push(dayProfit);
+                        expenseData.push(dayExpenses + dayInvestments);
+                    }
+                    break;
+                }
+                    
+                case 'year': {
+                    // Calcular año objetivo según offset
+                    const targetYear = today.getFullYear() + offset;
+                    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+                    
+                    for (let m = 0; m < 12; m++) {
+                        const monthStr = String(m + 1).padStart(2, '0');
+                        labels.push(monthNames[m]);
+                        
+                        const monthPrefix = `${targetYear}-${monthStr}`;
+                        const monthSales = appState.sales
+                            .filter(s => s.date && s.date.startsWith(monthPrefix))
+                            .reduce((sum, s) => sum + (s.total || 0), 0);
+                        const monthProfit = appState.sales
+                            .filter(s => s.date && s.date.startsWith(monthPrefix))
+                            .reduce((sum, s) => sum + (s.profit || 0), 0);
+                        const monthExpenses = appState.expenses
+                            .filter(e => e.date && e.date.startsWith(monthPrefix))
+                            .reduce((sum, e) => sum + (e.amount || 0), 0);
+                        const monthInvestments = appState.investments
+                            .filter(i => i.date && i.date.startsWith(monthPrefix))
+                            .reduce((sum, i) => sum + (i.amount || 0), 0);
+                        
+                        salesData.push(monthSales);
+                        profitData.push(monthProfit);
+                        expenseData.push(monthExpenses + monthInvestments);
+                    }
+                    break;
+                }
+            }
+            
+            // Verificar si hay datos
+            const hasData = salesData.some(v => v > 0) || profitData.some(v => v > 0) || expenseData.some(v => v > 0);
+            
+            // Actualizar mensaje de "sin datos" si aplica
+            const parent = ctx.parentElement;
+            let msg = parent.querySelector('.no-data-msg');
+            
+            if (!hasData) {
+                if (!msg) {
+                    msg = document.createElement('p');
+                    msg.className = 'no-data-msg text-center text-gray-400 py-4 text-sm';
+                    parent.insertBefore(msg, ctx.nextSibling);
+                }
+                msg.textContent = 'No hay datos para este período';
+            } else if (msg) {
+                msg.remove();
+            }
+            
+            cashFlowChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Facturado',
+                            data: salesData,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Ganancia',
+                            data: profitData,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Gastos',
+                            data: expenseData,
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
         }
         
         // ==================== SELECTOR DE MODO: $ O % ====================
@@ -4439,53 +5340,134 @@
                 
                 const netProfit = totalCapital - (appState.initialCapital + capitalInjected);
                 
+                // Calcular margen de ganancia promedio de todos los productos
+                let avgMargin = 0;
+                if (appState.inventory.length > 0) {
+                    const totalMargin = appState.inventory.reduce((sum, p) => {
+                        const cost = p.cost || 0;
+                        const price = p.salePrice || p.price || 0;
+                        if (cost > 0 && price > 0) {
+                            const margin = ((price - cost) / price) * 100;
+                            return sum + margin;
+                        }
+                        return sum;
+                    }, 0);
+                    avgMargin = totalMargin / appState.inventory.length;
+                }
+                
                 updateMetric('metric-capital-injected', `$${formatNumber(totalCapital)}`, 'text-blue-800');
                 updateMetric('metric-net-profit', `$${formatNumber(netProfit)}`, netProfit >= 0 ? 'text-emerald-800' : 'text-red-600');
                 
-                // ===== ROI EN DÍAS =====
+                // Actualizar margen promedio
+                const marginEl = document.getElementById('metric-avg-margin');
+                if (marginEl) {
+                    marginEl.textContent = `${avgMargin.toFixed(1)}%`;
+                }
+                
+                // ===== ROI Y RECUPERACIÓN =====
+                // Calcular inversión total (capital inicial + inyecciones)
+                const totalInvested = (appState.initialCapital || 0) + capitalInjected;
+                
+                // Calcular ROI % (ganancia neta sobre inversión)
+                const roiPercent = totalInvested > 0 ? ((netProfit / totalInvested) * 100) : 0;
+                
+                // Calcular tiempo de recuperación
+                let recoveryTimeText = '-';
+                let recoveryDetailText = 'Sin inversiones';
+                
+                // Días transcurridos desde la primera venta/gasto
                 const allDates = [
                     ...appState.sales.map(s => s.date),
                     ...appState.expenses.map(e => e.date),
                     ...appState.investments.map(i => i.date)
                 ].filter(Boolean).sort();
                 
-                let roiText = 'N/A';
-                let roiColor = 'text-gray-400';
-                
-                if (capitalInjected > 0 && allDates.length > 0) {
-                    const firstDate = new Date(allDates[0]);
-                    const todayDate = new Date();
-                    const daysActive = Math.max(1, Math.ceil((todayDate - firstDate) / (1000 * 60 * 60 * 24)));
-                    const totalDaysWithSales = new Set(appState.sales.map(s => s.date)).size;
-                    const avgDailyProfit = totalDaysWithSales > 0 ? (netProfit / totalDaysWithSales) : 0;
-                    
-                    if (netProfit >= capitalInjected) {
-                        let accumulatedProfit = 0;
-                        let daysToRecover = 0;
-                        const sortedSales = [...appState.sales].sort((a, b) => new Date(a.date) - new Date(b.date));
+                if (totalInvested > 0) {
+                    if (allDates.length > 0) {
+                        const firstDate = new Date(allDates[0]);
+                        const todayDate = new Date();
+                        const daysActive = Math.max(1, Math.ceil((todayDate - firstDate) / (1000 * 60 * 60 * 24)));
                         
-                        for (let i = 0; i < sortedSales.length; i++) {
-                            accumulatedProfit += sortedSales[i].profit;
-                            if (accumulatedProfit >= capitalInjected) {
-                                const firstSaleDate = new Date(sortedSales[0].date);
-                                const recoveryDate = new Date(sortedSales[i].date);
-                                daysToRecover = Math.ceil((recoveryDate - firstSaleDate) / (1000 * 60 * 60 * 24));
-                                break;
+                        // Velocidad de recuperación (% por día)
+                        const recoverySpeed = daysActive > 0 ? (roiPercent / daysActive) : 0;
+                        
+                        if (netProfit >= totalInvested) {
+                            // Ya se recuperó - calcular cuánto tardó
+                            let accumulatedProfit = 0;
+                            let daysToRecover = 0;
+                            const sortedSales = [...appState.sales].sort((a, b) => new Date(a.date) - new Date(b.date));
+                            
+                            for (let i = 0; i < sortedSales.length; i++) {
+                                accumulatedProfit += sortedSales[i].profit;
+                                if (accumulatedProfit >= totalInvested) {
+                                    const firstSaleDate = new Date(sortedSales[0].date);
+                                    const recoveryDate = new Date(sortedSales[i].date);
+                                    daysToRecover = Math.ceil((recoveryDate - firstSaleDate) / (1000 * 60 * 60 * 24));
+                                    break;
+                                }
                             }
+                            
+                            recoveryTimeText = formatDaysToMonths(daysToRecover);
+                            const monthlyRate = daysToRecover > 0 ? ((roiPercent / daysToRecover) * 30).toFixed(0) : 0;
+                            recoveryDetailText = `Recuperado al ${monthlyRate}% mensual`;
+                        } else if (recoverySpeed > 0) {
+                            // Calcular tiempo restante
+                            const percentRemaining = 100 - roiPercent;
+                            const daysRemaining = Math.ceil(percentRemaining / recoverySpeed);
+                            recoveryTimeText = `En ${formatDaysToMonths(daysRemaining)}`;
+                            
+                            // Calcular tasa mensual actual
+                            const monthlyRate = recoverySpeed * 30;
+                            recoveryDetailText = `Velocidad: ${monthlyRate.toFixed(0)}% mensual`;
+                        } else {
+                            recoveryTimeText = 'Calculando...';
+                            recoveryDetailText = `Inversión: $${formatNumber(totalInvested)}`;
                         }
-                        roiText = formatDaysToMonths(daysToRecover);
-                        roiColor = 'text-green-600';
-                    } else if (avgDailyProfit > 0) {
-                        const daysRemaining = Math.ceil((capitalInjected - netProfit) / avgDailyProfit);
-                        roiText = formatDaysToMonths(daysRemaining);
-                        roiColor = 'text-purple-800';
-                    } else {
-                        roiText = 'Calculando...';
-                        roiColor = 'text-gray-500';
                     }
                 }
                 
-                updateMetric('metric-roi-days', roiText, roiColor);
+                // Calcular ROI mensual y anual
+                let roiMonthly = 0;
+                let roiAnnual = 0;
+                let multiplier = 0;
+                
+                if (totalInvested > 0 && allDates.length > 0) {
+                    const firstDate = new Date(allDates[0]);
+                    const todayDate = new Date();
+                    const monthsActive = Math.max(1, (todayDate.getFullYear() - firstDate.getFullYear()) * 12 + (todayDate.getMonth() - firstDate.getMonth()));
+                    const yearsActive = Math.max(1, monthsActive / 12);
+                    
+                    roiMonthly = monthsActive > 0 ? (roiPercent / monthsActive) : 0;
+                    roiAnnual = yearsActive > 0 ? (roiPercent / yearsActive) : 0;
+                    multiplier = (totalInvested + netProfit) / totalInvested;
+                }
+                
+                // Actualizar elementos
+                const roiTotalEl = document.getElementById('metric-roi-total');
+                const roiMonthlyEl = document.getElementById('metric-roi-monthly');
+                const roiRecoveryEl = document.getElementById('metric-roi-recovery');
+                const roiMultiplierEl = document.getElementById('metric-roi-multiplier');
+                const roiDetailEl = document.getElementById('metric-roi-detail');
+                
+                if (roiTotalEl) {
+                    roiTotalEl.textContent = `${roiPercent.toFixed(0)}%`;
+                    roiTotalEl.className = `text-xl font-bold ${roiPercent >= 100 ? 'text-green-600' : roiPercent > 0 ? 'text-purple-800' : 'text-gray-600'}`;
+                }
+                if (roiMonthlyEl) {
+                    roiMonthlyEl.textContent = `${roiMonthly.toFixed(1)}%`;
+                    roiMonthlyEl.className = `text-xl font-bold ${roiMonthly >= 10 ? 'text-green-600' : roiMonthly > 0 ? 'text-purple-800' : 'text-gray-600'}`;
+                }
+                if (roiRecoveryEl) {
+                    roiRecoveryEl.textContent = recoveryTimeText;
+                    roiRecoveryEl.className = `text-xl font-bold ${roiPercent >= 100 ? 'text-green-600' : roiPercent > 0 ? 'text-purple-800' : 'text-gray-600'}`;
+                }
+                if (roiMultiplierEl) {
+                    roiMultiplierEl.textContent = `${multiplier.toFixed(1)}x`;
+                    roiMultiplierEl.className = `text-xl font-bold ${multiplier >= 2 ? 'text-green-600' : multiplier > 1 ? 'text-purple-800' : 'text-gray-600'}`;
+                }
+                if (roiDetailEl) {
+                    roiDetailEl.textContent = recoveryDetailText;
+                }
                 
             } catch (e) {
                 console.error('Error calculando métricas:', e);
@@ -5466,10 +6448,16 @@
                     bgColor = 'rgba(102, 126, 234, 0.1)';
                 }
                 
+                // Formatear fechas para mostrar "DD/MM"
+                const formattedLabels = last14Days.map(d => {
+                    const [year, month, day] = d.split('-');
+                    return `${day}/${month}`;
+                });
+                
                 window.trendChartInstance = new Chart(chartCtx, {
                     type: 'line',
                     data: {
-                        labels: last14Days.map(d => d.slice(5)),
+                        labels: formattedLabels,
                         datasets: [{
                             label: label,
                             data: data,
@@ -5482,12 +6470,26 @@
                     options: {
                         responsive: true,
                         plugins: { 
-                            legend: { display: false }
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    title: function(context) {
+                                        const idx = context[0].dataIndex;
+                                        return last14Days[idx]; // Fecha completa YYYY-MM-DD
+                                    }
+                                }
+                            }
                         },
                         scales: { 
                             y: { 
                                 beginAtZero: true
-                            } 
+                            },
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45
+                                }
+                            }
                         }
                     }
                 });
@@ -5718,6 +6720,19 @@ Total de productos a comprar: ${shoppingList.length}
         }
 
         // ==================== SETTINGS ====================
+        function renderReports() {
+            // Establecer fechas por defecto (último mes)
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - 30);
+            
+            const startInput = document.getElementById('report-start-date');
+            const endInput = document.getElementById('report-end-date');
+            
+            if (startInput) startInput.value = formatDateISO(startDate);
+            if (endInput) endInput.value = formatDateISO(endDate);
+        }
+
         function renderSettings() {
             document.getElementById('settings-margin').value = appState.defaultMargin;
             document.getElementById('settings-cash').value = appState.cash;
@@ -5924,6 +6939,14 @@ RESULTADOS:
             } catch(e) { console.error('Error en renderInventory:', e); }
             
             try {
+                updateStockKPIs();
+            } catch(e) { console.error('Error en updateStockKPIs:', e); }
+            
+            try {
+                renderSellAlerts();
+            } catch(e) { console.error('Error en renderSellAlerts:', e); }
+            
+            try {
                 updateSidebar();
             } catch(e) { console.error('Error en updateSidebar:', e); }
             
@@ -5972,6 +6995,35 @@ RESULTADOS:
                 
                 console.log('Sidebar actualizado - Caja:', cash, 'Cuenta:', bank, 'Ventas hoy:', todayTotal);
                 
+                // Actualizar badge de usuario
+                const userBadge = document.getElementById('user-badge');
+                const userName = document.getElementById('user-name');
+                if (userBadge && userName && appState.currentUser) {
+                    if (appState.currentUser.role === 'admin') {
+                        userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-purple-500 text-white rounded text-xs font-bold';
+                        userBadge.innerHTML = '<i class="fas fa-user-shield"></i> <span>Administrador</span>';
+                    } else {
+                        userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-orange-500 text-white rounded text-xs font-bold';
+                        userBadge.innerHTML = '<i class="fas fa-user"></i> <span>' + appState.currentUser.name + ' (Colab.)</span>';
+                    }
+                }
+                
+                // Mostrar/ocultar opciones de admin en el sidebar y botones superiores
+                const isAdmin = appState.currentUser && appState.currentUser.role === 'admin';
+                const adminNavs = ['nav-cashflow', 'nav-reports', 'nav-settings'];
+                adminNavs.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        el.style.display = isAdmin ? 'block' : 'none';
+                    }
+                });
+                
+                // Ocultar botones de admin en la barra superior
+                const btnInventory = document.getElementById('btn-top-inventory');
+                const btnExpense = document.getElementById('btn-top-expense');
+                if (btnInventory) btnInventory.style.display = isAdmin ? 'flex' : 'none';
+                if (btnExpense) btnExpense.style.display = isAdmin ? 'flex' : 'none';
+                
             } catch (e) {
                 console.error('Error en updateSidebar:', e);
             }
@@ -6012,15 +7064,97 @@ RESULTADOS:
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
-                    const data = JSON.parse(e.target.result);
-                    appState = { ...appState, ...data };
-                    saveToLocalStorage();
-        
+                    const backupData = JSON.parse(e.target.result);
+                    
+                    // CONFIRMAR antes de borrar todo
+                    if (!confirm('⚠️ ¿Estás seguro? Esto reemplazará TODOS los datos actuales por los del backup.\n\nSe restaurarán:\n• ' + (backupData.inventory?.length || 0) + ' productos\n• ' + (backupData.sales?.length || 0) + ' ventas\n• ' + (backupData.expenses?.length || 0) + ' gastos\n• $' + (backupData.cash || 0).toFixed(2) + ' en caja\n\nLos datos actuales se perderán.')) {
+                        input.value = '';
+                        return;
+                    }
+                    
+                    // Limpiar todo el estado actual
+                    appState = {
+                        // Fechas
+                        currentDate: new Date(backupData.currentDate || new Date()),
+                        activeDate: new Date(backupData.activeDate || new Date()),
+                        calendarMonth: new Date(backupData.calendarMonth || new Date()),
+                        
+                        // Configuración
+                        defaultMargin: backupData.defaultMargin || 30,
+                        initialCapital: backupData.initialCapital || 0,
+                        
+                        // Saldos
+                        cash: backupData.cash || 0,
+                        bank: backupData.bank || 0,
+                        
+                        // Arrays de datos (lo más importante)
+                        inventory: Array.isArray(backupData.inventory) ? backupData.inventory : [],
+                        sales: Array.isArray(backupData.sales) ? backupData.sales : [],
+                        expenses: Array.isArray(backupData.expenses) ? backupData.expenses : [],
+                        investments: Array.isArray(backupData.investments) ? backupData.investments : [],
+                        cashMovements: Array.isArray(backupData.cashMovements) ? backupData.cashMovements : [],
+                        capitalAdjustments: Array.isArray(backupData.capitalAdjustments) ? backupData.capitalAdjustments : [],
+                        alerts: Array.isArray(backupData.alerts) ? backupData.alerts : [],
+                        guestLogs: Array.isArray(backupData.guestLogs) ? backupData.guestLogs : [],
+                        
+                        // Estado temporal
+                        cart: [],
+                        paymentMethod: 'cash',
+                        pendingPurchase: null,
+                        pendingPurchasePayment: 'cash',
+                        
+                        // Usuario (no restaurar sesión por seguridad)
+                        currentUser: null
+                    };
+                    
+                    // Guardar en localStorage
+                    saveToLocalStorage(false); // No disparar sync automático todavía
+                    
+                    // Renderizar todo
                     renderAll();
-                    showNotification('Datos restaurados correctamente', 'success');
+                    updateSidebar();
+                    
+                    // SINCRONIZAR INMEDIATAMENTE CON FIREBASE para reemplazar datos en la nube
+                    if (window.db && navigator.onLine) {
+                        (async () => {
+                            try {
+                                const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                                
+                                const dataToSync = {
+                                    ...appState,
+                                    cart: [],
+                                    currentDate: new Date().toISOString(),
+                                    activeDate: appState.activeDate.toISOString(),
+                                    calendarMonth: appState.calendarMonth.toISOString(),
+                                    lastSync: new Date().toISOString(),
+                                    deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId(),
+                                    restoredFromBackup: true,
+                                    restoredAt: new Date().toISOString()
+                                };
+                                
+                                await setDoc(doc(window.db, "kioscos", "main"), dataToSync);
+                                lastSyncTime = Date.now();
+                                updateSyncStatus('synced');
+                                showNotification('☁️ Datos restaurados subidos a la nube', 'success');
+                                console.log('✅ Backup restaurado y sincronizado con Firebase');
+                            } catch (err) {
+                                console.error('Error sincronizando restore:', err);
+                                showNotification('⚠️ Backup restaurado localmente. Error al subir a la nube.', 'warning');
+                            }
+                        })();
+                    } else {
+                        showNotification('📴 Backup restaurado localmente (sin conexión a internet)', 'info');
+                    }
+                    
+                    showNotification('✅ Backup restaurado completamente. Se cargaron ' + appState.inventory.length + ' productos y ' + appState.sales.length + ' ventas.', 'success');
+                    
                 } catch (err) {
-                    showNotification('Error al restaurar datos', 'error');
+                    console.error('Error al restaurar:', err);
+                    showNotification('❌ Error al restaurar datos: ' + err.message, 'error');
                 }
+                
+                // Limpiar input
+                input.value = '';
             };
             reader.readAsText(file);
         }
@@ -6146,8 +7280,9 @@ RESULTADOS:
             // Actualizar solo si los datos de Firebase son más recientes
             const firebaseTime = new Date(data.lastSync || 0).getTime();
             const localTime = lastSyncTime;
+            const isRestore = data.restoredFromBackup === true;
             
-            if (firebaseTime > localTime || !localStorage.getItem('kioscopro-data')) {
+            if (isRestore || firebaseTime > localTime || !localStorage.getItem('kioscopro-data')) {
                 // Preservar carrito local (no se sincroniza)
                 const localCart = appState.cart;
                 
@@ -6187,6 +7322,7 @@ RESULTADOS:
                 
                 // Guardar en localStorage y renderizar
                 saveToLocalStorage(false); // false = no disparar syncToFirebase
+                lastSyncTime = Date.now(); // Actualizar para evitar re-merges
                 renderAll();
                 
                 // Solo mostrar notificación si:

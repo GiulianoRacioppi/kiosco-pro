@@ -1786,6 +1786,17 @@
                     preparePurchase();
                 });
                 console.log('Inventory form handler attached');
+                
+                // Agregar navegación con Enter entre campos
+                const inputs = invForm.querySelectorAll('input, select, button[type="button"]');
+                inputs.forEach((input, index) => {
+                    input.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter' && index < inputs.length - 1) {
+                            e.preventDefault();
+                            inputs[index + 1].focus();
+                        }
+                    });
+                });
             } else {
                 console.error('Inventory form NOT FOUND!');
             }
@@ -3174,34 +3185,52 @@
 
         function preparePurchase() {
             console.log('preparePurchase llamado');
-            alert('DEBUG: preparePurchase() fue llamado');
             
             // Normalizar: reemplazar coma por punto para parseFloat (soporte español)
-            const cost = parseFloat(document.getElementById('inv-cost').value.replace(',', '.')) || 0;
-            const stock = parseInt(document.getElementById('inv-stock').value) || 0;
-            const priceValue = parseFloat(document.getElementById('inv-price').value.replace(',', '.')) || 0;
+            const costInput = document.getElementById('inv-cost');
+            const stockInput = document.getElementById('inv-stock');
+            const priceInput = document.getElementById('inv-price');
+            const nameInput = document.getElementById('inv-name');
+            const barcodeInput = document.getElementById('inv-barcode');
+            const categoryInput = document.getElementById('inv-category');
+            const expiryInput = document.getElementById('inv-expiry');
+            
+            // Debug: verificar que los elementos existen
+            if (!costInput || !stockInput || !priceInput || !nameInput) {
+                alert('ERROR: Faltan elementos del formulario');
+                return;
+            }
+            
+            const cost = parseFloat(costInput.value.replace(',', '.')) || 0;
+            const stock = parseInt(stockInput.value) || 0;
+            const priceValue = parseFloat(priceInput.value.replace(',', '.')) || 0;
             const totalCost = cost * stock;
             
             console.log('Valores:', { cost, stock, priceValue, totalCost });
 
             // Validaciones
-            if (!document.getElementById('inv-name').value.trim()) {
+            if (!nameInput.value.trim()) {
+                alert('ERROR: Falta el nombre del producto');
                 showNotification('Ingresa el nombre del producto', 'error');
                 return;
             }
             if (cost <= 0) {
+                alert('ERROR: El costo debe ser mayor a 0. Valor actual: ' + cost);
                 showNotification('El costo debe ser mayor a 0', 'error');
                 return;
             }
             if (stock <= 0) {
+                alert('ERROR: El stock debe ser mayor a 0. Valor actual: ' + stock);
                 showNotification('El stock debe ser mayor a 0', 'error');
                 return;
             }
             if (priceValue <= 0) {
+                alert('ERROR: El precio debe ser mayor a 0. Valor actual: ' + priceValue);
                 showNotification('El precio de venta debe ser mayor a 0', 'error');
                 return;
             }
             
+            alert('DEBUG: Todas las validaciones pasaron. Creando producto...');
             console.log('Validaciones pasadas, creando pendingPurchase');
 
             appState.pendingPurchase = {
@@ -3224,7 +3253,12 @@
             
             setPurchasePayment('cash');
             const modal = document.getElementById('purchase-payment-modal');
+            if (!modal) {
+                alert('ERROR: No se encontró el modal de pago');
+                return;
+            }
             modal.classList.add('active');
+            alert('DEBUG: Modal debería estar abierto ahora');
             console.log('Modal abierto:', modal.classList.contains('active'));
         }
 

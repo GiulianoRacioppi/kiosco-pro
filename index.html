@@ -3256,7 +3256,13 @@
         }
 
         function confirmPurchase() {
-            if (!appState.pendingPurchase) return;
+            console.log('confirmPurchase called', appState.pendingPurchase);
+            if (!appState.pendingPurchase) {
+                showNotification('Error: No hay compra pendiente', 'error');
+                return;
+            }
+            
+            try {
             
             const totalCost = parseFloat(appState.pendingPurchase.totalCost) || 0;
             const method = appState.pendingPurchasePayment || 'cash';
@@ -3289,6 +3295,7 @@
                 buyDays: appState.pendingPurchase.buyDays,
                 cost: appState.pendingPurchase.cost,
                 salePrice: appState.pendingPurchase.salePrice,
+                stock: appState.pendingPurchase.stock, // Stock total para compatibilidad
                 min: 5, // Stock mínimo por defecto
                 // Sistema de lotes (batches) - cada compra es un lote
                 batches: [{
@@ -3322,6 +3329,10 @@
             document.getElementById('inv-margin').value = appState.defaultMargin || 30;
             renderAll();
             showNotification(`Producto comprado y creado exitosamente. Pagado con ${method === 'cash' ? 'Caja' : 'Cuenta'}`, 'success');
+            } catch (error) {
+                console.error('Error en confirmPurchase:', error);
+                showNotification('Error al procesar la compra: ' + error.message, 'error');
+            }
         }
 
         // ==================== BÚSQUEDA FUZZY Y NORMALIZACIÓN ====================
@@ -3419,7 +3430,7 @@
             document.getElementById('inventory-table').innerHTML = filtered.map(p => {
                 // Calcular stock total desde lotes
                 const totalStock = p.batches ? p.batches.reduce((sum, b) => sum + b.stock, 0) : (p.stock || 0);
-                const minStock = p.minStock || 5;
+                const minStock = p.min || p.minStock || 5;
                 
                 // Formatear lotes para mostrar
                 let batchesHtml = '';
@@ -3605,7 +3616,7 @@
                     priority = `🟠 ${daysOfStock - daysUntilBuy} días de margen`;
                     alertColor = 'orange';
                     warningCount++;
-                } else if (totalStock < (p.minStock || 5)) {
+                } else if (totalStock < ((p.min || p.minStock) || 5)) {
                     // Stock bajo el mínimo configurado = ADVERTENCIA (naranja)
                     priority = '🟠 Stock bajo mínimo';
                     alertColor = 'orange';

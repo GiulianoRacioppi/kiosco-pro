@@ -3218,9 +3218,9 @@
                 barcode: document.getElementById('inv-barcode').value || '',
                 name: document.getElementById('inv-name').value.trim(),
                 category: document.getElementById('inv-category').value,
-                supplier: document.getElementById('inv-supplier').value || '',
-                supplierPhone: document.getElementById('inv-supplier-phone').value || '',
-                buyDays: getSelectedBuyDays('inv'),
+                supplier: document.getElementById('inv-supplier')?.value || '',
+                supplierPhone: document.getElementById('inv-supplier-phone')?.value || '',
+                buyDays: getSelectedBuyDays('inv') || [],
                 cost: cost,
                 salePrice: priceValue,
                 stock: stock,
@@ -3272,7 +3272,9 @@
 
         function toggleBuyDay(prefix, day) {
             const container = document.getElementById(`${prefix}-buy-days`);
+            if (!container) return;
             const btn = container.querySelector(`[data-day="${day}"]`);
+            if (!btn) return;
             btn.classList.toggle('active');
             btn.classList.toggle('bg-purple-500');
             btn.classList.toggle('text-white');

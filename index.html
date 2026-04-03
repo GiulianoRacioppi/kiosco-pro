@@ -3187,50 +3187,31 @@
             console.log('preparePurchase llamado');
             
             // Normalizar: reemplazar coma por punto para parseFloat (soporte español)
-            const costInput = document.getElementById('inv-cost');
-            const stockInput = document.getElementById('inv-stock');
-            const priceInput = document.getElementById('inv-price');
-            const nameInput = document.getElementById('inv-name');
-            const barcodeInput = document.getElementById('inv-barcode');
-            const categoryInput = document.getElementById('inv-category');
-            const expiryInput = document.getElementById('inv-expiry');
-            
-            // Debug: verificar que los elementos existen
-            if (!costInput || !stockInput || !priceInput || !nameInput) {
-                alert('ERROR: Faltan elementos del formulario');
-                return;
-            }
-            
-            const cost = parseFloat(costInput.value.replace(',', '.')) || 0;
-            const stock = parseInt(stockInput.value) || 0;
-            const priceValue = parseFloat(priceInput.value.replace(',', '.')) || 0;
+            const cost = parseFloat(document.getElementById('inv-cost').value.replace(',', '.')) || 0;
+            const stock = parseInt(document.getElementById('inv-stock').value) || 0;
+            const priceValue = parseFloat(document.getElementById('inv-price').value.replace(',', '.')) || 0;
             const totalCost = cost * stock;
             
             console.log('Valores:', { cost, stock, priceValue, totalCost });
 
             // Validaciones
-            if (!nameInput.value.trim()) {
-                alert('ERROR: Falta el nombre del producto');
+            if (!document.getElementById('inv-name').value.trim()) {
                 showNotification('Ingresa el nombre del producto', 'error');
                 return;
             }
             if (cost <= 0) {
-                alert('ERROR: El costo debe ser mayor a 0. Valor actual: ' + cost);
                 showNotification('El costo debe ser mayor a 0', 'error');
                 return;
             }
             if (stock <= 0) {
-                alert('ERROR: El stock debe ser mayor a 0. Valor actual: ' + stock);
                 showNotification('El stock debe ser mayor a 0', 'error');
                 return;
             }
             if (priceValue <= 0) {
-                alert('ERROR: El precio debe ser mayor a 0. Valor actual: ' + priceValue);
                 showNotification('El precio de venta debe ser mayor a 0', 'error');
                 return;
             }
             
-            alert('DEBUG: Todas las validaciones pasaron. Creando producto...');
             console.log('Validaciones pasadas, creando pendingPurchase');
 
             appState.pendingPurchase = {
@@ -3254,11 +3235,10 @@
             setPurchasePayment('cash');
             const modal = document.getElementById('purchase-payment-modal');
             if (!modal) {
-                alert('ERROR: No se encontró el modal de pago');
+                console.error('ERROR: No se encontró el modal de pago');
                 return;
             }
             modal.classList.add('active');
-            alert('DEBUG: Modal debería estar abierto ahora');
             console.log('Modal abierto:', modal.classList.contains('active'));
         }
 
@@ -3362,8 +3342,17 @@
                 createdAt: new Date().toISOString(),
                 lastSale: null
             };
+            
+            console.log('Producto creado:', product);
+            console.log('Inventario antes:', appState.inventory.length, 'productos');
 
+            // Asegurar que inventory sea un array
+            if (!Array.isArray(appState.inventory)) {
+                appState.inventory = [];
+            }
+            
             appState.inventory.push(product);
+            console.log('Inventario después:', appState.inventory.length, 'productos');
 
             // Registrar como INVERSIÓN (no como gasto)
             appState.investments.push({
@@ -3376,15 +3365,29 @@
                 timestamp: Date.now()
             });
 
+            console.log('Guardando en localStorage...');
             saveToLocalStorage();
+            console.log('localStorage guardado');
             
+            console.log('Cerrando modal y reseteando formulario...');
             closePurchaseModal();
             document.getElementById('add-inventory-form').reset();
             // Limpiar el display del margen y el input
             document.getElementById('inv-margin-display').textContent = `${appState.defaultMargin || 30}%`;
             document.getElementById('inv-margin').value = appState.defaultMargin || 30;
+            
+            console.log('Llamando renderAll...');
             renderAll();
+            console.log('renderAll completado');
+            
+            console.log('Mostrando notificación...');
             showNotification(`Producto comprado y creado exitosamente. Pagado con ${method === 'cash' ? 'Caja' : 'Cuenta'}`, 'success');
+            console.log('=== PROCESO COMPLETADO ===');
+            
+            // DEBUG: Verificar que el producto está en el inventario
+            console.log('Verificación final - Total productos:', appState.inventory.length);
+            console.log('Último producto agregado:', appState.inventory[appState.inventory.length - 1]);
+            
             } catch (error) {
                 console.error('Error en confirmPurchase:', error);
                 showNotification('Error al procesar la compra: ' + error.message, 'error');
@@ -3478,10 +3481,20 @@
         }
 
         function renderInventory() {
+            console.log('renderInventory llamado. Total productos:', appState.inventory?.length || 0);
+            
+            // Asegurar que inventory sea un array
+            if (!Array.isArray(appState.inventory)) {
+                console.warn('inventory no es array, inicializando...');
+                appState.inventory = [];
+            }
+            
             const search = document.getElementById('search-inventory').value;
             const filtered = search 
                 ? fuzzySearchProducts(search, appState.inventory, 100)
                 : appState.inventory;
+            
+            console.log('Productos filtrados para mostrar:', filtered.length);
 
             document.getElementById('inventory-table').innerHTML = filtered.map(p => {
                 // Calcular stock total desde lotes

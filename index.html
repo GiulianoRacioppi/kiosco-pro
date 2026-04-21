@@ -230,6 +230,10 @@
             display: block;
         }
         
+        .hidden {
+            display: none !important;
+        }
+        
         .section.hidden {
             display: none !important;
         }
@@ -326,7 +330,7 @@
 <body class="text-gray-800">
 
     <!-- LOGIN MODAL -->
-    <div id="login-modal" class="fixed inset-0 bg-gradient-to-br from-purple-600 via-purple-700 to-indigo-800 z-[100] flex items-center justify-center">
+    <div id="login-modal" class="hidden fixed inset-0 bg-gradient-to-br from-purple-600 via-purple-700 to-indigo-800 z-[100] flex items-center justify-center">
         <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 text-center">
             <div class="mb-6">
                 <div class="w-20 h-20 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1907,13 +1911,29 @@
 
         // ==================== LOGIN SYSTEM ====================
         function showLoginForm(type) {
-            document.getElementById('login-options').classList.add('hidden');
-            if (type === 'admin') {
-                document.getElementById('admin-login-form').classList.remove('hidden');
-                document.getElementById('admin-password').focus();
-            } else {
-                document.getElementById('collaborator-login-form').classList.remove('hidden');
-                document.getElementById('collaborator-password').focus();
+            console.log('showLoginForm called with type:', type);
+            try {
+                const loginOptions = document.getElementById('login-options');
+                const adminForm = document.getElementById('admin-login-form');
+                const collabForm = document.getElementById('collaborator-login-form');
+                
+                if (!loginOptions || !adminForm || !collabForm) {
+                    console.error('Login elements not found:', {loginOptions, adminForm, collabForm});
+                    return;
+                }
+                
+                loginOptions.classList.add('hidden');
+                
+                if (type === 'admin') {
+                    adminForm.classList.remove('hidden');
+                    document.getElementById('admin-password').focus();
+                } else {
+                    collabForm.classList.remove('hidden');
+                    document.getElementById('collaborator-password').focus();
+                }
+                console.log('Login form shown successfully');
+            } catch (error) {
+                console.error('Error in showLoginForm:', error);
             }
         }
         

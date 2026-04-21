@@ -740,8 +740,8 @@
         </nav>
 
         <!-- Compact Financial Panel -->
-        <div class="p-3 border-t bg-white flex-shrink-0 space-y-2">
-            <div class="bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-purple-50" onclick="showSection('cashflow')">
+        <div class="p-3 border-t bg-white flex-shrink-0 space-y-2" id="sidebar-financial-panel">
+            <div class="sidebar-admin-only bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-purple-50" onclick="showSection('cashflow')">
                 <div class="flex justify-between items-center mb-0.5">
                     <span class="text-xs text-gray-500 font-medium">💵 Caja</span>
                     <button onclick="event.stopPropagation(); openAdjustModal('cash')" class="text-xs text-blue-600 hover:text-blue-800" title="Agregar/Retirar">
@@ -751,7 +751,7 @@
                 <p class="text-base font-bold text-gray-800" id="liquidity-amount">$0</p>
             </div>
             
-            <div class="bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-blue-50" onclick="showSection('cashflow')">
+            <div class="sidebar-admin-only bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-blue-50" onclick="showSection('cashflow')">
                 <div class="flex justify-between items-center mb-0.5">
                     <span class="text-xs text-gray-500 font-medium">🏦 Cuenta</span>
                     <button onclick="event.stopPropagation(); openAdjustModal('bank')" class="text-xs text-blue-600 hover:text-blue-800" title="Agregar/Retirar">
@@ -761,7 +761,7 @@
                 <p class="text-base font-bold text-blue-700" id="bank-amount">$0</p>
             </div>
             
-            <div class="bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-green-50" onclick="showSection('inventory')">
+            <div class="sidebar-admin-only bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-green-50" onclick="showSection('inventory')">
                 <div class="flex justify-between items-center mb-0.5">
                     <span class="text-xs text-gray-500 font-medium">📦 Mercadería</span>
                 </div>
@@ -1124,15 +1124,15 @@
                 <form id="add-inventory-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Código de barras</label>
-                        <input type="text" id="inv-barcode" class="barcode-input w-full border rounded-lg px-3 py-2 text-sm" placeholder="Escanea..." required>
+                        <input type="text" id="inv-barcode" class="barcode-input w-full border rounded-lg px-3 py-2 text-sm" placeholder="Escanea..." required tabindex="1">
                     </div>
                     <div class="lg:col-span-2">
                         <label class="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
-                        <input type="text" id="inv-name" class="w-full border rounded-lg px-3 py-2 text-sm" required>
+                        <input type="text" id="inv-name" class="w-full border rounded-lg px-3 py-2 text-sm" required tabindex="2">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Categoría</label>
-                        <select id="inv-category" class="w-full border rounded-lg px-3 py-2 text-sm">
+                        <select id="inv-category" class="w-full border rounded-lg px-3 py-2 text-sm" tabindex="3">
                             <option value="bebidas">Bebidas</option>
                             <option value="cervezas">Cervezas</option>
                             <option value="snacks">Snacks</option>
@@ -1143,26 +1143,26 @@
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Costo ($)</label>
-                        <input type="number" id="inv-cost" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" required oninput="calculateInventoryPrice()">
+                        <input type="number" id="inv-cost" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" required oninput="calculateInventoryPrice()" tabindex="4">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Stock inicial</label>
-                        <input type="number" id="inv-stock" class="w-full border rounded-lg px-3 py-2 text-sm" min="1" required>
+                        <input type="number" id="inv-stock" class="w-full border rounded-lg px-3 py-2 text-sm" min="1" required tabindex="5">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Vencimiento</label>
-                        <input type="date" id="inv-expiry" class="w-full border rounded-lg px-3 py-2 text-sm" required>
+                        <input type="date" id="inv-expiry" class="w-full border rounded-lg px-3 py-2 text-sm" required tabindex="6">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Margen (%)</label>
-                        <input type="number" id="inv-margin" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.1" value="30" oninput="calculateInventoryPriceFromMargin()">
+                        <input type="number" id="inv-margin" class="w-full border rounded-lg px-3 py-2 text-sm bg-yellow-50" step="0.1" value="30" oninput="calculateInventoryPriceFromMargin()" tabindex="7" title="Automático según costo">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Precio venta ($)</label>
-                        <input type="number" id="inv-price" class="w-full border rounded-lg px-3 py-2 text-sm font-bold text-green-700" step="0.01" oninput="calculateInventoryMargin()">
+                        <input type="number" id="inv-price" class="w-full border rounded-lg px-3 py-2 text-sm font-bold text-green-700 bg-yellow-50" step="0.01" oninput="calculateInventoryMargin()" tabindex="8" title="Automático según margen">
                     </div>
                     <div class="lg:col-span-4 flex items-end">
-                        <button type="button" onclick="preparePurchase()" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold shadow">
+                        <button type="button" id="inv-confirm-btn" onclick="preparePurchase()" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold shadow" tabindex="9">
                             <i class="fas fa-check"></i> Confirmar Compra
                         </button>
                     </div>
@@ -1780,6 +1780,13 @@
             // Inventory form handler
             const invForm = document.getElementById('add-inventory-form');
             if (invForm) {
+                // Restaurar última categoría usada
+                const lastCategory = localStorage.getItem('kioscopro-last-category');
+                if (lastCategory) {
+                    const catSelect = document.getElementById('inv-category');
+                    if (catSelect) catSelect.value = lastCategory;
+                }
+                
                 invForm.addEventListener('submit', function(e) {
                     e.preventDefault();
                     console.log('Form submit detected, calling preparePurchase');
@@ -1787,15 +1794,43 @@
                 });
                 console.log('Inventory form handler attached');
                 
-                // Agregar navegación con Enter entre campos
-                const inputs = invForm.querySelectorAll('input, select, button[type="button"]');
-                inputs.forEach((input, index) => {
-                    input.addEventListener('keydown', function(e) {
-                        if (e.key === 'Enter' && index < inputs.length - 1) {
-                            e.preventDefault();
-                            inputs[index + 1].focus();
-                        }
+                // Guardar categoría cuando cambie
+                const catSelect = document.getElementById('inv-category');
+                if (catSelect) {
+                    catSelect.addEventListener('change', function() {
+                        localStorage.setItem('kioscopro-last-category', this.value);
                     });
+                }
+                
+                // Navegación con Enter: saltar campos automáticos (margen y precio)
+                const fieldOrder = ['inv-barcode', 'inv-name', 'inv-category', 'inv-cost', 'inv-stock', 'inv-expiry', 'inv-confirm-btn'];
+                
+                fieldOrder.forEach((fieldId, index) => {
+                    const field = document.getElementById(fieldId);
+                    if (field) {
+                        field.addEventListener('keydown', function(e) {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                if (index < fieldOrder.length - 1) {
+                                    const nextField = document.getElementById(fieldOrder[index + 1]);
+                                    if (nextField) {
+                                        nextField.focus();
+                                        // Si es select, abrirlo
+                                        if (nextField.tagName === 'SELECT') {
+                                            nextField.click();
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
+                
+                // Focus automático en código de barras al cargar la sección de inventario
+                document.querySelector('[data-section="inventory"]')?.addEventListener('click', () => {
+                    setTimeout(() => {
+                        document.getElementById('inv-barcode')?.focus();
+                    }, 100);
                 });
             } else {
                 console.error('Inventory form NOT FOUND!');
@@ -3373,10 +3408,25 @@
             
             console.log('Cerrando modal y reseteando formulario...');
             closePurchaseModal();
+            
+            // Guardar categoría antes de resetear
+            const currentCategory = document.getElementById('inv-category')?.value;
+            if (currentCategory) {
+                localStorage.setItem('kioscopro-last-category', currentCategory);
+            }
+            
             document.getElementById('add-inventory-form').reset();
-            // Limpiar el display del margen y el input
-            document.getElementById('inv-margin-display').textContent = `${appState.defaultMargin || 30}%`;
-            document.getElementById('inv-margin').value = appState.defaultMargin || 30;
+            
+            // Restaurar valores por defecto
+            const marginInput = document.getElementById('inv-margin');
+            if (marginInput) marginInput.value = appState.defaultMargin || 30;
+            
+            // Restaurar categoría guardada
+            const lastCategory = localStorage.getItem('kioscopro-last-category');
+            if (lastCategory) {
+                const catSelect = document.getElementById('inv-category');
+                if (catSelect) catSelect.value = lastCategory;
+            }
             
             console.log('Llamando renderAll...');
             renderAll();
@@ -3386,9 +3436,10 @@
             showNotification(`Producto comprado y creado exitosamente. Pagado con ${method === 'cash' ? 'Caja' : 'Cuenta'}`, 'success');
             console.log('=== PROCESO COMPLETADO ===');
             
-            // DEBUG: Verificar que el producto está en el inventario
-            console.log('Verificación final - Total productos:', appState.inventory.length);
-            console.log('Último producto agregado:', appState.inventory[appState.inventory.length - 1]);
+            // Volver foco al código de barras para siguiente producto
+            setTimeout(() => {
+                document.getElementById('inv-barcode')?.focus();
+            }, 100);
             
             } catch (error) {
                 console.error('Error en confirmPurchase:', error);
@@ -3589,21 +3640,32 @@
                     return sum + (salePrice * stock);
                 }, 0);
                 
+                // Verificar si es admin
+                const isAdmin = appState.currentUser && appState.currentUser.role === 'admin';
+                
                 // Actualizar elementos del sidebar
                 const inventoryCostAmount = document.getElementById('inventory-cost-amount');
                 const inventorySaleAmount = document.getElementById('inventory-sale-amount');
                 
-                if (inventoryCostAmount) inventoryCostAmount.textContent = `$${costValue.toFixed(0)} costo`;
-                if (inventorySaleAmount) inventorySaleAmount.textContent = `$${saleValue.toFixed(0)} venta`;
+                if (inventoryCostAmount) {
+                    inventoryCostAmount.dataset.value = costValue.toFixed(0);
+                    inventoryCostAmount.textContent = isAdmin ? `$${costValue.toFixed(0)} costo` : '--';
+                }
+                if (inventorySaleAmount) {
+                    inventorySaleAmount.dataset.value = saleValue.toFixed(0);
+                    inventorySaleAmount.textContent = isAdmin ? `$${saleValue.toFixed(0)} venta` : '--';
+                }
                 
-                // Actualizar elementos en la página de inventario si existen
-                const inventoryValueCost = document.getElementById('inventory-value-cost');
-                const inventoryValueSale = document.getElementById('inventory-value-sale');
-                const inventoryPotentialProfit = document.getElementById('inventory-potential-profit');
-                
-                if (inventoryValueCost) inventoryValueCost.textContent = `$${costValue.toFixed(2)}`;
-                if (inventoryValueSale) inventoryValueSale.textContent = `$${saleValue.toFixed(2)}`;
-                if (inventoryPotentialProfit) inventoryPotentialProfit.textContent = `$${(saleValue - costValue).toFixed(2)}`;
+                // Actualizar elementos en la página de inventario si existen (solo para admin)
+                if (isAdmin) {
+                    const inventoryValueCost = document.getElementById('inventory-value-cost');
+                    const inventoryValueSale = document.getElementById('inventory-value-sale');
+                    const inventoryPotentialProfit = document.getElementById('inventory-potential-profit');
+                    
+                    if (inventoryValueCost) inventoryValueCost.textContent = `$${costValue.toFixed(2)}`;
+                    if (inventoryValueSale) inventoryValueSale.textContent = `$${saleValue.toFixed(2)}`;
+                    if (inventoryPotentialProfit) inventoryPotentialProfit.textContent = `$${(saleValue - costValue).toFixed(2)}`;
+                }
                 
             } catch (e) {
                 console.error('Error en updateInventoryValues:', e);
@@ -6982,6 +7044,9 @@ RESULTADOS:
 
         function updateSidebar() {
             try {
+                // Verificar si es admin
+                const isAdmin = appState.currentUser && appState.currentUser.role === 'admin';
+                
                 // Asegurar que los valores sean números
                 const cash = parseFloat(appState.cash) || 0;
                 const bank = parseFloat(appState.bank) || 0;
@@ -6999,23 +7064,28 @@ RESULTADOS:
                 const sidebarBalance = document.getElementById('sidebar-balance');
                 const liquidityAmount = document.getElementById('liquidity-amount');
                 const bankAmount = document.getElementById('bank-amount');
+                const inventoryCostAmount = document.getElementById('inventory-cost-amount');
+                const inventorySaleAmount = document.getElementById('inventory-sale-amount');
                 
+                // Para colaboradores: ocultar valores sensibles
                 if (sidebarBalance) {
-                    sidebarBalance.textContent = `$${todayTotal.toFixed(0)}`;
-                } else {
-                    console.warn('No se encontró el elemento sidebar-balance');
+                    sidebarBalance.textContent = isAdmin ? `$${todayTotal.toFixed(0)}` : '--';
                 }
                 
                 if (liquidityAmount) {
-                    liquidityAmount.textContent = `$${cash.toFixed(0)}`;
-                } else {
-                    console.warn('No se encontró el elemento liquidity-amount');
+                    liquidityAmount.textContent = isAdmin ? `$${cash.toFixed(0)}` : '--';
                 }
                 
                 if (bankAmount) {
-                    bankAmount.textContent = `$${bank.toFixed(0)}`;
-                } else {
-                    console.warn('No se encontró el elemento bank-amount');
+                    bankAmount.textContent = isAdmin ? `$${bank.toFixed(0)}` : '--';
+                }
+                
+                // Ocultar valor de mercadería para colaboradores
+                if (inventoryCostAmount) {
+                    inventoryCostAmount.textContent = isAdmin ? `$${inventoryCostAmount.dataset.value || 0} costo` : '--';
+                }
+                if (inventorySaleAmount) {
+                    inventorySaleAmount.textContent = isAdmin ? `$${inventorySaleAmount.dataset.value || 0} venta` : '--';
                 }
                 
                 console.log('Sidebar actualizado - Caja:', cash, 'Cuenta:', bank, 'Ventas hoy:', todayTotal);
@@ -7056,6 +7126,11 @@ RESULTADOS:
                 const btnExpense = document.getElementById('btn-top-expense');
                 if (btnInventory) btnInventory.style.display = isAdmin ? 'flex' : 'none';
                 if (btnExpense) btnExpense.style.display = isAdmin ? 'flex' : 'none';
+                
+                // Ocultar elementos financieros del sidebar para colaboradores
+                document.querySelectorAll('.sidebar-admin-only').forEach(el => {
+                    el.style.display = isAdmin ? 'block' : 'none';
+                });
                 
             } catch (e) {
                 console.error('Error en updateSidebar:', e);

@@ -364,24 +364,24 @@
             </div>
             
             <!-- Formulario Admin -->
-            <div id="admin-login-form" class="hidden space-y-4">
+            <div id="admin-login-form" style="display: none;" class="space-y-4">
                 <button onclick="backToLoginOptions()" class="text-gray-500 hover:text-gray-700 flex items-center gap-2 text-sm">
                     <i class="fas fa-arrow-left"></i> Volver
                 </button>
                 <h3 class="text-lg font-bold text-gray-800">Acceso Administrador</h3>
                 <input type="password" id="admin-password" placeholder="Contraseña" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" onkeypress="handleAdminKeypress(event)">
                 <button onclick="loginAdmin()" class="w-full py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition">Ingresar</button>
-                <p id="admin-login-error" class="text-red-500 text-sm hidden">Contraseña incorrecta</p>
+                <p id="admin-login-error" style="display: none;" class="text-red-500 text-sm">Contraseña incorrecta</p>
             </div>
             
             <!-- Formulario Colaborador -->
-            <div id="collaborator-login-form" class="hidden space-y-4">
+            <div id="collaborator-login-form" style="display: none;" class="space-y-4">
                 <button onclick="backToLoginOptions()" class="text-gray-500 hover:text-gray-700 flex items-center gap-2 text-sm">
                     <i class="fas fa-arrow-left"></i> Volver
                 </button>
                 <h3 class="text-lg font-bold text-gray-800">Acceso Colaborador</h3>
                 <input type="password" id="collaborator-password" placeholder="Contraseña" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" onkeypress="if(event.key==='Enter')loginCollaborator()">
-                <p id="collaborator-login-error" class="text-red-500 text-sm hidden">Contraseña incorrecta</p>
+                <p id="collaborator-login-error" style="display: none;" class="text-red-500 text-sm">Contraseña incorrecta</p>
                 <button onclick="loginCollaborator()" class="w-full py-3 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-800 transition">Entrar como Colaborador</button>
             </div>
         </div>
@@ -665,7 +665,7 @@
     </div>
 
     <!-- Sidebar -->
-    <div id="mobile-sidebar" class="sidebar-fixed fixed left-0 top-0 h-full w-64 bg-white shadow-2xl z-50 flex flex-col hidden">
+    <div id="mobile-sidebar" class="sidebar-fixed fixed left-0 top-0 h-full w-64 bg-white shadow-2xl z-50 flex flex-col" style="display: none;">
         <!-- Botón cerrar (solo móvil) -->
         <button onclick="toggleMobileSidebar()" class="lg:hidden absolute top-4 right-4 p-2 text-gray-500 hover:text-gray-700">
             <i class="fas fa-times text-xl"></i>
@@ -1728,7 +1728,7 @@
             document.body.style.paddingLeft = '16rem';
             
             // Mostrar login modal - el usuario debe iniciar sesión primero
-            document.getElementById('login-modal').classList.remove('hidden');
+            document.getElementById('login-modal').style.display = 'flex';
             
             // NO cargamos datos ni renderizamos hasta que se loguee
             console.log('Esperando inicio de sesión...');
@@ -1911,37 +1911,30 @@
 
         // ==================== LOGIN SYSTEM ====================
         function showLoginForm(type) {
-            console.log('showLoginForm called with type:', type);
-            try {
-                const loginOptions = document.getElementById('login-options');
-                const adminForm = document.getElementById('admin-login-form');
-                const collabForm = document.getElementById('collaborator-login-form');
-                
-                if (!loginOptions || !adminForm || !collabForm) {
-                    console.error('Login elements not found:', {loginOptions, adminForm, collabForm});
-                    return;
-                }
-                
-                loginOptions.classList.add('hidden');
-                
-                if (type === 'admin') {
-                    adminForm.classList.remove('hidden');
+            // Usar estilos inline para mayor compatibilidad
+            document.getElementById('login-options').style.display = 'none';
+            
+            if (type === 'admin') {
+                document.getElementById('admin-login-form').style.display = 'block';
+                document.getElementById('collaborator-login-form').style.display = 'none';
+                setTimeout(function() {
                     document.getElementById('admin-password').focus();
-                } else {
-                    collabForm.classList.remove('hidden');
+                }, 50);
+            } else {
+                document.getElementById('collaborator-login-form').style.display = 'block';
+                document.getElementById('admin-login-form').style.display = 'none';
+                setTimeout(function() {
                     document.getElementById('collaborator-password').focus();
-                }
-                console.log('Login form shown successfully');
-            } catch (error) {
-                console.error('Error in showLoginForm:', error);
+                }, 50);
             }
         }
         
         function backToLoginOptions() {
-            document.getElementById('admin-login-form').classList.add('hidden');
-            document.getElementById('collaborator-login-form').classList.add('hidden');
-            document.getElementById('login-options').classList.remove('hidden');
-            document.getElementById('admin-login-error').classList.add('hidden');
+            document.getElementById('admin-login-form').style.display = 'none';
+            document.getElementById('collaborator-login-form').style.display = 'none';
+            document.getElementById('login-options').style.display = 'block';
+            document.getElementById('admin-login-error').style.display = 'none';
+            document.getElementById('collaborator-login-error').style.display = 'none';
         }
         
         function handleAdminKeypress(event) {
@@ -1964,7 +1957,7 @@
                 showSection('dashboard'); // Admin va al dashboard con métricas completas
                 showNotification('Bienvenido, Administrador', 'success');
             } else {
-                document.getElementById('admin-login-error').classList.remove('hidden');
+                document.getElementById('admin-login-error').style.display = 'block';
             }
         }
         
@@ -1973,11 +1966,11 @@
             const errorEl = document.getElementById('collaborator-login-error');
             
             if (password !== 'colab123') {
-                errorEl.classList.remove('hidden');
+                errorEl.style.display = 'block';
                 return;
             }
             
-            errorEl.classList.add('hidden');
+            errorEl.style.display = 'none';
             isDemoMode = false; // Los colaboradores usan datos reales, no demo
             appState.currentUser = { role: 'collaborator', name: 'Colaborador' };
             isLoggedIn = true;
@@ -1994,10 +1987,10 @@
         }
         
         function closeLoginModal() {
-            document.getElementById('login-modal').classList.add('hidden');
+            document.getElementById('login-modal').style.display = 'none';
             // Mostrar sidebar después de login exitoso
             const sidebar = document.getElementById('mobile-sidebar');
-            if (sidebar) sidebar.classList.remove('hidden');
+            if (sidebar) sidebar.style.display = 'flex';
         }
         
         function logout() {

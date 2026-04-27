@@ -483,6 +483,12 @@
                         <input type="number" id="edit-prod-price" class="w-full border rounded-lg px-3 py-2" step="0.01" oninput="calculateEditMargin()">
                     </div>
                 </div>
+                <div class="flex items-center gap-3 bg-yellow-50 p-2 rounded-lg border border-yellow-200">
+                    <input type="checkbox" id="edit-prod-round" class="w-5 h-5 text-purple-600 rounded focus:ring-purple-500" onchange="calculateEditPrice()">
+                    <label for="edit-prod-round" class="text-sm font-medium text-gray-700 cursor-pointer">
+                        <i class="fas fa-sync-alt text-yellow-600 mr-1"></i> Redondear precio a $50 (hacia arriba)
+                    </label>
+                </div>
                 <div class="p-3 bg-purple-50 rounded-lg">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Margen de ganancia</label>
                     <div class="flex items-center gap-2">
@@ -1160,6 +1166,12 @@
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Precio venta ($)</label>
                         <input type="number" id="inv-price" class="w-full border rounded-lg px-3 py-2 text-sm font-bold text-green-700" step="0.01" oninput="calculateInventoryMargin()">
+                    </div>
+                    <div class="lg:col-span-4 flex items-center gap-3 bg-yellow-50 p-2 rounded-lg border border-yellow-200">
+                        <input type="checkbox" id="inv-round-price" class="w-5 h-5 text-purple-600 rounded focus:ring-purple-500" onchange="calculateInventoryPrice()">
+                        <label for="inv-round-price" class="text-sm font-medium text-gray-700 cursor-pointer">
+                            <i class="fas fa-sync-alt text-yellow-600 mr-1"></i> Redondear precio a $50 (hacia arriba)
+                        </label>
                     </div>
                     <div class="lg:col-span-4 flex items-end">
                         <button type="button" onclick="preparePurchase()" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold shadow">
@@ -3121,10 +3133,16 @@
         }
 
         // ==================== INVENTORY & PURCHASES ====================
+        // Función auxiliar para redondear a 50 hacia arriba
+        function roundTo50Up(price) {
+            return Math.ceil(price / 50) * 50;
+        }
+
         function calculateInventoryPrice() {
             const costInput = document.getElementById('inv-cost');
             const priceInput = document.getElementById('inv-price');
             const marginInput = document.getElementById('inv-margin');
+            const roundCheckbox = document.getElementById('inv-round-price');
             // Normalizar: reemplazar coma por punto para parseFloat
             const cost = parseFloat(costInput.value.replace(',', '.')) || 0;
             
@@ -3132,7 +3150,11 @@
             if (cost > 0) {
                 const margin = parseFloat(marginInput.value) || appState.defaultMargin || 30;
                 // Fórmula: Precio = Costo / (1 - margen/100)
-                const price = cost / (1 - margin / 100);
+                let price = cost / (1 - margin / 100);
+                // Redondear a 50 si está activado
+                if (roundCheckbox && roundCheckbox.checked) {
+                    price = roundTo50Up(price);
+                }
                 priceInput.value = price.toFixed(2);
             } else {
                 priceInput.value = '';
@@ -3145,18 +3167,24 @@
             const costInput = document.getElementById('inv-cost');
             const priceInput = document.getElementById('inv-price');
             const marginInput = document.getElementById('inv-margin');
+            const roundCheckbox = document.getElementById('inv-round-price');
             
             const cost = parseFloat(costInput.value.replace(',', '.')) || 0;
             const margin = parseFloat(marginInput.value.replace(',', '.')) || 0;
             
             if (cost > 0 && margin > 0 && margin < 100) {
                 // Recalcular precio basado en el margen ingresado
-                const price = cost / (1 - margin / 100);
+                let price = cost / (1 - margin / 100);
+                // Redondear a 50 si está activado
+                if (roundCheckbox && roundCheckbox.checked) {
+                    price = roundTo50Up(price);
+                }
                 priceInput.value = price.toFixed(2);
             }
             
-            // Actualizar display
-            document.getElementById('inv-margin-display').textContent = margin.toFixed(1) + '%';
+            // Actualizar display (solo si existe)
+            const marginDisplay = document.getElementById('inv-margin-display');
+            if (marginDisplay) marginDisplay.textContent = margin.toFixed(1) + '%';
         }
 
         function calculateInventoryMargin() {
@@ -3374,9 +3402,11 @@
             console.log('Cerrando modal y reseteando formulario...');
             closePurchaseModal();
             document.getElementById('add-inventory-form').reset();
-            // Limpiar el display del margen y el input
-            document.getElementById('inv-margin-display').textContent = `${appState.defaultMargin || 30}%`;
-            document.getElementById('inv-margin').value = appState.defaultMargin || 30;
+            // Limpiar el display del margen y el input (solo si existen)
+            const marginDisplay = document.getElementById('inv-margin-display');
+            if (marginDisplay) marginDisplay.textContent = `${appState.defaultMargin || 30}%`;
+            const marginInput = document.getElementById('inv-margin');
+            if (marginInput) marginInput.value = appState.defaultMargin || 30;
             
             console.log('Llamando renderAll...');
             renderAll();
@@ -4050,13 +4080,18 @@
             const costInput = document.getElementById('edit-prod-cost');
             const priceInput = document.getElementById('edit-prod-price');
             const marginInput = document.getElementById('edit-prod-margin');
+            const roundCheckbox = document.getElementById('edit-prod-round');
             const cost = parseFloat(costInput.value.replace(',', '.')) || 0;
             
             // Si hay costo, recalcular automáticamente el precio
             if (cost > 0) {
                 const margin = appState.defaultMargin || 30;
                 // Fórmula: Precio = Costo / (1 - margen/100)
-                const price = cost / (1 - margin / 100);
+                let price = cost / (1 - margin / 100);
+                // Redondear a 50 si está activado
+                if (roundCheckbox && roundCheckbox.checked) {
+                    price = roundTo50Up(price);
+                }
                 priceInput.value = price.toFixed(2);
                 marginInput.value = margin.toFixed(1);
             }
@@ -4068,13 +4103,18 @@
             const costInput = document.getElementById('edit-prod-cost');
             const priceInput = document.getElementById('edit-prod-price');
             const marginInput = document.getElementById('edit-prod-margin');
+            const roundCheckbox = document.getElementById('edit-prod-round');
             
             const cost = parseFloat(costInput.value.replace(',', '.')) || 0;
             const margin = parseFloat(marginInput.value.replace(',', '.')) || 0;
             
             if (cost > 0 && margin > 0 && margin < 100) {
                 // Recalcular precio basado en el margen ingresado
-                const price = cost / (1 - margin / 100);
+                let price = cost / (1 - margin / 100);
+                // Redondear a 50 si está activado
+                if (roundCheckbox && roundCheckbox.checked) {
+                    price = roundTo50Up(price);
+                }
                 priceInput.value = price.toFixed(2);
             }
         }

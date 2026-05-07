@@ -733,6 +733,17 @@
                 <i class="fas fa-chart-pie w-4 text-xs"></i> Reportes
             </button>
             
+            <!-- PROMOCIONES: Solo admin -->
+            <button onclick="showSection('promotions')" id="nav-promotions" class="nav-btn sidebar-admin-only w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="promotions">
+                <i class="fas fa-tags w-4 text-xs"></i> Promociones
+            </button>
+            
+            <!-- TICKETS DE DESCUENTO -->
+            <button onclick="showSection('discount-tickets')" id="nav-discount-tickets" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="discount-tickets">
+                <i class="fas fa-ticket-alt w-4 text-xs"></i> Tickets Descuento
+                <span id="ticket-badge" class="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden text-[10px]">0</span>
+            </button>
+            
             <!-- CONFIGURACIÓN: Solo admin -->
             <button onclick="showSection('settings')" id="nav-settings" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="settings">
                 <i class="fas fa-cog w-4 text-xs"></i> Configuración
@@ -924,6 +935,42 @@
                                 <span id="cart-total">$0</span>
                             </div>
                         </div>
+                        
+                        <!-- Recomendaciones de Combo / Cross-sell -->
+                        <div id="combo-suggestions" class="hidden space-y-2 mb-4"></div>
+                        
+                        <!-- Ticket de descuento manual -->
+                        <div id="ticket-input-section" class="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl p-4 border-2 border-yellow-200 mb-4 hidden">
+                            <h4 class="text-sm font-bold text-yellow-800 mb-2 flex items-center gap-2">
+                                <i class="fas fa-ticket-alt"></i> Ticket de Descuento
+                            </h4>
+                            <div class="flex gap-2 mb-2">
+                                <input type="text" id="cart-ticket-code" placeholder="N° de ticket (6 dígitos)" 
+                                    class="flex-1 border-2 border-yellow-300 rounded-lg px-3 py-2 text-center font-mono font-bold uppercase tracking-widest"
+                                    maxlength="6" onkeypress="if(event.key==='Enter'){applyManualTicket();}">
+                                <button onclick="applyManualTicket()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg font-bold text-sm">
+                                    <i class="fas fa-check"></i> Aplicar
+                                </button>
+                            </div>
+                            <p id="ticket-status-msg" class="text-xs text-yellow-700 hidden"></p>
+                        </div>
+                        
+                        <!-- Ticket aplicado activo -->
+                        <div id="applied-ticket-section" class="bg-green-50 rounded-xl p-3 border border-green-200 mb-4 hidden">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <p class="text-xs text-green-700 font-bold">🎟️ Ticket aplicado: #<span id="applied-ticket-number">-</span></p>
+                                    <p class="text-xs text-green-600" id="applied-ticket-desc">-</p>
+                                </div>
+                                <button onclick="removeAppliedTicket()" class="text-red-500 hover:text-red-700 text-xs font-bold">
+                                    <i class="fas fa-times"></i> Quitar
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <button onclick="toggleTicketInput()" id="btn-toggle-ticket" class="w-full text-sm text-yellow-700 hover:text-yellow-800 font-bold py-2 flex items-center justify-center gap-2">
+                            <i class="fas fa-ticket-alt"></i> Tengo un ticket de descuento
+                        </button>
                     </div>
                 </div>
 
@@ -1685,6 +1732,473 @@
             </div>
         </div>
 
+        <!-- ==================== PROMOCIONES ==================== -->
+        <div id="promotions" class="section hidden space-y-6 fade-in">
+            <!-- KPIs -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-purple-50 rounded-xl p-4 border border-purple-200 text-center">
+                    <p class="text-purple-600 text-xs font-bold uppercase">🎯 Activas</p>
+                    <p class="text-3xl font-bold text-purple-700" id="promo-active-count">0</p>
+                </div>
+                <div class="bg-green-50 rounded-xl p-4 border border-green-200 text-center">
+                    <p class="text-green-600 text-xs font-bold uppercase">✅ Usadas Hoy</p>
+                    <p class="text-3xl font-bold text-green-700" id="promo-used-today">0</p>
+                </div>
+                <div class="bg-blue-50 rounded-xl p-4 border border-blue-200 text-center">
+                    <p class="text-blue-600 text-xs font-bold uppercase">🎟️ Tickets</p>
+                    <p class="text-3xl font-bold text-blue-700" id="promo-tickets-count">0</p>
+                </div>
+                <div class="bg-orange-50 rounded-xl p-4 border border-orange-200 text-center">
+                    <p class="text-orange-600 text-xs font-bold uppercase">💰 Ahorro Total</p>
+                    <p class="text-2xl font-bold text-orange-700" id="promo-total-saved">$0</p>
+                </div>
+            </div>
+
+            <!-- Acciones -->
+            <div class="flex flex-wrap gap-3">
+                <button onclick="openPromoModal()" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg">
+                    <i class="fas fa-plus"></i> Nueva Promoción
+                </button>
+                <button onclick="openAutoPromoModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg">
+                    <i class="fas fa-cog"></i> Promo Automática
+                </button>
+                <button onclick="renderPromoMetrics()" class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg">
+                    <i class="fas fa-chart-bar"></i> Métricas
+                </button>
+            </div>
+
+            <!-- Promo Automática Status -->
+            <div id="auto-promo-status" class="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-6 border-2 border-blue-200">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h4 class="font-bold text-blue-800 text-lg"><i class="fas fa-magic"></i> Promoción Automática</h4>
+                        <p class="text-sm text-blue-600 mt-1" id="auto-promo-desc">Desactivada</p>
+                    </div>
+                    <div class="text-right">
+                        <span id="auto-promo-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-gray-200 text-gray-600">INACTIVA</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lista de Promociones -->
+            <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div class="p-4 border-b bg-gradient-to-r from-purple-50 to-pink-50 flex justify-between items-center">
+                    <h3 class="font-bold flex items-center gap-2 text-purple-800">
+                        <i class="fas fa-tags text-purple-600"></i> Promociones Configuradas
+                    </h3>
+                    <div class="flex gap-2">
+                        <button onclick="filterPromos('all')" class="px-3 py-1 rounded-lg text-xs font-bold bg-purple-600 text-white">Todas</button>
+                        <button onclick="filterPromos('active')" class="px-3 py-1 rounded-lg text-xs font-bold bg-gray-200 text-gray-700 hover:bg-gray-300">Activas</button>
+                        <button onclick="filterPromos('inactive')" class="px-3 py-1 rounded-lg text-xs font-bold bg-gray-200 text-gray-700 hover:bg-gray-300">Inactivas</button>
+                    </div>
+                </div>
+                <div id="promotions-list" class="divide-y divide-gray-100">
+                    <p class="text-center py-8 text-gray-400">No hay promociones configuradas</p>
+                </div>
+            </div>
+
+            <!-- Métricas de Promociones -->
+            <div id="promo-metrics-panel" class="bg-white rounded-2xl shadow-lg p-6 hidden">
+                <h3 class="text-lg font-bold mb-4 flex items-center gap-2 text-purple-800">
+                    <i class="fas fa-chart-pie text-purple-600"></i> Métricas de Promociones
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h4 class="font-bold text-gray-700 mb-3">Top 5 Promociones Más Usadas</h4>
+                        <div id="promo-top-used" class="space-y-2"></div>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-gray-700 mb-3">Ahorro Generado por Tipo</h4>
+                        <div id="promo-savings-by-type" class="space-y-2"></div>
+                    </div>
+                </div>
+                <div class="mt-6">
+                    <h4 class="font-bold text-gray-700 mb-3">Historial Diario (Últimos 7 días)</h4>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-2 text-left">Fecha</th>
+                                    <th class="px-4 py-2 text-center">Ventas con Promo</th>
+                                    <th class="px-4 py-2 text-center">Tickets</th>
+                                    <th class="px-4 py-2 text-right">Descuento Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="promo-daily-history"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== TICKETS DE DESCUENTO ==================== -->
+        <div id="discount-tickets" class="section hidden space-y-6 fade-in">
+            <!-- KPIs -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-yellow-50 rounded-xl p-4 border border-yellow-200 text-center">
+                    <p class="text-yellow-600 text-xs font-bold uppercase">🎟️ Total Tickets</p>
+                    <p class="text-3xl font-bold text-yellow-700" id="dt-total">0</p>
+                </div>
+                <div class="bg-green-50 rounded-xl p-4 border border-green-200 text-center">
+                    <p class="text-green-600 text-xs font-bold uppercase">✅ Usados</p>
+                    <p class="text-3xl font-bold text-green-700" id="dt-used">0</p>
+                </div>
+                <div class="bg-blue-50 rounded-xl p-4 border border-blue-200 text-center">
+                    <p class="text-blue-600 text-xs font-bold uppercase">⏳ Pendientes</p>
+                    <p class="text-3xl font-bold text-blue-700" id="dt-pending">0</p>
+                </div>
+                <div class="bg-purple-50 rounded-xl p-4 border border-purple-200 text-center">
+                    <p class="text-purple-600 text-xs font-bold uppercase">💰 Valor Total</p>
+                    <p class="text-2xl font-bold text-purple-700" id="dt-value">$0</p>
+                </div>
+            </div>
+
+            <!-- Filtros -->
+            <div class="bg-white rounded-2xl shadow-lg p-4">
+                <div class="flex flex-wrap gap-3 items-center">
+                    <span class="text-sm font-bold text-gray-600">Filtrar:</span>
+                    <button onclick="filterTickets('all')" id="filter-t-all" class="px-4 py-2 rounded-lg text-sm font-bold bg-purple-600 text-white">Todos</button>
+                    <button onclick="filterTickets('pending')" id="filter-t-pending" class="px-4 py-2 rounded-lg text-sm font-bold bg-gray-200 text-gray-700 hover:bg-gray-300">Pendientes</button>
+                    <button onclick="filterTickets('used')" id="filter-t-used" class="px-4 py-2 rounded-lg text-sm font-bold bg-gray-200 text-gray-700 hover:bg-gray-300">Usados</button>
+                    <button onclick="filterTickets('expired')" id="filter-t-expired" class="px-4 py-2 rounded-lg text-sm font-bold bg-gray-200 text-gray-700 hover:bg-gray-300">Vencidos</button>
+                    <div class="ml-auto">
+                        <input type="text" id="ticket-search" placeholder="Buscar número..." 
+                            class="border-2 border-gray-200 rounded-lg px-4 py-2 text-sm w-48"
+                            oninput="searchTickets(this.value)">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lista de Tickets -->
+            <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div class="p-4 border-b bg-gradient-to-r from-yellow-50 to-orange-50">
+                    <h3 class="font-bold flex items-center gap-2 text-yellow-800">
+                        <i class="fas fa-ticket-alt text-yellow-600"></i> Tickets de Descuento
+                    </h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">N° Ticket</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Promoción</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Descuento</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Fecha Emisión</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Vence</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="discount-tickets-list" class="divide-y divide-gray-200">
+                            <tr><td colspan="7" class="text-center py-8 text-gray-400">No hay tickets generados</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ==================== MODALES DE PROMOCIONES ==================== -->
+
+    <!-- Modal: Nueva/Editar Promoción -->
+    <div id="promo-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="p-6 border-b bg-gradient-to-r from-purple-50 to-pink-50">
+                <h3 class="text-xl font-bold text-purple-800" id="promo-modal-title"><i class="fas fa-tag"></i> Nueva Promoción</h3>
+            </div>
+            <div class="p-6 space-y-4">
+                <input type="hidden" id="promo-edit-id">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Nombre de la Promoción</label>
+                    <input type="text" id="promo-name" class="w-full border-2 border-purple-200 rounded-xl px-4 py-2" placeholder="Ej: 2x1 en Cervezas">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+                        <select id="promo-type" class="w-full border-2 border-purple-200 rounded-xl px-4 py-2" onchange="onPromoTypeChange()">
+                            <option value="2x1">2x1 (Paga 1, lleva 2)</option>
+                            <option value="combo">Combo (Descuento fijo)</option>
+                            <option value="percent">% Descuento en productos</option>
+                            <option value="threshold">Descuento por monto mínimo</option>
+                            <option value="bogo">Lleva X, paga Y</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Descuento / Valor</label>
+                        <input type="number" id="promo-discount" class="w-full border-2 border-purple-200 rounded-xl px-4 py-2" placeholder="0" min="0">
+                        <p class="text-xs text-gray-500 mt-1" id="promo-discount-hint">Para 2x1 dejar en 0</p>
+                    </div>
+                </div>
+
+                <!-- Config específica por tipo -->
+                <div id="promo-bogo-config" class="hidden bg-gray-50 rounded-xl p-4 space-y-3">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Lleva (cantidad)</label>
+                            <input type="number" id="promo-bogo-buy" class="w-full border rounded-lg px-3 py-2" value="2" min="1">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Paga (cantidad)</label>
+                            <input type="number" id="promo-bogo-pay" class="w-full border rounded-lg px-3 py-2" value="1" min="1">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="promo-threshold-config" class="hidden bg-gray-50 rounded-xl p-4 space-y-3">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Monto mínimo ($)</label>
+                            <input type="number" id="promo-min-amount" class="w-full border rounded-lg px-3 py-2" placeholder="15000" min="0">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">% Descuento</label>
+                            <input type="number" id="promo-threshold-percent" class="w-full border rounded-lg px-3 py-2" placeholder="10" min="1" max="100">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Productos aplicables -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Productos incluidos</label>
+                    <div class="bg-gray-50 rounded-xl p-3 max-h-40 overflow-y-auto" id="promo-products-list">
+                        <p class="text-sm text-gray-500">Cargando productos...</p>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Deja todos desmarcados para aplicar a TODOS los productos</p>
+                </div>
+
+                <!-- Días y horarios -->
+                <div class="bg-gray-50 rounded-xl p-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Días de la semana</label>
+                    <div class="flex flex-wrap gap-2">
+                        <label class="flex items-center gap-1 bg-white px-3 py-1 rounded-lg border cursor-pointer">
+                            <input type="checkbox" id="promo-day-0" class="promo-day" checked> Dom
+                        </label>
+                        <label class="flex items-center gap-1 bg-white px-3 py-1 rounded-lg border cursor-pointer">
+                            <input type="checkbox" id="promo-day-1" class="promo-day" checked> Lun
+                        </label>
+                        <label class="flex items-center gap-1 bg-white px-3 py-1 rounded-lg border cursor-pointer">
+                            <input type="checkbox" id="promo-day-2" class="promo-day" checked> Mar
+                        </label>
+                        <label class="flex items-center gap-1 bg-white px-3 py-1 rounded-lg border cursor-pointer">
+                            <input type="checkbox" id="promo-day-3" class="promo-day" checked> Mié
+                        </label>
+                        <label class="flex items-center gap-1 bg-white px-3 py-1 rounded-lg border cursor-pointer">
+                            <input type="checkbox" id="promo-day-4" class="promo-day" checked> Jue
+                        </label>
+                        <label class="flex items-center gap-1 bg-white px-3 py-1 rounded-lg border cursor-pointer">
+                            <input type="checkbox" id="promo-day-5" class="promo-day" checked> Vie
+                        </label>
+                        <label class="flex items-center gap-1 bg-white px-3 py-1 rounded-lg border cursor-pointer">
+                            <input type="checkbox" id="promo-day-6" class="promo-day" checked> Sáb
+                        </label>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Fecha inicio</label>
+                        <input type="date" id="promo-start" class="w-full border-2 border-purple-200 rounded-xl px-4 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Fecha fin (opcional)</label>
+                        <input type="date" id="promo-end" class="w-full border-2 border-purple-200 rounded-xl px-4 py-2">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Hora inicio (opcional)</label>
+                        <input type="time" id="promo-time-start" class="w-full border-2 border-purple-200 rounded-xl px-4 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Hora fin (opcional)</label>
+                        <input type="time" id="promo-time-end" class="w-full border-2 border-purple-200 rounded-xl px-4 py-2">
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 bg-yellow-50 p-3 rounded-xl border border-yellow-200">
+                    <input type="checkbox" id="promo-ticket-enabled" class="w-5 h-5" onchange="onTicketEnabledChange()">
+                    <label for="promo-ticket-enabled" class="text-sm font-medium text-yellow-800">
+                        🎟️ Generar ticket de descuento para usar en próxima compra
+                    </label>
+                </div>
+                
+                <!-- Configuración del ticket -->
+                <div id="promo-ticket-config" class="hidden bg-yellow-50 rounded-xl p-4 border border-yellow-200 space-y-3">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Tipo de beneficio</label>
+                            <select id="promo-ticket-type" class="w-full border rounded-lg px-3 py-2 text-sm" onchange="onTicketTypeChange()">
+                                <option value="percent">% Descuento</option>
+                                <option value="fixed">$ Descuento fijo</option>
+                                <option value="2x1">2x1 próxima compra</option>
+                                <option value="3x2">3x2 próxima compra</option>
+                                <option value="4x3">4x3 próxima compra</option>
+                                <option value="bogo">Lleva X paga Y</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Días válidos</label>
+                            <input type="number" id="promo-ticket-valid-days" class="w-full border rounded-lg px-3 py-2 text-sm" value="30" min="1">
+                        </div>
+                    </div>
+                    <div id="promo-ticket-bogo-config" class="hidden grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Lleva (cantidad)</label>
+                            <input type="number" id="promo-ticket-bogo-buy" class="w-full border rounded-lg px-3 py-2 text-sm" value="2" min="1">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Paga (cantidad)</label>
+                            <input type="number" id="promo-ticket-bogo-pay" class="w-full border rounded-lg px-3 py-2 text-sm" value="1" min="1">
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="promo-ticket-accumulable" class="w-4 h-4" checked>
+                        <label for="promo-ticket-accumulable" class="text-xs font-medium text-gray-700">Acumulable con otras promociones</label>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="promo-active" class="w-5 h-5" checked>
+                    <label for="promo-active" class="text-sm font-medium text-gray-700">Promoción activa</label>
+                </div>
+            </div>
+            <div class="p-6 border-t flex gap-3">
+                <button onclick="closePromoModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-3 rounded-xl font-bold">Cancelar</button>
+                <button onclick="savePromotion()" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold"><i class="fas fa-save"></i> Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Configuración Promo Automática -->
+    <div id="auto-promo-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full">
+            <div class="p-6 border-b bg-gradient-to-r from-blue-50 to-purple-50">
+                <h3 class="text-xl font-bold text-blue-800"><i class="fas fa-magic"></i> Promoción Automática</h3>
+            </div>
+            <div class="p-6 space-y-4">
+                <div class="flex items-center gap-3 mb-4">
+                    <input type="checkbox" id="auto-promo-enabled" class="w-6 h-6" onchange="document.getElementById('auto-promo-fields').classList.toggle('hidden', !this.checked)">
+                    <label class="font-bold text-gray-800">Activar promoción automática por monto</label>
+                </div>
+                <div id="auto-promo-fields" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Monto mínimo de compra ($)</label>
+                        <input type="number" id="auto-promo-min" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" value="15000">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">% de descuento a aplicar</label>
+                        <div class="relative">
+                            <input type="number" id="auto-promo-percent" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" value="10" min="1" max="99">
+                            <span class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">%</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Descripción (aparece en el ticket)</label>
+                        <input type="text" id="auto-promo-desc-input" class="w-full border-2 border-blue-200 rounded-xl px-4 py-2" value="Descuento por compra mayorista">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Días válidos del ticket</label>
+                        <input type="number" id="auto-promo-valid-days" class="w-full border-2 border-blue-200 rounded-xl px-4 py-2 text-center" value="30" min="1">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de ticket a generar</label>
+                        <select id="auto-promo-ticket-type" class="w-full border-2 border-blue-200 rounded-xl px-4 py-2">
+                            <option value="percent">% Descuento en próxima compra</option>
+                            <option value="2x1">2x1 en próxima compra</option>
+                            <option value="3x2">3x2 en próxima compra</option>
+                            <option value="4x3">4x3 en próxima compra</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="auto-promo-accumulable" class="w-5 h-5" checked>
+                        <label for="auto-promo-accumulable" class="text-sm font-medium text-gray-700">Ticket acumulable con otras promociones</label>
+                    </div>
+                    <div class="bg-yellow-50 p-3 rounded-xl border border-yellow-200">
+                        <p class="text-sm text-yellow-800"><i class="fas fa-info-circle"></i> Al activar, cuando una compra supere el monto mínimo, se generará automáticamente un ticket para la próxima compra.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="p-6 border-t flex gap-3">
+                <button onclick="closeAutoPromoModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-3 rounded-xl font-bold">Cancelar</button>
+                <button onclick="saveAutoPromoConfig()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold"><i class="fas fa-save"></i> Guardar Configuración</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Ver Ticket -->
+    <div id="ticket-view-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div class="p-6 text-center">
+                <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-ticket-alt text-purple-600 text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-2">Ticket de Descuento</h3>
+                <p class="text-3xl font-bold text-purple-600 mb-1" id="view-ticket-number">#000000</p>
+                <p class="text-sm text-gray-500 mb-4" id="view-ticket-promo">Promoción</p>
+                
+                <div class="bg-purple-50 rounded-xl p-4 mb-4">
+                    <p class="text-sm text-purple-600">Descuento</p>
+                    <p class="text-2xl font-bold text-purple-800" id="view-ticket-discount">$0</p>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 text-sm mb-4">
+                    <div class="bg-gray-50 rounded-lg p-2">
+                        <p class="text-gray-500">Emitido</p>
+                        <p class="font-bold" id="view-ticket-date">-</p>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-2">
+                        <p class="text-gray-500">Vence</p>
+                        <p class="font-bold" id="view-ticket-expiry">-</p>
+                    </div>
+                </div>
+                
+                <span id="view-ticket-status" class="inline-block px-4 py-1 rounded-full text-sm font-bold">-</span>
+            </div>
+            <div class="p-6 border-t flex gap-3">
+                <button onclick="closeTicketViewModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-3 rounded-xl font-bold">Cerrar</button>
+                <button onclick="printCurrentTicket()" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold"><i class="fas fa-print"></i> Imprimir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Imprimir Ticket (estilo ticket de caja) -->
+    <div id="ticket-print-modal" class="fixed inset-0 bg-black bg-opacity-70 z-[60] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-2xl max-w-sm w-full">
+            <div class="p-4" id="ticket-print-content">
+                <div class="text-center border-b-2 border-dashed border-gray-300 pb-4 mb-4">
+                    <h2 class="text-lg font-bold">🎫 TICKET DE DESCUENTO</h2>
+                    <p class="text-xs text-gray-500">Kiosco App</p>
+                </div>
+                <div class="text-center mb-4">
+                    <p class="text-xs text-gray-500">NÚMERO DE TICKET</p>
+                    <p class="text-3xl font-bold tracking-widest" id="print-ticket-number">000000</p>
+                </div>
+                <div class="bg-gray-100 rounded-lg p-3 mb-4 text-center">
+                    <p class="text-sm text-gray-600">Promoción</p>
+                    <p class="font-bold text-lg" id="print-ticket-promo">-</p>
+                    <p class="text-sm text-gray-600 mt-1">Descuento</p>
+                    <p class="text-2xl font-bold text-purple-600" id="print-ticket-discount">$0</p>
+                </div>
+                <div class="text-xs text-gray-500 space-y-1 border-t border-dashed border-gray-300 pt-3">
+                    <div class="flex justify-between"><span>Emitido:</span> <span id="print-ticket-date">-</span></div>
+                    <div class="flex justify-between"><span>Válido hasta:</span> <span id="print-ticket-expiry">-</span></div>
+                    <div class="flex justify-between"><span>Estado:</span> <span id="print-ticket-status">-</span></div>
+                </div>
+                <div class="mt-4 text-center border-t-2 border-dashed border-gray-300 pt-4">
+                    <p class="text-xs text-gray-400">Presente este ticket en su próxima compra</p>
+                    <p class="text-xs text-gray-400">No acumulable con otras promociones</p>
+                    <div class="mt-2 inline-block p-2 bg-gray-100 rounded">
+                        <svg id="ticket-barcode" class="w-full h-10"></svg>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 border-t flex gap-3 bg-gray-50">
+                <button onclick="closeTicketPrintModal()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 rounded-lg font-bold">Cerrar</button>
+                <button onclick="window.print()" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg font-bold"><i class="fas fa-print"></i> Imprimir</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -1710,7 +2224,17 @@
             capitalAdjustments: [],
             // Login
             currentUser: null, // { role: 'admin'|'guest', name: string }
-            guestLogs: []
+            guestLogs: [],
+            // Promociones
+            promotions: [],
+            discountTickets: [],
+            autoPromotionConfig: {
+                enabled: false,
+                minAmount: 15000,
+                discountPercent: 10,
+                validDays: 30,
+                description: 'Descuento por monto mayor'
+            }
         };
         
         // Variables de login
@@ -2149,6 +2673,7 @@
                         </div>
                         <div class="text-right">
                             <p class="font-bold text-lg text-green-600">$${sale.total.toFixed(2)}</p>
+                            ${sale.discount > 0 ? `<p class="text-xs text-green-500 font-bold">-$${sale.discount.toFixed(0)} ${sale.discountLabel || ''}</p>` : ''}
                             ${isAdmin ? `<p class="text-xs text-gray-400">Ganancia: $${sale.profit.toFixed(2)}</p>` : ''}
                         </div>
                     </div>
@@ -2780,9 +3305,13 @@
             badge.classList.toggle('hidden', totalItems === 0);
             document.getElementById('cart-count').textContent = `(${totalItems} items)`;
 
+            const ticketBtn = document.getElementById('btn-toggle-ticket');
+            
             if (appState.cart.length === 0) {
                 cartContainer.innerHTML = '<p class="text-center text-gray-400 py-8">Escanea productos para agregar al carrito</p>';
                 document.getElementById('btn-complete').disabled = true;
+                if (ticketBtn) ticketBtn.classList.add('hidden');
+                document.getElementById('ticket-input-section').classList.add('hidden');
             } else {
                 cartContainer.innerHTML = appState.cart.map((item, index) => `
                     <div class="sale-item flex justify-between items-center p-3 rounded-lg border">
@@ -2807,9 +3336,153 @@
                     </div>
                 `).join('');
                 document.getElementById('btn-complete').disabled = false;
+                if (ticketBtn) ticketBtn.classList.remove('hidden');
             }
 
             updateCartTotals();
+            renderComboSuggestions();
+        }
+
+        function renderComboSuggestions() {
+            const container = document.getElementById('combo-suggestions');
+            if (!container) return;
+            
+            if (appState.cart.length === 0) {
+                container.classList.add('hidden');
+                return;
+            }
+            
+            const cartProductIds = appState.cart.map(item => item.productId);
+            const suggestions = [];
+            
+            // Buscar promos activas donde el carrito tiene ALGUNOS productos pero no todos
+            const activePromos = (appState.promotions || []).filter(p => 
+                p.active && isPromoApplicableNow(p) && p.productIds && p.productIds.length >= 2
+            );
+            
+            for (const promo of activePromos) {
+                const hasAny = promo.productIds.some(pid => cartProductIds.includes(pid));
+                const hasAll = promo.productIds.every(pid => cartProductIds.includes(pid));
+                
+                if (hasAny && !hasAll) {
+                    // Hay productos faltantes para completar el combo
+                    for (const missingPid of promo.productIds) {
+                        if (cartProductIds.includes(missingPid)) continue;
+                        
+                        const missingProduct = appState.inventory.find(p => p.id === missingPid);
+                        if (!missingProduct || getProductStock(missingProduct) <= 0) continue;
+                        
+                        // Calcular ahorro potencial
+                        const currentSubtotal = appState.cart
+                            .filter(item => promo.productIds.includes(item.productId))
+                            .reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                        
+                        // Calcular ahorro si se agrega 1 unidad del producto faltante
+                        const futureQty = 1;
+                        const futureSubtotal = currentSubtotal + (missingProduct.salePrice * futureQty);
+                        
+                        let futureDiscount = 0;
+                        switch (promo.type) {
+                            case 'percent':
+                                futureDiscount = futureSubtotal * ((promo.discount || 0) / 100);
+                                break;
+                            case 'combo':
+                                futureDiscount = promo.discount || 0;
+                                break;
+                            case 'threshold':
+                                if (futureSubtotal >= (promo.minAmount || 0)) {
+                                    futureDiscount = futureSubtotal * ((promo.discount || 0) / 100);
+                                }
+                                break;
+                            case '2x1': {
+                                const totalQty = appState.cart
+                                    .filter(item => promo.productIds.includes(item.productId))
+                                    .reduce((sum, item) => sum + item.quantity, 0) + futureQty;
+                                const freeQty = Math.floor(totalQty / 2);
+                                const sorted = [...appState.cart.filter(item => promo.productIds.includes(item.productId)), 
+                                    { price: missingProduct.salePrice, quantity: futureQty }]
+                                    .sort((a, b) => a.price - b.price);
+                                let remaining = freeQty;
+                                for (const item of sorted) {
+                                    if (remaining <= 0) break;
+                                    const count = Math.min(remaining, item.quantity);
+                                    futureDiscount += count * item.price;
+                                    remaining -= count;
+                                }
+                                break;
+                            }
+                            case 'bogo': {
+                                const buy = promo.bogoBuy || 2;
+                                const pay = promo.bogoPay || 1;
+                                const totalQty = appState.cart
+                                    .filter(item => promo.productIds.includes(item.productId))
+                                    .reduce((sum, item) => sum + item.quantity, 0) + futureQty;
+                                if (totalQty >= buy) {
+                                    const sets = Math.floor(totalQty / buy);
+                                    const freePerSet = buy - pay;
+                                    const sorted = [...appState.cart.filter(item => promo.productIds.includes(item.productId)), 
+                                        { price: missingProduct.salePrice, quantity: futureQty }]
+                                        .sort((a, b) => a.price - b.price);
+                                    let remaining = sets * freePerSet;
+                                    for (const item of sorted) {
+                                        if (remaining <= 0) break;
+                                        const count = Math.min(remaining, item.quantity);
+                                        futureDiscount += count * item.price;
+                                        remaining -= count;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                        
+                        const normalTotal = futureSubtotal;
+                        const promoTotal = normalTotal - futureDiscount;
+                        const savings = normalTotal - promoTotal;
+                        
+                        // Solo mostrar si hay ahorro real
+                        if (savings > 0) {
+                            suggestions.push({
+                                promo: promo,
+                                missingProduct: missingProduct,
+                                savings: savings,
+                                promoTotal: promoTotal,
+                                normalTotal: normalTotal
+                            });
+                        }
+                    }
+                }
+            }
+            
+            if (suggestions.length === 0) {
+                container.classList.add('hidden');
+                return;
+            }
+            
+            // Ordenar por mayor ahorro y limitar a 3 sugerencias
+            suggestions.sort((a, b) => b.savings - a.savings);
+            const topSuggestions = suggestions.slice(0, 3);
+            
+            container.innerHTML = `
+                <div class="text-xs font-bold text-purple-700 uppercase mb-1 flex items-center gap-1">
+                    <i class="fas fa-lightbulb text-yellow-500"></i> ¿Quiere aprovechar estos combos?
+                </div>
+                ${topSuggestions.map(s => `
+                    <div class="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-3 border border-purple-200 flex items-center gap-3">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-bold text-gray-800 truncate">${escapeHtml(s.missingProduct.name)}</p>
+                            <p class="text-xs text-purple-600">
+                                Combo "${escapeHtml(s.promo.name)}" → 
+                                <span class="font-bold text-green-600">Ahorra $${s.savings.toFixed(0)}</span>
+                            </p>
+                        </div>
+                        <button onclick="addToCartFromSearch('${s.missingProduct.id}')" 
+                            class="flex-shrink-0 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow">
+                            <i class="fas fa-plus"></i> Agregar
+                        </button>
+                    </div>
+                `).join('')}
+            `;
+            container.classList.remove('hidden');
         }
 
         function escapeHtml(text) {
@@ -2873,17 +3546,266 @@
             if (!confirm('¿Vaciar el carrito?')) return;
             
             appState.cart = [];
+            removeAppliedTicket(false);
             renderCart();
             showNotification('Carrito vaciado', 'info');
         }
 
+        // ==================== TICKET MANUAL EN VENTAS ====================
+        
+        function toggleTicketInput() {
+            const section = document.getElementById('ticket-input-section');
+            section.classList.toggle('hidden');
+            if (!section.classList.contains('hidden')) {
+                setTimeout(() => document.getElementById('cart-ticket-code').focus(), 100);
+            }
+        }
+        
+        function applyManualTicket() {
+            const codeInput = document.getElementById('cart-ticket-code');
+            const code = codeInput.value.trim();
+            const statusMsg = document.getElementById('ticket-status-msg');
+            
+            if (!code) {
+                showNotification('Ingresá un código de ticket', 'warning');
+                return;
+            }
+            
+            const ticket = appState.discountTickets.find(t => t.ticketNumber === code);
+            
+            if (!ticket) {
+                statusMsg.textContent = '❌ Ticket no encontrado';
+                statusMsg.className = 'text-xs text-red-600';
+                statusMsg.classList.remove('hidden');
+                return;
+            }
+            
+            if (ticket.used) {
+                statusMsg.textContent = '❌ Este ticket ya fue usado';
+                statusMsg.className = 'text-xs text-red-600';
+                statusMsg.classList.remove('hidden');
+                return;
+            }
+            
+            if (new Date(ticket.expiryDate) <= new Date()) {
+                statusMsg.textContent = '❌ Ticket vencido';
+                statusMsg.className = 'text-xs text-red-600';
+                statusMsg.classList.remove('hidden');
+                return;
+            }
+            
+            // Verificar monto mínimo si aplica
+            const subtotal = appState.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            if (ticket.minAmount && subtotal < ticket.minAmount) {
+                statusMsg.textContent = `❌ Mínimo $${ticket.minAmount} para usar este ticket`;
+                statusMsg.className = 'text-xs text-red-600';
+                statusMsg.classList.remove('hidden');
+                return;
+            }
+            
+            // Verificar productos aplicables
+            if (ticket.productIds && ticket.productIds.length > 0) {
+                const hasApplicable = appState.cart.some(item => ticket.productIds.includes(item.productId));
+                if (!hasApplicable) {
+                    statusMsg.textContent = '❌ Este ticket no aplica a los productos del carrito';
+                    statusMsg.className = 'text-xs text-red-600';
+                    statusMsg.classList.remove('hidden');
+                    return;
+                }
+            }
+            
+            // Todo OK: aplicar ticket
+            appState.appliedTicket = ticket;
+            
+            document.getElementById('ticket-input-section').classList.add('hidden');
+            document.getElementById('applied-ticket-section').classList.remove('hidden');
+            document.getElementById('applied-ticket-number').textContent = ticket.ticketNumber;
+            
+            const typeLabels = {
+                'percent': `${ticket.discount}% de descuento`,
+                '2x1': '2x1 en próxima compra',
+                '3x2': '3x2 en próxima compra',
+                '4x3': '4x3 en próxima compra',
+                'bogo': `Lleva ${ticket.bogoBuy || 2} paga ${ticket.bogoPay || 1}`,
+                'fixed': `$${ticket.discount} de descuento`
+            };
+            document.getElementById('applied-ticket-desc').textContent = typeLabels[ticket.ticketPromoType] || ticket.promoName;
+            
+            codeInput.value = '';
+            statusMsg.classList.add('hidden');
+            
+            renderCart();
+            showNotification('🎟️ Ticket aplicado correctamente', 'success');
+        }
+        
+        function removeAppliedTicket(render = true) {
+            appState.appliedTicket = null;
+            document.getElementById('applied-ticket-section').classList.add('hidden');
+            document.getElementById('ticket-input-section').classList.add('hidden');
+            document.getElementById('cart-ticket-code').value = '';
+            const statusMsg = document.getElementById('ticket-status-msg');
+            if (statusMsg) statusMsg.classList.add('hidden');
+            if (render) renderCart();
+        }
+        
         function updateCartTotals() {
             const subtotal = appState.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             
+            // Calcular descuentos de promociones activas (automáticas)
+            const promoResult = calculateActivePromoDiscount(subtotal);
+            
+            // Calcular descuento del ticket manual aplicado
+            let ticketDiscount = 0;
+            let ticketLabel = '';
+            if (appState.appliedTicket) {
+                const t = appState.appliedTicket;
+                const ticketCalc = calculateTicketDiscount(t, subtotal);
+                ticketDiscount = ticketCalc.discount;
+                ticketLabel = ticketCalc.label;
+            }
+            
+            // Determinar descuento final según acumulabilidad
+            let finalDiscount = 0;
+            let finalLabel = '';
+            
+            if (appState.appliedTicket && !appState.appliedTicket.accumulable) {
+                // No acumulable: solo aplica el ticket (si tiene descuento), si no, promo automática
+                if (ticketDiscount > 0) {
+                    finalDiscount = ticketDiscount;
+                    finalLabel = '🎟️ ' + ticketLabel;
+                } else {
+                    finalDiscount = promoResult.discount;
+                    finalLabel = promoResult.label;
+                }
+            } else {
+                // Acumulable o sin ticket: sumar ambos
+                finalDiscount = promoResult.discount + ticketDiscount;
+                finalLabel = promoResult.discount > 0 ? promoResult.label : '';
+                if (ticketDiscount > 0) {
+                    finalLabel = finalLabel ? finalLabel + ' + 🎟️ ' + ticketLabel : '🎟️ ' + ticketLabel;
+                }
+            }
+            
+            const finalTotal = subtotal - finalDiscount;
+            
+            // Renderizar descuentos si hay
+            const discountEl = document.getElementById('cart-discount-row');
+            const promoLabelEl = document.getElementById('cart-promo-label');
+            
+            if (finalDiscount > 0) {
+                if (!discountEl) {
+                    const totalRow = document.getElementById('cart-total').parentElement;
+                    const discountRow = document.createElement('div');
+                    discountRow.id = 'cart-discount-row';
+                    discountRow.className = 'flex justify-between text-lg mb-2 text-green-600';
+                    discountRow.innerHTML = `<span id="cart-promo-label">${finalLabel}:</span><span class="font-bold" id="cart-discount">-$${finalDiscount.toFixed(0)}</span>`;
+                    totalRow.parentElement.insertBefore(discountRow, totalRow);
+                } else {
+                    discountEl.style.display = 'flex';
+                    if (promoLabelEl) promoLabelEl.textContent = finalLabel + ':';
+                    document.getElementById('cart-discount').textContent = '-$' + finalDiscount.toFixed(0);
+                }
+            } else if (discountEl) {
+                discountEl.style.display = 'none';
+            }
+            
             document.getElementById('cart-subtotal').textContent = `$${subtotal.toFixed(0)}`;
-            document.getElementById('cart-total').textContent = `$${subtotal.toFixed(0)}`;
+            document.getElementById('cart-total').textContent = `$${finalTotal.toFixed(0)}`;
+            
+            // Guardar en cart para usar en checkout
+            appState.cartSubtotal = subtotal;
+            appState.cartDiscount = finalDiscount;
+            appState.cartFinalTotal = finalTotal;
+            appState.activePromoInfo = { discount: finalDiscount, label: finalLabel, promoId: promoResult.promoId };
             
             calculateChange();
+        }
+        
+        function calculateTicketDiscount(ticket, subtotal) {
+            const applicableItems = (ticket.productIds && ticket.productIds.length > 0)
+                ? appState.cart.filter(item => ticket.productIds.includes(item.productId))
+                : appState.cart;
+            
+            const applicableSubtotal = applicableItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const applicableQty = applicableItems.reduce((sum, item) => sum + item.quantity, 0);
+            
+            let discount = 0;
+            let label = '';
+            
+            switch (ticket.ticketPromoType || ticket.discountType) {
+                case 'percent':
+                case 'threshold':
+                case 'auto':
+                    discount = applicableSubtotal * ((ticket.discount || 0) / 100);
+                    label = `${ticket.discount}% off`;
+                    break;
+                case 'fixed':
+                    discount = ticket.discount || 0;
+                    label = `$${ticket.discount} off`;
+                    break;
+                case '2x1':
+                    if (applicableQty >= 2) {
+                        const freeQty = Math.floor(applicableQty / 2);
+                        const sorted = [...applicableItems].sort((a, b) => a.price - b.price);
+                        let remaining = freeQty;
+                        for (const item of sorted) {
+                            if (remaining <= 0) break;
+                            const count = Math.min(remaining, item.quantity);
+                            discount += count * item.price;
+                            remaining -= count;
+                        }
+                    }
+                    label = '2x1';
+                    break;
+                case '3x2':
+                    if (applicableQty >= 3) {
+                        const freeQty = Math.floor(applicableQty / 3);
+                        const sorted = [...applicableItems].sort((a, b) => a.price - b.price);
+                        let remaining = freeQty;
+                        for (const item of sorted) {
+                            if (remaining <= 0) break;
+                            const count = Math.min(remaining, item.quantity);
+                            discount += count * item.price;
+                            remaining -= count;
+                        }
+                    }
+                    label = '3x2';
+                    break;
+                case '4x3':
+                    if (applicableQty >= 4) {
+                        const freeQty = Math.floor(applicableQty / 4);
+                        const sorted = [...applicableItems].sort((a, b) => a.price - b.price);
+                        let remaining = freeQty;
+                        for (const item of sorted) {
+                            if (remaining <= 0) break;
+                            const count = Math.min(remaining, item.quantity);
+                            discount += count * item.price;
+                            remaining -= count;
+                        }
+                    }
+                    label = '4x3';
+                    break;
+                case 'bogo': {
+                    const buy = ticket.bogoBuy || 2;
+                    const pay = ticket.bogoPay || 1;
+                    if (applicableQty >= buy) {
+                        const sets = Math.floor(applicableQty / buy);
+                        const freePerSet = buy - pay;
+                        const sorted = [...applicableItems].sort((a, b) => a.price - b.price);
+                        let remaining = sets * freePerSet;
+                        for (const item of sorted) {
+                            if (remaining <= 0) break;
+                            const count = Math.min(remaining, item.quantity);
+                            discount += count * item.price;
+                            remaining -= count;
+                        }
+                    }
+                    label = `Lleva ${buy} paga ${pay}`;
+                    break;
+                }
+            }
+            
+            return { discount, label };
         }
 
         function setPaymentMethod(method) {
@@ -2911,7 +3833,7 @@
         function calculateChange() {
             if (appState.paymentMethod !== 'cash') return;
             
-            const total = appState.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const total = appState.cartFinalTotal || appState.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             const received = parseFloat(document.getElementById('cash-received').value) || 0;
             const change = received - total;
             
@@ -2924,8 +3846,13 @@
         function completeSale() {
             if (appState.cart.length === 0) return;
 
-            const total = appState.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const subtotal = appState.cartSubtotal || appState.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             const profit = appState.cart.reduce((sum, item) => sum + ((item.price - item.cost) * item.quantity), 0);
+            
+            // Usar los descuentos ya calculados en updateCartTotals
+            const discountAmount = appState.cartDiscount || 0;
+            const finalTotal = appState.cartFinalTotal || (subtotal - discountAmount);
+            const promoInfo = appState.activePromoInfo || { label: '', promoId: null };
             
             if (appState.paymentMethod === 'cash') {
                 const received = parseFloat(document.getElementById('cash-received').value) || 0;
@@ -2934,8 +3861,8 @@
                     document.getElementById('cash-received').focus();
                     return;
                 }
-                if (received < total) {
-                    showNotification(`Monto insuficiente. Recibido: $${received.toFixed(2)}, Falta: $${(total - received).toFixed(2)}`, 'error');
+                if (received < finalTotal) {
+                    showNotification(`Monto insuficiente. Recibido: $${received.toFixed(2)}, Falta: $${(finalTotal - received).toFixed(2)}`, 'error');
                     return;
                 }
             }
@@ -2945,7 +3872,7 @@
             let change = null;
             if (appState.paymentMethod === 'cash') {
                 received = parseFloat(document.getElementById('cash-received').value) || 0;
-                change = received - total;
+                change = received - finalTotal;
             }
 
             const sale = {
@@ -2953,8 +3880,14 @@
                 date: formatDateISO(appState.activeDate),
                 time: new Date().toLocaleTimeString('es-ES'),
                 items: [...appState.cart],
-                total: total,
-                profit: profit,
+                subtotal: subtotal,
+                discount: discountAmount,
+                discountLabel: promoInfo.label || null,
+                promoId: promoInfo.promoId || null,
+                ticketId: appState.appliedTicket ? appState.appliedTicket.id : null,
+                ticketNumber: appState.appliedTicket ? appState.appliedTicket.ticketNumber : null,
+                total: finalTotal,
+                profit: profit - discountAmount,
                 paymentMethod: appState.paymentMethod,
                 received: received,
                 change: change,
@@ -2997,21 +3930,65 @@
             });
 
             if (appState.paymentMethod === 'cash') {
-                appState.cash += total;
+                appState.cash += finalTotal;
             } else if (appState.paymentMethod === 'debit') {
-                appState.bank += total;
+                appState.bank += finalTotal;
             }
 
             appState.sales.push(sale);
             
-            showSuccessOverlay(total);
+            // Generar ticket de descuento si corresponde (promo automática por monto)
+            let generatedTicket = null;
+            if (appState.autoPromotionConfig && appState.autoPromotionConfig.enabled && subtotal >= appState.autoPromotionConfig.minAmount) {
+                generatedTicket = generateDiscountTicket(null, sale.id, appState.autoPromotionConfig);
+            }
+            
+            // También verificar si alguna promo configurada genera tickets
+            if (!generatedTicket) {
+                const ticketPromo = appState.promotions.find(p => 
+                    p.active && p.ticketEnabled && isPromoApplicableNow(p) && 
+                    subtotal >= (p.minAmount || 0) && promoResult.promoId === p.id
+                );
+                if (ticketPromo) {
+                    generatedTicket = generateDiscountTicket(ticketPromo, sale.id);
+                }
+            }
+            
+            showSuccessOverlay(finalTotal);
+            
+            // Marcar ticket manual como usado si existe
+            if (appState.appliedTicket) {
+                const ticketIdx = appState.discountTickets.findIndex(t => t.id === appState.appliedTicket.id);
+                if (ticketIdx >= 0) {
+                    appState.discountTickets[ticketIdx].used = true;
+                    appState.discountTickets[ticketIdx].usedAt = new Date().toISOString();
+                    appState.discountTickets[ticketIdx].usedInSaleId = sale.id;
+                }
+            }
+            
+            showSuccessOverlay(finalTotal);
             
             setTimeout(() => {
                 appState.cart = [];
+                appState.cartSubtotal = 0;
+                appState.cartDiscount = 0;
+                appState.cartFinalTotal = 0;
+                appState.activePromoInfo = null;
+                appState.appliedTicket = null;
+                document.getElementById('applied-ticket-section').classList.add('hidden');
+                document.getElementById('ticket-input-section').classList.add('hidden');
+                document.getElementById('cart-ticket-code').value = '';
                 document.getElementById('cash-received').value = '';
                 
-                // Mostrar notificación para imprimir ticket (tipo toast)
+                // Mostrar notificación para imprimir ticket de venta
                 showTicketNotification(sale);
+                
+                // Si se generó ticket de descuento, mostrar notificación
+                if (generatedTicket) {
+                    setTimeout(() => {
+                        showTicketGeneratedNotification(generatedTicket);
+                    }, 500);
+                }
                 
                 saveToLocalStorage();
                 renderAll();
@@ -3120,6 +4097,16 @@
                         </div>
                     `).join('')}
                     <hr>
+                    ${sale.discount > 0 ? `
+                    <div style="display: flex; justify-content: space-between; color: green;">
+                        <span>Subtotal</span>
+                        <span>$${sale.subtotal.toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; color: green;">
+                        <span>Descuento ${sale.discountLabel ? '(' + sale.discountLabel + ')' : ''}</span>
+                        <span>-$${sale.discount.toFixed(2)}</span>
+                    </div>
+                    ` : ''}
                     <div style="display: flex; justify-content: space-between; font-weight: bold;">
                         <span>TOTAL</span>
                         <span>$${sale.total.toFixed(2)}</span>
@@ -4395,6 +5382,7 @@
                     </div>
                     <div class="text-right mr-4">
                         <p class="font-bold text-green-600">+$${sale.total.toFixed(2)}</p>
+                        ${sale.discount > 0 ? `<p class="text-xs text-green-500 font-bold">-$${sale.discount.toFixed(0)}</p>` : ''}
                         <p class="text-xs text-gray-400">Ganancia: $${sale.profit.toFixed(2)}</p>
                     </div>
                     <div class="flex gap-2">
@@ -4651,6 +5639,16 @@
                     `).join('')}
                 </div>
                 <div class="border-t pt-4">
+                    ${sale.discount > 0 ? `
+                    <div class="flex justify-between text-sm text-gray-600">
+                        <span>Subtotal:</span>
+                        <span>$${sale.subtotal.toFixed(2)}</span>
+                    </div>
+                    <div class="flex justify-between text-sm text-green-600 font-bold">
+                        <span>Descuento ${sale.discountLabel ? '(' + sale.discountLabel + ')' : ''}:</span>
+                        <span>-$${sale.discount.toFixed(2)}</span>
+                    </div>
+                    ` : ''}
                     <div class="flex justify-between text-lg font-bold">
                         <span>Total:</span>
                         <span class="text-green-600">$${sale.total.toFixed(2)}</span>
@@ -6831,12 +7829,62 @@ Total de productos a comprar: ${shoppingList.length}
             showNotification('Saldos actualizados correctamente', 'success');
         }
 
-        function resetAllData() {
-            if (!confirm('⚠️ ¿ESTÁS SEGURO?\n\nSe eliminarán TODOS los datos:\n- Todos los productos\n- Todas las ventas\n- Todos los gastos\n- Toda la configuración\n\nEsta acción NO se puede deshacer.\n\n¿Deseas continuar?')) return;
+        async function resetAllData() {
+            if (!confirm('⚠️ ¿ESTÁS SEGURO?\n\nSe eliminarán TODOS los datos:\n- Todos los productos\n- Todas las ventas\n- Todos los gastos\n- Toda la configuración\n- Todas las promociones y tickets\n\nEsta acción NO se puede deshacer.\n\n¿Deseas continuar?')) return;
             
-            if (!confirm('🚨 CONFIRMACIÓN FINAL\n\nEscribe "ELIMINAR" para confirmar que quieres borrar todo:\n\n¿Estás 100% seguro?')) return;
+            if (!confirm('🚨 CONFIRMACIÓN FINAL\n\n¿Estás 100% seguro de que querés borrar TODO incluyendo la base de datos?')) return;
             
-            // Reiniciar todo el estado
+            showNotification('🗑️ Borrando datos locales y de Firebase...', 'info');
+            
+            // 1. Primero borrar en Firebase DIRECTAMENTE (antes de tocar nada local)
+            if (window.db && navigator.onLine) {
+                try {
+                    const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                    
+                    const emptyData = {
+                        inventory: [],
+                        sales: [],
+                        expenses: [],
+                        investments: [],
+                        cashMovements: [],
+                        capitalAdjustments: [],
+                        promotions: [],
+                        discountTickets: [],
+                        cash: 0,
+                        bank: 0,
+                        defaultMargin: 30,
+                        initialCapital: 0,
+                        pendingPurchase: null,
+                        pendingPurchasePayment: 'cash',
+                        autoPromotionConfig: {
+                            enabled: false,
+                            minAmount: 15000,
+                            discountPercent: 10,
+                            validDays: 30,
+                            description: 'Descuento por monto mayor'
+                        },
+                        cart: [],
+                        currentDate: new Date().toISOString(),
+                        activeDate: new Date().toISOString(),
+                        calendarMonth: new Date().toISOString(),
+                        lastSync: new Date().toISOString(),
+                        clearedAt: new Date().toISOString(), // Flag CRÍTICO: indica borrado intencional
+                        deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId()
+                    };
+                    
+                    await setDoc(doc(window.db, "kioscos", "main"), emptyData);
+                    console.log('✅ Firebase borrado permanentemente');
+                    showNotification('✅ Base de datos en la nube borrada', 'success');
+                } catch (err) {
+                    console.error('Error borrando Firebase:', err);
+                    showNotification('⚠️ Error al borrar Firebase: ' + err.message, 'warning');
+                    // Continuar igual para borrar al menos lo local
+                }
+            } else {
+                showNotification('📴 Sin conexión: solo se borraron datos locales', 'warning');
+            }
+            
+            // 2. Limpiar estado local
             appState = {
                 currentDate: new Date(),
                 activeDate: new Date(),
@@ -6853,21 +7901,33 @@ Total de productos a comprar: ${shoppingList.length}
                 calendarMonth: new Date(),
                 alerts: [],
                 pendingPurchase: null,
-                pendingPurchasePayment: 'cash'
+                pendingPurchasePayment: 'cash',
+                currentUser: null,
+                guestLogs: [],
+                promotions: [],
+                discountTickets: [],
+                autoPromotionConfig: {
+                    enabled: false,
+                    minAmount: 15000,
+                    discountPercent: 10,
+                    validDays: 30,
+                    description: 'Descuento por monto mayor'
+                }
             };
             
-            // Limpiar localStorage
+            // 3. Limpiar localStorage
             localStorage.removeItem('kioscopro-data');
             localStorage.removeItem('kioscopro-initialized');
             
-            saveToLocalStorage();
+            // 4. Actualizar lastSyncTime local para que no recupere datos viejos
+            lastSyncTime = Date.now();
             
             showNotification('🗑️ Todos los datos han sido eliminados', 'success');
             
-            // Recargar la página para empezar desde cero
+            // 5. Recargar la página para empezar desde cero
             setTimeout(() => {
                 location.reload();
-            }, 1500);
+            }, 2000);
         }
 
         function exportBackupBeforeReset() {
@@ -7018,6 +8078,18 @@ RESULTADOS:
             try {
                 updateInventoryValues();
             } catch(e) { console.error('Error en updateInventoryValues:', e); }
+            
+            try {
+                renderPromotions();
+            } catch(e) { console.error('Error en renderPromotions:', e); }
+            
+            try {
+                renderDiscountTickets();
+            } catch(e) { console.error('Error en renderDiscountTickets:', e); }
+            
+            try {
+                updatePromoStatusUI();
+            } catch(e) { console.error('Error en updatePromoStatusUI:', e); }
         }
 
         function updateSidebar() {
@@ -7083,7 +8155,7 @@ RESULTADOS:
                 }
                 
                 // Opciones solo para admin
-                const adminNavs = ['nav-cashflow', 'nav-reports', 'nav-settings'];
+                const adminNavs = ['nav-cashflow', 'nav-reports', 'nav-settings', 'nav-promotions'];
                 adminNavs.forEach(id => {
                     const el = document.getElementById(id);
                     if (el) {
@@ -7101,6 +8173,9 @@ RESULTADOS:
                 document.querySelectorAll('.sidebar-admin-only').forEach(el => {
                     el.style.display = isAdmin ? 'block' : 'none';
                 });
+                
+                // Actualizar badge de tickets pendientes
+                updateTicketBadge();
                 
             } catch (e) {
                 console.error('Error en updateSidebar:', e);
@@ -7237,6 +8312,840 @@ RESULTADOS:
             reader.readAsText(file);
         }
 
+        // ==================== PROMOTIONS SYSTEM ====================
+
+        function generateTicketNumber() {
+            // Número aleatorio de 6 dígitos, único
+            const existing = appState.discountTickets.map(t => t.ticketNumber);
+            let num;
+            do {
+                num = Math.floor(100000 + Math.random() * 900000).toString();
+            } while (existing.includes(num));
+            return num;
+        }
+
+        function isPromoApplicableNow(promo) {
+            const now = new Date();
+            const dayOfWeek = now.getDay();
+            
+            // Verificar días
+            if (promo.days && promo.days.length > 0) {
+                if (!promo.days.includes(dayOfWeek)) return false;
+            }
+            
+            // Verificar fechas
+            if (promo.startDate) {
+                const start = new Date(promo.startDate);
+                start.setHours(0,0,0,0);
+                const today = new Date();
+                today.setHours(0,0,0,0);
+                if (today < start) return false;
+            }
+            if (promo.endDate) {
+                const end = new Date(promo.endDate);
+                end.setHours(23,59,59,999);
+                if (now > end) return false;
+            }
+            
+            // Verificar horarios
+            if (promo.timeStart && promo.timeEnd) {
+                const currentTime = now.getHours() * 60 + now.getMinutes();
+                const [sh, sm] = promo.timeStart.split(':').map(Number);
+                const [eh, em] = promo.timeEnd.split(':').map(Number);
+                const startMin = sh * 60 + sm;
+                const endMin = eh * 60 + em;
+                if (currentTime < startMin || currentTime > endMin) return false;
+            }
+            
+            return true;
+        }
+
+        function calculateActivePromoDiscount(subtotal) {
+            let maxDiscount = 0;
+            let bestLabel = '';
+            let bestPromoId = null;
+            
+            // 1. Promoción automática por monto (aplica en la venta actual, no genera ticket todavía)
+            if (appState.autoPromotionConfig && appState.autoPromotionConfig.enabled) {
+                if (subtotal >= appState.autoPromotionConfig.minAmount) {
+                    const d = subtotal * (appState.autoPromotionConfig.discountPercent / 100);
+                    if (d > maxDiscount) {
+                        maxDiscount = d;
+                        bestLabel = appState.autoPromotionConfig.description || 'Descuento automático';
+                        bestPromoId = 'auto';
+                    }
+                }
+            }
+            
+            // 2. Promociones configuradas
+            const activePromos = (appState.promotions || []).filter(p => p.active && isPromoApplicableNow(p));
+            
+            for (const promo of activePromos) {
+                let discount = 0;
+                const cartItems = appState.cart || [];
+                
+                // Filtrar items que aplican a esta promo
+                const applicableItems = promo.productIds && promo.productIds.length > 0
+                    ? cartItems.filter(item => promo.productIds.includes(item.productId))
+                    : cartItems;
+                
+                if (applicableItems.length === 0) continue;
+                
+                const applicableSubtotal = applicableItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                const applicableQty = applicableItems.reduce((sum, item) => sum + item.quantity, 0);
+                
+                switch (promo.type) {
+                    case '2x1': {
+                        // Cada 2 unidades, se descuenta el precio de 1
+                        const freeQty = Math.floor(applicableQty / 2);
+                        // Encontrar el precio más bajo de los items aplicables para descontar
+                        const sorted = [...applicableItems].sort((a, b) => a.price - b.price);
+                        let remaining = freeQty;
+                        for (const item of sorted) {
+                            if (remaining <= 0) break;
+                            const count = Math.min(remaining, item.quantity);
+                            discount += count * item.price;
+                            remaining -= count;
+                        }
+                        break;
+                    }
+                    case 'bogo': {
+                        const buy = promo.bogoBuy || 2;
+                        const pay = promo.bogoPay || 1;
+                        if (applicableQty >= buy) {
+                            const sets = Math.floor(applicableQty / buy);
+                            const freePerSet = buy - pay;
+                            const sorted = [...applicableItems].sort((a, b) => a.price - b.price);
+                            let remaining = sets * freePerSet;
+                            for (const item of sorted) {
+                                if (remaining <= 0) break;
+                                const count = Math.min(remaining, item.quantity);
+                                discount += count * item.price;
+                                remaining -= count;
+                            }
+                        }
+                        break;
+                    }
+                    case 'percent': {
+                        discount = applicableSubtotal * ((promo.discount || 0) / 100);
+                        break;
+                    }
+                    case 'combo': {
+                        discount = promo.discount || 0;
+                        break;
+                    }
+                    case 'threshold': {
+                        if (applicableSubtotal >= (promo.minAmount || 0)) {
+                            discount = applicableSubtotal * ((promo.discount || 0) / 100);
+                        }
+                        break;
+                    }
+                }
+                
+                if (discount > maxDiscount) {
+                    maxDiscount = discount;
+                    bestLabel = promo.name;
+                    bestPromoId = promo.id;
+                }
+            }
+            
+            return { discount: maxDiscount, label: bestLabel, promoId: bestPromoId };
+        }
+
+        function generateDiscountTicket(promo, saleId, autoConfig) {
+            const ticketPromoType = promo 
+                ? (promo.ticketPromoType || promo.type || 'percent') 
+                : (autoConfig ? (autoConfig.ticketType || 'percent') : 'percent');
+            const isAccumulable = promo 
+                ? (promo.ticketAccumulable !== false) 
+                : (autoConfig ? autoConfig.accumulable !== false : true);
+            const productIds = promo ? (promo.productIds || []) : [];
+            
+            const ticket = {
+                id: 'TICKET-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+                ticketNumber: generateTicketNumber(),
+                promoId: promo ? promo.id : 'auto',
+                promoName: promo ? promo.name : (autoConfig ? autoConfig.description : 'Descuento automático'),
+                saleId: saleId,
+                discount: promo ? (promo.discount || 0) : (autoConfig ? autoConfig.discountPercent : 10),
+                discountType: promo ? promo.type : 'percent',
+                ticketPromoType: ticketPromoType,
+                accumulable: isAccumulable,
+                productIds: productIds,
+                bogoBuy: promo ? (promo.ticketBogoBuy || promo.bogoBuy || 2) : 2,
+                bogoPay: promo ? (promo.ticketBogoPay || promo.bogoPay || 1) : 1,
+                used: false,
+                createdAt: new Date().toISOString(),
+                expiryDate: new Date(Date.now() + ((autoConfig ? autoConfig.validDays : (promo ? (promo.ticketValidDays || 30) : 30)) * 24 * 60 * 60 * 1000)).toISOString(),
+                minAmount: promo ? (promo.minAmount || 0) : (autoConfig ? autoConfig.minAmount : 0)
+            };
+            
+            appState.discountTickets = appState.discountTickets || [];
+            appState.discountTickets.push(ticket);
+            
+            // Actualizar badge
+            updateTicketBadge();
+            saveToLocalStorage();
+            
+            return ticket;
+        }
+
+        function updateTicketBadge() {
+            const pending = (appState.discountTickets || []).filter(t => !t.used && new Date(t.expiryDate) > new Date()).length;
+            const badge = document.getElementById('ticket-badge');
+            if (badge) {
+                badge.textContent = pending;
+                badge.classList.toggle('hidden', pending === 0);
+            }
+        }
+
+        function showTicketGeneratedNotification(ticket) {
+            const typeLabels = {
+                'percent': `${ticket.discount}% de descuento`,
+                'fixed': `$${ticket.discount} de descuento`,
+                '2x1': '2x1 en próxima compra',
+                '3x2': '3x2 en próxima compra',
+                '4x3': '4x3 en próxima compra',
+                'bogo': `Lleva ${ticket.bogoBuy || 2} paga ${ticket.bogoPay || 1}`
+            };
+            const typeDesc = typeLabels[ticket.ticketPromoType] || ticket.promoName;
+            
+            const notif = document.createElement('div');
+            notif.className = 'fixed top-4 right-4 z-50 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-4 rounded-xl shadow-2xl flex flex-col gap-2 max-w-sm fade-in';
+            notif.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-ticket-alt text-xl"></i>
+                    <span class="font-bold">¡Ticket generado!</span>
+                </div>
+                <p class="text-sm opacity-90">N° <span class="font-mono font-bold">${ticket.ticketNumber}</span></p>
+                <p class="text-sm opacity-90">${typeDesc}</p>
+                <div class="flex gap-2 mt-2">
+                    <button onclick="viewTicket('${ticket.id}'); this.closest('.fixed').remove();" class="flex-1 bg-white text-purple-600 py-2 rounded-lg font-bold text-sm hover:bg-purple-50">
+                        <i class="fas fa-eye"></i> Ver
+                    </button>
+                    <button onclick="printTicketById('${ticket.id}'); this.closest('.fixed').remove();" class="flex-1 bg-white text-purple-600 py-2 rounded-lg font-bold text-sm hover:bg-purple-50">
+                        <i class="fas fa-print"></i> Imprimir
+                    </button>
+                </div>
+                <button onclick="this.closest('.fixed').remove()" class="absolute top-2 right-2 text-white opacity-70 hover:opacity-100">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+            document.body.appendChild(notif);
+            setTimeout(() => {
+                if (notif.parentNode) notif.remove();
+            }, 8000);
+        }
+
+        // ==================== RENDER PROMOTIONS ====================
+
+        function updatePromoStatusUI() {
+            const auto = appState.autoPromotionConfig || {};
+            const descEl = document.getElementById('auto-promo-desc');
+            const badgeEl = document.getElementById('auto-promo-badge');
+            if (!descEl || !badgeEl) return;
+            
+            if (auto.enabled) {
+                descEl.textContent = `En compras mayor a $${auto.minAmount} → ${auto.discountPercent}% descuento (ticket válido ${auto.validDays} días)`;
+                badgeEl.textContent = 'ACTIVA';
+                badgeEl.className = 'px-3 py-1 rounded-full text-xs font-bold bg-green-500 text-white';
+            } else {
+                descEl.textContent = 'Desactivada';
+                badgeEl.textContent = 'INACTIVA';
+                badgeEl.className = 'px-3 py-1 rounded-full text-xs font-bold bg-gray-200 text-gray-600';
+            }
+        }
+
+        function renderPromotions() {
+            const list = document.getElementById('promotions-list');
+            if (!list) return;
+            
+            const promos = appState.promotions || [];
+            if (promos.length === 0) {
+                list.innerHTML = '<p class="text-center py-8 text-gray-400">No hay promociones configuradas</p>';
+            } else {
+                const currentFilter = window.currentPromoFilter || 'all';
+                const filtered = promos.filter(p => {
+                    if (currentFilter === 'active') return p.active;
+                    if (currentFilter === 'inactive') return !p.active;
+                    return true;
+                });
+                
+                list.innerHTML = filtered.map(p => {
+                    const isNow = isPromoApplicableNow(p);
+                    const statusColor = p.active ? (isNow ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700') : 'bg-gray-100 text-gray-500';
+                    const statusText = p.active ? (isNow ? 'Activa ahora' : 'Inactiva (fuera de horario/día)') : 'Desactivada';
+                    
+                    let typeLabel = { '2x1': '2x1', 'combo': 'Combo', 'percent': '% Descuento', 'threshold': 'Por monto', 'bogo': 'Lleva X Paga Y' }[p.type] || p.type;
+                    let discountText = '';
+                    if (p.type === '2x1') discountText = 'Paga 1 lleva 2';
+                    else if (p.type === 'bogo') discountText = `Lleva ${p.bogoBuy || 2} paga ${p.bogoPay || 1}`;
+                    else if (p.type === 'threshold') discountText = `>${(p.minAmount || 0).toFixed(0)} → ${p.discount}%`;
+                    else if (p.type === 'percent') discountText = `${p.discount}% off`;
+                    else discountText = `$${p.discount} off`;
+                    
+                    const productCount = p.productIds && p.productIds.length > 0 ? `${p.productIds.length} productos` : 'Todos los productos';
+                    
+                    return `
+                        <div class="p-4 flex items-start gap-4 hover:bg-gray-50 transition">
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <h4 class="font-bold text-gray-800">${escapeHtml(p.name)}</h4>
+                                    <span class="text-xs px-2 py-0.5 rounded-full ${statusColor}">${statusText}</span>
+                                    ${p.ticketEnabled ? '<span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">🎟️ Ticket</span>' : ''}
+                                </div>
+                                <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
+                                    <span><i class="fas fa-tag text-purple-400"></i> ${typeLabel}</span>
+                                    <span><i class="fas fa-percentage text-green-400"></i> ${discountText}</span>
+                                    <span><i class="fas fa-box text-blue-400"></i> ${productCount}</span>
+                                    ${p.startDate ? `<span><i class="fas fa-calendar text-orange-400"></i> ${p.startDate} ${p.endDate ? 'al ' + p.endDate : ''}</span>` : ''}
+                                </div>
+                            </div>
+                            <div class="flex gap-2 flex-shrink-0">
+                                <button onclick="editPromotion('${p.id}')" class="p-2 text-blue-500 hover:bg-blue-50 rounded-lg" title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button onclick="togglePromotion('${p.id}')" class="p-2 ${p.active ? 'text-yellow-500 hover:bg-yellow-50' : 'text-green-500 hover:bg-green-50'} rounded-lg" title="${p.active ? 'Desactivar' : 'Activar'}">
+                                    <i class="fas ${p.active ? 'fa-pause' : 'fa-play'}"></i>
+                                </button>
+                                <button onclick="deletePromotion('${p.id}')" class="p-2 text-red-500 hover:bg-red-50 rounded-lg" title="Eliminar">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            // Actualizar KPIs
+            const today = formatDateISO(new Date());
+            const todaySales = (appState.sales || []).filter(s => s.date === today && s.discount > 0);
+            const activeCount = promos.filter(p => p.active).length;
+            document.getElementById('promo-active-count').textContent = activeCount;
+            document.getElementById('promo-used-today').textContent = todaySales.length;
+            document.getElementById('promo-tickets-count').textContent = (appState.discountTickets || []).length;
+            document.getElementById('promo-total-saved').textContent = '$' + (appState.discountTickets || []).reduce((sum, t) => sum + (t.used ? (t.discount || 0) : 0), 0).toFixed(0);
+        }
+
+        function filterPromos(filter) {
+            window.currentPromoFilter = filter;
+            renderPromotions();
+        }
+
+        function renderDiscountTickets() {
+            const list = document.getElementById('discount-tickets-list');
+            if (!list) return;
+            
+            const tickets = appState.discountTickets || [];
+            const filter = window.currentTicketFilter || 'all';
+            const search = (document.getElementById('ticket-search')?.value || '').trim();
+            const now = new Date();
+            
+            let filtered = tickets;
+            if (filter === 'pending') filtered = tickets.filter(t => !t.used && new Date(t.expiryDate) > now);
+            else if (filter === 'used') filtered = tickets.filter(t => t.used);
+            else if (filter === 'expired') filtered = tickets.filter(t => !t.used && new Date(t.expiryDate) <= now);
+            
+            if (search) {
+                filtered = filtered.filter(t => t.ticketNumber.includes(search));
+            }
+            
+            // Ordenar: pendientes primero, luego por fecha
+            filtered.sort((a, b) => {
+                if (a.used !== b.used) return a.used ? 1 : -1;
+                return new Date(b.createdAt) - new Date(a.createdAt);
+            });
+            
+            if (filtered.length === 0) {
+                list.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-gray-400">No hay tickets ${filter !== 'all' ? 'con este filtro' : ''}</td></tr>`;
+            } else {
+                list.innerHTML = filtered.map(t => {
+                    const isExpired = !t.used && new Date(t.expiryDate) <= now;
+                    const statusClass = t.used ? 'bg-green-100 text-green-700' : (isExpired ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700');
+                    const statusText = t.used ? 'Usado' : (isExpired ? 'Vencido' : 'Pendiente');
+                    
+                    const typeLabels = {
+                        'percent': `${t.discount}%`,
+                        'fixed': `$${t.discount}`,
+                        '2x1': '2x1',
+                        '3x2': '3x2',
+                        '4x3': '4x3',
+                        'bogo': `Lleva ${t.bogoBuy || 2} paga ${t.bogoPay || 1}`
+                    };
+                    const benefitText = typeLabels[t.ticketPromoType] || `${t.discount}%`;
+                    const accumText = t.accumulable === false ? '<span class="text-xs text-orange-500">(no acumulable)</span>' : '<span class="text-xs text-green-500">(acumulable)</span>';
+                    
+                    return `
+                        <tr class="hover:bg-gray-50 transition">
+                            <td class="px-4 py-3 font-mono font-bold text-purple-600">#${t.ticketNumber}</td>
+                            <td class="px-4 py-3 text-sm">${escapeHtml(t.promoName)}</td>
+                            <td class="px-4 py-3 text-center text-sm font-bold">${benefitText}<br>${accumText}</td>
+                            <td class="px-4 py-3 text-center"><span class="px-2 py-1 rounded-full text-xs font-bold ${statusClass}">${statusText}</span></td>
+                            <td class="px-4 py-3 text-center text-sm text-gray-500">${new Date(t.createdAt).toLocaleDateString('es-ES')}</td>
+                            <td class="px-4 py-3 text-center text-sm ${isExpired ? 'text-red-500 font-bold' : 'text-gray-500'}">${new Date(t.expiryDate).toLocaleDateString('es-ES')}</td>
+                            <td class="px-4 py-3 text-center">
+                                <button onclick="viewTicket('${t.id}')" class="text-purple-500 hover:text-purple-700 mr-2" title="Ver"><i class="fas fa-eye"></i></button>
+                                <button onclick="printTicketById('${t.id}')" class="text-blue-500 hover:text-blue-700 mr-2" title="Imprimir"><i class="fas fa-print"></i></button>
+                                ${!t.used && !isExpired ? `<button onclick="markTicketUsed('${t.id}')" class="text-green-500 hover:text-green-700" title="Marcar usado"><i class="fas fa-check"></i></button>` : ''}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+            
+            // KPIs
+            document.getElementById('dt-total').textContent = tickets.length;
+            document.getElementById('dt-used').textContent = tickets.filter(t => t.used).length;
+            document.getElementById('dt-pending').textContent = tickets.filter(t => !t.used && new Date(t.expiryDate) > now).length;
+            document.getElementById('dt-value').textContent = '$' + tickets.reduce((sum, t) => sum + (t.discount || 0), 0).toFixed(0);
+            
+            updateTicketBadge();
+        }
+
+        function filterTickets(filter) {
+            window.currentTicketFilter = filter;
+            ['all', 'pending', 'used', 'expired'].forEach(f => {
+                const btn = document.getElementById('filter-t-' + f);
+                if (btn) {
+                    if (f === filter) {
+                        btn.className = 'px-4 py-2 rounded-lg text-sm font-bold bg-purple-600 text-white';
+                    } else {
+                        btn.className = 'px-4 py-2 rounded-lg text-sm font-bold bg-gray-200 text-gray-700 hover:bg-gray-300';
+                    }
+                }
+            });
+            renderDiscountTickets();
+        }
+
+        function searchTickets(query) {
+            renderDiscountTickets();
+        }
+
+        // ==================== PROMO CRUD ====================
+
+        function openPromoModal(promoId) {
+            const modal = document.getElementById('promo-modal');
+            const title = document.getElementById('promo-modal-title');
+            const productsList = document.getElementById('promo-products-list');
+            
+            // Cargar productos para selección
+            productsList.innerHTML = appState.inventory.map(p => `
+                <label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-100 rounded px-2">
+                    <input type="checkbox" class="promo-product-check" value="${p.id}">
+                    <span class="text-sm">${escapeHtml(p.name)}</span>
+                    <span class="text-xs text-gray-400 ml-auto">$${p.salePrice.toFixed(0)}</span>
+                </label>
+            `).join('');
+            
+            if (promoId) {
+                const promo = appState.promotions.find(p => p.id === promoId);
+                if (!promo) return;
+                title.innerHTML = '<i class="fas fa-edit"></i> Editar Promoción';
+                document.getElementById('promo-edit-id').value = promo.id;
+                document.getElementById('promo-name').value = promo.name;
+                document.getElementById('promo-type').value = promo.type;
+                document.getElementById('promo-discount').value = promo.discount || 0;
+                document.getElementById('promo-min-amount').value = promo.minAmount || '';
+                document.getElementById('promo-threshold-percent').value = promo.type === 'threshold' ? (promo.discount || '') : '';
+                document.getElementById('promo-bogo-buy').value = promo.bogoBuy || 2;
+                document.getElementById('promo-bogo-pay').value = promo.bogoPay || 1;
+                document.getElementById('promo-start').value = promo.startDate || '';
+                document.getElementById('promo-end').value = promo.endDate || '';
+                document.getElementById('promo-time-start').value = promo.timeStart || '';
+                document.getElementById('promo-time-end').value = promo.timeEnd || '';
+                document.getElementById('promo-ticket-enabled').checked = promo.ticketEnabled || false;
+                document.getElementById('promo-ticket-type').value = promo.ticketPromoType || 'percent';
+                document.getElementById('promo-ticket-valid-days').value = promo.ticketValidDays || 30;
+                document.getElementById('promo-ticket-bogo-buy').value = promo.ticketBogoBuy || 2;
+                document.getElementById('promo-ticket-bogo-pay').value = promo.ticketBogoPay || 1;
+                document.getElementById('promo-ticket-accumulable').checked = promo.ticketAccumulable !== false;
+                document.getElementById('promo-active').checked = promo.active !== false;
+                
+                // Marcar días
+                for (let i = 0; i < 7; i++) {
+                    document.getElementById('promo-day-' + i).checked = promo.days ? promo.days.includes(i) : true;
+                }
+                
+                // Marcar productos
+                document.querySelectorAll('.promo-product-check').forEach(cb => {
+                    cb.checked = promo.productIds ? promo.productIds.includes(cb.value) : false;
+                });
+                
+                onPromoTypeChange();
+                onTicketEnabledChange();
+                onTicketTypeChange();
+            } else {
+                title.innerHTML = '<i class="fas fa-tag"></i> Nueva Promoción';
+                document.getElementById('promo-edit-id').value = '';
+                document.getElementById('promo-name').value = '';
+                document.getElementById('promo-type').value = '2x1';
+                document.getElementById('promo-discount').value = '';
+                document.getElementById('promo-min-amount').value = '';
+                document.getElementById('promo-threshold-percent').value = '';
+                document.getElementById('promo-bogo-buy').value = 2;
+                document.getElementById('promo-bogo-pay').value = 1;
+                document.getElementById('promo-start').value = '';
+                document.getElementById('promo-end').value = '';
+                document.getElementById('promo-time-start').value = '';
+                document.getElementById('promo-time-end').value = '';
+                document.getElementById('promo-ticket-enabled').checked = false;
+                document.getElementById('promo-ticket-type').value = 'percent';
+                document.getElementById('promo-ticket-valid-days').value = 30;
+                document.getElementById('promo-ticket-bogo-buy').value = 2;
+                document.getElementById('promo-ticket-bogo-pay').value = 1;
+                document.getElementById('promo-ticket-accumulable').checked = true;
+                document.getElementById('promo-active').checked = true;
+                for (let i = 0; i < 7; i++) {
+                    document.getElementById('promo-day-' + i).checked = true;
+                }
+                document.querySelectorAll('.promo-product-check').forEach(cb => cb.checked = false);
+                onPromoTypeChange();
+                onTicketEnabledChange();
+                onTicketTypeChange();
+            }
+            
+            modal.classList.remove('hidden');
+        }
+
+        function closePromoModal() {
+            document.getElementById('promo-modal').classList.add('hidden');
+        }
+
+        function onPromoTypeChange() {
+            const type = document.getElementById('promo-type').value;
+            const hint = document.getElementById('promo-discount-hint');
+            const bogoConfig = document.getElementById('promo-bogo-config');
+            const thresholdConfig = document.getElementById('promo-threshold-config');
+            
+            bogoConfig.classList.toggle('hidden', type !== 'bogo');
+            thresholdConfig.classList.toggle('hidden', type !== 'threshold');
+            
+            if (type === '2x1') {
+                hint.textContent = 'Para 2x1 dejar en 0';
+                document.getElementById('promo-discount').disabled = true;
+                document.getElementById('promo-discount').value = 0;
+            } else if (type === 'bogo') {
+                hint.textContent = 'Configure abajo Lleva/Paga';
+                document.getElementById('promo-discount').disabled = true;
+                document.getElementById('promo-discount').value = 0;
+            } else if (type === 'threshold') {
+                hint.textContent = 'Configure abajo';
+                document.getElementById('promo-discount').disabled = true;
+                document.getElementById('promo-discount').value = 0;
+            } else {
+                hint.textContent = type === 'percent' ? 'Porcentaje de descuento' : 'Monto fijo de descuento';
+                document.getElementById('promo-discount').disabled = false;
+            }
+        }
+        
+        function onTicketEnabledChange() {
+            const enabled = document.getElementById('promo-ticket-enabled').checked;
+            document.getElementById('promo-ticket-config').classList.toggle('hidden', !enabled);
+        }
+        
+        function onTicketTypeChange() {
+            const type = document.getElementById('promo-ticket-type').value;
+            document.getElementById('promo-ticket-bogo-config').classList.toggle('hidden', type !== 'bogo');
+        }
+
+        function savePromotion() {
+            const id = document.getElementById('promo-edit-id').value;
+            const name = document.getElementById('promo-name').value.trim();
+            if (!name) {
+                showNotification('Ingresá un nombre para la promoción', 'error');
+                return;
+            }
+            
+            const type = document.getElementById('promo-type').value;
+            const days = [];
+            for (let i = 0; i < 7; i++) {
+                if (document.getElementById('promo-day-' + i).checked) days.push(i);
+            }
+            
+            const productIds = [];
+            document.querySelectorAll('.promo-product-check:checked').forEach(cb => productIds.push(cb.value));
+            
+            const promo = {
+                id: id || 'PROMO-' + Date.now(),
+                name: name,
+                type: type,
+                discount: parseFloat(document.getElementById('promo-discount').value) || 0,
+                minAmount: parseFloat(document.getElementById('promo-min-amount').value) || 0,
+                days: days,
+                productIds: productIds,
+                startDate: document.getElementById('promo-start').value || null,
+                endDate: document.getElementById('promo-end').value || null,
+                timeStart: document.getElementById('promo-time-start').value || null,
+                timeEnd: document.getElementById('promo-time-end').value || null,
+                ticketEnabled: document.getElementById('promo-ticket-enabled').checked,
+                ticketPromoType: document.getElementById('promo-ticket-type').value,
+                ticketValidDays: parseInt(document.getElementById('promo-ticket-valid-days').value) || 30,
+                ticketAccumulable: document.getElementById('promo-ticket-accumulable').checked,
+                active: document.getElementById('promo-active').checked,
+                createdAt: id ? undefined : new Date().toISOString()
+            };
+            
+            if (type === 'bogo') {
+                promo.bogoBuy = parseInt(document.getElementById('promo-bogo-buy').value) || 2;
+                promo.bogoPay = parseInt(document.getElementById('promo-bogo-pay').value) || 1;
+            }
+            
+            if (type === 'threshold') {
+                promo.discount = parseFloat(document.getElementById('promo-threshold-percent').value) || 0;
+            }
+            
+            // Configuración BOGO del ticket
+            if (promo.ticketEnabled && promo.ticketPromoType === 'bogo') {
+                promo.ticketBogoBuy = parseInt(document.getElementById('promo-ticket-bogo-buy').value) || 2;
+                promo.ticketBogoPay = parseInt(document.getElementById('promo-ticket-bogo-pay').value) || 1;
+            }
+            
+            if (id) {
+                const idx = appState.promotions.findIndex(p => p.id === id);
+                if (idx >= 0) appState.promotions[idx] = { ...appState.promotions[idx], ...promo };
+            } else {
+                appState.promotions.push(promo);
+            }
+            
+            saveToLocalStorage();
+            renderPromotions();
+            closePromoModal();
+            showNotification(id ? 'Promoción actualizada' : 'Promoción creada', 'success');
+        }
+
+        function editPromotion(id) {
+            openPromoModal(id);
+        }
+
+        function togglePromotion(id) {
+            const promo = appState.promotions.find(p => p.id === id);
+            if (promo) {
+                promo.active = !promo.active;
+                saveToLocalStorage();
+                renderPromotions();
+                showNotification(promo.active ? 'Promoción activada' : 'Promoción desactivada', 'info');
+            }
+        }
+
+        function deletePromotion(id) {
+            if (!confirm('¿Eliminar esta promoción?')) return;
+            appState.promotions = appState.promotions.filter(p => p.id !== id);
+            saveToLocalStorage();
+            renderPromotions();
+            showNotification('Promoción eliminada', 'info');
+        }
+
+        // ==================== AUTO PROMO CONFIG ====================
+
+        function openAutoPromoModal() {
+            const auto = appState.autoPromotionConfig || {};
+            document.getElementById('auto-promo-enabled').checked = auto.enabled || false;
+            document.getElementById('auto-promo-min').value = auto.minAmount || 15000;
+            document.getElementById('auto-promo-percent').value = auto.discountPercent || 10;
+            document.getElementById('auto-promo-desc-input').value = auto.description || 'Descuento por compra mayorista';
+            document.getElementById('auto-promo-valid-days').value = auto.validDays || 30;
+            document.getElementById('auto-promo-ticket-type').value = auto.ticketType || 'percent';
+            document.getElementById('auto-promo-accumulable').checked = auto.accumulable !== false;
+            document.getElementById('auto-promo-fields').classList.toggle('hidden', !auto.enabled);
+            document.getElementById('auto-promo-modal').classList.remove('hidden');
+        }
+
+        function closeAutoPromoModal() {
+            document.getElementById('auto-promo-modal').classList.add('hidden');
+        }
+
+        function saveAutoPromoConfig() {
+            appState.autoPromotionConfig = {
+                enabled: document.getElementById('auto-promo-enabled').checked,
+                minAmount: parseFloat(document.getElementById('auto-promo-min').value) || 15000,
+                discountPercent: parseFloat(document.getElementById('auto-promo-percent').value) || 10,
+                description: document.getElementById('auto-promo-desc-input').value || 'Descuento por compra mayorista',
+                validDays: parseInt(document.getElementById('auto-promo-valid-days').value) || 30,
+                ticketType: document.getElementById('auto-promo-ticket-type').value || 'percent',
+                accumulable: document.getElementById('auto-promo-accumulable').checked
+            };
+            saveToLocalStorage();
+            updatePromoStatusUI();
+            closeAutoPromoModal();
+            showNotification('Configuración de promoción automática guardada', 'success');
+        }
+
+        // ==================== TICKET MANAGEMENT ====================
+
+        function viewTicket(id) {
+            const ticket = appState.discountTickets.find(t => t.id === id);
+            if (!ticket) return;
+            
+            const isExpired = !ticket.used && new Date(ticket.expiryDate) <= new Date();
+            const statusClass = ticket.used ? 'bg-green-100 text-green-700' : (isExpired ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700');
+            const statusText = ticket.used ? 'Usado' : (isExpired ? 'Vencido' : 'Pendiente');
+            
+            const viewTypeLabels = {
+                'percent': `${ticket.discount}% de descuento`,
+                'fixed': `$${ticket.discount} de descuento`,
+                '2x1': '2x1 en próxima compra',
+                '3x2': '3x2 en próxima compra',
+                '4x3': '4x3 en próxima compra',
+                'bogo': `Lleva ${ticket.bogoBuy || 2} paga ${ticket.bogoPay || 1}`
+            };
+            
+            document.getElementById('view-ticket-number').textContent = '#' + ticket.ticketNumber;
+            document.getElementById('view-ticket-promo').textContent = ticket.promoName;
+            document.getElementById('view-ticket-discount').textContent = viewTypeLabels[ticket.ticketPromoType] || `${ticket.discount}%`;
+            document.getElementById('view-ticket-date').textContent = new Date(ticket.createdAt).toLocaleDateString('es-ES');
+            document.getElementById('view-ticket-expiry').textContent = new Date(ticket.expiryDate).toLocaleDateString('es-ES');
+            const statusEl = document.getElementById('view-ticket-status');
+            statusEl.className = 'inline-block px-4 py-1 rounded-full text-sm font-bold ' + statusClass;
+            statusEl.textContent = statusText;
+            
+            window.currentViewTicketId = id;
+            document.getElementById('ticket-view-modal').classList.remove('hidden');
+        }
+
+        function closeTicketViewModal() {
+            document.getElementById('ticket-view-modal').classList.add('hidden');
+            window.currentViewTicketId = null;
+        }
+
+        function printCurrentTicket() {
+            if (window.currentViewTicketId) {
+                printTicketById(window.currentViewTicketId);
+            }
+        }
+
+        function printTicketById(id) {
+            const ticket = appState.discountTickets.find(t => t.id === id);
+            if (!ticket) return;
+            
+            const isExpired = !ticket.used && new Date(ticket.expiryDate) <= new Date();
+            const statusText = ticket.used ? 'USADO' : (isExpired ? 'VENCIDO' : 'VÁLIDO');
+            
+            const printTypeLabels = {
+                'percent': `${ticket.discount}% de descuento`,
+                'fixed': `$${ticket.discount} de descuento`,
+                '2x1': '2x1 en próxima compra',
+                '3x2': '3x2 en próxima compra',
+                '4x3': '4x3 en próxima compra',
+                'bogo': `Lleva ${ticket.bogoBuy || 2} paga ${ticket.bogoPay || 1}`
+            };
+            
+            document.getElementById('print-ticket-number').textContent = ticket.ticketNumber;
+            document.getElementById('print-ticket-promo').textContent = ticket.promoName;
+            document.getElementById('print-ticket-discount').textContent = printTypeLabels[ticket.ticketPromoType] || `${ticket.discount}%`;
+            document.getElementById('print-ticket-date').textContent = new Date(ticket.createdAt).toLocaleDateString('es-ES');
+            document.getElementById('print-ticket-expiry').textContent = new Date(ticket.expiryDate).toLocaleDateString('es-ES');
+            document.getElementById('print-ticket-status').textContent = statusText;
+            
+            document.getElementById('ticket-print-modal').classList.remove('hidden');
+        }
+
+        function closeTicketPrintModal() {
+            document.getElementById('ticket-print-modal').classList.add('hidden');
+        }
+
+        function markTicketUsed(id) {
+            const ticket = appState.discountTickets.find(t => t.id === id);
+            if (!ticket) return;
+            if (ticket.used) {
+                showNotification('Este ticket ya fue usado', 'warning');
+                return;
+            }
+            if (new Date(ticket.expiryDate) <= new Date()) {
+                showNotification('Este ticket está vencido', 'error');
+                return;
+            }
+            ticket.used = true;
+            ticket.usedAt = new Date().toISOString();
+            saveToLocalStorage();
+            renderDiscountTickets();
+            updateTicketBadge();
+            showNotification('Ticket marcado como usado', 'success');
+        }
+
+        // ==================== PROMO METRICS ====================
+
+        function renderPromoMetrics() {
+            const panel = document.getElementById('promo-metrics-panel');
+            panel.classList.toggle('hidden');
+            if (panel.classList.contains('hidden')) return;
+            
+            // Top 5 promos más usadas
+            const promoCounts = {};
+            (appState.sales || []).forEach(s => {
+                if (s.promoId) {
+                    promoCounts[s.promoId] = (promoCounts[s.promoId] || 0) + 1;
+                }
+            });
+            
+            const topUsed = Object.entries(promoCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5)
+                .map(([pid, count]) => {
+                    const promo = appState.promotions.find(p => p.id === pid);
+                    const name = promo ? promo.name : 'Promo automática';
+                    return { name, count };
+                });
+            
+            const topEl = document.getElementById('promo-top-used');
+            if (topUsed.length === 0) {
+                topEl.innerHTML = '<p class="text-gray-400 text-sm">Sin datos aún</p>';
+            } else {
+                topEl.innerHTML = topUsed.map((p, i) => `
+                    <div class="flex items-center gap-3">
+                        <span class="w-6 h-6 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold">${i + 1}</span>
+                        <span class="flex-1 text-sm">${escapeHtml(p.name)}</span>
+                        <span class="text-sm font-bold text-purple-600">${p.count} usos</span>
+                    </div>
+                `).join('');
+            }
+            
+            // Ahorro por tipo
+            const typeSavings = {};
+            (appState.sales || []).forEach(s => {
+                if (s.discount > 0) {
+                    const key = s.promoId === 'auto' ? 'Automática' : (appState.promotions.find(p => p.id === s.promoId)?.type || 'Otra');
+                    typeSavings[key] = (typeSavings[key] || 0) + s.discount;
+                }
+            });
+            
+            const savingsEl = document.getElementById('promo-savings-by-type');
+            if (Object.keys(typeSavings).length === 0) {
+                savingsEl.innerHTML = '<p class="text-gray-400 text-sm">Sin datos aún</p>';
+            } else {
+                savingsEl.innerHTML = Object.entries(typeSavings).map(([type, amount]) => `
+                    <div class="flex items-center gap-3">
+                        <span class="text-sm flex-1">${type}</span>
+                        <span class="text-sm font-bold text-green-600">$${amount.toFixed(0)}</span>
+                    </div>
+                `).join('');
+            }
+            
+            // Historial diario últimos 7 días
+            const history = [];
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const dateStr = formatDateISO(d);
+                const daySales = (appState.sales || []).filter(s => s.date === dateStr && s.discount > 0);
+                const dayTickets = (appState.discountTickets || []).filter(t => t.createdAt && t.createdAt.startsWith(dateStr));
+                history.push({
+                    date: dateStr,
+                    sales: daySales.length,
+                    tickets: dayTickets.length,
+                    discount: daySales.reduce((sum, s) => sum + s.discount, 0)
+                });
+            }
+            
+            document.getElementById('promo-daily-history').innerHTML = history.map(h => `
+                <tr class="border-b border-gray-100">
+                    <td class="px-4 py-2 text-sm">${new Date(h.date + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}</td>
+                    <td class="px-4 py-2 text-center text-sm font-bold">${h.sales}</td>
+                    <td class="px-4 py-2 text-center text-sm font-bold text-purple-600">${h.tickets}</td>
+                    <td class="px-4 py-2 text-right text-sm font-bold text-green-600">$${h.discount.toFixed(0)}</td>
+                </tr>
+            `).join('');
+        }
+
         // ==================== FIREBASE SYNC ====================
         let firebaseSyncEnabled = false;
         let lastSyncTime = 0;
@@ -7324,7 +9233,10 @@ RESULTADOS:
                         const deviceId = localStorage.getItem('kioscopro-device-id') || generateDeviceId();
                         
                         // Evitar loop: no actualizar si el cambio vino de este dispositivo hace menos de 2 segundos
-                        if (data.deviceId === deviceId && Date.now() - lastSyncTime < 2000) {
+                        // EXCEPCIÓN: si es un borrado intencional (clearedAt), SIEMPRE procesarlo
+                        const isRecentOwnChange = data.deviceId === deviceId && Date.now() - lastSyncTime < 2000;
+                        const isClearAction = !!data.clearedAt;
+                        if (isRecentOwnChange && !isClearAction) {
                             return;
                         }
                         
@@ -7366,8 +9278,47 @@ RESULTADOS:
             const firebaseTime = new Date(data.lastSync || 0).getTime();
             const localTime = lastSyncTime;
             const isRestore = data.restoredFromBackup === true;
+            const hasLocalData = !!localStorage.getItem('kioscopro-data');
             
-            if (isRestore || firebaseTime > localTime || !localStorage.getItem('kioscopro-data')) {
+            // ========== DETECTAR BORRADO INTENCIONAL ==========
+            if (data.clearedAt) {
+                const clearedTime = new Date(data.clearedAt).getTime();
+                // Si el borrado en Firebase es más reciente que nuestro último sync, o no tenemos datos locales
+                if (clearedTime > localTime || !hasLocalData) {
+                    console.log('🗑️ Detectado borrado intencional en Firebase, limpiando datos locales');
+                    
+                    appState.inventory = [];
+                    appState.sales = [];
+                    appState.expenses = [];
+                    appState.investments = [];
+                    appState.cashMovements = [];
+                    appState.capitalAdjustments = [];
+                    appState.promotions = [];
+                    appState.discountTickets = [];
+                    appState.cash = parseFloat(data.cash) || 0;
+                    appState.bank = parseFloat(data.bank) || 0;
+                    appState.initialCapital = parseFloat(data.initialCapital) || 0;
+                    appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
+                    if (data.autoPromotionConfig) appState.autoPromotionConfig = data.autoPromotionConfig;
+                    
+                    // Preservar carrito y usuario
+                    const localCart = appState.cart;
+                    const localUser = appState.currentUser;
+                    appState.cart = localCart;
+                    appState.currentUser = localUser;
+                    
+                    saveToLocalStorage(false);
+                    lastSyncTime = Date.now();
+                    renderAll();
+                    
+                    if (!isInitialSync && !isSameDevice) {
+                        showNotification('🗑️ Datos borrados desde otro dispositivo', 'info');
+                    }
+                    return; // No continuar con merge normal
+                }
+            }
+            
+            if (isRestore || firebaseTime > localTime || !hasLocalData) {
                 // Preservar carrito local (no se sincroniza)
                 const localCart = appState.cart;
                 
@@ -7387,12 +9338,15 @@ RESULTADOS:
                 appState.expenses = replaceIfNewer(appState.expenses, data.expenses, localTime);
                 appState.investments = replaceIfNewer(appState.investments, data.investments, localTime);
                 appState.capitalAdjustments = replaceIfNewer(appState.capitalAdjustments, data.capitalAdjustments, localTime);
+                appState.promotions = replaceIfNewer(appState.promotions, data.promotions, localTime);
+                appState.discountTickets = replaceIfNewer(appState.discountTickets, data.discountTickets, localTime);
                 
                 // Actualizar valores simples (solo si no hay conflicto)
                 if (data.cash !== undefined) appState.cash = parseFloat(data.cash) || 0;
                 if (data.bank !== undefined) appState.bank = parseFloat(data.bank) || 0;
                 if (data.defaultMargin !== undefined) appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
                 if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
+                if (data.autoPromotionConfig) appState.autoPromotionConfig = data.autoPromotionConfig;
                 
                 // Restaurar fechas
                 try {
@@ -7424,57 +9378,10 @@ RESULTADOS:
             isInitialSync = false;
         }
         
-        // ==================== BORRADO PERMANENTE ====================
-        // Función para borrar TODO y sincronizar el borrado a Firebase
+        // ==================== BORRADO PERMANENTE (deprecated - usar resetAllData) ====================
         async function clearAllData() {
-            if (!confirm('⚠️ ¿Estás seguro de BORRAR TODOS los datos?\n\nEsto borrará:\n- Todo el inventario\n- Todas las ventas\n- Todos los gastos\n- Todo el historial\n\nEsta acción NO se puede deshacer.')) {
-                return;
-            }
-            
-            // Limpiar estado local
-            appState.inventory = [];
-            appState.sales = [];
-            appState.expenses = [];
-            appState.investments = [];
-            appState.capitalAdjustments = [];
-            appState.cash = 0;
-            appState.bank = 0;
-            appState.initialCapital = 0;
-            
-            // Limpiar localStorage
-            localStorage.removeItem('kioscopro-data');
-            
-            // Sincronizar borrado a Firebase inmediatamente
-            if (window.db && navigator.onLine) {
-                try {
-                    const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
-                    const emptyData = {
-                        inventory: [],
-                        sales: [],
-                        expenses: [],
-                        investments: [],
-                        capitalAdjustments: [],
-                        cash: 0,
-                        bank: 0,
-                        defaultMargin: 30,
-                        initialCapital: 0,
-                        cart: [],
-                        currentDate: new Date().toISOString(),
-                        activeDate: new Date().toISOString(),
-                        calendarMonth: new Date().toISOString(),
-                        lastSync: new Date().toISOString(),
-                        deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId(),
-                        clearedAt: new Date().toISOString() // Flag de borrado
-                    };
-                    await setDoc(doc(window.db, "kioscos", "main"), emptyData);
-                    console.log('🗑️ Datos borrados permanentemente en Firebase');
-                } catch (err) {
-                    console.error('Error borrando en Firebase:', err);
-                }
-            }
-            
-            renderAll();
-            showNotification('🗑️ Todos los datos han sido borrados', 'success');
+            // Redirigir a resetAllData para unificar comportamiento
+            await resetAllData();
         }
         
         // Generar ID único para este dispositivo
@@ -7600,6 +9507,19 @@ RESULTADOS:
                     appState.investments = Array.isArray(appState.investments) ? appState.investments : [];
                     appState.cart = Array.isArray(appState.cart) ? appState.cart : [];
                     appState.cashMovements = Array.isArray(appState.cashMovements) ? appState.cashMovements : [];
+                    appState.promotions = Array.isArray(appState.promotions) ? appState.promotions : [];
+                    appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
+                    
+                    // Asegurar config de promo automática
+                    if (!appState.autoPromotionConfig) {
+                        appState.autoPromotionConfig = {
+                            enabled: false,
+                            minAmount: 15000,
+                            discountPercent: 10,
+                            validDays: 30,
+                            description: 'Descuento por monto mayor'
+                        };
+                    }
                     
                     console.log('Datos cargados - Caja:', appState.cash, 'Cuenta:', appState.bank);
                     

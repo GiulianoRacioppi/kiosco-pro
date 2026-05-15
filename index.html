@@ -520,8 +520,12 @@
                     <p class="text-xs text-gray-500 mt-1">Cambiá el margen para recalcular el precio</p>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Stock</label>
-                    <input type="number" id="edit-prod-stock" class="w-full border rounded-lg px-3 py-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Lotes / Stock</label>
+                    <div id="edit-prod-batches" class="space-y-2 mb-3"></div>
+                    <button type="button" onclick="addEditProdBatchRow()" class="w-full py-2 rounded-lg border-2 border-dashed border-purple-300 text-purple-600 text-sm font-bold hover:bg-purple-50 transition">
+                        <i class="fas fa-plus"></i> Agregar lote
+                    </button>
+                    <p class="text-xs text-gray-500 mt-1">Editá las cantidades de cada lote o agregá uno nuevo</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Categoría</label>
@@ -546,15 +550,9 @@
                     <input type="hidden" id="edit-prod-invoice-type" value="white">
                     <p class="text-xs text-gray-500 mt-1">Se aplicará a todos los lotes existentes</p>
                 </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Vencimiento</label>
-                        <input type="date" id="edit-prod-expiry" class="w-full border rounded-lg px-3 py-2">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Stock Mínimo</label>
-                        <input type="number" id="edit-prod-min" class="w-full border rounded-lg px-3 py-2" min="0">
-                    </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Stock Mínimo</label>
+                    <input type="number" id="edit-prod-min" class="w-full border rounded-lg px-3 py-2" min="0">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Proveedor</label>
@@ -1294,7 +1292,7 @@
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Vencimiento</label>
-                        <input type="date" id="inv-expiry" class="w-full border rounded-lg px-3 py-2 text-sm" required>
+                        <input type="date" id="inv-expiry" class="w-full border rounded-lg px-3 py-2 text-sm">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Margen (%)</label>
@@ -4820,9 +4818,9 @@
             // Normalizar: reemplazar coma por punto para parseFloat
             const cost = parseFloat(costInput.value.replace(',', '.')) || 0;
             
-            // Si hay costo, recalcular automáticamente el precio basado en el margen
+            // Si hay costo, recalcular automáticamente el precio basado en el margen DEFAULT
             if (cost > 0) {
-                const margin = parseFloat(marginInput.value) || appState.defaultMargin || 30;
+                const margin = appState.defaultMargin || 30;
                 // Fórmula: Precio = Costo / (1 - margen/100)
                 let price = cost / (1 - margin / 100);
                 // Redondear a 50 si está activado
@@ -4833,8 +4831,6 @@
             } else {
                 priceInput.value = '';
             }
-            
-            calculateInventoryMargin();
         }
 
         function calculateInventoryPriceFromMargin() {
@@ -5823,6 +5819,70 @@
             }
         }
 
+        function renderEditProdBatches(product) {
+            const container = document.getElementById('edit-prod-batches');
+            if (!container) return;
+            
+            if (!product.batches || product.batches.length === 0) {
+                container.innerHTML = '<p class="text-sm text-gray-400">Sin lotes. Agregá uno nuevo.</p>';
+                return;
+            }
+            
+            container.innerHTML = product.batches.map((batch, index) => `
+                <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border batch-row" data-batch-index="${index}">
+                    <div class="flex-1">
+                        <label class="text-xs text-gray-500">Cantidad</label>
+                        <input type="number" class="edit-batch-qty w-full border rounded px-2 py-1 text-sm" value="${batch.stock}" min="0">
+                    </div>
+                    <div class="flex-1">
+                        <label class="text-xs text-gray-500">Vencimiento</label>
+                        <input type="date" class="edit-batch-expiry w-full border rounded px-2 py-1 text-sm" value="${batch.expiry || ''}">
+                    </div>
+                    <button type="button" onclick="removeEditProdBatchRow(this)" class="text-red-500 hover:text-red-700 p-1 mt-4" title="Eliminar lote">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+        
+        function addEditProdBatchRow() {
+            const container = document.getElementById('edit-prod-batches');
+            if (!container) return;
+            
+            if (container.querySelectorAll('.batch-row').length === 0) {
+                container.innerHTML = '';
+            }
+            
+            const row = document.createElement('div');
+            row.className = 'flex items-center gap-2 p-2 bg-purple-50 rounded-lg border batch-row';
+            row.innerHTML = `
+                <div class="flex-1">
+                    <label class="text-xs text-gray-500">Cantidad</label>
+                    <input type="number" class="edit-batch-qty w-full border rounded px-2 py-1 text-sm" value="1" min="1">
+                </div>
+                <div class="flex-1">
+                    <label class="text-xs text-gray-500">Vencimiento</label>
+                    <input type="date" class="edit-batch-expiry w-full border rounded px-2 py-1 text-sm">
+                </div>
+                <div class="flex-1">
+                    <label class="text-xs text-gray-500">Pagar con</label>
+                    <select class="edit-batch-source w-full border rounded px-2 py-1 text-sm">
+                        <option value="cash">💵 Caja</option>
+                        <option value="bank">🏦 Cuenta</option>
+                    </select>
+                </div>
+                <button type="button" onclick="removeEditProdBatchRow(this)" class="text-red-500 hover:text-red-700 p-1 mt-4" title="Eliminar lote">
+                    <i class="fas fa-trash"></i>
+                </button>
+            `;
+            container.appendChild(row);
+        }
+        
+        function removeEditProdBatchRow(btn) {
+            const row = btn.closest('.batch-row');
+            if (row) row.remove();
+        }
+
         function openEditProductModal(productId) {
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
@@ -5833,7 +5893,6 @@
             document.getElementById('edit-prod-barcode').value = product.barcode || '';
             document.getElementById('edit-prod-cost').value = product.cost || 0;
             document.getElementById('edit-prod-price').value = product.salePrice || 0;
-            document.getElementById('edit-prod-stock').value = totalStock;
             document.getElementById('edit-prod-category').value = product.category || 'snacks';
             
             // Determinar tipo de factura del primer lote (FIFO) o default white
@@ -5841,11 +5900,10 @@
                 ? (product.batches[0].invoiceType || 'white') 
                 : 'white';
             setEditProdInvoiceType(firstBatchType);
-            // Mostrar el vencimiento del primer lote (FIFO) o del producto
-            const firstExpiry = product.batches && product.batches.length > 0 
-                ? product.batches[0].expiry 
-                : product.expiry;
-            document.getElementById('edit-prod-expiry').value = firstExpiry || '';
+            
+            // Renderizar lotes editables
+            renderEditProdBatches(product);
+            
             document.getElementById('edit-prod-min').value = product.min || 10;
             document.getElementById('edit-prod-supplier').value = product.supplier || '';
             document.getElementById('edit-prod-supplier-phone').value = product.supplierPhone || '';
@@ -5926,9 +5984,6 @@
             const product = appState.inventory.find(p => p.id === productId);
             
             if (product) {
-                const newStock = parseInt(document.getElementById('edit-prod-stock').value) || 0;
-                const currentStock = getProductStock(product);
-                
                 product.name = document.getElementById('edit-prod-name').value.trim();
                 product.barcode = document.getElementById('edit-prod-barcode').value.trim();
                 product.cost = parseFloat(document.getElementById('edit-prod-cost').value) || 0;
@@ -5939,53 +5994,80 @@
                 product.supplierPhone = document.getElementById('edit-prod-supplier-phone').value.trim();
                 product.buyDays = getSelectedBuyDays('edit');
                 
-                // Actualizar lotes si el stock cambió
-                if (newStock !== currentStock) {
-                    const diff = newStock - currentStock;
-                    if (diff > 0) {
-                        // Agregar stock al primer lote o crear uno nuevo
-                        if (!product.batches || product.batches.length === 0) {
-                            product.batches = [{
-                                stock: newStock,
-                                expiry: document.getElementById('edit-prod-expiry').value || '',
-                                dateAdded: formatDateISO(appState.activeDate)
-                            }];
-                        } else {
-                            product.batches[0].stock += diff;
-                            // Actualizar vencimiento del primer lote
-                            const newExpiry = document.getElementById('edit-prod-expiry').value;
-                            if (newExpiry) {
-                                product.batches[0].expiry = newExpiry;
-                            }
-                        }
-                    } else if (diff < 0) {
-                        // Reducir stock del primer lote
-                        if (product.batches && product.batches.length > 0) {
-                            product.batches[0].stock = Math.max(0, product.batches[0].stock + diff);
-                            // Eliminar lotes vacíos
-                            product.batches = product.batches.filter(b => b.stock > 0);
-                        }
+                // Procesar lotes del DOM
+                const batchRows = document.querySelectorAll('#edit-prod-batches .batch-row');
+                const newBatches = [];
+                let totalAddedQty = 0;
+                let totalAddedCost = 0;
+                let addedSource = null;
+                
+                batchRows.forEach(row => {
+                    const qty = parseInt(row.querySelector('.edit-batch-qty').value) || 0;
+                    if (qty <= 0) return;
+                    
+                    const expiry = row.querySelector('.edit-batch-expiry').value || '';
+                    const batchIndex = row.dataset.batchIndex;
+                    
+                    if (batchIndex !== undefined) {
+                        // Lote existente: preservar datos originales
+                        const orig = product.batches[parseInt(batchIndex)] || {};
+                        newBatches.push({
+                            stock: qty,
+                            initialStock: orig.initialStock || qty,
+                            expiry: expiry,
+                            dateAdded: orig.dateAdded || formatDateISO(appState.activeDate),
+                            invoiceType: orig.invoiceType || (document.getElementById('edit-prod-invoice-type').value || 'white')
+                        });
+                    } else {
+                        // Nuevo lote
+                        newBatches.push({
+                            stock: qty,
+                            initialStock: qty,
+                            expiry: expiry,
+                            dateAdded: formatDateISO(appState.activeDate),
+                            invoiceType: document.getElementById('edit-prod-invoice-type').value || 'white'
+                        });
+                        totalAddedQty += qty;
+                        totalAddedCost += qty * product.cost;
+                        const sourceSelect = row.querySelector('.edit-batch-source');
+                        addedSource = sourceSelect ? sourceSelect.value : 'cash';
                     }
-                    // Actualizar stock total
-                    product.stock = getProductStock(product);
+                });
+                
+                // Si se agregaron lotes nuevos, registrar inversión y descontar dinero
+                if (totalAddedQty > 0 && totalAddedCost > 0 && addedSource) {
+                    if (addedSource === 'cash') {
+                        appState.cash -= totalAddedCost;
+                    } else {
+                        appState.bank -= totalAddedCost;
+                    }
+                    
+                    appState.investments.push({
+                        id: 'RESTOCK-' + Date.now(),
+                        date: formatDateISO(appState.activeDate),
+                        concept: `Reposición: ${product.name} (+${totalAddedQty} unidades)`,
+                        amount: totalAddedCost,
+                        source: addedSource,
+                        type: 'restock',
+                        timestamp: Date.now()
+                    });
                 }
                 
+                product.batches = newBatches;
+                product.stock = getProductStock(product);
+                
                 // Actualizar vencimiento del producto (compatibilidad)
-                const newExpiry = document.getElementById('edit-prod-expiry').value;
-                if (newExpiry) {
-                    product.expiry = newExpiry;
-                    if (product.batches && product.batches.length > 0) {
-                        product.batches[0].expiry = newExpiry;
-                    }
+                if (product.batches.length > 0) {
+                    product.expiry = product.batches[0].expiry || '';
+                } else {
+                    product.expiry = '';
                 }
                 
                 // Aplicar tipo de factura a todos los lotes existentes
                 const newInvoiceType = document.getElementById('edit-prod-invoice-type').value || 'white';
-                if (product.batches && product.batches.length > 0) {
-                    product.batches.forEach(batch => {
-                        batch.invoiceType = newInvoiceType;
-                    });
-                }
+                product.batches.forEach(batch => {
+                    batch.invoiceType = newInvoiceType;
+                });
                 
                 saveToLocalStorage();
                 renderInventory();
@@ -11745,7 +11827,7 @@ RESULTADOS:
 
             // === EXPONER FUNCIONES AL WINDOW PARA ONCLICK HANDLERS ===
             (function exposeLocalFunctions() {
-                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','loginAdmin','loginCollaborator','logout','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeypress','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
+                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','loginAdmin','loginCollaborator','logout','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeypress','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
                 for (const name of fnNames) {
                     try {
                         const fn = eval(name);

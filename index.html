@@ -668,8 +668,8 @@
     </div>
 
     <!-- Purchase Payment Modal -->
-    <div id="purchase-payment-modal" class="modal">
-        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+    <div id="purchase-payment-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmPurchase();}">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4" tabindex="0">
             <h3 class="text-xl font-bold mb-4 text-purple-600"><i class="fas fa-shopping-cart"></i> Pago de Compra</h3>
             <div class="mb-4 p-4 bg-purple-50 rounded-lg">
                 <p class="text-sm text-gray-600">Total a pagar:</p>
@@ -4947,6 +4947,7 @@
                 return;
             }
             modal.classList.add('active');
+            setTimeout(() => modal.querySelector('.bg-white')?.focus(), 100);
             console.log('Modal abierto:', modal.classList.contains('active'));
         }
 
@@ -5829,7 +5830,7 @@
             }
             
             container.innerHTML = product.batches.map((batch, index) => `
-                <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border batch-row" data-batch-index="${index}">
+                <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border batch-row" data-batch-index="${index}" data-orig-qty="${batch.stock}">
                     <div class="flex-1">
                         <label class="text-xs text-gray-500">Cantidad</label>
                         <input type="number" class="edit-batch-qty w-full border rounded px-2 py-1 text-sm" value="${batch.stock}" min="0">
@@ -5837,6 +5838,13 @@
                     <div class="flex-1">
                         <label class="text-xs text-gray-500">Vencimiento</label>
                         <input type="date" class="edit-batch-expiry w-full border rounded px-2 py-1 text-sm" value="${batch.expiry || ''}">
+                    </div>
+                    <div class="flex-1">
+                        <label class="text-xs text-gray-500">Pagar con</label>
+                        <select class="edit-batch-source w-full border rounded px-2 py-1 text-sm">
+                            <option value="cash">💵 Caja</option>
+                            <option value="bank">🏦 Cuenta</option>
+                        </select>
                     </div>
                     <button type="button" onclick="removeEditProdBatchRow(this)" class="text-red-500 hover:text-red-700 p-1 mt-4" title="Eliminar lote">
                         <i class="fas fa-trash"></i>
@@ -6007,17 +6015,28 @@
                     
                     const expiry = row.querySelector('.edit-batch-expiry').value || '';
                     const batchIndex = row.dataset.batchIndex;
+                    const sourceSelect = row.querySelector('.edit-batch-source');
+                    const source = sourceSelect ? sourceSelect.value : 'cash';
                     
                     if (batchIndex !== undefined) {
                         // Lote existente: preservar datos originales
                         const orig = product.batches[parseInt(batchIndex)] || {};
+                        const origQty = parseInt(row.dataset.origQty) || orig.stock || 0;
+                        const diff = qty - origQty;
+                        
                         newBatches.push({
                             stock: qty,
-                            initialStock: orig.initialStock || qty,
+                            initialStock: diff > 0 ? (orig.initialStock || origQty) + diff : (orig.initialStock || origQty),
                             expiry: expiry,
                             dateAdded: orig.dateAdded || formatDateISO(appState.activeDate),
                             invoiceType: orig.invoiceType || (document.getElementById('edit-prod-invoice-type').value || 'white')
                         });
+                        
+                        if (diff > 0) {
+                            totalAddedQty += diff;
+                            totalAddedCost += diff * product.cost;
+                            addedSource = source;
+                        }
                     } else {
                         // Nuevo lote
                         newBatches.push({
@@ -6029,12 +6048,11 @@
                         });
                         totalAddedQty += qty;
                         totalAddedCost += qty * product.cost;
-                        const sourceSelect = row.querySelector('.edit-batch-source');
-                        addedSource = sourceSelect ? sourceSelect.value : 'cash';
+                        addedSource = source;
                     }
                 });
                 
-                // Si se agregaron lotes nuevos, registrar inversión y descontar dinero
+                // Si se agregó stock (nuevos lotes o aumento de existentes), registrar inversión y descontar dinero
                 if (totalAddedQty > 0 && totalAddedCost > 0 && addedSource) {
                     if (addedSource === 'cash') {
                         appState.cash -= totalAddedCost;

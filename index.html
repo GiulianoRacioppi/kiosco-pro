@@ -483,7 +483,7 @@
     </div>
 
     <!-- Edit Product Modal -->
-    <div id="edit-product-modal" class="modal">
+    <div id="edit-product-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();saveProductEdit();}">
         <div class="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <h3 class="text-xl font-bold mb-4 text-purple-600"><i class="fas fa-edit"></i> Editar Producto</h3>
             <div class="space-y-4">
@@ -532,6 +532,11 @@
                     <select id="edit-prod-category" class="w-full border rounded-lg px-3 py-2">
                         <option value="snacks">Snacks</option>
                         <option value="bebidas">Bebidas</option>
+                        <option value="cervezas">Cervezas</option>
+                        <option value="golosinas">Golosinas</option>
+                        <option value="despensa">Despensa</option>
+                        <option value="lacteos">Lácteos</option>
+                        <option value="comidas">Comidas</option>
                         <option value="basicos">Básicos</option>
                         <option value="limpieza">Limpieza</option>
                         <option value="combos">Combos</option>
@@ -584,7 +589,7 @@
     </div>
 
     <!-- Move Money Modal -->
-    <div id="move-money-modal" class="modal">
+    <div id="move-money-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();executeMoveMoney();}">
         <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
             <h3 class="text-xl font-bold mb-4 text-purple-600"><i class="fas fa-exchange-alt"></i> Mover Dinero</h3>
             <div class="flex gap-2 mb-4">
@@ -613,7 +618,7 @@
     </div>
 
     <!-- Adjust Money Modal -->
-    <div id="adjust-money-modal" class="modal">
+    <div id="adjust-money-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();executeAdjustMoney();}">
         <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
             <h3 class="text-xl font-bold mb-4 text-purple-600" id="adjust-title">Agregar/Retirar Dinero</h3>
             <div class="mb-4 p-4 bg-gray-50 rounded-lg">
@@ -1265,38 +1270,39 @@
                 <form id="add-inventory-form" onsubmit="event.preventDefault(); preparePurchase(); return false;" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Código de barras</label>
-                        <input type="text" id="inv-barcode" class="barcode-input w-full border rounded-lg px-3 py-2 text-sm" placeholder="Escanea..." required>
+                        <input type="text" id="inv-barcode" class="barcode-input w-full border rounded-lg px-3 py-2 text-sm" placeholder="Escanea..." required onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-name').focus();}">
                     </div>
                     <div class="lg:col-span-2">
                         <label class="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
-                        <input type="text" id="inv-name" class="w-full border rounded-lg px-3 py-2 text-sm" required>
+                        <input type="text" id="inv-name" class="w-full border rounded-lg px-3 py-2 text-sm" required onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-category').focus();}">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Categoría</label>
-                        <select id="inv-category" class="w-full border rounded-lg px-3 py-2 text-sm">
+                        <select id="inv-category" class="w-full border rounded-lg px-3 py-2 text-sm" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-cost').focus();}">
                             <option value="bebidas">Bebidas</option>
                             <option value="cervezas">Cervezas</option>
                             <option value="snacks">Snacks</option>
                             <option value="golosinas">Golosinas</option>
                             <option value="despensa">Despensa</option>
                             <option value="lacteos">Lácteos</option>
+                            <option value="comidas">Comidas</option>
                         </select>
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Costo ($)</label>
-                        <input type="number" id="inv-cost" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" required oninput="calculateInventoryPrice()">
+                        <input type="number" id="inv-cost" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" required oninput="calculateInventoryPrice()" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-stock').focus();}">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Stock inicial</label>
-                        <input type="number" id="inv-stock" class="w-full border rounded-lg px-3 py-2 text-sm" min="1" required>
+                        <input type="number" id="inv-stock" class="w-full border rounded-lg px-3 py-2 text-sm" min="1" required onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-expiry').focus();}">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Vencimiento</label>
-                        <input type="date" id="inv-expiry" class="w-full border rounded-lg px-3 py-2 text-sm">
+                        <input type="date" id="inv-expiry" class="w-full border rounded-lg px-3 py-2 text-sm" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-margin').focus();}">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Margen (%)</label>
-                        <input type="number" id="inv-margin" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.1" value="30" oninput="calculateInventoryPriceFromMargin()">
+                        <input type="number" id="inv-margin" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.1" value="30" oninput="calculateInventoryPriceFromMargin()" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-price').focus();}">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Precio venta ($)</label>
@@ -1929,7 +1935,7 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Margen por defecto (%)</label>
                             <div class="relative">
-                                <input type="number" id="settings-margin" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-2xl font-bold text-center" value="30" min="1" max="99">
+                                <input type="number" id="settings-margin" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-2xl font-bold text-center" value="30" min="1" max="99" onkeydown="if(event.key==='Enter'){event.preventDefault();saveMarginFromSettings();}">
                                 <span class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">%</span>
                             </div>
                             <p class="text-xs text-gray-500 mt-2">Este margen se usará para calcular el precio de venta automáticamente.</p>
@@ -1950,14 +1956,14 @@
                             <label class="block text-sm font-medium text-gray-700 mb-2">💵 Dinero en Caja</label>
                             <div class="relative">
                                 <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">$</span>
-                                <input type="number" id="settings-cash" class="w-full border-2 border-green-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="0.01">
+                                <input type="number" id="settings-cash" class="w-full border-2 border-green-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('settings-bank').focus();}">
                             </div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">🏦 Dinero en Cuenta</label>
                             <div class="relative">
                                 <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">$</span>
-                                <input type="number" id="settings-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="0.01">
+                                <input type="number" id="settings-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();saveBalancesFromSettings();}">
                             </div>
                         </div>
                         <button onclick="saveBalancesFromSettings()" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg">
@@ -1975,7 +1981,7 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Comisión por venta (%)</label>
                             <div class="relative">
-                                <input type="number" id="settings-mercado-fee" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center" value="5" min="0" max="99" step="0.1">
+                                <input type="number" id="settings-mercado-fee" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center" value="5" min="0" max="99" step="0.1" onkeydown="if(event.key==='Enter'){event.preventDefault();saveMercadoFeeFromSettings();}">
                                 <span class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">%</span>
                             </div>
                             <p class="text-xs text-gray-500 mt-2">Cuando marques una venta como MercadoCrédito, se descontará este % del total.</p>
@@ -2211,7 +2217,7 @@
     <!-- ==================== MODALES DE PROMOCIONES ==================== -->
 
     <!-- Modal: Nueva/Editar Promoción -->
-    <div id="promo-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+    <div id="promo-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4" onkeydown="if(event.key==='Enter'){event.preventDefault();savePromotion();}">
         <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div class="p-6 border-b bg-gradient-to-r from-purple-50 to-pink-50">
                 <h3 class="text-xl font-bold text-purple-800" id="promo-modal-title"><i class="fas fa-tag"></i> Nueva Promoción</h3>
@@ -2376,7 +2382,7 @@
     </div>
 
     <!-- Modal: Crear Ticket Manual -->
-    <div id="manual-ticket-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+    <div id="manual-ticket-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4" onkeydown="if(event.key==='Enter'){event.preventDefault();saveManualTicket();}">
         <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full">
             <div class="p-6 border-b bg-gradient-to-r from-yellow-50 to-orange-50">
                 <h3 class="text-xl font-bold text-yellow-800"><i class="fas fa-ticket-alt"></i> Crear Ticket Manual</h3>
@@ -2478,7 +2484,7 @@
     </div>
 
     <!-- Modal: Configurar Regla de Ticket -->
-    <div id="ticket-rule-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+    <div id="ticket-rule-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4" onkeydown="if(event.key==='Enter'){event.preventDefault();saveTicketRule();}">
         <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div class="p-6 border-b bg-gradient-to-r from-yellow-50 to-orange-50">
                 <h3 class="text-xl font-bold text-yellow-800" id="ticket-rule-modal-title"><i class="fas fa-cog"></i> Nueva Regla de Ticket</h3>
@@ -6786,7 +6792,8 @@
                             const data = catTotals[cat];
                             const catNames = {
                                 bebidas: 'Bebidas', cervezas: 'Cervezas', snacks: 'Snacks',
-                                golosinas: 'Golosinas', despensa: 'Despensa', lacteos: 'Lácteos'
+                                golosinas: 'Golosinas', despensa: 'Despensa', lacteos: 'Lácteos',
+                                comidas: 'Comidas'
                             };
                             return '<div class="bg-gray-50 rounded-xl p-4 border border-gray-200">' +
                                 '<p class="text-xs text-gray-500 font-bold uppercase">' + (catNames[cat] || cat) + '</p>' +
@@ -12008,7 +12015,7 @@ RESULTADOS:
                 <p class="text-sm text-gray-600 mb-2">Registrar apertura de caja para hoy</p>
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-2">Monto en caja al abrir</label>
-                    <input type="number" id="cash-count-opening" class="w-full border-2 border-green-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01">
+                    <input type="number" id="cash-count-opening" class="w-full border-2 border-green-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();saveCashOpening();}">
                 </div>
                 <button onclick="saveCashOpening()" class="w-full bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700">Guardar Apertura</button>
             </div>
@@ -12022,7 +12029,7 @@ RESULTADOS:
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Monto real en caja</label>
-                    <input type="number" id="cash-count-closing" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" oninput="updateCashDifference()">
+                    <input type="number" id="cash-count-closing" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" oninput="updateCashDifference()" onkeydown="if(event.key==='Enter'){event.preventDefault();saveCashClosing();}">
                 </div>
                 <div id="cash-count-diff-box" class="p-3 rounded-lg text-center font-bold hidden">
                     <p id="cash-count-diff-label"></p>
@@ -12046,7 +12053,7 @@ RESULTADOS:
     </div>
 
     <!-- ==================== MERMAS MODAL ==================== -->
-    <div id="loss-modal" class="modal">
+    <div id="loss-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();saveLoss();}">
         <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
             <h3 class="text-xl font-bold mb-4 text-red-600"><i class="fas fa-trash-alt"></i> Registrar Merma / Pérdida</h3>
             <div class="space-y-4">
@@ -12094,7 +12101,7 @@ RESULTADOS:
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Buscar venta</label>
                     <div class="flex gap-2">
-                        <input type="text" id="return-search" class="flex-1 border-2 border-blue-200 rounded-xl px-4 py-2" placeholder="ID, fecha (YYYY-MM-DD) o nombre del producto">
+                        <input type="text" id="return-search" class="flex-1 border-2 border-blue-200 rounded-xl px-4 py-2" placeholder="ID, fecha (YYYY-MM-DD) o nombre del producto" onkeydown="if(event.key==='Enter'){event.preventDefault();searchSaleForReturn();}">
                         <button onclick="searchSaleForReturn()" class="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fas fa-search"></i></button>
                     </div>
                 </div>
@@ -12109,7 +12116,7 @@ RESULTADOS:
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Monto a devolver</label>
-                    <input type="number" id="return-amount" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01">
+                    <input type="number" id="return-amount" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();saveReturn();}">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Motivo</label>

@@ -5089,7 +5089,7 @@
                 date: formatDateISO(appState.activeDate),
                 concept: `Compra: ${product.name} (${product.stock} unidades)`,
                 amount: totalCost,
-                source: method,
+                source: method === 'cash' ? 'cash' : 'bank',
                 type: 'purchase',
                 timestamp: Date.now()
             });
@@ -5776,7 +5776,7 @@
                 date: formatDateISO(appState.activeDate),
                 concept: `Reposición: ${product.name} (+${qty} unidades)${newExpiry ? ' Venc: ' + newExpiry : ''}`,
                 amount: totalCost,
-                source: addStockPaymentMethod,
+                source: addStockPaymentMethod === 'cash' ? 'cash' : 'bank',
                 type: 'restock',
                 timestamp: Date.now()
             });
@@ -6006,8 +6006,7 @@
                 const batchRows = document.querySelectorAll('#edit-prod-batches .batch-row');
                 const newBatches = [];
                 let totalAddedQty = 0;
-                let totalAddedCost = 0;
-                let addedSource = null;
+                const addedBySource = { cash: 0, bank: 0 };
                 
                 batchRows.forEach(row => {
                     const qty = parseInt(row.querySelector('.edit-batch-qty').value) || 0;
@@ -6034,8 +6033,7 @@
                         
                         if (diff > 0) {
                             totalAddedQty += diff;
-                            totalAddedCost += diff * product.cost;
-                            addedSource = source;
+                            addedBySource[source] += diff * product.cost;
                         }
                     } else {
                         // Nuevo lote
@@ -6047,29 +6045,30 @@
                             invoiceType: document.getElementById('edit-prod-invoice-type').value || 'white'
                         });
                         totalAddedQty += qty;
-                        totalAddedCost += qty * product.cost;
-                        addedSource = source;
+                        addedBySource[source] += qty * product.cost;
                     }
                 });
                 
-                // Si se agregó stock (nuevos lotes o aumento de existentes), registrar inversión y descontar dinero
-                if (totalAddedQty > 0 && totalAddedCost > 0 && addedSource) {
-                    if (addedSource === 'cash') {
-                        appState.cash -= totalAddedCost;
-                    } else {
-                        appState.bank -= totalAddedCost;
+                // Si se agregó stock (nuevos lotes o aumento de existentes), registrar inversión y descontar dinero por cada fuente
+                Object.entries(addedBySource).forEach(([src, amount]) => {
+                    if (amount > 0) {
+                        if (src === 'cash') {
+                            appState.cash -= amount;
+                        } else {
+                            appState.bank -= amount;
+                        }
+                        
+                        appState.investments.push({
+                            id: 'RESTOCK-' + Date.now() + '-' + src,
+                            date: formatDateISO(appState.activeDate),
+                            concept: `Reposición: ${product.name} (+${totalAddedQty} unidades)`,
+                            amount: amount,
+                            source: src,
+                            type: 'restock',
+                            timestamp: Date.now()
+                        });
                     }
-                    
-                    appState.investments.push({
-                        id: 'RESTOCK-' + Date.now(),
-                        date: formatDateISO(appState.activeDate),
-                        concept: `Reposición: ${product.name} (+${totalAddedQty} unidades)`,
-                        amount: totalAddedCost,
-                        source: addedSource,
-                        type: 'restock',
-                        timestamp: Date.now()
-                    });
-                }
+                });
                 
                 product.batches = newBatches;
                 product.stock = getProductStock(product);
@@ -6421,6 +6420,29 @@
                 appState.bank -= neto;
             }
 
+            // Revertir devoluciones asociadas a esta venta
+            if (appState.returns && appState.returns.length > 0) {
+                const saleReturns = appState.returns.filter(r => r.originalSaleId === sale.id);
+                saleReturns.forEach(ret => {
+                    if (ret.paymentMethod === 'cash') {
+                        appState.cash += ret.amount;
+                    } else if (ret.paymentMethod === 'debit') {
+                        appState.bank += ret.amount;
+                    }
+                });
+                appState.returns = appState.returns.filter(r => r.originalSaleId !== sale.id);
+            }
+
+            // Restaurar ticket de descuento si la venta lo usó
+            if (sale.ticketId) {
+                const ticketIdx = appState.discountTickets.findIndex(t => t.id === sale.ticketId);
+                if (ticketIdx >= 0) {
+                    appState.discountTickets[ticketIdx].used = false;
+                    delete appState.discountTickets[ticketIdx].usedAt;
+                    delete appState.discountTickets[ticketIdx].usedInSaleId;
+                }
+            }
+
             appState.sales.splice(saleIndex, 1);
 
             saveToLocalStorage();
@@ -6596,6 +6618,29 @@
             } else if (sale.paymentMethod === 'debit') {
                 const neto = sale.isMercadoCredito ? (sale.total - (sale.mercadoCreditoFee || 0)) : sale.total;
                 appState.bank -= neto;
+            }
+
+            // Revertir devoluciones asociadas a esta venta
+            if (appState.returns && appState.returns.length > 0) {
+                const saleReturns = appState.returns.filter(r => r.originalSaleId === sale.id);
+                saleReturns.forEach(ret => {
+                    if (ret.paymentMethod === 'cash') {
+                        appState.cash += ret.amount;
+                    } else if (ret.paymentMethod === 'debit') {
+                        appState.bank += ret.amount;
+                    }
+                });
+                appState.returns = appState.returns.filter(r => r.originalSaleId !== sale.id);
+            }
+
+            // Restaurar ticket de descuento si la venta lo usó
+            if (sale.ticketId) {
+                const ticketIdx = appState.discountTickets.findIndex(t => t.id === sale.ticketId);
+                if (ticketIdx >= 0) {
+                    appState.discountTickets[ticketIdx].used = false;
+                    delete appState.discountTickets[ticketIdx].usedAt;
+                    delete appState.discountTickets[ticketIdx].usedInSaleId;
+                }
             }
 
             appState.cart = sale.items.map(item => ({
@@ -6883,8 +6928,41 @@
                     time: new Date(i.timestamp).toLocaleTimeString('es-ES')
                 }));
             
+            // Obtener capital inyectado en caja hoy
+            const todayCashCapital = (appState.capitalAdjustments || [])
+                .filter(adj => adj.date === today && adj.target === 'cash')
+                .map(adj => ({
+                    type: 'income',
+                    concept: adj.concept || 'Capital inyectado',
+                    amount: adj.amount,
+                    time: new Date(adj.timestamp).toLocaleTimeString('es-ES'),
+                    label: '💰 CAPITAL'
+                }));
+            
+            // Obtener transferencias que afectan caja hoy
+            const todayCashTransfers = (appState.cashMovements || [])
+                .filter(mov => mov.date === today)
+                .map(mov => ({
+                    type: mov.type === 'to_cash' ? 'income' : 'expense',
+                    concept: mov.concept || (mov.type === 'to_cash' ? 'Transferencia desde Cuenta' : 'Transferencia a Cuenta'),
+                    amount: mov.amount,
+                    time: new Date(mov.timestamp).toLocaleTimeString('es-ES'),
+                    label: '↔️ MOVIMIENTO'
+                }));
+            
+            // Obtener devoluciones en efectivo hoy
+            const todayCashReturns = (appState.returns || [])
+                .filter(r => r.date === today && r.paymentMethod === 'cash')
+                .map(r => ({
+                    type: 'expense',
+                    concept: `Devolución: ${r.reason || 'Sin motivo'}`,
+                    amount: r.amount,
+                    time: new Date(r.timestamp).toLocaleTimeString('es-ES'),
+                    label: '↩️ DEVOLUCIÓN'
+                }));
+            
             // Combinar y ordenar por tiempo
-            const allMovements = [...todayCashSales, ...todayCashExpenses, ...todayCashInvestments]
+            const allMovements = [...todayCashSales, ...todayCashExpenses, ...todayCashInvestments, ...todayCashCapital, ...todayCashTransfers, ...todayCashReturns]
                 .sort((a, b) => (a.time > b.time ? -1 : 1));
             
             const container = document.getElementById('cash-movements-list');
@@ -6895,17 +6973,20 @@
                 return;
             }
             
-            container.innerHTML = allMovements.map(m => `
-                <div class="flex justify-between items-center p-3 rounded-lg ${m.type === 'income' ? 'bg-green-50 border-l-4 border-green-500' : m.type === 'investment' ? 'bg-blue-50 border-l-4 border-blue-500' : 'bg-red-50 border-l-4 border-red-500'}">
+            container.innerHTML = allMovements.map(m => {
+                const bgClass = m.type === 'income' ? 'bg-green-50 border-l-4 border-green-500' : m.type === 'investment' ? 'bg-blue-50 border-l-4 border-blue-500' : 'bg-red-50 border-l-4 border-red-500';
+                const textClass = m.type === 'income' ? 'text-green-600' : m.type === 'investment' ? 'text-blue-600' : 'text-red-600';
+                return `
+                <div class="flex justify-between items-center p-3 rounded-lg ${bgClass}">
                     <div>
                         <p class="font-medium text-gray-800">${m.concept}</p>
-                        <p class="text-xs text-gray-500">${m.time} ${m.type === 'investment' ? '📦 INVERSIÓN' : ''}</p>
+                        <p class="text-xs text-gray-500">${m.time} ${m.label || (m.type === 'investment' ? '📦 INVERSIÓN' : '')}</p>
                     </div>
-                    <span class="font-bold ${m.type === 'income' ? 'text-green-600' : m.type === 'investment' ? 'text-blue-600' : 'text-red-600'}">
+                    <span class="font-bold ${textClass}">
                         ${m.type === 'income' ? '+' : '-'}$${formatMoney(m.amount)}
                     </span>
                 </div>
-            `).join('');
+            `}).join('');
             
             // Actualizar contador
             const countBadge = document.getElementById('cash-movements-count');
@@ -6947,8 +7028,41 @@
                     time: new Date(i.timestamp).toLocaleTimeString('es-ES')
                 }));
             
+            // Obtener capital inyectado en cuenta hoy
+            const todayBankCapital = (appState.capitalAdjustments || [])
+                .filter(adj => adj.date === today && adj.target === 'bank')
+                .map(adj => ({
+                    type: 'income',
+                    concept: adj.concept || 'Capital inyectado',
+                    amount: adj.amount,
+                    time: new Date(adj.timestamp).toLocaleTimeString('es-ES'),
+                    label: '💰 CAPITAL'
+                }));
+            
+            // Obtener transferencias que afectan cuenta hoy
+            const todayBankTransfers = (appState.cashMovements || [])
+                .filter(mov => mov.date === today)
+                .map(mov => ({
+                    type: mov.type === 'to_bank' ? 'income' : 'expense',
+                    concept: mov.concept || (mov.type === 'to_bank' ? 'Transferencia desde Caja' : 'Transferencia a Caja'),
+                    amount: mov.amount,
+                    time: new Date(mov.timestamp).toLocaleTimeString('es-ES'),
+                    label: '↔️ MOVIMIENTO'
+                }));
+            
+            // Obtener devoluciones en débito hoy
+            const todayBankReturns = (appState.returns || [])
+                .filter(r => r.date === today && r.paymentMethod === 'debit')
+                .map(r => ({
+                    type: 'expense',
+                    concept: `Devolución: ${r.reason || 'Sin motivo'}`,
+                    amount: r.amount,
+                    time: new Date(r.timestamp).toLocaleTimeString('es-ES'),
+                    label: '↩️ DEVOLUCIÓN'
+                }));
+            
             // Combinar y ordenar por tiempo
-            const allMovements = [...todayBankSales, ...todayBankExpenses, ...todayBankInvestments]
+            const allMovements = [...todayBankSales, ...todayBankExpenses, ...todayBankInvestments, ...todayBankCapital, ...todayBankTransfers, ...todayBankReturns]
                 .sort((a, b) => (a.time > b.time ? -1 : 1));
             
             const container = document.getElementById('bank-movements-list');
@@ -6959,20 +7073,23 @@
                 return;
             }
             
-            container.innerHTML = allMovements.map(m => `
-                <div class="flex justify-between items-center p-3 rounded-lg ${m.type === 'income' ? 'bg-blue-50 border-l-4 border-blue-500' : m.type === 'investment' ? 'bg-purple-50 border-l-4 border-purple-500' : 'bg-red-50 border-l-4 border-red-500'}">
+            container.innerHTML = allMovements.map(m => {
+                const bgClass = m.type === 'income' ? 'bg-blue-50 border-l-4 border-blue-500' : m.type === 'investment' ? 'bg-purple-50 border-l-4 border-purple-500' : 'bg-red-50 border-l-4 border-red-500';
+                const textClass = m.type === 'income' ? 'text-blue-600' : m.type === 'investment' ? 'text-purple-600' : 'text-red-600';
+                return `
+                <div class="flex justify-between items-center p-3 rounded-lg ${bgClass}">
                     <div>
                         <p class="font-medium text-gray-800">${m.concept}</p>
-                        <p class="text-xs text-gray-500">${m.time} ${m.type === 'investment' ? '📦 INVERSIÓN' : ''}</p>
+                        <p class="text-xs text-gray-500">${m.time} ${m.label || (m.type === 'investment' ? '📦 INVERSIÓN' : '')}</p>
                     </div>
                     <div class="text-right">
-                        <span class="font-bold ${m.type === 'income' ? 'text-blue-600' : m.type === 'investment' ? 'text-purple-600' : 'text-red-600'}">
+                        <span class="font-bold ${textClass}">
                             ${m.type === 'income' ? '+' : '-'}$${formatMoney(m.amount)}
                         </span>
                         ${m.isMercadoCredito ? `<p class="text-[10px] text-red-500">-$${formatMoney(m.fee)} comisión</p>` : ''}
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
             
             // Actualizar contador
             const countBadge = document.getElementById('bank-movements-count');
@@ -8035,7 +8152,8 @@
             const todaySales = appState.sales.filter(s => s.date === today && s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
             const todayExpenses = appState.expenses.filter(e => e.date === today && e.source === 'cash').reduce((sum, e) => sum + e.amount, 0);
             const todayInvestments = appState.investments.filter(i => i.date === today && i.source === 'cash').reduce((sum, i) => sum + i.amount, 0);
-            return opening + todaySales - todayExpenses - todayInvestments;
+            const todayReturns = appState.returns ? appState.returns.filter(r => r.date === today && r.paymentMethod === 'cash').reduce((sum, r) => sum + r.amount, 0) : 0;
+            return opening + todaySales - todayExpenses - todayInvestments - todayReturns;
         }
 
         function openCashCountModal() {
@@ -8394,9 +8512,11 @@
                 return;
             }
             
-            // Devolver dinero: si fue efectivo, restar de caja. Si fue débito, no tocamos caja (asumimos que se devuelve por transferencia)
+            // Devolver dinero: si fue efectivo, restar de caja. Si fue débito, restar de cuenta.
             if (currentReturnSale.paymentMethod === 'cash') {
                 appState.cash -= amount;
+            } else if (currentReturnSale.paymentMethod === 'debit') {
+                appState.bank -= amount;
             }
             
             if (!appState.returns) appState.returns = [];
@@ -10131,6 +10251,9 @@ RESULTADOS:
                         investments: Array.isArray(backupData.investments) ? backupData.investments : [],
                         cashMovements: Array.isArray(backupData.cashMovements) ? backupData.cashMovements : [],
                         capitalAdjustments: Array.isArray(backupData.capitalAdjustments) ? backupData.capitalAdjustments : [],
+                        returns: Array.isArray(backupData.returns) ? backupData.returns : [],
+                        losses: Array.isArray(backupData.losses) ? backupData.losses : [],
+                        cashCounts: Array.isArray(backupData.cashCounts) ? backupData.cashCounts : [],
                         alerts: Array.isArray(backupData.alerts) ? backupData.alerts : [],
                         guestLogs: Array.isArray(backupData.guestLogs) ? backupData.guestLogs : [],
                         invoiceTracking: backupData.invoiceTracking || {
@@ -11589,6 +11712,7 @@ RESULTADOS:
                 appState.expenses = replaceIfNewer(appState.expenses, data.expenses, localTime);
                 appState.investments = replaceIfNewer(appState.investments, data.investments, localTime);
                 appState.capitalAdjustments = replaceIfNewer(appState.capitalAdjustments, data.capitalAdjustments, localTime);
+                appState.returns = replaceIfNewer(appState.returns, data.returns, localTime);
                 appState.promotions = replaceIfNewer(appState.promotions, data.promotions, localTime);
                 appState.discountTickets = replaceIfNewer(appState.discountTickets, data.discountTickets, localTime);
                 appState.ticketRules = replaceIfNewer(appState.ticketRules, data.ticketRules, localTime);
@@ -11759,6 +11883,8 @@ RESULTADOS:
                     appState.investments = Array.isArray(appState.investments) ? appState.investments : [];
                     appState.cart = Array.isArray(appState.cart) ? appState.cart : [];
                     appState.cashMovements = Array.isArray(appState.cashMovements) ? appState.cashMovements : [];
+                    appState.capitalAdjustments = Array.isArray(appState.capitalAdjustments) ? appState.capitalAdjustments : [];
+                    appState.returns = Array.isArray(appState.returns) ? appState.returns : [];
                     appState.promotions = Array.isArray(appState.promotions) ? appState.promotions : [];
                     appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
                     appState.ticketRules = Array.isArray(appState.ticketRules) ? appState.ticketRules : [];
@@ -11813,6 +11939,23 @@ RESULTADOS:
                             });
                         }
                     });
+                    
+                    // === MIGRACIÓN: normalizar fuente 'account' a 'bank' ===
+                    if (Array.isArray(appState.investments)) {
+                        appState.investments.forEach(inv => {
+                            if (inv.source === 'account') inv.source = 'bank';
+                        });
+                    }
+                    if (Array.isArray(appState.expenses)) {
+                        appState.expenses.forEach(exp => {
+                            if (exp.source === 'account') exp.source = 'bank';
+                        });
+                    }
+                    if (Array.isArray(appState.returns)) {
+                        appState.returns.forEach(ret => {
+                            if (ret.paymentMethod === 'account') ret.paymentMethod = 'debit';
+                        });
+                    }
                     
                     // === MIGRACIÓN: invoiceTracking si no existe ===
                     if (!appState.invoiceTracking) {

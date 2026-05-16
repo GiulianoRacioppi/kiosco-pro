@@ -2673,6 +2673,7 @@
             // Tracking de facturación blanco/negro
             lastRoundPriceEnabled: false,
             lastInvoiceType: 'white',
+            lastCategory: null,
             billedDays: [], // { date, amount, timestamp }
             invoiceTracking: {
                 purchasedWhite: 0,
@@ -4798,6 +4799,12 @@
                 }
             }
             setInvInvoiceType(appState.lastInvoiceType || 'white');
+            
+            // Restaurar última categoría seleccionada
+            const categorySelect = document.getElementById('inv-category');
+            if (categorySelect && appState.lastCategory) {
+                categorySelect.value = appState.lastCategory;
+            }
         }
 
         function setInvInvoiceType(type) {
@@ -4925,10 +4932,13 @@
 
             const invoiceType = document.getElementById('inv-invoice-type')?.value || 'white';
             
+            const selectedCategory = document.getElementById('inv-category').value;
+            appState.lastCategory = selectedCategory;
+            
             appState.pendingPurchase = {
                 barcode: document.getElementById('inv-barcode').value || '',
                 name: document.getElementById('inv-name').value.trim(),
-                category: document.getElementById('inv-category').value,
+                category: selectedCategory,
                 account: 'A',
                 supplier: document.getElementById('inv-supplier')?.value || '',
                 supplierPhone: document.getElementById('inv-supplier-phone')?.value || '',
@@ -9828,6 +9838,7 @@ Total de productos a comprar: ${shoppingList.length}
                 // autoPromotionConfig eliminado - ahora es una promo normal
                 lastRoundPriceEnabled: false,
                 lastInvoiceType: 'white',
+                lastCategory: null,
                 billedDays: [],
                 invoiceTracking: {
                     purchasedWhite: 0,

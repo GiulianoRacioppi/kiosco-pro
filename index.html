@@ -459,7 +459,7 @@
                         <button onclick="setAddStockPayment('cash')" id="btn-addstock-cash" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-sm hover:border-gray-400">
                             💵 Caja ($<span id="addstock-cash-available">0</span>)
                         </button>
-                        <button onclick="setAddStockPayment('account')" id="btn-addstock-account" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-sm hover:border-gray-400">
+                        <button onclick="setAddStockPayment('bank')" id="btn-addstock-bank" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-sm hover:border-gray-400">
                             🏦 Cuenta ($<span id="addstock-account-available">0</span>)
                         </button>
                     </div>
@@ -2718,6 +2718,7 @@
             lastRoundPriceEnabled: false,
             lastInvoiceType: 'white',
             lastCategory: null,
+            lastExpiryDate: null,
             billedDays: [], // { date, amount, timestamp }
             invoiceTracking: {
                 purchasedWhite: 0,
@@ -4897,6 +4898,12 @@
             if (categorySelect && appState.lastCategory) {
                 categorySelect.value = appState.lastCategory;
             }
+            
+            // Restaurar última fecha de vencimiento usada
+            const expiryInput = document.getElementById('inv-expiry');
+            if (expiryInput && appState.lastExpiryDate) {
+                expiryInput.value = appState.lastExpiryDate;
+            }
         }
 
         // ==================== PRODUCTOS COMPUESTOS / RECETAS ====================
@@ -5229,6 +5236,12 @@
             const selectedCategory = document.getElementById('inv-category').value;
             appState.lastCategory = selectedCategory;
             
+            // Guardar última fecha de vencimiento usada (solo si tiene valor)
+            const expiryValue = document.getElementById('inv-expiry').value;
+            if (expiryValue) {
+                appState.lastExpiryDate = expiryValue;
+            }
+            
             appState.pendingPurchase = {
                 barcode: document.getElementById('inv-barcode').value || '',
                 name: document.getElementById('inv-name').value.trim(),
@@ -5392,7 +5405,9 @@
                     initialStock: appState.pendingPurchase.stock,
                     expiry: appState.pendingPurchase.expiry,
                     dateAdded: formatDateISO(appState.activeDate),
-                    invoiceType: appState.pendingPurchase.invoiceType || 'white'
+                    invoiceType: appState.pendingPurchase.invoiceType || 'white',
+                    source: appState.pendingPurchasePayment || 'cash',
+                    cost: appState.pendingPurchase.cost
                 }];
             }
             
@@ -5438,6 +5453,19 @@
             closePurchaseModal();
             document.getElementById('add-inventory-form').reset();
             restoreInventoryFormState();
+            // Limpiar estado de compuestos (el reset no dispara onchange)
+            pendingComponents = [];
+            const compositeSection = document.getElementById('inv-composite-section');
+            if (compositeSection) compositeSection.classList.add('hidden');
+            const componentsList = document.getElementById('inv-components-list');
+            if (componentsList) componentsList.innerHTML = '<p class="text-xs text-gray-400">Sin componentes agregados</p>';
+            const stockInput = document.getElementById('inv-stock');
+            if (stockInput) {
+                stockInput.disabled = false;
+                stockInput.classList.remove('bg-gray-100');
+            }
+            const costInput = document.getElementById('inv-cost');
+            if (costInput) costInput.classList.remove('bg-gray-100');
             // Limpiar el display del margen y el input (solo si existen)
             const marginDisplay = document.getElementById('inv-margin-display');
             if (marginDisplay) marginDisplay.textContent = `${appState.defaultMargin || 30}%`;
@@ -5451,6 +5479,15 @@
             console.log('Mostrando notificación...');
             showNotification(`Producto comprado y creado exitosamente. Pagado con ${method === 'cash' ? 'Caja' : 'Cuenta'}`, 'success');
             console.log('=== PROCESO COMPLETADO ===');
+            
+            // Volver foco al código de barras para escanear el siguiente producto
+            setTimeout(() => {
+                const barcodeInput = document.getElementById('inv-barcode');
+                if (barcodeInput) {
+                    barcodeInput.focus();
+                    barcodeInput.select();
+                }
+            }, 100);
             
             // DEBUG: Verificar que el producto está en el inventario
             console.log('Verificación final - Total productos:', appState.inventory.length);
@@ -5997,7 +6034,7 @@
             document.getElementById('btn-addstock-cash').className = method === 'cash'
                 ? 'flex-1 py-2 rounded-lg border-2 border-green-500 bg-green-50 text-green-700 font-bold text-sm'
                 : 'flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-sm hover:border-gray-400';
-            document.getElementById('btn-addstock-account').className = method === 'account'
+            document.getElementById('btn-addstock-bank').className = method === 'bank'
                 ? 'flex-1 py-2 rounded-lg border-2 border-blue-500 bg-blue-50 text-blue-700 font-bold text-sm'
                 : 'flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-sm hover:border-gray-400';
         }
@@ -6056,7 +6093,8 @@
                         compProduct.batches = [{
                             stock: qtyToRestore,
                             expiry: '',
-                            dateAdded: formatDateISO(appState.activeDate)
+                            dateAdded: formatDateISO(appState.activeDate),
+                            cost: compProduct.cost
                         }];
                     } else if (compProduct.batches.length > 0) {
                         compProduct.batches[0].stock += qtyToRestore;
@@ -6064,7 +6102,8 @@
                         compProduct.batches.push({
                             stock: qtyToRestore,
                             expiry: '',
-                            dateAdded: formatDateISO(appState.activeDate)
+                            dateAdded: formatDateISO(appState.activeDate),
+                            cost: compProduct.cost
                         });
                     }
                     compProduct.stock = getProductStock(compProduct);
@@ -6075,7 +6114,8 @@
                     product.batches = [{
                         stock: quantity,
                         expiry: '',
-                        dateAdded: formatDateISO(appState.activeDate)
+                        dateAdded: formatDateISO(appState.activeDate),
+                        cost: product.cost
                     }];
                 } else if (product.batches.length > 0) {
                     product.batches[0].stock += quantity;
@@ -6083,7 +6123,8 @@
                     product.batches.push({
                         stock: quantity,
                         expiry: '',
-                        dateAdded: formatDateISO(appState.activeDate)
+                        dateAdded: formatDateISO(appState.activeDate),
+                        cost: product.cost
                     });
                 }
                 product.stock = getProductStock(product);
@@ -6141,7 +6182,7 @@
                 showNotification(`Fondos insuficientes en caja. Necesitas: $${formatMoney(totalCost)}`, 'error');
                 return;
             }
-            if (addStockPaymentMethod === 'account' && totalCost > appState.bank) {
+            if (addStockPaymentMethod === 'bank' && totalCost > appState.bank) {
                 showNotification(`Fondos insuficientes en cuenta. Necesitas: $${formatMoney(totalCost)}`, 'error');
                 return;
             }
@@ -6171,7 +6212,9 @@
                 initialStock: qty,
                 expiry: newExpiry || '',
                 dateAdded: formatDateISO(appState.activeDate),
-                invoiceType: invoiceType
+                invoiceType: invoiceType,
+                source: addStockPaymentMethod || 'cash',
+                cost: product.cost
             });
             
             // Ordenar lotes por vencimiento (FIFO - el que vence primero, primero en la lista)
@@ -6261,8 +6304,8 @@
                     <div class="flex-1">
                         <label class="text-xs text-gray-500">Pagar con</label>
                         <select class="edit-batch-source w-full border rounded px-2 py-1 text-sm">
-                            <option value="cash">💵 Caja</option>
-                            <option value="bank">🏦 Cuenta</option>
+                            <option value="cash" ${batch.source === 'bank' ? '' : 'selected'}>💵 Caja</option>
+                            <option value="bank" ${batch.source === 'bank' ? 'selected' : ''}>🏦 Cuenta</option>
                         </select>
                     </div>
                     <button type="button" onclick="removeEditProdBatchRow(this)" class="text-red-500 hover:text-red-700 p-1 mt-4" title="Eliminar lote">
@@ -6427,6 +6470,7 @@
             const product = appState.inventory.find(p => p.id === productId);
             
             if (product) {
+                const oldCost = product.cost || 0;
                 product.name = document.getElementById('edit-prod-name').value.trim();
                 product.barcode = document.getElementById('edit-prod-barcode').value.trim();
                 product.cost = parseFloat(document.getElementById('edit-prod-cost').value) || 0;
@@ -6437,54 +6481,78 @@
                 product.supplierPhone = document.getElementById('edit-prod-supplier-phone').value.trim();
                 product.buyDays = getSelectedBuyDays('edit');
                 
-                // Procesar lotes del DOM
+                // Procesar lotes del DOM con control financiero completo
                 const batchRows = document.querySelectorAll('#edit-prod-batches .batch-row');
                 const newBatches = [];
-                let totalAddedQty = 0;
+                const processedIndices = new Set();
                 const addedBySource = { cash: 0, bank: 0 };
+                const returnedBySource = { cash: 0, bank: 0 };
                 
                 batchRows.forEach(row => {
                     const qty = parseInt(row.querySelector('.edit-batch-qty').value) || 0;
-                    if (qty <= 0) return;
-                    
                     const expiry = row.querySelector('.edit-batch-expiry').value || '';
                     const batchIndex = row.dataset.batchIndex;
                     const sourceSelect = row.querySelector('.edit-batch-source');
-                    const source = sourceSelect ? sourceSelect.value : 'cash';
+                    const domSource = sourceSelect ? sourceSelect.value : 'cash';
                     
                     if (batchIndex !== undefined) {
-                        // Lote existente: preservar datos originales
-                        const orig = product.batches[parseInt(batchIndex)] || {};
+                        const idx = parseInt(batchIndex);
+                        processedIndices.add(idx);
+                        const orig = product.batches[idx] || {};
                         const origQty = parseInt(row.dataset.origQty) || orig.stock || 0;
-                        const diff = qty - origQty;
+                        const origCost = orig.cost || oldCost;
+                        const origSource = orig.source || 'cash';
+                        
+                        // Si cantidad es 0, tratar como lote eliminado
+                        if (qty <= 0) return;
+                        
+                        // Valor original vs nuevo del lote
+                        const origValue = origQty * origCost;
+                        const newValue = qty * product.cost;
+                        const valueDiff = newValue - origValue;
                         
                         newBatches.push({
                             stock: qty,
-                            initialStock: diff > 0 ? (orig.initialStock || origQty) + diff : (orig.initialStock || origQty),
+                            initialStock: qty > origQty ? (orig.initialStock || origQty) + (qty - origQty) : (orig.initialStock || origQty),
                             expiry: expiry,
                             dateAdded: orig.dateAdded || formatDateISO(appState.activeDate),
-                            invoiceType: orig.invoiceType || (document.getElementById('edit-prod-invoice-type').value || 'white')
+                            invoiceType: orig.invoiceType || (document.getElementById('edit-prod-invoice-type').value || 'white'),
+                            source: origSource,
+                            cost: product.cost
                         });
                         
-                        if (diff > 0) {
-                            totalAddedQty += diff;
-                            addedBySource[source] += diff * product.cost;
+                        if (valueDiff > 0) {
+                            addedBySource[origSource] += valueDiff;
+                        } else if (valueDiff < 0) {
+                            returnedBySource[origSource] += Math.abs(valueDiff);
                         }
                     } else {
                         // Nuevo lote
+                        if (qty <= 0) return;
+                        const value = qty * product.cost;
                         newBatches.push({
                             stock: qty,
                             initialStock: qty,
                             expiry: expiry,
                             dateAdded: formatDateISO(appState.activeDate),
-                            invoiceType: document.getElementById('edit-prod-invoice-type').value || 'white'
+                            invoiceType: document.getElementById('edit-prod-invoice-type').value || 'white',
+                            source: domSource,
+                            cost: product.cost
                         });
-                        totalAddedQty += qty;
-                        addedBySource[source] += qty * product.cost;
+                        addedBySource[domSource] += value;
                     }
                 });
                 
-                // Si se agregó stock (nuevos lotes o aumento de existentes), registrar inversión y descontar dinero por cada fuente
+                // Procesar lotes eliminados (que estaban en product.batches pero no en el DOM)
+                product.batches.forEach((orig, idx) => {
+                    if (!processedIndices.has(idx)) {
+                        const origValue = orig.stock * (orig.cost || oldCost);
+                        const origSource = orig.source || 'cash';
+                        returnedBySource[origSource] += origValue;
+                    }
+                });
+                
+                // Aplicar descontar dinero por aumentos (compras adicionales)
                 Object.entries(addedBySource).forEach(([src, amount]) => {
                     if (amount > 0) {
                         if (src === 'cash') {
@@ -6492,14 +6560,33 @@
                         } else {
                             appState.bank -= amount;
                         }
-                        
                         appState.investments.push({
                             id: 'RESTOCK-' + Date.now() + '-' + src,
                             date: formatDateISO(appState.activeDate),
-                            concept: `Reposición: ${product.name} (+${totalAddedQty} unidades)`,
+                            concept: `Ajuste stock: ${product.name} (+$${formatMoney(amount)})`,
                             amount: amount,
                             source: src,
                             type: 'restock',
+                            timestamp: Date.now()
+                        });
+                    }
+                });
+                
+                // Aplicar devolución de dinero por disminuciones/eliminaciones
+                Object.entries(returnedBySource).forEach(([src, amount]) => {
+                    if (amount > 0) {
+                        if (src === 'cash') {
+                            appState.cash += amount;
+                        } else {
+                            appState.bank += amount;
+                        }
+                        appState.investments.push({
+                            id: 'ADJUST-' + Date.now() + '-' + src,
+                            date: formatDateISO(appState.activeDate),
+                            concept: `Ajuste stock: ${product.name} (devolución $${formatMoney(amount)})`,
+                            amount: -amount,
+                            source: src,
+                            type: 'adjustment',
                             timestamp: Date.now()
                         });
                     }
@@ -10241,6 +10328,7 @@ Total de productos a comprar: ${shoppingList.length}
                 lastRoundPriceEnabled: false,
                 lastInvoiceType: 'white',
                 lastCategory: null,
+                lastExpiryDate: null,
                 billedDays: [],
                 invoiceTracking: {
                     purchasedWhite: 0,
@@ -12308,6 +12396,18 @@ RESULTADOS:
                     appState.promotions = Array.isArray(appState.promotions) ? appState.promotions : [];
                     appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
                     appState.ticketRules = Array.isArray(appState.ticketRules) ? appState.ticketRules : [];
+                    
+                    // === MIGRACIÓN: agregar source y cost a lotes antiguos ===
+                    if (Array.isArray(appState.inventory)) {
+                        appState.inventory.forEach(p => {
+                            if (p.batches && Array.isArray(p.batches)) {
+                                p.batches.forEach(b => {
+                                    if (!b.source) b.source = 'cash';
+                                    if (b.cost === undefined || b.cost === null) b.cost = p.cost || 0;
+                                });
+                            }
+                        });
+                    }
                     
                     // === MIGRACIÓN: separar promociones de tickets ===
                     appState.promotions.forEach(p => {

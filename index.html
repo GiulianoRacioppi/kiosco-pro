@@ -542,6 +542,28 @@
                         <option value="combos">Combos</option>
                     </select>
                 </div>
+                <!-- Sección Receta / Componentes en Editar Producto -->
+                <div class="bg-orange-50 rounded-xl p-4 border border-orange-200">
+                    <label class="flex items-center gap-2 mb-2 cursor-pointer">
+                        <input type="checkbox" id="edit-prod-is-composite" onchange="toggleEditCompositeSection()">
+                        <span class="text-sm font-bold text-orange-800">📋 Este producto es una preparación (usa subproductos)</span>
+                    </label>
+                    <div id="edit-prod-composite-section" class="hidden space-y-3 mt-3">
+                        <p class="text-xs text-orange-700 font-bold uppercase">Receta / Componentes</p>
+                        <div class="flex gap-2">
+                            <select id="edit-prod-component-select" class="flex-1 border rounded-lg px-3 py-2 text-sm">
+                                <option value="">Seleccionar subproducto...</option>
+                            </select>
+                            <input type="number" id="edit-prod-component-qty" class="w-24 border rounded-lg px-3 py-2 text-sm" placeholder="Cant" min="0.01" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();addEditProdComponent();}">
+                            <button type="button" onclick="addEditProdComponent()" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-bold">+</button>
+                        </div>
+                        <div id="edit-prod-components-list" class="space-y-1"></div>
+                        <div class="flex justify-between text-sm border-t border-orange-200 pt-2">
+                            <span class="text-orange-600">Costo calculado:</span>
+                            <span class="font-bold text-orange-800" id="edit-prod-composite-cost">$0</span>
+                        </div>
+                    </div>
+                </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Facturación de lotes</label>
                     <div class="flex gap-2">
@@ -702,13 +724,13 @@
                         <p class="text-sm text-gray-500">Disponible: <span id="purchase-cash-available">$0</span></p>
                     </div>
                 </button>
-                <button onclick="setPurchasePayment('account')" id="btn-purchase-account" class="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 text-left flex items-center gap-3 transition">
+                <button onclick="setPurchasePayment('bank')" id="btn-purchase-bank" class="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 text-left flex items-center gap-3 transition">
                     <div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white">
                         <i class="fas fa-university"></i>
                     </div>
                     <div>
-                        <p class="font-bold text-gray-800">Pagar con Cuenta</p>
-                        <p class="text-sm text-gray-500">Disponible: <span id="purchase-account-available">$0</span></p>
+                        <p class="font-bold text-gray-800">Pagar con Cuenta Bancaria</p>
+                        <p class="text-sm text-gray-500">Disponible: <span id="purchase-bank-available">$0</span></p>
                     </div>
                 </button>
             </div>
@@ -1307,6 +1329,28 @@
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Precio venta ($)</label>
                         <input type="number" id="inv-price" class="w-full border rounded-lg px-3 py-2 text-sm font-bold text-green-700" step="0.01" oninput="calculateInventoryMargin()" onkeydown="if(event.key==='Enter'){event.preventDefault();preparePurchase();}">
+                    </div>
+                    <!-- Sección Producto Compuesto / Receta -->
+                    <div class="lg:col-span-4 bg-orange-50 rounded-xl p-4 border border-orange-200">
+                        <label class="flex items-center gap-2 mb-2 cursor-pointer">
+                            <input type="checkbox" id="inv-is-composite" onchange="toggleCompositeSection()">
+                            <span class="text-sm font-bold text-orange-800">📋 Este producto es una preparación (usa subproductos)</span>
+                        </label>
+                        <div id="inv-composite-section" class="hidden space-y-3 mt-3">
+                            <p class="text-xs text-orange-700 font-bold uppercase">Receta / Componentes</p>
+                            <div class="flex gap-2">
+                                <select id="inv-component-select" class="flex-1 border rounded-lg px-3 py-2 text-sm">
+                                    <option value="">Seleccionar subproducto...</option>
+                                </select>
+                                <input type="number" id="inv-component-qty" class="w-24 border rounded-lg px-3 py-2 text-sm" placeholder="Cant" min="0.01" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();addInvComponent();}">
+                                <button type="button" onclick="addInvComponent()" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-bold">+</button>
+                            </div>
+                            <div id="inv-components-list" class="space-y-1"></div>
+                            <div class="flex justify-between text-sm border-t border-orange-200 pt-2">
+                                <span class="text-orange-600">Costo calculado:</span>
+                                <span class="font-bold text-orange-800" id="inv-composite-cost">$0</span>
+                            </div>
+                        </div>
                     </div>
                     <div class="lg:col-span-4 flex items-center gap-3 bg-yellow-50 p-2 rounded-lg border border-yellow-200 cursor-pointer" onclick="toggleRoundPriceCheckbox()">
                         <div id="inv-round-price-display" class="w-5 h-5 rounded border-2 border-purple-600 flex items-center justify-center bg-white transition">
@@ -3611,7 +3655,7 @@
                     productId: product.id,
                     name: product.name,
                     price: product.salePrice,
-                    cost: product.cost,
+                    cost: product.isComposite ? calculateCompositeCost(product) : product.cost,
                     quantity: 1
                 });
             }
@@ -3757,7 +3801,7 @@
                     productId: product.id,
                     name: product.name,
                     price: product.salePrice,
-                    cost: product.cost,
+                    cost: product.isComposite ? calculateCompositeCost(product) : product.cost,
                     quantity: 1
                 });
             }
@@ -4446,7 +4490,11 @@
             if (appState.cart.length === 0) return;
 
             const subtotal = appState.cartSubtotal || appState.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const profit = appState.cart.reduce((sum, item) => sum + ((item.price - item.cost) * item.quantity), 0);
+            const profit = appState.cart.reduce((sum, item) => {
+                const product = appState.inventory.find(p => p.id === item.productId);
+                const itemCost = product && product.isComposite ? calculateCompositeCost(product) : (item.cost || 0);
+                return sum + ((item.price - itemCost) * item.quantity);
+            }, 0);
             
             // Usar los descuentos ya calculados en updateCartTotals
             const discountAmount = appState.cartDiscount || 0;
@@ -4506,42 +4554,86 @@
             appState.cart.forEach(item => {
                 const product = appState.inventory.find(p => p.id === item.productId);
                 if (product) {
-                    // Sistema FIFO: descontar del lote que vence primero
-                    let qtyToDeduct = item.quantity;
-                    
-                    if (product.batches && product.batches.length > 0) {
-                        // Ordenar lotes por vencimiento (el que vence primero, primero en la lista)
-                        product.batches.sort((a, b) => {
-                            if (!a.expiry) return 1;
-                            if (!b.expiry) return -1;
-                            return new Date(a.expiry) - new Date(b.expiry);
-                        });
-                        
-                        // Descontar de cada lote empezando por el primero
-                        for (let batch of product.batches) {
-                            if (qtyToDeduct <= 0) break;
+                    // Producto compuesto: descontar stock de cada componente
+                    if (product.isComposite && product.components && product.components.length > 0) {
+                        for (const comp of product.components) {
+                            const compProduct = appState.inventory.find(p => p.id === comp.productId);
+                            if (!compProduct) continue;
                             
-                            const deductFromBatch = Math.min(qtyToDeduct, batch.stock);
-                            batch.stock -= deductFromBatch;
-                            qtyToDeduct -= deductFromBatch;
+                            let qtyToDeduct = item.quantity * (comp.quantity || 1);
                             
-                            const batchValue = deductFromBatch * item.price;
-                            if (batch.invoiceType === 'white') {
-                                saleWhiteTotal += batchValue;
-                            } else {
-                                saleBlackTotal += batchValue;
+                            if (compProduct.batches && compProduct.batches.length > 0) {
+                                // Ordenar lotes por vencimiento (FIFO)
+                                compProduct.batches.sort((a, b) => {
+                                    if (!a.expiry) return 1;
+                                    if (!b.expiry) return -1;
+                                    return new Date(a.expiry) - new Date(b.expiry);
+                                });
+                                
+                                // Descontar de cada lote del componente
+                                for (let batch of compProduct.batches) {
+                                    if (qtyToDeduct <= 0) break;
+                                    const deductFromBatch = Math.min(qtyToDeduct, batch.stock);
+                                    batch.stock -= deductFromBatch;
+                                    qtyToDeduct -= deductFromBatch;
+                                }
+                                
+                                // Eliminar lotes vacíos
+                                compProduct.batches = compProduct.batches.filter(b => b.stock > 0);
                             }
+                            
+                            // Actualizar stock total del componente
+                            const totalCompStock = compProduct.batches ? compProduct.batches.reduce((sum, b) => sum + b.stock, 0) : 0;
+                            compProduct.stock = totalCompStock;
                         }
                         
-                        // Eliminar lotes vacíos
-                        product.batches = product.batches.filter(b => b.stock > 0);
+                        // Facturación del compuesto según su propio invoiceType
+                        const itemValue = item.quantity * item.price;
+                        if (product.invoiceType === 'white') {
+                            saleWhiteTotal += itemValue;
+                        } else {
+                            saleBlackTotal += itemValue;
+                        }
+                        
+                        product.lastSale = new Date().toISOString();
+                    } else {
+                        // Producto normal: Sistema FIFO tradicional
+                        let qtyToDeduct = item.quantity;
+                        
+                        if (product.batches && product.batches.length > 0) {
+                            // Ordenar lotes por vencimiento (el que vence primero, primero en la lista)
+                            product.batches.sort((a, b) => {
+                                if (!a.expiry) return 1;
+                                if (!b.expiry) return -1;
+                                return new Date(a.expiry) - new Date(b.expiry);
+                            });
+                            
+                            // Descontar de cada lote empezando por el primero
+                            for (let batch of product.batches) {
+                                if (qtyToDeduct <= 0) break;
+                                
+                                const deductFromBatch = Math.min(qtyToDeduct, batch.stock);
+                                batch.stock -= deductFromBatch;
+                                qtyToDeduct -= deductFromBatch;
+                                
+                                const batchValue = deductFromBatch * item.price;
+                                if (batch.invoiceType === 'white') {
+                                    saleWhiteTotal += batchValue;
+                                } else {
+                                    saleBlackTotal += batchValue;
+                                }
+                            }
+                            
+                            // Eliminar lotes vacíos
+                            product.batches = product.batches.filter(b => b.stock > 0);
+                        }
+                        
+                        // Compatibilidad: actualizar stock total (para productos antiguos sin lotes)
+                        const totalStock = product.batches ? product.batches.reduce((sum, b) => sum + b.stock, 0) : 0;
+                        product.stock = totalStock;
+                        
+                        product.lastSale = new Date().toISOString();
                     }
-                    
-                    // Compatibilidad: actualizar stock total (para productos antiguos sin lotes)
-                    const totalStock = product.batches ? product.batches.reduce((sum, b) => sum + b.stock, 0) : 0;
-                    product.stock = totalStock;
-                    
-                    product.lastSale = new Date().toISOString();
                 }
             });
             
@@ -4807,6 +4899,202 @@
             }
         }
 
+        // ==================== PRODUCTOS COMPUESTOS / RECETAS ====================
+        let pendingComponents = [];
+        let editProdComponents = [];
+
+        function toggleCompositeSection() {
+            const checkbox = document.getElementById('inv-is-composite');
+            const section = document.getElementById('inv-composite-section');
+            const stockInput = document.getElementById('inv-stock');
+            const costInput = document.getElementById('inv-cost');
+            const componentSelect = document.getElementById('inv-component-select');
+            
+            if (checkbox && checkbox.checked) {
+                section.classList.remove('hidden');
+                if (stockInput) {
+                    stockInput.disabled = true;
+                    stockInput.value = 0;
+                    stockInput.classList.add('bg-gray-100');
+                }
+                if (costInput) costInput.classList.add('bg-gray-100');
+                // Llenar select de componentes
+                if (componentSelect) {
+                    componentSelect.innerHTML = '<option value="">Seleccionar subproducto...</option>' +
+                        appState.inventory.map(p => `<option value="${p.id}">${escapeHtml(p.name)} (Stock: ${getProductStock(p)})</option>`).join('');
+                }
+            } else {
+                section.classList.add('hidden');
+                if (stockInput) {
+                    stockInput.disabled = false;
+                    stockInput.classList.remove('bg-gray-100');
+                }
+                if (costInput) costInput.classList.remove('bg-gray-100');
+                pendingComponents = [];
+                renderInvComponentsList();
+            }
+        }
+
+        function addInvComponent() {
+            const select = document.getElementById('inv-component-select');
+            const qtyInput = document.getElementById('inv-component-qty');
+            if (!select || !qtyInput) return;
+            
+            const productId = select.value;
+            const quantity = parseFloat(qtyInput.value);
+            if (!productId || !quantity || quantity <= 0) {
+                showNotification('Seleccioná un subproducto y una cantidad válida', 'error');
+                return;
+            }
+            
+            const product = appState.inventory.find(p => p.id === productId);
+            if (!product) return;
+            
+            // Evitar duplicados: si ya existe, sumar cantidad
+            const existing = pendingComponents.find(c => c.productId === productId);
+            if (existing) {
+                existing.quantity += quantity;
+            } else {
+                pendingComponents.push({ productId, quantity, name: product.name });
+            }
+            
+            select.value = '';
+            qtyInput.value = '';
+            renderInvComponentsList();
+        }
+
+        function removeInvComponent(index) {
+            pendingComponents.splice(index, 1);
+            renderInvComponentsList();
+        }
+
+        function renderInvComponentsList() {
+            const container = document.getElementById('inv-components-list');
+            const costDisplay = document.getElementById('inv-composite-cost');
+            if (!container) return;
+            
+            if (pendingComponents.length === 0) {
+                container.innerHTML = '<p class="text-xs text-gray-400">Sin componentes agregados</p>';
+            } else {
+                container.innerHTML = pendingComponents.map((comp, i) => {
+                    const compProduct = appState.inventory.find(p => p.id === comp.productId);
+                    const compCost = compProduct ? compProduct.cost : 0;
+                    return `
+                        <div class="flex justify-between items-center bg-white rounded p-2 border text-sm">
+                            <span>${escapeHtml(comp.name)} x${comp.quantity}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-500">$${formatMoney(compCost * comp.quantity)}</span>
+                                <button type="button" onclick="removeInvComponent(${i})" class="text-red-500 hover:text-red-700 text-xs font-bold">✕</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            const totalCost = calculateInvCompositeCost();
+            if (costDisplay) costDisplay.textContent = '$' + formatMoney(totalCost);
+            
+            // Actualizar el costo del producto compuesto
+            const costInput = document.getElementById('inv-cost');
+            if (costInput && document.getElementById('inv-is-composite')?.checked) {
+                costInput.value = totalCost.toFixed(2);
+                calculateInventoryPrice();
+            }
+        }
+
+        function calculateInvCompositeCost() {
+            return pendingComponents.reduce((sum, comp) => {
+                const compProduct = appState.inventory.find(p => p.id === comp.productId);
+                return sum + ((compProduct ? compProduct.cost : 0) * comp.quantity);
+            }, 0);
+        }
+
+        // Funciones para EDITAR producto compuesto
+        function toggleEditCompositeSection() {
+            const checkbox = document.getElementById('edit-prod-is-composite');
+            const section = document.getElementById('edit-prod-composite-section');
+            const componentSelect = document.getElementById('edit-prod-component-select');
+            
+            if (checkbox && checkbox.checked) {
+                section.classList.remove('hidden');
+                if (componentSelect) {
+                    componentSelect.innerHTML = '<option value="">Seleccionar subproducto...</option>' +
+                        appState.inventory.filter(p => p.id !== document.getElementById('edit-product-modal').dataset.productId)
+                        .map(p => `<option value="${p.id}">${escapeHtml(p.name)} (Stock: ${getProductStock(p)})</option>`).join('');
+                }
+            } else {
+                section.classList.add('hidden');
+            }
+        }
+
+        function addEditProdComponent() {
+            const select = document.getElementById('edit-prod-component-select');
+            const qtyInput = document.getElementById('edit-prod-component-qty');
+            if (!select || !qtyInput) return;
+            
+            const productId = select.value;
+            const quantity = parseFloat(qtyInput.value);
+            if (!productId || !quantity || quantity <= 0) {
+                showNotification('Seleccioná un subproducto y una cantidad válida', 'error');
+                return;
+            }
+            
+            const product = appState.inventory.find(p => p.id === productId);
+            if (!product) return;
+            
+            const existing = editProdComponents.find(c => c.productId === productId);
+            if (existing) {
+                existing.quantity += quantity;
+            } else {
+                editProdComponents.push({ productId, quantity, name: product.name });
+            }
+            
+            select.value = '';
+            qtyInput.value = '';
+            renderEditProdComponentsList();
+        }
+
+        function removeEditProdComponent(index) {
+            editProdComponents.splice(index, 1);
+            renderEditProdComponentsList();
+        }
+
+        function renderEditProdComponentsList() {
+            const container = document.getElementById('edit-prod-components-list');
+            const costDisplay = document.getElementById('edit-prod-composite-cost');
+            if (!container) return;
+            
+            if (editProdComponents.length === 0) {
+                container.innerHTML = '<p class="text-xs text-gray-400">Sin componentes agregados</p>';
+            } else {
+                container.innerHTML = editProdComponents.map((comp, i) => {
+                    const compProduct = appState.inventory.find(p => p.id === comp.productId);
+                    const compCost = compProduct ? compProduct.cost : 0;
+                    return `
+                        <div class="flex justify-between items-center bg-white rounded p-2 border text-sm">
+                            <span>${escapeHtml(comp.name)} x${comp.quantity}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-500">$${formatMoney(compCost * comp.quantity)}</span>
+                                <button type="button" onclick="removeEditProdComponent(${i})" class="text-red-500 hover:text-red-700 text-xs font-bold">✕</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            const totalCost = editProdComponents.reduce((sum, comp) => {
+                const compProduct = appState.inventory.find(p => p.id === comp.productId);
+                return sum + ((compProduct ? compProduct.cost : 0) * comp.quantity);
+            }, 0);
+            if (costDisplay) costDisplay.textContent = '$' + formatMoney(totalCost);
+            
+            const costInput = document.getElementById('edit-prod-cost');
+            if (costInput && document.getElementById('edit-prod-is-composite')?.checked) {
+                costInput.value = totalCost.toFixed(2);
+                calculateEditPrice();
+            }
+        }
+
         function setInvInvoiceType(type) {
             document.getElementById('inv-invoice-type').value = type;
             appState.lastInvoiceType = type;
@@ -4902,13 +5190,15 @@
         function preparePurchase() {
             console.log('preparePurchase llamado');
             
+            const isComposite = document.getElementById('inv-is-composite')?.checked || false;
+            
             // Normalizar: reemplazar coma por punto para parseFloat (soporte español)
             const cost = parseFloat(document.getElementById('inv-cost').value.replace(',', '.')) || 0;
             const stock = parseInt(document.getElementById('inv-stock').value) || 0;
             const priceValue = parseFloat(document.getElementById('inv-price').value.replace(',', '.')) || 0;
-            const totalCost = cost * stock;
+            const totalCost = isComposite ? cost : (cost * stock);
             
-            console.log('Valores:', { cost, stock, priceValue, totalCost });
+            console.log('Valores:', { cost, stock, priceValue, totalCost, isComposite });
 
             // Validaciones
             if (!document.getElementById('inv-name').value.trim()) {
@@ -4919,12 +5209,16 @@
                 showNotification('El costo debe ser mayor a 0', 'error');
                 return;
             }
-            if (stock <= 0) {
+            if (!isComposite && stock <= 0) {
                 showNotification('El stock debe ser mayor a 0', 'error');
                 return;
             }
             if (priceValue <= 0) {
                 showNotification('El precio de venta debe ser mayor a 0', 'error');
+                return;
+            }
+            if (isComposite && pendingComponents.length === 0) {
+                showNotification('Agregá al menos un componente a la receta', 'error');
                 return;
             }
             
@@ -4945,15 +5239,17 @@
                 buyDays: getSelectedBuyDays('inv') || [],
                 cost: cost,
                 salePrice: priceValue,
-                stock: stock,
+                stock: isComposite ? 0 : stock,
                 expiry: document.getElementById('inv-expiry').value || '',
                 totalCost: totalCost,
-                invoiceType: invoiceType
+                invoiceType: invoiceType,
+                isComposite: isComposite,
+                components: isComposite ? JSON.parse(JSON.stringify(pendingComponents)) : undefined
             };
 
             document.getElementById('purchase-total-amount').textContent = `$${formatMoney(totalCost)}`;
             document.getElementById('purchase-cash-available').textContent = `$${formatMoney(appState.cash)}`;
-            document.getElementById('purchase-account-available').textContent = `$${formatMoney(appState.bank)}`;
+            document.getElementById('purchase-bank-available').textContent = `$${formatMoney(appState.bank)}`;
             
             setPurchasePayment('cash');
             setPurchaseInvoiceType(invoiceType);
@@ -4990,7 +5286,7 @@
                 ? 'w-full p-4 rounded-xl border-2 border-green-500 bg-green-50 text-left flex items-center gap-3 transition'
                 : 'w-full p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 text-left flex items-center gap-3 transition';
             
-            document.getElementById('btn-purchase-account').className = method === 'account'
+            document.getElementById('btn-purchase-bank').className = method === 'bank'
                 ? 'w-full p-4 rounded-xl border-2 border-blue-500 bg-blue-50 text-left flex items-center gap-3 transition'
                 : 'w-full p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 text-left flex items-center gap-3 transition';
         }
@@ -5052,7 +5348,7 @@
                 showNotification(`Fondos insuficientes en caja. Necesitas: $${formatMoney(totalCost)}, Tienes: $${formatMoney(currentCash)}`, 'error');
                 return;
             }
-            if (method === 'account' && totalCost > currentBank) {
+            if (method === 'bank' && totalCost > currentBank) {
                 showNotification(`Fondos insuficientes en cuenta. Necesitas: $${formatMoney(totalCost)}, Tienes: $${formatMoney(currentBank)}`, 'error');
                 return;
             }
@@ -5063,6 +5359,8 @@
                 appState.bank = currentBank - totalCost;
             }
 
+            const isComposite = appState.pendingPurchase.isComposite || false;
+            
             // Crear producto con sistema de lotes
             const product = {
                 id: 'PROD-' + Date.now(),
@@ -5076,17 +5374,27 @@
                 salePrice: appState.pendingPurchase.salePrice,
                 stock: appState.pendingPurchase.stock, // Stock total para compatibilidad
                 min: 5, // Stock mínimo por defecto
+                createdAt: new Date().toISOString(),
+                lastSale: null
+            };
+            
+            if (isComposite) {
+                product.isComposite = true;
+                product.components = appState.pendingPurchase.components || [];
+                product.invoiceType = appState.pendingPurchase.invoiceType || 'white';
+                product.stock = 0;
+                // Los compuestos no tienen lotes propios
+                product.batches = [];
+            } else {
                 // Sistema de lotes (batches) - cada compra es un lote
-                batches: [{
+                product.batches = [{
                     stock: appState.pendingPurchase.stock,
                     initialStock: appState.pendingPurchase.stock,
                     expiry: appState.pendingPurchase.expiry,
                     dateAdded: formatDateISO(appState.activeDate),
                     invoiceType: appState.pendingPurchase.invoiceType || 'white'
-                }],
-                createdAt: new Date().toISOString(),
-                lastSale: null
-            };
+                }];
+            }
             
             console.log('Producto creado:', product);
             console.log('Inventario antes:', appState.inventory.length, 'productos');
@@ -5103,7 +5411,9 @@
             appState.investments.push({
                 id: 'PURCHASE-' + Date.now(),
                 date: formatDateISO(appState.activeDate),
-                concept: `Compra: ${product.name} (${product.stock} unidades)`,
+                concept: isComposite 
+                    ? `Preparación: ${product.name} (${product.components.length} componentes)` 
+                    : `Compra: ${product.name} (${product.stock} unidades)`,
                 amount: totalCost,
                 source: method === 'cash' ? 'cash' : 'bank',
                 type: 'purchase',
@@ -5255,13 +5565,22 @@
             console.log('Productos filtrados para mostrar:', filtered.length);
 
             document.getElementById('inventory-table').innerHTML = filtered.map(p => {
-                // Calcular stock total desde lotes
-                const totalStock = p.batches ? p.batches.reduce((sum, b) => sum + b.stock, 0) : (p.stock || 0);
+                // Calcular stock total (usa getProductStock para soportar compuestos)
+                const totalStock = getProductStock(p);
                 const minStock = p.min || p.minStock || 5;
+                const isComposite = p.isComposite && p.components && p.components.length > 0;
                 
-                // Formatear lotes para mostrar
+                // Formatear lotes o componentes para mostrar
                 let batchesHtml = '';
-                if (p.batches && p.batches.length > 0) {
+                if (isComposite) {
+                    batchesHtml = `<div class="text-xs space-y-1">
+                        <span class="px-1 py-0.5 rounded bg-orange-100 text-orange-700 font-bold">🧩 PREPARACIÓN</span>
+                        ${p.components.map(comp => {
+                            const compProduct = appState.inventory.find(cp => cp.id === comp.productId);
+                            return `<div class="text-xs text-gray-600">• ${escapeHtml(compProduct ? compProduct.name : '???')} x${comp.quantity}</div>`;
+                        }).join('')}
+                    </div>`;
+                } else if (p.batches && p.batches.length > 0) {
                     batchesHtml = p.batches.map((b, i) => {
                         const daysUntil = b.expiry ? Math.ceil((new Date(b.expiry) - new Date()) / (1000 * 60 * 60 * 24)) : null;
                         let expiryClass = 'text-gray-500';
@@ -5303,10 +5622,12 @@
                                   totalStock < minStock ? 'bg-orange-100 text-orange-700' : 
                                   'bg-green-100 text-green-700';
                 
+                const compositeBadge = isComposite ? '<span class="text-[10px] bg-orange-100 text-orange-700 px-1 rounded mr-1">🧩</span>' : '';
+                
                 return `
                 <tr class="hover:bg-gray-50">
                     <td class="px-3 py-2">
-                        <div class="font-medium text-gray-900">${escapeHtml(p.name)}</div>
+                        <div class="font-medium text-gray-900">${compositeBadge}${escapeHtml(p.name)}</div>
                         <div class="text-xs text-gray-500">${p.category || 'Sin cat.'}</div>
                     </td>
                     <td class="px-3 py-2 text-sm font-mono text-gray-600">${p.barcode}</td>
@@ -5336,15 +5657,18 @@
                 const inventory = Array.isArray(appState.inventory) ? appState.inventory : [];
                 
                 const costValue = inventory.reduce((sum, p) => {
+                    // Los productos compuestos no suman al valor de inventario
+                    // porque su valor ya está representado por los componentes
+                    if (p.isComposite) return sum;
                     const cost = parseFloat(p.cost) || 0;
-                    // Calcular stock desde lotes si existen, sino usar stock directo
-                    const stock = p.batches ? p.batches.reduce((s, b) => s + (b.stock || 0), 0) : (parseInt(p.stock) || 0);
+                    const stock = getProductStock(p);
                     return sum + (cost * stock);
                 }, 0);
                 
                 const saleValue = inventory.reduce((sum, p) => {
+                    if (p.isComposite) return sum;
                     const salePrice = parseFloat(p.salePrice) || 0;
-                    const stock = p.batches ? p.batches.reduce((s, b) => s + (b.stock || 0), 0) : (parseInt(p.stock) || 0);
+                    const stock = getProductStock(p);
                     return sum + (salePrice * stock);
                 }, 0);
                 
@@ -5387,9 +5711,7 @@
 
         // Calcular días de stock restantes según demanda
         function getDaysOfStock(product, avgDailyDemand) {
-            const totalStock = product.batches ? 
-                product.batches.reduce((sum, b) => sum + b.stock, 0) : 
-                (product.stock || 0);
+            const totalStock = getProductStock(product);
             
             if (avgDailyDemand <= 0) return 999; // Sin demanda = stock "infinito"
             return Math.floor(totalStock / avgDailyDemand);
@@ -5408,9 +5730,10 @@
             const today = new Date();
             
             inventory.forEach(p => {
-                const totalStock = p.batches ? 
-                    p.batches.reduce((sum, b) => sum + b.stock, 0) : 
-                    (p.stock || 0);
+                // Saltear productos compuestos: no se compran directamente
+                if (p.isComposite) return;
+                
+                const totalStock = getProductStock(p);
                 
                 // Obtener demanda diaria del producto
                 const stats = calculateProductStats(p.id);
@@ -5600,14 +5923,16 @@
                 expiryInfo = `<p class="text-sm text-orange-600 font-bold">⚠️ Sin vencimiento registrado</p>`;
             }
             
-            // Calcular stock total desde lotes
-            const totalStock = product.batches ? product.batches.reduce((sum, b) => sum + b.stock, 0) : (product.stock || 0);
+            // Calcular stock total (usa getProductStock para soportar compuestos)
+            const totalStock = getProductStock(product);
+            const isComposite = product.isComposite && product.components && product.components.length > 0;
             
             document.getElementById('add-stock-product-info').innerHTML = `
-                <p class="font-bold text-gray-800">${product.name}</p>
-                <p class="text-sm text-gray-500">Stock total: <strong>${totalStock}</strong> unidades</p>
+                <p class="font-bold text-gray-800">${isComposite ? '🧩 ' : ''}${product.name}</p>
+                <p class="text-sm text-gray-500">Stock total: <strong>${totalStock}</strong> unidades${isComposite ? ' (calculado por componentes)' : ''}</p>
                 <p class="text-sm text-gray-500">Costo unitario: $${formatMoney(product.cost)}</p>
                 ${expiryInfo}
+                ${isComposite ? '<p class="text-sm text-orange-600 font-bold mt-1">⚠️ Las preparaciones no reciben stock directo. Comprá los subproductos.</p>' : ''}
             `;
             
             // Actualizar disponibles
@@ -5699,10 +6024,82 @@
         // Función auxiliar para obtener stock total de un producto (desde lotes o stock directo)
         function getProductStock(product) {
             if (!product) return 0;
+            // Si es producto compuesto, calcular stock según componentes disponibles
+            if (product.isComposite && product.components && product.components.length > 0) {
+                let maxUnits = Infinity;
+                for (const comp of product.components) {
+                    const compProduct = appState.inventory.find(p => p.id === comp.productId);
+                    if (!compProduct) return 0;
+                    const compStock = getProductStock(compProduct);
+                    const possible = Math.floor(compStock / (comp.quantity || 1));
+                    if (possible < maxUnits) maxUnits = possible;
+                }
+                return maxUnits === Infinity ? 0 : maxUnits;
+            }
             if (product.batches && product.batches.length > 0) {
                 return product.batches.reduce((sum, b) => sum + (b.stock || 0), 0);
             }
             return parseInt(product.stock) || 0;
+        }
+
+        // Restaurar stock de un producto (maneja compuestos y normales)
+        function restoreProductStock(product, quantity) {
+            if (!product || quantity <= 0) return;
+            
+            if (product.isComposite && product.components) {
+                // Restaurar stock a cada componente
+                for (const comp of product.components) {
+                    const compProduct = appState.inventory.find(p => p.id === comp.productId);
+                    if (!compProduct) continue;
+                    const qtyToRestore = quantity * (comp.quantity || 1);
+                    if (!compProduct.batches) {
+                        compProduct.batches = [{
+                            stock: qtyToRestore,
+                            expiry: '',
+                            dateAdded: formatDateISO(appState.activeDate)
+                        }];
+                    } else if (compProduct.batches.length > 0) {
+                        compProduct.batches[0].stock += qtyToRestore;
+                    } else {
+                        compProduct.batches.push({
+                            stock: qtyToRestore,
+                            expiry: '',
+                            dateAdded: formatDateISO(appState.activeDate)
+                        });
+                    }
+                    compProduct.stock = getProductStock(compProduct);
+                }
+            } else {
+                // Producto normal: agregar al primer lote o crear uno nuevo
+                if (!product.batches) {
+                    product.batches = [{
+                        stock: quantity,
+                        expiry: '',
+                        dateAdded: formatDateISO(appState.activeDate)
+                    }];
+                } else if (product.batches.length > 0) {
+                    product.batches[0].stock += quantity;
+                } else {
+                    product.batches.push({
+                        stock: quantity,
+                        expiry: '',
+                        dateAdded: formatDateISO(appState.activeDate)
+                    });
+                }
+                product.stock = getProductStock(product);
+            }
+        }
+
+        // Función auxiliar para calcular costo automático de producto compuesto
+        function calculateCompositeCost(product) {
+            if (!product.isComposite || !product.components || product.components.length === 0) {
+                return product.cost || 0;
+            }
+            return product.components.reduce((sum, comp) => {
+                const compProduct = appState.inventory.find(p => p.id === comp.productId);
+                const compCost = compProduct ? (compProduct.cost || 0) : 0;
+                return sum + (compCost * (comp.quantity || 1));
+            }, 0);
         }
 
         function executeAddStock() {
@@ -5713,6 +6110,12 @@
             const product = appState.inventory.find(p => p.id === productId);
             if (!product || qty <= 0) {
                 showNotification('Cantidad inválida', 'error');
+                return;
+            }
+            
+            if (product.isComposite) {
+                showNotification('Las preparaciones no reciben stock directo. Comprá los subproductos.', 'warning');
+                closeAddStockModal();
                 return;
             }
             
@@ -5911,6 +6314,9 @@
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
 
+            // Setear productId ANTES de cualquier operación que lo necesite
+            document.getElementById('edit-product-modal').dataset.productId = productId;
+            
             const totalStock = getProductStock(product);
             
             document.getElementById('edit-prod-name').value = product.name || '';
@@ -5935,10 +6341,23 @@
             // Cargar días de compra
             setBuyDays('edit', product.buyDays || []);
             
+            // Cargar componentes si es producto compuesto
+            editProdComponents = []; // Limpiar estado residual
+            const isCompositeCheckbox = document.getElementById('edit-prod-is-composite');
+            if (isCompositeCheckbox) {
+                isCompositeCheckbox.checked = product.isComposite || false;
+                if (product.isComposite) {
+                    editProdComponents = product.components ? JSON.parse(JSON.stringify(product.components)) : [];
+                    toggleEditCompositeSection();
+                    renderEditProdComponentsList();
+                } else {
+                    document.getElementById('edit-prod-composite-section').classList.add('hidden');
+                }
+            }
+            
             // Calcular margen inicial
             calculateEditMargin();
             
-            document.getElementById('edit-product-modal').dataset.productId = productId;
             document.getElementById('edit-product-modal').classList.add('active');
         }
 
@@ -6096,11 +6515,23 @@
                     product.expiry = '';
                 }
                 
-                // Aplicar tipo de factura a todos los lotes existentes
-                const newInvoiceType = document.getElementById('edit-prod-invoice-type').value || 'white';
-                product.batches.forEach(batch => {
-                    batch.invoiceType = newInvoiceType;
-                });
+                // Guardar estado compuesto
+                const isCompositeEdit = document.getElementById('edit-prod-is-composite')?.checked || false;
+                if (isCompositeEdit) {
+                    product.isComposite = true;
+                    product.components = editProdComponents.length > 0 ? editProdComponents : [];
+                    product.invoiceType = document.getElementById('edit-prod-invoice-type').value || 'white';
+                    product.batches = [];
+                    product.stock = 0;
+                } else {
+                    product.isComposite = false;
+                    delete product.components;
+                    // Aplicar tipo de factura a todos los lotes existentes
+                    const newInvoiceType = document.getElementById('edit-prod-invoice-type').value || 'white';
+                    product.batches.forEach(batch => {
+                        batch.invoiceType = newInvoiceType;
+                    });
+                }
                 
                 saveToLocalStorage();
                 renderInventory();
@@ -6116,10 +6547,12 @@
                 return;
             }
             
-            // Buscar por nombre o código
+            // Buscar por nombre o código (excluir compuestos: no reciben stock directo)
             const results = appState.inventory.filter(p => 
-                p.name.toLowerCase().includes(search) || 
-                p.barcode.toLowerCase().includes(search)
+                !p.isComposite && (
+                    p.name.toLowerCase().includes(search) || 
+                    p.barcode.toLowerCase().includes(search)
+                )
             ).slice(0, 6);
 
             document.getElementById('quick-stock-results').innerHTML = results.map(p => {
@@ -6142,8 +6575,8 @@
             if (e.key === 'Enter') {
                 const search = e.target.value.trim().toLowerCase();
                 
-                // Primero intentar encontrar por código exacto
-                const productByBarcode = appState.inventory.find(p => p.barcode.toLowerCase() === search);
+                // Primero intentar encontrar por código exacto (excluir compuestos)
+                const productByBarcode = appState.inventory.find(p => !p.isComposite && p.barcode.toLowerCase() === search);
                 if (productByBarcode) {
                     openAddStockModal(productByBarcode.id);
                     e.target.value = '';
@@ -6151,10 +6584,12 @@
                     return;
                 }
                 
-                // Si no es código exacto, ver si hay un solo resultado en la búsqueda
+                // Si no es código exacto, ver si hay un solo resultado en la búsqueda (excluir compuestos)
                 const results = appState.inventory.filter(p => 
-                    p.name.toLowerCase().includes(search) || 
-                    p.barcode.toLowerCase().includes(search)
+                    !p.isComposite && (
+                        p.name.toLowerCase().includes(search) || 
+                        p.barcode.toLowerCase().includes(search)
+                    )
                 );
                 
                 if (results.length === 1) {
@@ -6406,26 +6841,7 @@
             sale.items.forEach(item => {
                 const product = appState.inventory.find(p => p.id === item.productId);
                 if (product) {
-                    // Agregar al primer lote (FIFO) o crear uno nuevo
-                    if (!product.batches) {
-                        product.batches = [{
-                            stock: item.quantity,
-                            expiry: '',
-                            dateAdded: formatDateISO(appState.activeDate)
-                        }];
-                    } else if (product.batches.length > 0) {
-                        // Agregar al primer lote (el más viejo)
-                        product.batches[0].stock += item.quantity;
-                    } else {
-                        // Crear nuevo lote
-                        product.batches.push({
-                            stock: item.quantity,
-                            expiry: '',
-                            dateAdded: formatDateISO(appState.activeDate)
-                        });
-                    }
-                    // Actualizar stock total para compatibilidad
-                    product.stock = getProductStock(product);
+                    restoreProductStock(product, item.quantity);
                 }
             });
 
@@ -6609,23 +7025,7 @@
             sale.items.forEach(item => {
                 const product = appState.inventory.find(p => p.id === item.productId);
                 if (product) {
-                    // Devolver stock al primer lote
-                    if (!product.batches) {
-                        product.batches = [{
-                            stock: item.quantity,
-                            expiry: '',
-                            dateAdded: formatDateISO(appState.activeDate)
-                        }];
-                    } else if (product.batches.length > 0) {
-                        product.batches[0].stock += item.quantity;
-                    } else {
-                        product.batches.push({
-                            stock: item.quantity,
-                            expiry: '',
-                            dateAdded: formatDateISO(appState.activeDate)
-                        });
-                    }
-                    product.stock = getProductStock(product);
+                    restoreProductStock(product, item.quantity);
                 }
             });
 
@@ -8342,7 +8742,8 @@
         function openLossModal() {
             const select = document.getElementById('loss-product');
             select.innerHTML = '<option value="">Seleccionar producto...</option>' +
-                appState.inventory.map(p => `<option value="${p.id}">${escapeHtml(p.name)} (Stock: ${getProductStock(p)})</option>`).join('');
+                appState.inventory.filter(p => !p.isComposite)
+                .map(p => `<option value="${p.id}">${escapeHtml(p.name)} (Stock: ${getProductStock(p)})</option>`).join('');
             document.getElementById('loss-quantity').value = '';
             document.getElementById('loss-cost').value = '';
             document.getElementById('loss-notes').value = '';
@@ -8789,6 +9190,7 @@
             
             productsToAnalyze.forEach(product => {
                 if (!product || !product.id) return;
+                if (product.isComposite) return; // Las preparaciones no se compran directamente
                 
                 const prediction = predictDemand(product.id, 7);
                 if (!prediction || !prediction.stats) return;

@@ -419,6 +419,14 @@
                     <label class="block text-sm font-medium text-gray-700 mb-2">Cantidad a agregar</label>
                     <input type="number" id="add-stock-qty" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" value="1" min="1" required oninput="updateAddStockCost()" onkeypress="handleAddStockKeypress(event)">
                 </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Costo unitario ($)</label>
+                    <input type="number" id="add-stock-unit-cost" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-lg font-bold text-center" step="0.01" oninput="onAddStockCostInput()" onkeypress="handleAddStockKeypress(event)">
+                    <label class="flex items-center gap-2 mt-1 cursor-pointer">
+                        <input type="checkbox" id="add-stock-vat" onchange="toggleAddStockVat()">
+                        <span class="text-xs text-gray-600">💰 + IVA 21%</span>
+                    </label>
+                </div>
                 <div class="p-3 bg-blue-50 rounded-lg">
                     <p class="text-sm text-gray-600">Costo total:</p>
                     <p class="text-2xl font-bold text-blue-800" id="add-stock-total-cost">$0</p>
@@ -6031,6 +6039,14 @@
             document.getElementById('addstock-account-available').textContent = formatMoney(appState.bank);
             
             document.getElementById('add-stock-qty').value = 1;
+            // Precargar costo unitario y estado de IVA
+            const unitCostInput = document.getElementById('add-stock-unit-cost');
+            if (unitCostInput) unitCostInput.value = product.cost || 0;
+            const vatCheckbox = document.getElementById('add-stock-vat');
+            if (vatCheckbox) {
+                vatCheckbox.checked = product.vatApplied || false;
+                addStockVatApplied = product.vatApplied || false;
+            }
             updateAddStockCost();
             resetAddStockSelections();
             
@@ -6058,11 +6074,38 @@
             document.getElementById('add-stock-modal').classList.add('active');
         }
 
+        // Variable para control de IVA en agregar stock
+        let addStockVatApplied = false;
+
+        function toggleAddStockVat() {
+            const checkbox = document.getElementById('add-stock-vat');
+            const costInput = document.getElementById('add-stock-unit-cost');
+            if (!costInput || !checkbox) return;
+            const currentCost = parseFloat(costInput.value.replace(',', '.')) || 0;
+            if (checkbox.checked && !addStockVatApplied) {
+                costInput.value = (currentCost * 1.21).toFixed(2);
+                addStockVatApplied = true;
+            } else if (!checkbox.checked && addStockVatApplied) {
+                costInput.value = (currentCost / 1.21).toFixed(2);
+                addStockVatApplied = false;
+            }
+            updateAddStockCost();
+        }
+
+        function onAddStockCostInput() {
+            addStockVatApplied = false;
+            const checkbox = document.getElementById('add-stock-vat');
+            if (checkbox) checkbox.checked = false;
+            updateAddStockCost();
+        }
+
         function updateAddStockCost() {
             if (!currentAddStockProduct) return;
             
             const qty = parseInt(document.getElementById('add-stock-qty').value) || 0;
-            const totalCost = qty * currentAddStockProduct.cost;
+            const unitCostInput = document.getElementById('add-stock-unit-cost');
+            const unitCost = unitCostInput ? (parseFloat(unitCostInput.value.replace(',', '.')) || currentAddStockProduct.cost || 0) : (currentAddStockProduct.cost || 0);
+            const totalCost = qty * unitCost;
             document.getElementById('add-stock-total-cost').textContent = `$${formatMoney(totalCost)}`;
         }
 
@@ -6225,7 +6268,12 @@
                 return;
             }
             
-            const totalCost = qty * product.cost;
+            // Leer costo unitario del input (puede haber cambiado)
+            const unitCostInput = document.getElementById('add-stock-unit-cost');
+            const newUnitCost = unitCostInput ? (parseFloat(unitCostInput.value.replace(',', '.')) || product.cost || 0) : (product.cost || 0);
+            const vatApplied = document.getElementById('add-stock-vat')?.checked || false;
+            
+            const totalCost = qty * newUnitCost;
             
             // Verificar si hay un nuevo precio de venta
             const newPriceInput = document.getElementById('add-stock-new-price').value;
@@ -6239,6 +6287,15 @@
             if (addStockPaymentMethod === 'bank' && totalCost > appState.bank) {
                 showNotification(`Fondos insuficientes en cuenta. Necesitas: $${formatMoney(totalCost)}`, 'error');
                 return;
+            }
+            
+            // Actualizar costo del producto si cambió
+            const oldCost = product.cost || 0;
+            if (Math.abs(newUnitCost - oldCost) > 0.01) {
+                product.cost = newUnitCost;
+                product.vatApplied = vatApplied;
+            } else {
+                product.vatApplied = vatApplied;
             }
             
             // Descontar dinero
@@ -6268,7 +6325,7 @@
                 dateAdded: formatDateISO(appState.activeDate),
                 invoiceType: invoiceType,
                 source: addStockPaymentMethod || 'cash',
-                cost: product.cost
+                cost: newUnitCost
             });
             
             // Ordenar lotes por vencimiento (FIFO - el que vence primero, primero en la lista)

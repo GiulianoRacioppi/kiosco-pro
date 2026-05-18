@@ -498,7 +498,11 @@
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Costo</label>
-                        <input type="number" id="edit-prod-cost" class="w-full border rounded-lg px-3 py-2" step="0.01" oninput="calculateEditPrice()">
+                        <input type="number" id="edit-prod-cost" class="w-full border rounded-lg px-3 py-2" step="0.01" oninput="onEditCostInput()">
+                        <label class="flex items-center gap-2 mt-1 cursor-pointer">
+                            <input type="checkbox" id="edit-prod-vat" onchange="toggleEditVat()">
+                            <span class="text-xs text-gray-600">💰 + IVA 21% (calcular sobre costo con IVA)</span>
+                        </label>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Precio de venta</label>
@@ -531,10 +535,12 @@
                     <label class="block text-sm font-medium text-gray-700 mb-2">Categoría</label>
                     <select id="edit-prod-category" class="w-full border rounded-lg px-3 py-2">
                         <option value="snacks">Snacks</option>
+                        <option value="subproductos">Subproductos</option>
                         <option value="bebidas">Bebidas</option>
                         <option value="cervezas">Cervezas</option>
                         <option value="golosinas">Golosinas</option>
                         <option value="galletitas">Galletitas</option>
+                        <option value="alfajores">Alfajores</option>
                         <option value="despensa">Despensa</option>
                         <option value="lacteos">Lácteos</option>
                         <option value="comidas">Comidas</option>
@@ -1305,8 +1311,10 @@
                             <option value="bebidas">Bebidas</option>
                             <option value="cervezas">Cervezas</option>
                             <option value="snacks">Snacks</option>
+                            <option value="subproductos">Subproductos</option>
                             <option value="golosinas">Golosinas</option>
                             <option value="galletitas">Galletitas</option>
+                            <option value="alfajores">Alfajores</option>
                             <option value="despensa">Despensa</option>
                             <option value="lacteos">Lácteos</option>
                             <option value="comidas">Comidas</option>
@@ -1314,7 +1322,11 @@
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Costo ($)</label>
-                        <input type="number" id="inv-cost" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" required oninput="calculateInventoryPrice()" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-stock').focus();}">
+                        <input type="number" id="inv-cost" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" required oninput="onInvCostInput()" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-stock').focus();}">
+                        <label class="flex items-center gap-2 mt-1 cursor-pointer">
+                            <input type="checkbox" id="inv-vat" onchange="toggleInvVat()">
+                            <span class="text-xs text-gray-600">💰 + IVA 21% (calcular sobre costo con IVA)</span>
+                        </label>
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Stock inicial</label>
@@ -1363,18 +1375,7 @@
                         </span>
                         <input type="hidden" id="inv-round-price" value="false">
                     </div>
-                    <div class="lg:col-span-4">
-                        <label class="block text-xs font-medium text-gray-600 mb-2">Tipo de compra / facturación:</label>
-                        <div class="flex gap-2">
-                            <div role="button" onclick="setInvInvoiceType('white')" id="btn-inv-invoice-white" class="flex-1 py-2 rounded-lg border-2 border-blue-500 bg-blue-50 text-sm font-bold transition flex items-center justify-center gap-2 text-blue-700 cursor-pointer select-none">
-                                <i class="fas fa-file-invoice text-blue-500"></i> Facturado (Blanco)
-                            </div>
-                            <div role="button" onclick="setInvInvoiceType('black')" id="btn-inv-invoice-black" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-sm font-medium transition flex items-center justify-center gap-2 text-gray-600 hover:border-gray-400 cursor-pointer select-none">
-                                <i class="fas fa-eye-slash text-gray-500"></i> Sin factura (Negro)
-                            </div>
-                        </div>
-                        <input type="hidden" id="inv-invoice-type" value="white">
-                    </div>
+                    <!-- El tipo de compra/facturación se elige en el modal de pago, no aquí -->
                     <div class="lg:col-span-4 flex items-end">
                         <button type="submit" tabindex="0" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold shadow">
                             <i class="fas fa-check"></i> Confirmar Compra
@@ -4893,8 +4894,6 @@
                     display.classList.remove('bg-purple-100');
                 }
             }
-            setInvInvoiceType(appState.lastInvoiceType || 'white');
-            
             // Restaurar última categoría seleccionada
             const categorySelect = document.getElementById('inv-category');
             if (categorySelect && appState.lastCategory) {
@@ -5105,7 +5104,8 @@
         }
 
         function setInvInvoiceType(type) {
-            document.getElementById('inv-invoice-type').value = type;
+            const input = document.getElementById('inv-invoice-type');
+            if (input) input.value = type;
             appState.lastInvoiceType = type;
             saveToLocalStorage();
             const btnWhite = document.getElementById('btn-inv-invoice-white');
@@ -5117,6 +5117,54 @@
                 btnWhite.className = 'flex-1 py-2 rounded-lg border-2 border-gray-200 text-sm font-medium transition flex items-center justify-center gap-2 text-gray-600 hover:border-gray-400';
                 btnBlack.className = 'flex-1 py-2 rounded-lg border-2 border-gray-700 bg-gray-100 text-sm font-bold transition flex items-center justify-center gap-2 text-gray-800';
             }
+        }
+
+        // Variables para control de IVA
+        let invVatApplied = false;
+        let editVatApplied = false;
+
+        function toggleInvVat() {
+            const checkbox = document.getElementById('inv-vat');
+            const costInput = document.getElementById('inv-cost');
+            if (!costInput || !checkbox) return;
+            const currentCost = parseFloat(costInput.value.replace(',', '.')) || 0;
+            if (checkbox.checked && !invVatApplied) {
+                costInput.value = (currentCost * 1.21).toFixed(2);
+                invVatApplied = true;
+            } else if (!checkbox.checked && invVatApplied) {
+                costInput.value = (currentCost / 1.21).toFixed(2);
+                invVatApplied = false;
+            }
+            calculateInventoryPrice();
+        }
+
+        function onInvCostInput() {
+            invVatApplied = false;
+            const checkbox = document.getElementById('inv-vat');
+            if (checkbox) checkbox.checked = false;
+            calculateInventoryPrice();
+        }
+
+        function toggleEditVat() {
+            const checkbox = document.getElementById('edit-prod-vat');
+            const costInput = document.getElementById('edit-prod-cost');
+            if (!costInput || !checkbox) return;
+            const currentCost = parseFloat(costInput.value.replace(',', '.')) || 0;
+            if (checkbox.checked && !editVatApplied) {
+                costInput.value = (currentCost * 1.21).toFixed(2);
+                editVatApplied = true;
+            } else if (!checkbox.checked && editVatApplied) {
+                costInput.value = (currentCost / 1.21).toFixed(2);
+                editVatApplied = false;
+            }
+            calculateEditPrice();
+        }
+
+        function onEditCostInput() {
+            editVatApplied = false;
+            const checkbox = document.getElementById('edit-prod-vat');
+            if (checkbox) checkbox.checked = false;
+            calculateEditPrice();
         }
 
         function calculateInventoryPrice() {
@@ -5233,8 +5281,6 @@
             
             console.log('Validaciones pasadas, creando pendingPurchase');
 
-            const invoiceType = document.getElementById('inv-invoice-type')?.value || 'white';
-            
             const selectedCategory = document.getElementById('inv-category').value;
             appState.lastCategory = selectedCategory;
             
@@ -5243,6 +5289,8 @@
             if (expiryValue) {
                 appState.lastExpiryDate = expiryValue;
             }
+            
+            const invoiceType = 'white'; // Default, se elige en el modal de pago
             
             appState.pendingPurchase = {
                 barcode: document.getElementById('inv-barcode').value || '',
@@ -5280,6 +5328,9 @@
 
         function setPurchaseInvoiceType(type) {
             appState.pendingPurchaseInvoiceType = type;
+            if (appState.pendingPurchase) {
+                appState.pendingPurchase.invoiceType = type;
+            }
             document.getElementById('purchase-invoice-type').value = type;
             
             const btnWhite = document.getElementById('btn-purchase-invoice-white');
@@ -5389,6 +5440,7 @@
                 salePrice: appState.pendingPurchase.salePrice,
                 stock: appState.pendingPurchase.stock, // Stock total para compatibilidad
                 min: 5, // Stock mínimo por defecto
+                vatApplied: document.getElementById('inv-vat')?.checked || false,
                 createdAt: new Date().toISOString(),
                 lastSale: null
             };
@@ -6400,6 +6452,13 @@
                 }
             }
             
+            // Cargar estado de IVA
+            const vatCheckbox = document.getElementById('edit-prod-vat');
+            if (vatCheckbox) {
+                vatCheckbox.checked = product.vatApplied || false;
+                editVatApplied = product.vatApplied || false;
+            }
+            
             // Calcular margen inicial
             calculateEditMargin();
             
@@ -6603,6 +6662,9 @@
                 } else {
                     product.expiry = '';
                 }
+                
+                // Guardar estado de IVA
+                product.vatApplied = document.getElementById('edit-prod-vat')?.checked || false;
                 
                 // Guardar estado compuesto
                 const isCompositeEdit = document.getElementById('edit-prod-is-composite')?.checked || false;
@@ -7041,6 +7103,17 @@
                 appState.cash -= newAmount;
             } else if (newSource === 'bank') {
                 appState.bank -= newAmount;
+            }
+
+            // Editar fecha
+            const newDateStr = prompt('Nueva fecha (AAAA-MM-DD):', investment.date);
+            if (newDateStr !== null) {
+                if (/^\d{4}-\d{2}-\d{2}$/.test(newDateStr)) {
+                    investment.date = newDateStr;
+                } else {
+                    showNotification('Formato de fecha inválido. Usá AAAA-MM-DD', 'error');
+                    return;
+                }
             }
 
             investment.amount = newAmount;

@@ -5157,8 +5157,7 @@
 
         function onInvCostInput() {
             invVatApplied = false;
-            const checkbox = document.getElementById('inv-vat');
-            if (checkbox) checkbox.checked = false;
+            // NO desmarca el IVA nunca
             calculateInventoryPrice();
         }
 

@@ -5238,8 +5238,8 @@
             
             if (cost > 0 && price > 0) {
                 // Fórmula correcta del margen sobre venta
-                // Margen = ((Precio - Costo) / Precio) * 100
-                const margin = ((price - cost) / price) * 100;
+                // Margen = ((Precio - Costo) / Costo) * 100
+                const margin = ((price - cost) / cost) * 100;
                 marginInput.value = margin.toFixed(1);
                 if (marginDisplay) marginDisplay.textContent = `${fmtNumber(margin, 1)}%`;
             } else if (cost > 0) {
@@ -6572,7 +6572,7 @@
             
             if (cost > 0 && price > 0) {
                 // Fórmula correcta del margen sobre venta
-                const margin = ((price - cost) / price) * 100;
+                const margin = ((price - cost) / cost) * 100;
                 document.getElementById('edit-prod-margin').value = margin.toFixed(1);
             } else {
                 document.getElementById('edit-prod-margin').value = '0';
@@ -8277,7 +8277,7 @@
                         const cost = p.cost || 0;
                         const price = p.salePrice || p.price || 0;
                         if (cost > 0 && price > 0) {
-                            const margin = ((price - cost) / price) * 100;
+                            const margin = ((price - cost) / cost) * 100;
                             return sum + margin;
                         }
                         return sum;

@@ -5187,8 +5187,8 @@
             // Si hay costo, recalcular automáticamente el precio basado en el margen DEFAULT
             if (cost > 0) {
                 const margin = appState.defaultMargin || 30;
-                // Fórmula: Precio = Costo / (1 - margen/100)
-                let price = cost / (1 - margin / 100);
+                // Fórmula: Precio = Costo * (1 + margen/100)
+                 let price = cost * (1 + margin / 100);
                 // Redondear a 50 si está activado
                 if (isRoundEnabled) {
                     price = roundTo50Up(price);
@@ -5211,7 +5211,7 @@
             
             if (cost > 0 && margin > 0 && margin < 100) {
                 // Recalcular precio basado en el margen ingresado
-                let price = cost / (1 - margin / 100);
+                let price = cost * (1 + margin / 100);
                 // Redondear a 50 si está activado
                 if (isRoundEnabled) {
                     price = roundTo50Up(price);
@@ -6533,7 +6533,7 @@
             if (cost > 0) {
                 const margin = appState.defaultMargin || 30;
                 // Fórmula: Precio = Costo / (1 - margen/100)
-                let price = cost / (1 - margin / 100);
+                let price = cost * (1 + margin / 100);
                 // Redondear a 50 si está activado
                 if (roundCheckbox && roundCheckbox.checked) {
                     price = roundTo50Up(price);
@@ -6556,7 +6556,7 @@
             
             if (cost > 0 && margin > 0 && margin < 100) {
                 // Recalcular precio basado en el margen ingresado
-                let price = cost / (1 - margin / 100);
+                let price = cost * (1 + margin / 100);
                 // Redondear a 50 si está activado
                 if (roundCheckbox && roundCheckbox.checked) {
                     price = roundTo50Up(price);

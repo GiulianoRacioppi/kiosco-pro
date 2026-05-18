@@ -1330,7 +1330,7 @@
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Costo ($)</label>
-                        <input type="number" id="inv-cost" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" required oninput="onInvCostInput()" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-stock').focus();}">
+                        <input type="number" id="inv-cost" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" required oninput="onInvCostInput()" onkeydown="handleInvCostKeydown(event)">
                         <label class="flex items-center gap-2 mt-1 cursor-pointer">
                             <input type="checkbox" id="inv-vat" onchange="toggleInvVat()">
                             <span class="text-xs text-gray-600">💰 + IVA 21% (calcular sobre costo con IVA)</span>
@@ -5160,6 +5160,28 @@
             // NO desmarca el IVA nunca
             calculateInventoryPrice();
         }
+        function handleInvCostKeydown(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        
+        // Aplicar IVA si está marcado y no se aplicó todavía
+        const checkbox = document.getElementById('inv-vat');
+        const costInput = document.getElementById('inv-cost');
+        if (checkbox && checkbox.checked && !invVatApplied && costInput) {
+            const currentCost = parseFloat(costInput.value.replace(',', '.')) || 0;
+            if (currentCost > 0) {
+                costInput.value = (currentCost * 1.21).toFixed(2);
+                invVatApplied = true;
+            }
+        }
+        
+        // Recalcular precio con el costo actualizado
+        calculateInventoryPrice();
+        
+        // Mover foco al siguiente campo (stock)
+        document.getElementById('inv-stock').focus();
+    }
+}
 
         function toggleEditVat() {
             const checkbox = document.getElementById('edit-prod-vat');

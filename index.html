@@ -4892,28 +4892,35 @@
             const check = document.getElementById('inv-round-price-check');
             const display = document.getElementById('inv-round-price-display');
             if (hidden) {
-                const enabled = appState.lastRoundPriceEnabled || false;
-                hidden.value = enabled ? 'true' : 'false';
-                if (enabled) {
-                    check.classList.remove('hidden');
-                    display.classList.add('bg-purple-100');
-                } else {
-                    check.classList.add('hidden');
-                    display.classList.remove('bg-purple-100');
-                }
-            }
-            // Restaurar última categoría seleccionada
-            const categorySelect = document.getElementById('inv-category');
-            if (categorySelect && appState.lastCategory) {
-                categorySelect.value = appState.lastCategory;
-            }
-            
-            // Restaurar última fecha de vencimiento usada
-            const expiryInput = document.getElementById('inv-expiry');
-            if (expiryInput && appState.lastExpiryDate) {
-                expiryInput.value = appState.lastExpiryDate;
-            }
+            const enabled = appState.lastRoundPriceEnabled || false;
+            hidden.value = enabled ? 'true' : 'false';
+            if (enabled) {
+                check.classList.remove('hidden');
+                display.classList.add('bg-purple-100');
+            } else {
+                check.classList.add('hidden');
+              display.classList.remove('bg-purple-100');
         }
+    }
+    // Restaurar última categoría seleccionada
+    const categorySelect = document.getElementById('inv-category');
+    if (categorySelect && appState.lastCategory) {
+        categorySelect.value = appState.lastCategory;
+    }
+    
+    // Restaurar última fecha de vencimiento usada
+    const expiryInput = document.getElementById('inv-expiry');
+    if (expiryInput && appState.lastExpiryDate) {
+        expiryInput.value = appState.lastExpiryDate;
+    }
+    
+    // RESTAURAR IVA
+    const vatCheckbox = document.getElementById('inv-vat');
+    if (vatCheckbox) {
+        vatCheckbox.checked = appState.lastVatEnabled || false;
+        invVatApplied = false;
+    }
+}
 
         // ==================== PRODUCTOS COMPUESTOS / RECETAS ====================
         let pendingComponents = [];
@@ -5143,6 +5150,8 @@
                 costInput.value = (currentCost / 1.21).toFixed(2);
                 invVatApplied = false;
             }
+            appState.lastVatEnabled = checkbox.checked;
+            saveToLocalStorage();
             calculateInventoryPrice();
         }
 

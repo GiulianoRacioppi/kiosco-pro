@@ -557,28 +557,8 @@
                         <option value="combos">Combos</option>
                     </select>
                 </div>
-                <!-- Sección Receta / Componentes en Editar Producto -->
-                <div class="bg-orange-50 rounded-xl p-4 border border-orange-200">
-                    <label class="flex items-center gap-2 mb-2 cursor-pointer">
-                        <input type="checkbox" id="edit-prod-is-composite" onchange="toggleEditCompositeSection()">
-                        <span class="text-sm font-bold text-orange-800">📋 Este producto es una preparación (usa subproductos)</span>
-                    </label>
-                    <div id="edit-prod-composite-section" class="hidden space-y-3 mt-3">
-                        <p class="text-xs text-orange-700 font-bold uppercase">Receta / Componentes</p>
-                        <div class="flex gap-2">
-                            <select id="edit-prod-component-select" class="flex-1 border rounded-lg px-3 py-2 text-sm">
-                                <option value="">Seleccionar subproducto...</option>
-                            </select>
-                            <input type="number" id="edit-prod-component-qty" class="w-24 border rounded-lg px-3 py-2 text-sm" placeholder="Cant" min="0.01" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();addEditProdComponent();}">
-                            <button type="button" onclick="addEditProdComponent()" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-bold">+</button>
-                        </div>
-                        <div id="edit-prod-components-list" class="space-y-1"></div>
-                        <div class="flex justify-between text-sm border-t border-orange-200 pt-2">
-                            <span class="text-orange-600">Costo calculado:</span>
-                            <span class="font-bold text-orange-800" id="edit-prod-composite-cost">$0</span>
-                        </div>
-                    </div>
-                </div>
+                <!-- Sección Receta / Componentes en Editar Producto (deshabilitada temporalmente) -->
+                <div class="hidden">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Facturación de lotes</label>
                     <div class="flex gap-2">
@@ -1352,28 +1332,8 @@
                         <label class="block text-xs font-medium text-gray-600 mb-1">Precio venta ($)</label>
                         <input type="number" id="inv-price" class="w-full border rounded-lg px-3 py-2 text-sm font-bold text-green-700" step="0.01" oninput="calculateInventoryMargin()" onkeydown="if(event.key==='Enter'){event.preventDefault();preparePurchase();}">
                     </div>
-                    <!-- Sección Producto Compuesto / Receta -->
-                    <div class="lg:col-span-4 bg-orange-50 rounded-xl p-4 border border-orange-200">
-                        <label class="flex items-center gap-2 mb-2 cursor-pointer">
-                            <input type="checkbox" id="inv-is-composite" onchange="toggleCompositeSection()">
-                            <span class="text-sm font-bold text-orange-800">📋 Este producto es una preparación (usa subproductos)</span>
-                        </label>
-                        <div id="inv-composite-section" class="hidden space-y-3 mt-3">
-                            <p class="text-xs text-orange-700 font-bold uppercase">Receta / Componentes</p>
-                            <div class="flex gap-2">
-                                <select id="inv-component-select" class="flex-1 border rounded-lg px-3 py-2 text-sm">
-                                    <option value="">Seleccionar subproducto...</option>
-                                </select>
-                                <input type="number" id="inv-component-qty" class="w-24 border rounded-lg px-3 py-2 text-sm" placeholder="Cant" min="0.01" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();addInvComponent();}">
-                                <button type="button" onclick="addInvComponent()" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-bold">+</button>
-                            </div>
-                            <div id="inv-components-list" class="space-y-1"></div>
-                            <div class="flex justify-between text-sm border-t border-orange-200 pt-2">
-                                <span class="text-orange-600">Costo calculado:</span>
-                                <span class="font-bold text-orange-800" id="inv-composite-cost">$0</span>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Sección Producto Compuesto / Receta (deshabilitada temporalmente) -->
+                    <div class="hidden">
                     <div class="lg:col-span-4 flex items-center gap-3 bg-yellow-50 p-2 rounded-lg border border-yellow-200 cursor-pointer" onclick="toggleRoundPriceCheckbox()">
                         <div id="inv-round-price-display" class="w-5 h-5 rounded border-2 border-purple-600 flex items-center justify-center bg-white transition">
                             <i class="fas fa-check text-purple-600 text-xs hidden" id="inv-round-price-check"></i>
@@ -2044,6 +2004,23 @@
                         <button onclick="saveMercadoFeeFromSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg">
                             <i class="fas fa-save"></i> Guardar Comisión
                         </button>
+                    </div>
+                </div>
+
+                <!-- Auditoría y Corrección -->
+                <div class="bg-white rounded-2xl p-6 shadow-lg border-2 border-red-200">
+                    <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-red-600">
+                        <i class="fas fa-stethoscope"></i> Auditoría y Corrección
+                    </h3>
+                    <div class="space-y-4">
+                        <p class="text-sm text-gray-600">Verificá que los saldos de Caja y Cuenta cuadren con todas las transacciones registradas.</p>
+                        <button onclick="auditBalances()" class="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold shadow-lg">
+                            <i class="fas fa-calculator"></i> Auditar Saldos
+                        </button>
+                        <button onclick="recalculateCompositeCosts()" class="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-xl font-bold shadow-lg">
+                            <i class="fas fa-sync-alt"></i> Recalcular Costos de Preparaciones
+                        </button>
+                        <p class="text-xs text-gray-500 mt-2">Si detectás diferencias, el sistema te permitirá corregir los saldos automáticamente.</p>
                     </div>
                 </div>
             </div>
@@ -2920,7 +2897,24 @@
         }
 
         function formatDateISO(date) {
-            return date.toISOString().split('T')[0];
+            // Si ya es un string YYYY-MM-DD, devolverlo directamente
+            if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                return date;
+            }
+            const d = new Date(date);
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+
+        function parseDateLocal(dateStr) {
+            if (!dateStr) return new Date();
+            const match = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (match) {
+                return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]), 0, 0, 0);
+            }
+            return new Date(dateStr);
         }
 
         // ==================== LOGIN SYSTEM ====================
@@ -4914,6 +4908,16 @@
         expiryInput.value = appState.lastExpiryDate;
     }
     
+    // RESTAURAR MARGEN POR DEFECTO
+    const marginInput = document.getElementById('inv-margin');
+    const marginDisplay = document.getElementById('inv-margin-display');
+    if (marginInput) {
+        marginInput.value = appState.defaultMargin || 30;
+    }
+    if (marginDisplay) {
+        marginDisplay.textContent = (appState.defaultMargin || 30) + '%';
+    }
+    
     // RESTAURAR IVA
     const vatCheckbox = document.getElementById('inv-vat');
     if (vatCheckbox) {
@@ -5285,7 +5289,7 @@
         function preparePurchase() {
             console.log('preparePurchase llamado');
             
-            const isComposite = document.getElementById('inv-is-composite')?.checked || false;
+            const isComposite = false; // Compuestos deshabilitados temporalmente
             
             // Normalizar: reemplazar coma por punto para parseFloat (soporte español)
             const cost = parseFloat(document.getElementById('inv-cost').value.replace(',', '.')) || 0;
@@ -5300,8 +5304,8 @@
                 showNotification('Ingresa el nombre del producto', 'error');
                 return;
             }
-            if (cost <= 0) {
-                showNotification('El costo debe ser mayor a 0', 'error');
+            if (cost < 0) {
+                showNotification('El costo no puede ser negativo', 'error');
                 return;
             }
             if (!isComposite && stock <= 0) {
@@ -5310,10 +5314,6 @@
             }
             if (priceValue <= 0) {
                 showNotification('El precio de venta debe ser mayor a 0', 'error');
-                return;
-            }
-            if (isComposite && pendingComponents.length === 0) {
-                showNotification('Agregá al menos un componente a la receta', 'error');
                 return;
             }
             
@@ -5492,7 +5492,9 @@
                 product.batches = [];
             } else {
                 // Sistema de lotes (batches) - cada compra es un lote
+                const batchId = 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
                 product.batches = [{
+                    id: batchId,
                     stock: appState.pendingPurchase.stock,
                     initialStock: appState.pendingPurchase.stock,
                     expiry: appState.pendingPurchase.expiry,
@@ -5501,6 +5503,7 @@
                     source: appState.pendingPurchasePayment || 'cash',
                     cost: appState.pendingPurchase.cost
                 }];
+                product._lastBatchId = batchId; // temporal para la inversión
             }
             
             console.log('Producto creado:', product);
@@ -5524,8 +5527,11 @@
                 amount: totalCost,
                 source: method === 'cash' ? 'cash' : 'bank',
                 type: 'purchase',
+                productId: product.id,
+                batchId: isComposite ? null : product._lastBatchId,
                 timestamp: Date.now()
             });
+            delete product._lastBatchId;
             
             // Tracking de facturación
             if (!appState.invoiceTracking) {
@@ -6218,6 +6224,7 @@
                     const qtyToRestore = quantity * (comp.quantity || 1);
                     if (!compProduct.batches) {
                         compProduct.batches = [{
+                            id: 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
                             stock: qtyToRestore,
                             expiry: '',
                             dateAdded: formatDateISO(appState.activeDate),
@@ -6227,6 +6234,7 @@
                         compProduct.batches[0].stock += qtyToRestore;
                     } else {
                         compProduct.batches.push({
+                            id: 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
                             stock: qtyToRestore,
                             expiry: '',
                             dateAdded: formatDateISO(appState.activeDate),
@@ -6239,6 +6247,7 @@
                 // Producto normal: agregar al primer lote o crear uno nuevo
                 if (!product.batches) {
                     product.batches = [{
+                        id: 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
                         stock: quantity,
                         expiry: '',
                         dateAdded: formatDateISO(appState.activeDate),
@@ -6248,6 +6257,7 @@
                     product.batches[0].stock += quantity;
                 } else {
                     product.batches.push({
+                        id: 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
                         stock: quantity,
                         expiry: '',
                         dateAdded: formatDateISO(appState.activeDate),
@@ -6328,17 +6338,15 @@
                 product.vatApplied = vatApplied;
             }
             
-            // Descontar dinero
-            if (addStockPaymentMethod === 'cash') {
-                appState.cash -= totalCost;
-            } else {
-                appState.bank -= totalCost;
-            }
+            // NOTA: El dinero NO se descuenta automáticamente de caja/cuenta.
+            // El usuario descuenta manualmente y usa el historial de inversiones para verificar.
+            // Solo registramos la inversión para tracking.
             
             // Agregar nuevo lote
             if (!product.batches) {
                 // Migración: si el producto no tiene lotes, crear el primer lote con el stock actual
                 product.batches = [{
+                    id: 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
                     stock: 0,
                     expiry: '',
                     dateAdded: formatDateISO(appState.activeDate)
@@ -6348,7 +6356,9 @@
             // invoiceType ya validado arriba
             
             // Agregar nuevo lote
+            const batchId = 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
             product.batches.push({
+                id: batchId,
                 stock: qty,
                 initialStock: qty,
                 expiry: newExpiry || '',
@@ -6381,6 +6391,8 @@
                 amount: totalCost,
                 source: addStockPaymentMethod === 'cash' ? 'cash' : 'bank',
                 type: 'restock',
+                productId: product.id,
+                batchId: batchId,
                 timestamp: Date.now()
             });
             
@@ -6633,8 +6645,10 @@
                 const batchRows = document.querySelectorAll('#edit-prod-batches .batch-row');
                 const newBatches = [];
                 const processedIndices = new Set();
-                const addedBySource = { cash: 0, bank: 0 };
+                const addedBySource = { cash: 0, bank: 0 };      // total a descontar
                 const returnedBySource = { cash: 0, bank: 0 };
+                const existingAddedBySource = { cash: 0, bank: 0 }; // solo aumentos de lotes existentes
+                const newBatchLinks = []; // para vincular inversiones con lotes nuevos
                 
                 batchRows.forEach(row => {
                     const qty = parseInt(row.querySelector('.edit-batch-qty').value) || 0;
@@ -6651,34 +6665,42 @@
                         const origCost = orig.cost || oldCost;
                         const origSource = orig.source || 'cash';
                         
-                        // Si cantidad es 0, tratar como lote eliminado
-                        if (qty <= 0) return;
+                        // Si cantidad es 0, tratar como lote eliminado y devolver plata
+                        if (qty <= 0) {
+                            const origValue = origQty * origCost;
+                            returnedBySource[origSource] += origValue;
+                            return;
+                        }
                         
-                        // Valor original vs nuevo del lote
+                        // Valor original vs nuevo del lote (usando costo HISTÓRICO del lote)
                         const origValue = origQty * origCost;
-                        const newValue = qty * product.cost;
+                        const newValue = qty * origCost;
                         const valueDiff = newValue - origValue;
                         
                         newBatches.push({
+                            id: orig.id,
                             stock: qty,
                             initialStock: qty > origQty ? (orig.initialStock || origQty) + (qty - origQty) : (orig.initialStock || origQty),
                             expiry: expiry,
                             dateAdded: orig.dateAdded || formatDateISO(appState.activeDate),
                             invoiceType: orig.invoiceType || (document.getElementById('edit-prod-invoice-type').value || 'white'),
                             source: origSource,
-                            cost: product.cost
+                            cost: origCost
                         });
                         
                         if (valueDiff > 0) {
                             addedBySource[origSource] += valueDiff;
+                            existingAddedBySource[origSource] += valueDiff;
                         } else if (valueDiff < 0) {
                             returnedBySource[origSource] += Math.abs(valueDiff);
                         }
                     } else {
                         // Nuevo lote
                         if (qty <= 0) return;
+                        const batchId = 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
                         const value = qty * product.cost;
                         newBatches.push({
+                            id: batchId,
                             stock: qty,
                             initialStock: qty,
                             expiry: expiry,
@@ -6688,6 +6710,7 @@
                             cost: product.cost
                         });
                         addedBySource[domSource] += value;
+                        newBatchLinks.push({ batchId, source: domSource, value });
                     }
                 });
                 
@@ -6700,14 +6723,27 @@
                     }
                 });
                 
-                // Aplicar descontar dinero por aumentos (compras adicionales)
-                Object.entries(addedBySource).forEach(([src, amount]) => {
+                // NOTA: El dinero por aumentos/nuevos lotes NO se descuenta automáticamente.
+                // El usuario descuenta manualmente y usa el historial de inversiones para verificar.
+                
+                // Registrar inversiones para lotes NUEVOS (con vínculo)
+                newBatchLinks.forEach(({ batchId, source, value }) => {
+                    appState.investments.push({
+                        id: 'RESTOCK-' + Date.now() + '-' + source,
+                        date: formatDateISO(appState.activeDate),
+                        concept: `Ajuste stock: ${product.name} (+$${formatMoney(value)})`,
+                        amount: value,
+                        source: source,
+                        type: 'restock',
+                        productId: product.id,
+                        batchId: batchId,
+                        timestamp: Date.now()
+                    });
+                });
+                
+                // Registrar inversión para aumentos de lotes EXISTENTES (sin vínculo específico de batch)
+                Object.entries(existingAddedBySource).forEach(([src, amount]) => {
                     if (amount > 0) {
-                        if (src === 'cash') {
-                            appState.cash -= amount;
-                        } else {
-                            appState.bank -= amount;
-                        }
                         appState.investments.push({
                             id: 'RESTOCK-' + Date.now() + '-' + src,
                             date: formatDateISO(appState.activeDate),
@@ -6715,6 +6751,7 @@
                             amount: amount,
                             source: src,
                             type: 'restock',
+                            productId: product.id,
                             timestamp: Date.now()
                         });
                     }
@@ -6735,6 +6772,7 @@
                             amount: -amount,
                             source: src,
                             type: 'adjustment',
+                            productId: product.id,
                             timestamp: Date.now()
                         });
                     }
@@ -6753,14 +6791,16 @@
                 // Guardar estado de IVA
                 product.vatApplied = document.getElementById('edit-prod-vat')?.checked || false;
                 
-                // Guardar estado compuesto
+                // Guardar estado compuesto (deshabilitado para nuevos, preserva existentes)
                 const isCompositeEdit = document.getElementById('edit-prod-is-composite')?.checked || false;
-                if (isCompositeEdit) {
-                    product.isComposite = true;
-                    product.components = editProdComponents.length > 0 ? editProdComponents : [];
+                if (product.isComposite && isCompositeEdit) {
+                    product.components = editProdComponents.length > 0 ? editProdComponents : (product.components || []);
                     product.invoiceType = document.getElementById('edit-prod-invoice-type').value || 'white';
                     product.batches = [];
                     product.stock = 0;
+                } else if (product.isComposite) {
+                    // Preservar productos compuestos existentes aunque la UI esté oculta
+                    product.invoiceType = document.getElementById('edit-prod-invoice-type').value || 'white';
                 } else {
                     product.isComposite = false;
                     delete product.components;
@@ -7002,11 +7042,21 @@
                 </div>
             `).join('') : '<p class="text-center text-gray-400 py-4">No hay productos vendidos este día</p>';
             
-            document.getElementById('day-sales-list').innerHTML = daySales.length > 0 ? daySales.map(sale => `
+            // Calcular saldo de caja acumulado para cada venta del día
+            const dayStartTs = Date.parse(dateStr + 'T00:00:00');
+            let runningCash = getCashBalanceAt(dayStartTs);
+            const sortedDaySales = [...daySales].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            
+            document.getElementById('day-sales-list').innerHTML = sortedDaySales.length > 0 ? sortedDaySales.map(sale => {
+                const cashBefore = runningCash;
+                const cashAfter = sale.paymentMethod === 'cash' ? runningCash + sale.total : runningCash;
+                runningCash = cashAfter;
+                return `
                 <div class="sale-item flex justify-between items-center p-3 rounded-lg border">
                     <div class="flex-1 cursor-pointer" onclick="showSaleDetail('${sale.id}')">
                         <p class="font-bold text-gray-800">Venta #${sale.id.slice(-4)}</p>
                         <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵' : (sale.isMercadoCredito ? '💳 MercadoCrédito' : '💳 Débito')}</p>
+                        <p class="text-xs text-yellow-700 font-bold">💵 Caja: $${formatMoney(cashBefore)} → $${formatMoney(cashAfter)}</p>
                     </div>
                     <div class="text-right mr-4">
                         <p class="font-bold text-green-600">+$${formatMoney(sale.total)}</p>
@@ -7022,7 +7072,8 @@
                         </button>
                     </div>
                 </div>
-            `).join('') : '<p class="text-center text-gray-400 py-4">No hay ventas este día</p>';
+            `;
+            }).join('') : '<p class="text-center text-gray-400 py-4">No hay ventas este día</p>';
 
             document.getElementById('day-expenses-list').innerHTML = dayExpenses.length > 0 ? dayExpenses.map(expense => `
                 <div class="sale-item flex justify-between items-center p-3 rounded-lg border bg-red-50">
@@ -7164,6 +7215,13 @@
             const investment = appState.investments.find(i => i.id === investmentId);
             if (!investment) return;
 
+            // Si no tiene vínculo con un lote, no permitir edición directa (puede desfasar el inventario)
+            if (!investment.productId || !investment.batchId) {
+                showNotification('Esta inversión antigua no se puede editar desde acá sin desfasar el inventario. Editá el producto directamente desde el Inventario.', 'warning');
+                return;
+            }
+
+            // === RECOLECTAR TODOS LOS DATOS PRIMERO ===
             const newAmountStr = prompt('Nuevo monto:', investment.amount);
             if (newAmountStr === null) return;
             const newAmount = parseFloat(newAmountStr);
@@ -7178,6 +7236,40 @@
                 newSource = investment.source === 'cash' ? 'bank' : 'cash';
             }
 
+            const newDateStr = prompt('Nueva fecha (AAAA-MM-DD):', investment.date);
+            let finalDate = investment.date;
+            if (newDateStr !== null) {
+                if (/^\d{4}-\d{2}-\d{2}$/.test(newDateStr)) {
+                    finalDate = newDateStr;
+                } else {
+                    showNotification('Formato de fecha inválido. Usá AAAA-MM-DD', 'error');
+                    return;
+                }
+            }
+
+            // === VALIDAR FONDOS ===
+            const amountDiff = newAmount - investment.amount;
+            if (amountDiff > 0) {
+                if (newSource === 'cash' && amountDiff > appState.cash) {
+                    showNotification(`Fondos insuficientes en caja. Necesitas: $${formatMoney(amountDiff)}`, 'error');
+                    return;
+                }
+                if (newSource === 'bank' && amountDiff > appState.bank) {
+                    showNotification(`Fondos insuficientes en cuenta. Necesitas: $${formatMoney(amountDiff)}`, 'error');
+                    return;
+                }
+            }
+
+            // === BUSCAR PRODUCTO Y LOTE ===
+            const product = appState.inventory.find(p => p.id === investment.productId);
+            const batch = product && product.batches ? product.batches.find(b => b.id === investment.batchId) : null;
+
+            if (!product || !batch) {
+                showNotification('No se encontró el producto o lote asociado. Editá desde el Inventario.', 'warning');
+                return;
+            }
+
+            // === APLICAR CAMBIOS (todo o nada) ===
             // Revertir monto anterior
             if (investment.source === 'cash') {
                 appState.cash += investment.amount;
@@ -7192,19 +7284,24 @@
                 appState.bank -= newAmount;
             }
 
-            // Editar fecha
-            const newDateStr = prompt('Nueva fecha (AAAA-MM-DD):', investment.date);
-            if (newDateStr !== null) {
-                if (/^\d{4}-\d{2}-\d{2}$/.test(newDateStr)) {
-                    investment.date = newDateStr;
-                } else {
-                    showNotification('Formato de fecha inválido. Usá AAAA-MM-DD', 'error');
-                    return;
+            // Actualizar el lote: recalcular costo unitario proporcionalmente
+            const batchQty = batch.stock || batch.initialStock || 0;
+            if (batchQty > 0) {
+                const newUnitCost = newAmount / batchQty;
+                batch.cost = newUnitCost;
+                // Actualizar product.cost si este es el único lote o el más reciente
+                if (product.batches.length === 1 || product.batches[product.batches.length - 1].id === batch.id) {
+                    product.cost = newUnitCost;
                 }
             }
+            // Actualizar fuente y fecha del lote para mantener consistencia
+            batch.source = newSource;
+            batch.dateAdded = finalDate;
 
+            // Actualizar inversión
             investment.amount = newAmount;
             investment.source = newSource;
+            investment.date = finalDate;
             investment.timestamp = Date.now();
 
             saveToLocalStorage();
@@ -7235,17 +7332,33 @@
                 appState.bank += investment.amount;
             }
 
-            // Buscar el producto y reducir el stock
-            const product = appState.inventory.find(p => investment.concept.includes(p.name));
-            if (product && product.batches && product.batches.length > 0) {
-                // Eliminar el último lote (el más reciente)
-                product.batches.pop();
-                // Si no quedan lotes, eliminar el producto
-                if (product.batches.length === 0) {
-                    const productIndex = appState.inventory.findIndex(p => p.id === product.id);
-                    if (productIndex !== -1) {
-                        appState.inventory.splice(productIndex, 1);
+            // Buscar el producto y eliminar el lote correspondiente
+            let product = null;
+            let batchRemoved = false;
+
+            if (investment.productId && investment.batchId) {
+                product = appState.inventory.find(p => p.id === investment.productId);
+                if (product && product.batches) {
+                    const batchIndex = product.batches.findIndex(b => b.id === investment.batchId);
+                    if (batchIndex !== -1) {
+                        product.batches.splice(batchIndex, 1);
+                        batchRemoved = true;
                     }
+                }
+            }
+
+            // Fallback para inversiones antiguas sin vínculo exacto
+            if (!batchRemoved) {
+                product = appState.inventory.find(p => investment.concept.includes(p.name));
+                if (product && product.batches && product.batches.length > 0) {
+                    product.batches.pop();
+                }
+            }
+
+            if (product && product.batches && product.batches.length === 0) {
+                const productIndex = appState.inventory.findIndex(p => p.id === product.id);
+                if (productIndex !== -1) {
+                    appState.inventory.splice(productIndex, 1);
                 }
             }
 
@@ -7328,6 +7441,11 @@
         function showSaleDetail(saleId) {
             const sale = appState.sales.find(s => s.id === saleId);
             if (!sale) return;
+            
+            const saleTimestamp = sale.timestamp || Date.parse(sale.date + 'T' + (sale.time || '00:00:00')) || 0;
+            const cashBefore = getCashBalanceAt(saleTimestamp);
+            const cashAfter = sale.paymentMethod === 'cash' ? cashBefore + sale.total : cashBefore;
+            const cashImpact = sale.paymentMethod === 'cash' ? `+$${formatMoney(sale.total)}` : 'No afecta caja';
 
             document.getElementById('sale-detail-content').innerHTML = `
                 <div class="mb-4">
@@ -7374,6 +7492,21 @@
                     <div class="flex justify-between text-sm text-gray-500">
                         <span>Método:</span>
                         <span>${sale.paymentMethod === 'cash' ? 'Efectivo' : (sale.isMercadoCredito ? '💳 Débito (MercadoCrédito)' : '💳 Débito')}</span>
+                    </div>
+                </div>
+                <div class="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                    <p class="text-xs font-bold text-yellow-800 uppercase mb-1">💵 Saldos de Caja</p>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">Antes de la venta:</span>
+                        <span class="font-bold text-gray-800">$${formatMoney(cashBefore)}</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">Impacto:</span>
+                        <span class="font-bold ${sale.paymentMethod === 'cash' ? 'text-green-600' : 'text-gray-500'}">${cashImpact}</span>
+                    </div>
+                    <div class="flex justify-between text-sm border-t border-yellow-200 pt-1 mt-1">
+                        <span class="text-gray-600">Después de la venta:</span>
+                        <span class="font-bold text-gray-800">$${formatMoney(cashAfter)}</span>
                     </div>
                 </div>
                 <div class="flex gap-2 mt-4">
@@ -8819,7 +8952,108 @@
             const todayExpenses = appState.expenses.filter(e => e.date === today && e.source === 'cash').reduce((sum, e) => sum + e.amount, 0);
             const todayInvestments = appState.investments.filter(i => i.date === today && i.source === 'cash').reduce((sum, i) => sum + i.amount, 0);
             const todayReturns = appState.returns ? appState.returns.filter(r => r.date === today && r.paymentMethod === 'cash').reduce((sum, r) => sum + r.amount, 0) : 0;
-            return opening + todaySales - todayExpenses - todayInvestments - todayReturns;
+            const todayCapital = appState.capitalAdjustments ? appState.capitalAdjustments.filter(c => c.date === today && c.target === 'cash').reduce((sum, c) => sum + c.amount, 0) : 0;
+            const todayToCash = appState.cashMovements ? appState.cashMovements.filter(m => m.date === today && m.type === 'to_cash').reduce((sum, m) => sum + m.amount, 0) : 0;
+            const todayToBank = appState.cashMovements ? appState.cashMovements.filter(m => m.date === today && m.type === 'to_bank').reduce((sum, m) => sum + m.amount, 0) : 0;
+            
+            const expected = opening + todaySales + todayCapital + todayToCash - todayExpenses - todayInvestments - todayReturns - todayToBank;
+            return expected;
+        }
+
+        function recalculateCash() {
+            const initial = appState.initialCapital || 0;
+            const capital = appState.capitalAdjustments ? appState.capitalAdjustments.filter(c => c.target === 'cash').reduce((sum, c) => sum + c.amount, 0) : 0;
+            const sales = appState.sales.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
+            const returns = appState.returns ? appState.returns.filter(r => r.paymentMethod === 'cash').reduce((sum, r) => sum + r.amount, 0) : 0;
+            const expenses = appState.expenses.filter(e => e.source === 'cash').reduce((sum, e) => sum + e.amount, 0) : 0;
+            const investments = appState.investments.filter(i => i.source === 'cash').reduce((sum, i) => sum + i.amount, 0) : 0;
+            const toCash = appState.cashMovements ? appState.cashMovements.filter(m => m.type === 'to_cash').reduce((sum, m) => sum + m.amount, 0) : 0;
+            const toBank = appState.cashMovements ? appState.cashMovements.filter(m => m.type === 'to_bank').reduce((sum, m) => sum + m.amount, 0) : 0;
+            return initial + capital + sales - returns - expenses - investments + toCash - toBank;
+        }
+
+        function recalculateBank() {
+            const sales = appState.sales.filter(s => s.paymentMethod === 'debit').reduce((sum, s) => sum + s.total, 0);
+            const returns = appState.returns ? appState.returns.filter(r => r.paymentMethod === 'debit').reduce((sum, r) => sum + r.amount, 0) : 0;
+            const expenses = appState.expenses.filter(e => e.source === 'bank').reduce((sum, e) => sum + e.amount, 0) : 0;
+            const investments = appState.investments.filter(i => i.source === 'bank').reduce((sum, i) => sum + i.amount, 0) : 0;
+            const toCash = appState.cashMovements ? appState.cashMovements.filter(m => m.type === 'to_cash').reduce((sum, m) => sum + m.amount, 0) : 0;
+            const toBank = appState.cashMovements ? appState.cashMovements.filter(m => m.type === 'to_bank').reduce((sum, m) => sum + m.amount, 0) : 0;
+            return sales - returns - expenses - investments - toCash + toBank;
+        }
+
+        function auditBalances() {
+            const calcCash = recalculateCash();
+            const calcBank = recalculateBank();
+            const diffCash = Math.abs(calcCash - appState.cash);
+            const diffBank = Math.abs(calcBank - appState.bank);
+            
+            let messages = [];
+            if (diffCash > 0.01) {
+                messages.push(`Caja: calculado $${formatMoney(calcCash)} vs guardado $${formatMoney(appState.cash)} (dif: $${formatMoney(diffCash)})`);
+            }
+            if (diffBank > 0.01) {
+                messages.push(`Cuenta: calculado $${formatMoney(calcBank)} vs guardado $${formatMoney(appState.bank)} (dif: $${formatMoney(diffBank)})`);
+            }
+            
+            if (messages.length > 0) {
+                const fullMsg = 'Diferencias detectadas:\n\n' + messages.join('\n') + '\n\n¿Querés corregir los saldos usando el valor calculado?';
+                if (confirm(fullMsg)) {
+                    appState.cash = calcCash;
+                    appState.bank = calcBank;
+                    saveToLocalStorage();
+                    renderAll();
+                    showNotification('Saldos corregidos con los valores calculados', 'success');
+                } else {
+                    showNotification('Auditoría completada. Diferencias detectadas pero no corregidas.', 'warning');
+                }
+            } else {
+                showNotification('Auditoría completada. Todo cuadra perfectamente ✅', 'success');
+            }
+            
+            return { cash: calcCash, bank: calcBank, diffCash, diffBank, ok: messages.length === 0 };
+        }
+
+        function recalculateCompositeCosts() {
+            let updated = 0;
+            appState.inventory.forEach(product => {
+                if (product.isComposite && product.components && product.components.length > 0) {
+                    const newCost = calculateCompositeCost(product);
+                    if (newCost > 0 && Math.abs(newCost - (product.cost || 0)) > 0.01) {
+                        product.cost = newCost;
+                        updated++;
+                    }
+                }
+            });
+            if (updated > 0) {
+                saveToLocalStorage();
+                showNotification(`${updated} preparaciones actualizadas con costo recalculado`, 'success');
+            } else {
+                showNotification('No se encontraron preparaciones para actualizar', 'info');
+            }
+        }
+
+        function getCashBalanceAt(timestamp) {
+            const initial = appState.initialCapital || 0;
+            const capital = (appState.capitalAdjustments || [])
+                .filter(c => c.target === 'cash' && (c.timestamp || 0) < timestamp)
+                .reduce((sum, c) => sum + (c.amount || 0), 0);
+            const sales = appState.sales
+                .filter(s => s.paymentMethod === 'cash' && (s.timestamp || 0) < timestamp)
+                .reduce((sum, s) => sum + (s.total || 0), 0);
+            const returns = (appState.returns || [])
+                .filter(r => r.paymentMethod === 'cash' && (r.timestamp || 0) < timestamp)
+                .reduce((sum, r) => sum + (r.amount || 0), 0);
+            const expenses = appState.expenses
+                .filter(e => e.source === 'cash' && (e.timestamp || 0) < timestamp)
+                .reduce((sum, e) => sum + (e.amount || 0), 0);
+            const toCash = (appState.cashMovements || [])
+                .filter(m => m.type === 'to_cash' && (m.timestamp || 0) < timestamp)
+                .reduce((sum, m) => sum + (m.amount || 0), 0);
+            const toBank = (appState.cashMovements || [])
+                .filter(m => m.type === 'to_bank' && (m.timestamp || 0) < timestamp)
+                .reduce((sum, m) => sum + (m.amount || 0), 0);
+            return initial + capital + sales - returns - expenses + toCash - toBank;
         }
 
         function openCashCountModal() {
@@ -8974,6 +9208,14 @@
             }
             
             const expected = calculateCashExpected(today);
+            
+            // Validación crítica: caja negativa es imposible físicamente
+            if (expected < 0) {
+                if (!confirm(`⚠️ ATENCIÓN: El monto esperado es NEGATIVO ($${formatMoney(expected)}).\n\nEsto significa que las compras/gastos del día superaron las ventas + apertura + ingresos. En una caja física esto es imposible.\n\n¿Estás seguro de que querés cerrar con este valor? Revisá los datos antes de continuar.`)) {
+                    return;
+                }
+            }
+            
             record.closingAmount = closing;
             record.expectedAmount = expected;
             record.difference = closing - expected;
@@ -10389,6 +10631,16 @@ Total de productos a comprar: ${shoppingList.length}
             if (margin >= 1 && margin <= 99) {
                 appState.defaultMargin = margin;
                 saveToLocalStorage();
+                
+                // Actualizar inmediatamente los inputs de margen en todos los formularios
+                const marginInput = document.getElementById('inv-margin');
+                const marginDisplay = document.getElementById('inv-margin-display');
+                if (marginInput) marginInput.value = margin;
+                if (marginDisplay) marginDisplay.textContent = margin + '%';
+                
+                const editMarginInput = document.getElementById('edit-prod-margin');
+                if (editMarginInput) editMarginInput.value = margin;
+                
                 showNotification(`Margen actualizado a ${margin}%`, 'success');
             } else {
                 showNotification('El margen debe estar entre 1% y 99%', 'error');
@@ -12394,10 +12646,10 @@ RESULTADOS:
                 if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
                 // autoPromotionConfig eliminado
                 
-                // Restaurar fechas
+                // Restaurar fechas (usar parseo local para evitar desfasajes de timezone)
                 try {
-                    if (data.activeDate) appState.activeDate = new Date(data.activeDate);
-                    if (data.calendarMonth) appState.calendarMonth = new Date(data.calendarMonth);
+                    if (data.activeDate) appState.activeDate = parseDateLocal(data.activeDate);
+                    if (data.calendarMonth) appState.calendarMonth = parseDateLocal(data.calendarMonth);
                 } catch(e) {
                     console.error('Error parseando fechas:', e);
                 }
@@ -12494,7 +12746,10 @@ RESULTADOS:
 
         // ==================== LOCAL STORAGE ====================
         function saveToLocalStorage(triggerSync = true) {
-            localStorage.setItem('kioscopro-data', JSON.stringify(appState));
+            const stateToSave = {...appState};
+            stateToSave.activeDate = formatDateISO(appState.activeDate);
+            stateToSave.calendarMonth = formatDateISO(appState.calendarMonth);
+            localStorage.setItem('kioscopro-data', JSON.stringify(stateToSave));
             
             // Sincronizar con Firebase
             if (triggerSync) {
@@ -12533,15 +12788,15 @@ RESULTADOS:
                     appState.defaultMargin = parseFloat(appState.defaultMargin);
                     appState.defaultMargin = isNaN(appState.defaultMargin) ? 30 : appState.defaultMargin;
                     
-                    // Restaurar fechas
+                    // Restaurar fechas (usar parseo local para evitar desfasajes de timezone)
                     appState.currentDate = new Date();
                     try {
-                        appState.activeDate = new Date(data.activeDate || new Date());
+                        appState.activeDate = parseDateLocal(data.activeDate);
                     } catch(e) {
                         appState.activeDate = new Date();
                     }
                     try {
-                        appState.calendarMonth = new Date(data.calendarMonth || new Date());
+                        appState.calendarMonth = parseDateLocal(data.calendarMonth);
                     } catch(e) {
                         appState.calendarMonth = new Date();
                     }
@@ -12566,7 +12821,36 @@ RESULTADOS:
                                 p.batches.forEach(b => {
                                     if (!b.source) b.source = 'cash';
                                     if (b.cost === undefined || b.cost === null) b.cost = p.cost || 0;
+                                    // Asignar ID único a lotes sin id
+                                    if (!b.id) {
+                                        b.id = 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+                                    }
                                 });
+                            }
+                        });
+                    }
+                    
+                    // === MIGRACIÓN: vincular inversiones antiguas con productos y lotes ===
+                    if (Array.isArray(appState.investments) && Array.isArray(appState.inventory)) {
+                        appState.investments.forEach(inv => {
+                            if (inv.productId) return; // ya migrada
+                            if (inv.type !== 'purchase' && inv.type !== 'restock' && inv.type !== 'adjustment') return;
+                            const conceptName = inv.concept.replace(/^(Compra|Reposición|Preparación|Ajuste stock):\s*/, '').split('(')[0].trim();
+                            const product = appState.inventory.find(p => p.name === conceptName);
+                            if (product) {
+                                inv.productId = product.id;
+                                if (product.batches && product.batches.length > 0) {
+                                    // Buscar lote que coincida por fecha y monto
+                                    const matchedBatch = product.batches.find(b => {
+                                        const batchDate = b.dateAdded || '';
+                                        const invDate = inv.date || '';
+                                        const batchValue = (b.initialStock || b.stock || 0) * (b.cost || product.cost || 0);
+                                        return batchDate === invDate && Math.abs(batchValue - Math.abs(inv.amount)) < 1;
+                                    });
+                                    if (matchedBatch) {
+                                        inv.batchId = matchedBatch.id;
+                                    }
+                                }
                             }
                         });
                     }

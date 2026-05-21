@@ -8965,8 +8965,8 @@
             const capital = appState.capitalAdjustments ? appState.capitalAdjustments.filter(c => c.target === 'cash').reduce((sum, c) => sum + c.amount, 0) : 0;
             const sales = appState.sales.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
             const returns = appState.returns ? appState.returns.filter(r => r.paymentMethod === 'cash').reduce((sum, r) => sum + r.amount, 0) : 0;
-            const expenses = appState.expenses.filter(e => e.source === 'cash').reduce((sum, e) => sum + e.amount, 0) : 0;
-            const investments = appState.investments.filter(i => i.source === 'cash').reduce((sum, i) => sum + i.amount, 0) : 0;
+            const expenses = appState.expenses.filter(e => e.source === 'cash').reduce((sum, e) => sum + e.amount, 0);
+            const investments = appState.investments.filter(i => i.source === 'cash').reduce((sum, i) => sum + i.amount, 0);
             const toCash = appState.cashMovements ? appState.cashMovements.filter(m => m.type === 'to_cash').reduce((sum, m) => sum + m.amount, 0) : 0;
             const toBank = appState.cashMovements ? appState.cashMovements.filter(m => m.type === 'to_bank').reduce((sum, m) => sum + m.amount, 0) : 0;
             return initial + capital + sales - returns - expenses - investments + toCash - toBank;
@@ -8975,8 +8975,8 @@
         function recalculateBank() {
             const sales = appState.sales.filter(s => s.paymentMethod === 'debit').reduce((sum, s) => sum + s.total, 0);
             const returns = appState.returns ? appState.returns.filter(r => r.paymentMethod === 'debit').reduce((sum, r) => sum + r.amount, 0) : 0;
-            const expenses = appState.expenses.filter(e => e.source === 'bank').reduce((sum, e) => sum + e.amount, 0) : 0;
-            const investments = appState.investments.filter(i => i.source === 'bank').reduce((sum, i) => sum + i.amount, 0) : 0;
+            const expenses = appState.expenses.filter(e => e.source === 'bank').reduce((sum, e) => sum + e.amount, 0);
+            const investments = appState.investments.filter(i => i.source === 'bank').reduce((sum, i) => sum + i.amount, 0);
             const toCash = appState.cashMovements ? appState.cashMovements.filter(m => m.type === 'to_cash').reduce((sum, m) => sum + m.amount, 0) : 0;
             const toBank = appState.cashMovements ? appState.cashMovements.filter(m => m.type === 'to_bank').reduce((sum, m) => sum + m.amount, 0) : 0;
             return sales - returns - expenses - investments - toCash + toBank;

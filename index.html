@@ -2920,7 +2920,16 @@
         }
 
         function formatDateISO(date) {
-            return date.toISOString().split('T')[0];
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function parseDateLocal(dateStr) {
+            if (typeof dateStr !== 'string') return new Date(dateStr || new Date());
+            const [y, m, d] = dateStr.split('T')[0].split('-').map(Number);
+            return new Date(y, m - 1, d);
         }
 
         // ==================== LOGIN SYSTEM ====================
@@ -6944,7 +6953,7 @@
 
         function showDayDetail(dateStr) {
             // Actualizar la fecha activa al día seleccionado
-            appState.activeDate = new Date(dateStr);
+            appState.activeDate = parseDateLocal(dateStr);
             updateDateDisplay();
             
             const daySales = appState.sales.filter(s => s.date === dateStr);
@@ -6958,7 +6967,7 @@
             const balance = totalSales - totalExpenses - totalInvestments;
 
             document.getElementById('day-detail').classList.remove('hidden');
-            document.getElementById('day-detail-title').textContent = `Movimientos del ${new Date(dateStr).toLocaleDateString('es-ES')}`;
+            document.getElementById('day-detail-title').textContent = `Movimientos del ${parseDateLocal(dateStr).toLocaleDateString('es-ES')}`;
             document.getElementById('day-detail-total').textContent = `$${formatMoney(balance)}`;
             document.getElementById('day-detail-total').className = `text-2xl font-bold ${balance >= 0 ? 'text-green-600' : 'text-red-600'}`;
             
@@ -12396,8 +12405,8 @@ RESULTADOS:
                 
                 // Restaurar fechas
                 try {
-                    if (data.activeDate) appState.activeDate = new Date(data.activeDate);
-                    if (data.calendarMonth) appState.calendarMonth = new Date(data.calendarMonth);
+                    if (data.activeDate) appState.activeDate = parseDateLocal(data.activeDate);
+                    if (data.calendarMonth) appState.calendarMonth = parseDateLocal(data.calendarMonth);
                 } catch(e) {
                     console.error('Error parseando fechas:', e);
                 }
@@ -12536,12 +12545,12 @@ RESULTADOS:
                     // Restaurar fechas
                     appState.currentDate = new Date();
                     try {
-                        appState.activeDate = new Date(data.activeDate || new Date());
+                        appState.activeDate = parseDateLocal(data.activeDate || new Date());
                     } catch(e) {
                         appState.activeDate = new Date();
                     }
                     try {
-                        appState.calendarMonth = new Date(data.calendarMonth || new Date());
+                        appState.calendarMonth = parseDateLocal(data.calendarMonth || new Date());
                     } catch(e) {
                         appState.calendarMonth = new Date();
                     }

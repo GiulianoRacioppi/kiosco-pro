@@ -2345,6 +2345,7 @@
                 <!-- Productos aplicables -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Productos incluidos</label>
+                    <input type="text" id="promo-product-search" class="w-full border-2 border-purple-200 rounded-xl px-4 py-2 mb-2 text-sm" placeholder="Buscar producto..." oninput="filterPromoProducts(this.value)">
                     <div class="bg-gray-50 rounded-xl p-3 max-h-40 overflow-y-auto" id="promo-products-list">
                         <p class="text-sm text-gray-500">Cargando productos...</p>
                     </div>
@@ -3918,100 +3919,154 @@
             const cartProductIds = appState.cart.map(item => item.productId);
             const suggestions = [];
             
-            // Buscar promos activas donde el carrito tiene ALGUNOS productos pero no todos
+            // Buscar promos activas aplicables
             const activePromos = (appState.promotions || []).filter(p => 
-                p.active && isPromoApplicableNow(p) && p.productIds && p.productIds.length >= 2
+                p.active && isPromoApplicableNow(p) && p.productIds && p.productIds.length > 0
             );
             
             for (const promo of activePromos) {
-                const hasAny = promo.productIds.some(pid => cartProductIds.includes(pid));
-                const hasAll = promo.productIds.every(pid => cartProductIds.includes(pid));
-                
-                if (hasAny && !hasAll) {
-                    // Hay productos faltantes para completar el combo
-                    for (const missingPid of promo.productIds) {
-                        if (cartProductIds.includes(missingPid)) continue;
-                        
-                        const missingProduct = appState.inventory.find(p => p.id === missingPid);
-                        if (!missingProduct || getProductStock(missingProduct) <= 0) continue;
-                        
-                        // Calcular ahorro potencial
-                        const currentSubtotal = appState.cart
-                            .filter(item => promo.productIds.includes(item.productId))
-                            .reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                        
-                        // Calcular ahorro si se agrega 1 unidad del producto faltante
-                        const futureQty = 1;
-                        const futureSubtotal = currentSubtotal + (missingProduct.salePrice * futureQty);
-                        
-                        let futureDiscount = 0;
-                        switch (promo.type) {
-                            case 'percent':
-                                futureDiscount = futureSubtotal * ((promo.discount || 0) / 100);
-                                break;
-                            case 'combo':
-                                futureDiscount = promo.discount || 0;
-                                break;
-                            case 'threshold':
-                                if (futureSubtotal >= (promo.minAmount || 0)) {
+                // --- Caso A: combos multi-producto (faltan productos distintos) ---
+                if (promo.productIds.length >= 2) {
+                    const hasAny = promo.productIds.some(pid => cartProductIds.includes(pid));
+                    const hasAll = promo.productIds.every(pid => cartProductIds.includes(pid));
+                    
+                    if (hasAny && !hasAll) {
+                        for (const missingPid of promo.productIds) {
+                            if (cartProductIds.includes(missingPid)) continue;
+                            
+                            const missingProduct = appState.inventory.find(p => p.id === missingPid);
+                            if (!missingProduct || getProductStock(missingProduct) <= 0) continue;
+                            
+                            const currentSubtotal = appState.cart
+                                .filter(item => promo.productIds.includes(item.productId))
+                                .reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                            
+                            const futureQty = 1;
+                            const futureSubtotal = currentSubtotal + (missingProduct.salePrice * futureQty);
+                            
+                            let futureDiscount = 0;
+                            switch (promo.type) {
+                                case 'percent':
                                     futureDiscount = futureSubtotal * ((promo.discount || 0) / 100);
-                                }
-                                break;
-                            case '2x1': {
-                                const totalQty = appState.cart
-                                    .filter(item => promo.productIds.includes(item.productId))
-                                    .reduce((sum, item) => sum + item.quantity, 0) + futureQty;
-                                const freeQty = Math.floor(totalQty / 2);
-                                const sorted = [...appState.cart.filter(item => promo.productIds.includes(item.productId)), 
-                                    { price: missingProduct.salePrice, quantity: futureQty }]
-                                    .sort((a, b) => a.price - b.price);
-                                let remaining = freeQty;
-                                for (const item of sorted) {
-                                    if (remaining <= 0) break;
-                                    const count = Math.min(remaining, item.quantity);
-                                    futureDiscount += count * item.price;
-                                    remaining -= count;
-                                }
-                                break;
-                            }
-                            case 'bogo': {
-                                const buy = promo.bogoBuy || 2;
-                                const pay = promo.bogoPay || 1;
-                                const totalQty = appState.cart
-                                    .filter(item => promo.productIds.includes(item.productId))
-                                    .reduce((sum, item) => sum + item.quantity, 0) + futureQty;
-                                if (totalQty >= buy) {
-                                    const sets = Math.floor(totalQty / buy);
-                                    const freePerSet = buy - pay;
+                                    break;
+                                case 'combo':
+                                    futureDiscount = promo.discount || 0;
+                                    break;
+                                case 'threshold':
+                                    if (futureSubtotal >= (promo.minAmount || 0)) {
+                                        futureDiscount = futureSubtotal * ((promo.discount || 0) / 100);
+                                    }
+                                    break;
+                                case '2x1': {
+                                    const totalQty = appState.cart
+                                        .filter(item => promo.productIds.includes(item.productId))
+                                        .reduce((sum, item) => sum + item.quantity, 0) + futureQty;
+                                    const freeQty = Math.floor(totalQty / 2);
                                     const sorted = [...appState.cart.filter(item => promo.productIds.includes(item.productId)), 
                                         { price: missingProduct.salePrice, quantity: futureQty }]
                                         .sort((a, b) => a.price - b.price);
-                                    let remaining = sets * freePerSet;
+                                    let remaining = freeQty;
                                     for (const item of sorted) {
                                         if (remaining <= 0) break;
                                         const count = Math.min(remaining, item.quantity);
                                         futureDiscount += count * item.price;
                                         remaining -= count;
                                     }
+                                    break;
                                 }
-                                break;
+                                case 'bogo': {
+                                    const buy = promo.bogoBuy || 2;
+                                    const pay = promo.bogoPay || 1;
+                                    const totalQty = appState.cart
+                                        .filter(item => promo.productIds.includes(item.productId))
+                                        .reduce((sum, item) => sum + item.quantity, 0) + futureQty;
+                                    if (totalQty >= buy) {
+                                        const sets = Math.floor(totalQty / buy);
+                                        const freePerSet = buy - pay;
+                                        const sorted = [...appState.cart.filter(item => promo.productIds.includes(item.productId)), 
+                                            { price: missingProduct.salePrice, quantity: futureQty }]
+                                            .sort((a, b) => a.price - b.price);
+                                        let remaining = sets * freePerSet;
+                                        for (const item of sorted) {
+                                            if (remaining <= 0) break;
+                                            const count = Math.min(remaining, item.quantity);
+                                            futureDiscount += count * item.price;
+                                            remaining -= count;
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                            
+                            const normalTotal = futureSubtotal;
+                            const promoTotal = normalTotal - futureDiscount;
+                            const savings = normalTotal - promoTotal;
+                            
+                            if (savings > 0) {
+                                suggestions.push({
+                                    promo: promo,
+                                    missingProduct: missingProduct,
+                                    savings: savings,
+                                    promoTotal: promoTotal,
+                                    normalTotal: normalTotal,
+                                    isQtySuggestion: false
+                                });
                             }
                         }
-                        
-                        const normalTotal = futureSubtotal;
-                        const promoTotal = normalTotal - futureDiscount;
-                        const savings = normalTotal - promoTotal;
-                        
-                        // Solo mostrar si hay ahorro real
-                        if (savings > 0) {
-                            suggestions.push({
-                                promo: promo,
-                                missingProduct: missingProduct,
-                                savings: savings,
-                                promoTotal: promoTotal,
-                                normalTotal: normalTotal
-                            });
+                    }
+                }
+                
+                // --- Caso B: promos de un solo producto (pack, 2x1, bogo) ---
+                // Sugerir agregar más unidades del mismo producto para activar la promo
+                for (const cartItem of appState.cart) {
+                    if (!promo.productIds.includes(cartItem.productId)) continue;
+                    
+                    const product = appState.inventory.find(p => p.id === cartItem.productId);
+                    if (!product || getProductStock(product) <= cartItem.quantity) continue;
+                    
+                    const currentQty = cartItem.quantity;
+                    const futureQty = currentQty + 1;
+                    
+                    let wouldActivate = false;
+                    let futureDiscount = 0;
+                    let promoName = promo.name;
+                    
+                    if (promo.type === 'pack') {
+                        const packQty = promo.packQty || 2;
+                        const packPrice = promo.packPrice || 0;
+                        if (currentQty < packQty && futureQty >= packQty) {
+                            wouldActivate = true;
+                            const sets = Math.floor(futureQty / packQty);
+                            const remainder = futureQty % packQty;
+                            const normalPrice = (sets * packQty + remainder) * cartItem.price;
+                            const promoPrice = sets * packPrice + remainder * cartItem.price;
+                            futureDiscount = normalPrice - promoPrice;
                         }
+                    } else if (promo.type === '2x1') {
+                        if (Math.floor(currentQty / 2) === 0 && Math.floor(futureQty / 2) > 0) {
+                            wouldActivate = true;
+                            futureDiscount = cartItem.price;
+                        }
+                    } else if (promo.type === 'bogo') {
+                        const buy = promo.bogoBuy || 2;
+                        const pay = promo.bogoPay || 1;
+                        if (Math.floor(currentQty / buy) === 0 && Math.floor(futureQty / buy) > 0) {
+                            wouldActivate = true;
+                            const freePerSet = buy - pay;
+                            futureDiscount = cartItem.price * freePerSet;
+                        }
+                    }
+                    
+                    if (wouldActivate && futureDiscount > 0) {
+                        suggestions.push({
+                            promo: promo,
+                            missingProduct: product,
+                            savings: futureDiscount,
+                            promoTotal: (futureQty * cartItem.price) - futureDiscount,
+                            normalTotal: futureQty * cartItem.price,
+                            isQtySuggestion: true,
+                            qtyNeeded: futureQty
+                        });
                     }
                 }
             }
@@ -4025,7 +4080,10 @@
             if (!window.comboNotified) {
                 window.comboNotified = true;
                 const top = suggestions.sort((a, b) => b.savings - a.savings)[0];
-                showNotification(`💡 Combo disponible: agregá ${top.missingProduct.name} y ahorrá $${formatMoney(top.savings)}`, 'info', 5000);
+                const msg = top.isQtySuggestion 
+                    ? `💡 Promoción disponible: agregá 1 ${top.missingProduct.name} más y ahorrá $${formatMoney(top.savings)}`
+                    : `💡 Combo disponible: agregá ${top.missingProduct.name} y ahorrá $${formatMoney(top.savings)}`;
+                showNotification(msg, 'info', 5000);
             }
             
             // Ordenar por mayor ahorro y limitar a 3 sugerencias
@@ -4034,12 +4092,14 @@
             
             container.innerHTML = `
                 <div class="text-xs font-bold text-purple-700 uppercase mb-1 flex items-center gap-1">
-                    <i class="fas fa-lightbulb text-yellow-500"></i> Combos disponibles
+                    <i class="fas fa-lightbulb text-yellow-500"></i> Combos y promociones disponibles
                 </div>
                 ${topSuggestions.map(s => `
                     <div class="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-3 border border-purple-200">
                         <div class="flex items-center justify-between mb-2">
-                            <p class="text-sm font-bold text-gray-800 truncate">${escapeHtml(s.missingProduct.name)}</p>
+                            <p class="text-sm font-bold text-gray-800 truncate">
+                                ${s.isQtySuggestion ? `Agregá 1 ${escapeHtml(s.missingProduct.name)} más` : escapeHtml(s.missingProduct.name)}
+                            </p>
                             <button onclick="addToCartFromSearch('${s.missingProduct.id}')" 
                                 class="flex-shrink-0 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow">
                                 <i class="fas fa-plus"></i> Agregar
@@ -4047,12 +4107,12 @@
                         </div>
                         <div class="flex items-center gap-3 text-xs">
                             <div class="flex-1 bg-white rounded px-2 py-1 text-center">
-                                <span class="text-gray-400 block">Sin combo</span>
+                                <span class="text-gray-400 block">Sin promo</span>
                                 <span class="font-bold text-gray-600">$${formatMoney(s.normalTotal)}</span>
                             </div>
                             <div class="text-gray-400"><i class="fas fa-arrow-right"></i></div>
                             <div class="flex-1 bg-white rounded px-2 py-1 text-center">
-                                <span class="text-gray-400 block">Con combo</span>
+                                <span class="text-gray-400 block">Con promo</span>
                                 <span class="font-bold text-purple-600">$${formatMoney(s.promoTotal)}</span>
                             </div>
                             <div class="flex-1 bg-green-100 rounded px-2 py-1 text-center">
@@ -11892,6 +11952,14 @@ RESULTADOS:
 
         function closePromoModal() {
             document.getElementById('promo-modal').classList.add('hidden');
+        }
+
+        function filterPromoProducts(query) {
+            const q = (query || '').toLowerCase().trim();
+            document.querySelectorAll('#promo-products-list label').forEach(label => {
+                const text = label.textContent.toLowerCase();
+                label.style.display = text.includes(q) ? '' : 'none';
+            });
         }
 
         function onPromoTypeChange() {

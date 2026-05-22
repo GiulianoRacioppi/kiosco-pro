@@ -2293,6 +2293,7 @@
                             <option value="threshold">Descuento por monto mínimo</option>
                             <option value="bogo">Lleva X, paga Y</option>
                             <option value="pack">Pack (X unid. por $Y)</option>
+                            <option value="bundle">Combo de productos (precio fijo)</option>
                         </select>
                     </div>
                     <div>
@@ -2339,6 +2340,14 @@
                             <label class="block text-sm font-medium text-gray-700 mb-1">Precio del pack ($)</label>
                             <input type="number" id="promo-pack-price" class="w-full border rounded-lg px-3 py-2" placeholder="3000" min="0" step="0.01">
                         </div>
+                    </div>
+                </div>
+
+                <div id="promo-bundle-config" class="hidden bg-gray-50 rounded-xl p-4 space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Precio total del combo ($)</label>
+                        <input type="number" id="promo-bundle-price" class="w-full border rounded-lg px-3 py-2" placeholder="4500" min="0" step="0.01">
+                        <p class="text-xs text-gray-500 mt-1">Cuando todos los productos seleccionados estén en el carrito, se cobrará este precio total.</p>
                     </div>
                 </div>
 
@@ -3946,6 +3955,14 @@
                             
                             let futureDiscount = 0;
                             switch (promo.type) {
+                                case 'bundle': {
+                                    const bundlePrice = promo.bundlePrice || promo.discount || 0;
+                                    if (bundlePrice > 0) {
+                                        futureDiscount = futureSubtotal - bundlePrice;
+                                        if (futureDiscount < 0) futureDiscount = 0;
+                                    }
+                                    break;
+                                }
                                 case 'percent':
                                     futureDiscount = futureSubtotal * ((promo.discount || 0) / 100);
                                     break;
@@ -11240,6 +11257,29 @@ RESULTADOS:
                         }
                         break;
                     }
+                    case 'bundle': {
+                        const bundlePrice = promo.bundlePrice || promo.discount || 0;
+                        const bundleProductIds = promo.productIds || [];
+                        if (bundlePrice > 0 && bundleProductIds.length >= 2) {
+                            // Ver cuántos sets completos del bundle hay (1 unidad de cada producto = 1 set)
+                            let sets = Infinity;
+                            for (const pid of bundleProductIds) {
+                                const item = applicableItems.find(i => i.productId === pid);
+                                if (!item) { sets = 0; break; }
+                                sets = Math.min(sets, item.quantity);
+                            }
+                            if (sets > 0) {
+                                let normalPrice = 0;
+                                for (const pid of bundleProductIds) {
+                                    const item = applicableItems.find(i => i.productId === pid);
+                                    normalPrice += item.price * sets;
+                                }
+                                discount = normalPrice - (sets * bundlePrice);
+                                if (discount < 0) discount = 0;
+                            }
+                        }
+                        break;
+                    }
                     case 'threshold': {
                         if (applicableSubtotal >= (promo.minAmount || 0)) {
                             discount = applicableSubtotal * ((promo.discount || 0) / 100);
@@ -11493,13 +11533,14 @@ RESULTADOS:
                     const statusColor = p.active ? (isNow ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700') : 'bg-gray-100 text-gray-500';
                     const statusText = p.active ? (isNow ? 'Activa ahora' : 'Inactiva (fuera de horario/día)') : 'Desactivada';
                     
-                    let typeLabel = { '2x1': '2x1', 'combo': 'Combo', 'percent': '% Descuento', 'threshold': 'Por monto', 'bogo': 'Lleva X Paga Y', 'pack': 'Pack' }[p.type] || p.type;
+                    let typeLabel = { '2x1': '2x1', 'combo': 'Combo', 'percent': '% Descuento', 'threshold': 'Por monto', 'bogo': 'Lleva X Paga Y', 'pack': 'Pack', 'bundle': 'Combo Fijo' }[p.type] || p.type;
                     let discountText = '';
                     if (p.type === '2x1') discountText = 'Paga 1 lleva 2';
                     else if (p.type === 'bogo') discountText = `Lleva ${p.bogoBuy || 2} paga ${p.bogoPay || 1}`;
                     else if (p.type === 'threshold') discountText = `>${fmtNumber((p.minAmount || 0), 0)} → ${p.discount}%`;
                     else if (p.type === 'percent') discountText = `${p.discount}% off`;
                     else if (p.type === 'pack') discountText = `${p.packQty || 2} por $${formatMoney(p.packPrice || 0)}`;
+                    else if (p.type === 'bundle') discountText = `$${formatMoney(p.bundlePrice || p.discount || 0)} combo`;
                     else discountText = `$${p.discount} off`;
                     
                     const productCount = p.productIds && p.productIds.length > 0 ? `${p.productIds.length} productos` : 'Todos los productos';
@@ -11906,6 +11947,7 @@ RESULTADOS:
                 document.getElementById('promo-bogo-pay').value = promo.bogoPay || 1;
                 document.getElementById('promo-pack-qty').value = promo.packQty || 2;
                 document.getElementById('promo-pack-price').value = promo.packPrice || '';
+                document.getElementById('promo-bundle-price').value = promo.bundlePrice || promo.discount || '';
                 document.getElementById('promo-start').value = promo.startDate || '';
                 document.getElementById('promo-end').value = promo.endDate || '';
                 document.getElementById('promo-time-start').value = promo.timeStart || '';
@@ -11935,6 +11977,7 @@ RESULTADOS:
                 document.getElementById('promo-bogo-pay').value = 1;
                 document.getElementById('promo-pack-qty').value = 2;
                 document.getElementById('promo-pack-price').value = '';
+                document.getElementById('promo-bundle-price').value = '';
                 document.getElementById('promo-start').value = '';
                 document.getElementById('promo-end').value = '';
                 document.getElementById('promo-time-start').value = '';
@@ -11968,10 +12011,12 @@ RESULTADOS:
             const bogoConfig = document.getElementById('promo-bogo-config');
             const thresholdConfig = document.getElementById('promo-threshold-config');
             const packConfig = document.getElementById('promo-pack-config');
+            const bundleConfig = document.getElementById('promo-bundle-config');
             
             bogoConfig.classList.toggle('hidden', type !== 'bogo');
             thresholdConfig.classList.toggle('hidden', type !== 'threshold');
             packConfig.classList.toggle('hidden', type !== 'pack');
+            bundleConfig.classList.toggle('hidden', type !== 'bundle');
             
             if (type === '2x1') {
                 hint.textContent = 'Para 2x1 dejar en 0';
@@ -11989,6 +12034,10 @@ RESULTADOS:
                 hint.textContent = 'Configure cantidad y precio del pack abajo';
                 document.getElementById('promo-discount').disabled = true;
                 document.getElementById('promo-discount').value = 0;
+            } else if (type === 'bundle') {
+                hint.textContent = 'Precio total del combo (arriba)';
+                document.getElementById('promo-discount').disabled = true;
+                document.getElementById('promo-discount').value = 0;
             } else {
                 hint.textContent = type === 'percent' ? 'Porcentaje de descuento' : 'Monto fijo de descuento';
                 document.getElementById('promo-discount').disabled = false;
@@ -12001,7 +12050,7 @@ RESULTADOS:
             const type = document.getElementById('promo-type').value;
             
             if (!name) {
-                const typeLabels = { '2x1': '2x1', 'combo': 'Combo', 'percent': '% Off', 'threshold': 'Por monto', 'bogo': 'Lleva Paga', 'pack': 'Pack' };
+                const typeLabels = { '2x1': '2x1', 'combo': 'Combo', 'percent': '% Off', 'threshold': 'Por monto', 'bogo': 'Lleva Paga', 'pack': 'Pack', 'bundle': 'Combo Fijo' };
                 const discount = parseFloat(document.getElementById('promo-discount').value) || 0;
                 name = (typeLabels[type] || 'Promo') + ' ' + discount + '%';
             }
@@ -12038,6 +12087,10 @@ RESULTADOS:
             if (type === 'pack') {
                 promo.packQty = parseInt(document.getElementById('promo-pack-qty').value) || 2;
                 promo.packPrice = parseFloat(document.getElementById('promo-pack-price').value) || 0;
+            }
+            
+            if (type === 'bundle') {
+                promo.bundlePrice = parseFloat(document.getElementById('promo-bundle-price').value) || 0;
             }
             
             if (type === 'threshold') {

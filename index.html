@@ -2292,6 +2292,7 @@
                             <option value="percent">% Descuento en productos</option>
                             <option value="threshold">Descuento por monto mínimo</option>
                             <option value="bogo">Lleva X, paga Y</option>
+                            <option value="pack">Pack (X unid. por $Y)</option>
                         </select>
                     </div>
                     <div>
@@ -2324,6 +2325,19 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">% Descuento</label>
                             <input type="number" id="promo-threshold-percent" class="w-full border rounded-lg px-3 py-2" placeholder="10" min="1" max="100">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="promo-pack-config" class="hidden bg-gray-50 rounded-xl p-4 space-y-3">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Cantidad del pack</label>
+                            <input type="number" id="promo-pack-qty" class="w-full border rounded-lg px-3 py-2" value="2" min="2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Precio del pack ($)</label>
+                            <input type="number" id="promo-pack-price" class="w-full border rounded-lg px-3 py-2" placeholder="3000" min="0" step="0.01">
                         </div>
                     </div>
                 </div>
@@ -11146,6 +11160,26 @@ RESULTADOS:
                         discount = promo.discount || 0;
                         break;
                     }
+                    case 'pack': {
+                        const packQty = promo.packQty || 2;
+                        const packPrice = promo.packPrice || 0;
+                        if (applicableQty >= packQty && packPrice > 0) {
+                            const sets = Math.floor(applicableQty / packQty);
+                            const remainder = applicableQty % packQty;
+                            // Precio normal de las unidades del pack
+                            const sorted = [...applicableItems].sort((a, b) => a.price - b.price);
+                            let unitsAccounted = 0;
+                            let normalPriceForSets = 0;
+                            for (const item of sorted) {
+                                if (unitsAccounted >= sets * packQty) break;
+                                const count = Math.min(item.quantity, sets * packQty - unitsAccounted);
+                                normalPriceForSets += count * item.price;
+                                unitsAccounted += count;
+                            }
+                            discount = normalPriceForSets - (sets * packPrice);
+                        }
+                        break;
+                    }
                     case 'threshold': {
                         if (applicableSubtotal >= (promo.minAmount || 0)) {
                             discount = applicableSubtotal * ((promo.discount || 0) / 100);
@@ -11399,12 +11433,13 @@ RESULTADOS:
                     const statusColor = p.active ? (isNow ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700') : 'bg-gray-100 text-gray-500';
                     const statusText = p.active ? (isNow ? 'Activa ahora' : 'Inactiva (fuera de horario/día)') : 'Desactivada';
                     
-                    let typeLabel = { '2x1': '2x1', 'combo': 'Combo', 'percent': '% Descuento', 'threshold': 'Por monto', 'bogo': 'Lleva X Paga Y' }[p.type] || p.type;
+                    let typeLabel = { '2x1': '2x1', 'combo': 'Combo', 'percent': '% Descuento', 'threshold': 'Por monto', 'bogo': 'Lleva X Paga Y', 'pack': 'Pack' }[p.type] || p.type;
                     let discountText = '';
                     if (p.type === '2x1') discountText = 'Paga 1 lleva 2';
                     else if (p.type === 'bogo') discountText = `Lleva ${p.bogoBuy || 2} paga ${p.bogoPay || 1}`;
                     else if (p.type === 'threshold') discountText = `>${fmtNumber((p.minAmount || 0), 0)} → ${p.discount}%`;
                     else if (p.type === 'percent') discountText = `${p.discount}% off`;
+                    else if (p.type === 'pack') discountText = `${p.packQty || 2} por $${formatMoney(p.packPrice || 0)}`;
                     else discountText = `$${p.discount} off`;
                     
                     const productCount = p.productIds && p.productIds.length > 0 ? `${p.productIds.length} productos` : 'Todos los productos';
@@ -11809,6 +11844,8 @@ RESULTADOS:
                 document.getElementById('promo-threshold-percent').value = promo.type === 'threshold' ? (promo.discount || '') : '';
                 document.getElementById('promo-bogo-buy').value = promo.bogoBuy || 2;
                 document.getElementById('promo-bogo-pay').value = promo.bogoPay || 1;
+                document.getElementById('promo-pack-qty').value = promo.packQty || 2;
+                document.getElementById('promo-pack-price').value = promo.packPrice || '';
                 document.getElementById('promo-start').value = promo.startDate || '';
                 document.getElementById('promo-end').value = promo.endDate || '';
                 document.getElementById('promo-time-start').value = promo.timeStart || '';
@@ -11836,6 +11873,8 @@ RESULTADOS:
                 document.getElementById('promo-threshold-percent').value = '';
                 document.getElementById('promo-bogo-buy').value = 2;
                 document.getElementById('promo-bogo-pay').value = 1;
+                document.getElementById('promo-pack-qty').value = 2;
+                document.getElementById('promo-pack-price').value = '';
                 document.getElementById('promo-start').value = '';
                 document.getElementById('promo-end').value = '';
                 document.getElementById('promo-time-start').value = '';
@@ -11860,9 +11899,11 @@ RESULTADOS:
             const hint = document.getElementById('promo-discount-hint');
             const bogoConfig = document.getElementById('promo-bogo-config');
             const thresholdConfig = document.getElementById('promo-threshold-config');
+            const packConfig = document.getElementById('promo-pack-config');
             
             bogoConfig.classList.toggle('hidden', type !== 'bogo');
             thresholdConfig.classList.toggle('hidden', type !== 'threshold');
+            packConfig.classList.toggle('hidden', type !== 'pack');
             
             if (type === '2x1') {
                 hint.textContent = 'Para 2x1 dejar en 0';
@@ -11874,6 +11915,10 @@ RESULTADOS:
                 document.getElementById('promo-discount').value = 0;
             } else if (type === 'threshold') {
                 hint.textContent = 'Configure abajo';
+                document.getElementById('promo-discount').disabled = true;
+                document.getElementById('promo-discount').value = 0;
+            } else if (type === 'pack') {
+                hint.textContent = 'Configure cantidad y precio del pack abajo';
                 document.getElementById('promo-discount').disabled = true;
                 document.getElementById('promo-discount').value = 0;
             } else {
@@ -11888,7 +11933,7 @@ RESULTADOS:
             const type = document.getElementById('promo-type').value;
             
             if (!name) {
-                const typeLabels = { '2x1': '2x1', 'combo': 'Combo', 'percent': '% Off', 'threshold': 'Por monto', 'bogo': 'Lleva Paga' };
+                const typeLabels = { '2x1': '2x1', 'combo': 'Combo', 'percent': '% Off', 'threshold': 'Por monto', 'bogo': 'Lleva Paga', 'pack': 'Pack' };
                 const discount = parseFloat(document.getElementById('promo-discount').value) || 0;
                 name = (typeLabels[type] || 'Promo') + ' ' + discount + '%';
             }
@@ -11920,6 +11965,11 @@ RESULTADOS:
             if (type === 'bogo') {
                 promo.bogoBuy = parseInt(document.getElementById('promo-bogo-buy').value) || 2;
                 promo.bogoPay = parseInt(document.getElementById('promo-bogo-pay').value) || 1;
+            }
+            
+            if (type === 'pack') {
+                promo.packQty = parseInt(document.getElementById('promo-pack-qty').value) || 2;
+                promo.packPrice = parseFloat(document.getElementById('promo-pack-price').value) || 0;
             }
             
             if (type === 'threshold') {

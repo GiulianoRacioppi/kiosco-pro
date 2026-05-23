@@ -4708,6 +4708,7 @@
                         }
                         
                         product.lastSale = new Date().toISOString();
+                        product.updatedAt = new Date().toISOString();
                     } else {
                         // Producto normal: Sistema FIFO tradicional
                         let qtyToDeduct = item.quantity;
@@ -4745,6 +4746,7 @@
                         product.stock = totalStock;
                         
                         product.lastSale = new Date().toISOString();
+                        product.updatedAt = new Date().toISOString();
                     }
                 }
             });
@@ -5580,6 +5582,7 @@
                 min: 5, // Stock mínimo por defecto
                 vatApplied: document.getElementById('inv-vat')?.checked || false,
                 createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
                 lastSale: null
             };
             
@@ -5599,7 +5602,8 @@
                     dateAdded: formatDateISO(appState.activeDate),
                     invoiceType: appState.pendingPurchase.invoiceType || 'white',
                     source: appState.pendingPurchasePayment || 'cash',
-                    cost: appState.pendingPurchase.cost
+                    cost: appState.pendingPurchase.cost,
+                    updatedAt: new Date().toISOString()
                 }];
             }
             
@@ -6455,7 +6459,8 @@
                 dateAdded: formatDateISO(appState.activeDate),
                 invoiceType: invoiceType,
                 source: addStockPaymentMethod || 'cash',
-                cost: newUnitCost
+                cost: newUnitCost,
+                updatedAt: new Date().toISOString()
             });
             
             // Ordenar lotes por vencimiento (FIFO - el que vence primero, primero en la lista)
@@ -6493,6 +6498,8 @@
             } else {
                 appState.invoiceTracking.purchasedBlack += totalCost;
             }
+            
+            product.updatedAt = new Date().toISOString();
             
             saveToLocalStorage();
             renderAll();
@@ -6766,7 +6773,8 @@
                             dateAdded: orig.dateAdded || formatDateISO(appState.activeDate),
                             invoiceType: orig.invoiceType || (document.getElementById('edit-prod-invoice-type').value || 'white'),
                             source: origSource,
-                            cost: product.cost
+                            cost: product.cost,
+                            updatedAt: new Date().toISOString()
                         });
                         
                         if (valueDiff > 0) {
@@ -6785,7 +6793,8 @@
                             dateAdded: formatDateISO(appState.activeDate),
                             invoiceType: document.getElementById('edit-prod-invoice-type').value || 'white',
                             source: domSource,
-                            cost: product.cost
+                            cost: product.cost,
+                            updatedAt: new Date().toISOString()
                         });
                         addedBySource[domSource] += value;
                     }
@@ -6870,6 +6879,8 @@
                         batch.invoiceType = newInvoiceType;
                     });
                 }
+                
+                product.updatedAt = new Date().toISOString();
                 
                 saveToLocalStorage();
                 renderInventory();
@@ -10607,6 +10618,7 @@ Total de productos a comprar: ${shoppingList.length}
             
             // 4. Actualizar lastSyncTime local para que no recupere datos viejos
             lastSyncTime = Date.now();
+            localStorage.setItem('kioscopro-last-sync', lastSyncTime);
             
             showNotification('🗑️ Todos los datos han sido eliminados', 'success');
             
@@ -11072,6 +11084,7 @@ RESULTADOS:
                                 
                                 await setDoc(doc(window.db, "kioscos", "main"), dataToSync);
                                 lastSyncTime = Date.now();
+                                localStorage.setItem('kioscopro-last-sync', lastSyncTime);
                                 updateSyncStatus('synced');
                                 showNotification('☁️ Datos restaurados subidos a la nube', 'success');
                                 console.log('✅ Backup restaurado y sincronizado con Firebase');
@@ -12371,7 +12384,7 @@ RESULTADOS:
 
         // ==================== FIREBASE SYNC ====================
         let firebaseSyncEnabled = false;
-        let lastSyncTime = 0;
+        let lastSyncTime = parseInt(localStorage.getItem('kioscopro-last-sync')) || 0;
         let syncListener = null;
         let isInitialSync = true; // Flag para evitar notificación en carga inicial
         let isOnline = navigator.onLine;
@@ -12429,6 +12442,7 @@ RESULTADOS:
                     
                     await setDoc(doc(window.db, "kioscos", "main"), dataToSync);
                     lastSyncTime = Date.now();
+                    localStorage.setItem('kioscopro-last-sync', lastSyncTime);
                     updateSyncStatus('synced');
                     console.log('✅ Sincronizado con Firebase');
                 } catch (err) {
@@ -12483,6 +12497,241 @@ RESULTADOS:
             } catch (err) {
                 console.error('Error iniciando listener:', err);
                 updateSyncStatus('offline');
+            }
+        }
+        
+        function getItemTimestamp(item) {
+            if (!item || typeof item !== 'object') return 0;
+            if (item.createdAt) {
+                const t = new Date(item.createdAt).getTime();
+                if (!isNaN(t)) return t;
+            }
+            if (item.timestamp && typeof item.timestamp === 'number') return item.timestamp;
+            if (item.timestamp) {
+                const t = new Date(item.timestamp).getTime();
+                if (!isNaN(t)) return t;
+            }
+            if (item.date) {
+                const t = new Date(item.date + 'T12:00:00').getTime();
+                if (!isNaN(t)) return t;
+            }
+            if (item.dateAdded) {
+                const t = new Date(item.dateAdded + 'T12:00:00').getTime();
+                if (!isNaN(t)) return t;
+            }
+            if (item.updatedAt) {
+                const t = new Date(item.updatedAt).getTime();
+                if (!isNaN(t)) return t;
+            }
+            if (item.id && typeof item.id === 'string') {
+                const parts = item.id.split('-');
+                const lastPart = parts[parts.length - 1];
+                const num = parseInt(lastPart);
+                if (!isNaN(num) && num > 1000000000000) return num;
+            }
+            return 0;
+        }
+        
+        function smartMergeArrays(localArr, remoteArr) {
+            if (!Array.isArray(localArr) || localArr.length === 0) return Array.isArray(remoteArr) ? [...remoteArr] : [];
+            if (!Array.isArray(remoteArr) || remoteArr.length === 0) return [...localArr];
+            
+            const remoteMap = new Map();
+            for (const item of remoteArr) {
+                if (item && item.id) remoteMap.set(item.id, item);
+            }
+            
+            const localMap = new Map();
+            for (const item of localArr) {
+                if (item && item.id) localMap.set(item.id, item);
+            }
+            
+            const merged = [];
+            const mergedIds = new Set();
+            
+            // 1. Procesar todos los IDs de remote
+            for (const [id, remoteItem] of remoteMap) {
+                mergedIds.add(id);
+                const localItem = localMap.get(id);
+                if (!localItem) {
+                    merged.push({ ...remoteItem });
+                } else {
+                    const remoteTime = getItemTimestamp(remoteItem);
+                    const localTime = getItemTimestamp(localItem);
+                    merged.push(remoteTime > localTime ? { ...remoteItem } : { ...localItem });
+                }
+            }
+            
+            // 2. Procesar items que solo existen en local (creados offline)
+            for (const [id, localItem] of localMap) {
+                if (!mergedIds.has(id)) {
+                    merged.push({ ...localItem });
+                }
+            }
+            
+            return merged;
+        }
+        
+        function mergeInventory(localInv, remoteInv) {
+            if (!Array.isArray(localInv) || localInv.length === 0) return Array.isArray(remoteInv) ? JSON.parse(JSON.stringify(remoteInv)) : [];
+            if (!Array.isArray(remoteInv) || remoteInv.length === 0) return JSON.parse(JSON.stringify(localInv));
+            
+            const remoteMap = new Map();
+            for (const item of remoteInv) {
+                if (item && item.id) remoteMap.set(item.id, item);
+            }
+            
+            const localMap = new Map();
+            for (const item of localInv) {
+                if (item && item.id) localMap.set(item.id, item);
+            }
+            
+            const merged = [];
+            const mergedIds = new Set();
+            
+            for (const [id, remoteItem] of remoteMap) {
+                mergedIds.add(id);
+                const localItem = localMap.get(id);
+                if (!localItem) {
+                    merged.push(JSON.parse(JSON.stringify(remoteItem)));
+                    continue;
+                }
+                
+                // Fusionar producto: quedarse con el más reciente como base
+                const remoteTime = getItemTimestamp(remoteItem);
+                const localTime = getItemTimestamp(localItem);
+                const baseItem = remoteTime > localTime ? JSON.parse(JSON.stringify(remoteItem)) : JSON.parse(JSON.stringify(localItem));
+                
+                // Fusionar batches del producto
+                const localBatches = Array.isArray(localItem.batches) ? localItem.batches : [];
+                const remoteBatches = Array.isArray(remoteItem.batches) ? remoteItem.batches : [];
+                
+                if (localBatches.length === 0) {
+                    baseItem.batches = JSON.parse(JSON.stringify(remoteBatches));
+                } else if (remoteBatches.length === 0) {
+                    baseItem.batches = JSON.parse(JSON.stringify(localBatches));
+                } else {
+                    // Agrupar batches por clave única
+                    const batchMap = new Map();
+                    
+                    const batchKey = (b) => {
+                        return (b.dateAdded || '') + '|' + (b.cost || 0) + '|' + (b.expiry || '') + '|' + (b.source || '') + '|' + (b.invoiceType || '');
+                    };
+                    
+                    for (const b of localBatches) {
+                        const key = batchKey(b);
+                        if (!batchMap.has(key)) {
+                            batchMap.set(key, { local: b, remote: null });
+                        }
+                    }
+                    
+                    for (const b of remoteBatches) {
+                        const key = batchKey(b);
+                        if (batchMap.has(key)) {
+                            batchMap.get(key).remote = b;
+                        } else {
+                            batchMap.set(key, { local: null, remote: b });
+                        }
+                    }
+                    
+                    const mergedBatches = [];
+                    for (const [key, entry] of batchMap) {
+                        if (entry.local && !entry.remote) {
+                            mergedBatches.push(JSON.parse(JSON.stringify(entry.local)));
+                        } else if (!entry.local && entry.remote) {
+                            mergedBatches.push(JSON.parse(JSON.stringify(entry.remote)));
+                        } else {
+                            // Batch en ambos: quedarse con el de menor stock (más conservador)
+                            const localStock = entry.local.stock || 0;
+                            const remoteStock = entry.remote.stock || 0;
+                            const chosen = JSON.parse(JSON.stringify(localStock <= remoteStock ? entry.local : entry.remote));
+                            mergedBatches.push(chosen);
+                        }
+                    }
+                    
+                    baseItem.batches = mergedBatches;
+                }
+                
+                // Recalcular stock total del producto
+                baseItem.stock = baseItem.batches ? baseItem.batches.reduce((sum, b) => sum + (b.stock || 0), 0) : 0;
+                
+                merged.push(baseItem);
+            }
+            
+            for (const [id, localItem] of localMap) {
+                if (!mergedIds.has(id)) {
+                    merged.push(JSON.parse(JSON.stringify(localItem)));
+                }
+            }
+            
+            return merged;
+        }
+        
+        function recalculateBalances() {
+            try {
+                let cash = parseFloat(appState.initialCapital) || 0;
+                let bank = 0;
+                
+                // Capital adjustments (inyecciones)
+                for (const adj of (appState.capitalAdjustments || [])) {
+                    const amount = parseFloat(adj.amount) || 0;
+                    if (adj.target === 'cash') cash += amount;
+                    else if (adj.target === 'bank') bank += amount;
+                }
+                
+                // Ventas
+                for (const sale of (appState.sales || [])) {
+                    const total = parseFloat(sale.total) || 0;
+                    if (sale.paymentMethod === 'cash') {
+                        cash += total;
+                    } else if (sale.paymentMethod === 'debit') {
+                        if (sale.isMercadoCredito && sale.mercadoCreditoFee) {
+                            bank += total - (parseFloat(sale.mercadoCreditoFee) || 0);
+                        } else {
+                            bank += total;
+                        }
+                    }
+                }
+                
+                // Gastos y retiros
+                for (const exp of (appState.expenses || [])) {
+                    const amount = parseFloat(exp.amount) || 0;
+                    if (exp.source === 'cash') cash -= amount;
+                    else if (exp.source === 'bank') bank -= amount;
+                }
+                
+                // Inversiones (compras/reposiciones)
+                for (const inv of (appState.investments || [])) {
+                    const amount = parseFloat(inv.amount) || 0;
+                    if (inv.source === 'cash') cash -= amount;
+                    else if (inv.source === 'bank') bank -= amount;
+                }
+                
+                // Devoluciones
+                for (const ret of (appState.returns || [])) {
+                    const amount = parseFloat(ret.amount) || 0;
+                    if (ret.paymentMethod === 'cash') cash -= amount;
+                    else if (ret.paymentMethod === 'debit') bank -= amount;
+                }
+                
+                // Movimientos entre caja y cuenta
+                for (const mov of (appState.cashMovements || [])) {
+                    const amount = parseFloat(mov.amount) || 0;
+                    if (mov.type === 'to_bank') {
+                        cash -= amount;
+                        bank += amount;
+                    } else if (mov.type === 'to_cash') {
+                        cash += amount;
+                        bank -= amount;
+                    }
+                }
+                
+                appState.cash = Math.round(cash * 100) / 100;
+                appState.bank = Math.round(bank * 100) / 100;
+                
+                console.log('💰 Balances recalculados - Caja:', appState.cash, 'Cuenta:', appState.bank);
+            } catch (e) {
+                console.error('Error recalculando balances:', e);
             }
         }
         
@@ -12546,30 +12795,22 @@ RESULTADOS:
                 // Preservar carrito local (no se sincroniza)
                 const localCart = appState.cart;
                 
-                // ESTRATEGIA: Si Firebase tiene datos más nuevos, REEMPLAZAR (no fusionar)
-                // Esto respeta los borrados. La única excepción es si hay datos locales 
-                // más nuevos que no se han sincronizado.
+                // ESTRATEGIA NUEVA: FUSIONAR datos en vez de reemplazar
+                // - Items que existen solo en local (offline) → se mantienen
+                // - Items que existen solo en Firebase → se agregan
+                // - Items que existen en ambos → se queda con el más reciente
                 
-                const replaceIfNewer = (localArr, remoteArr, lastLocalSync) => {
-                    if (!Array.isArray(remoteArr)) return localArr;
-                    // Si Firebase tiene datos más recientes, usamos los de Firebase
-                    // Si no, mantenemos los locales
-                    return remoteArr;
-                };
+                appState.inventory = mergeInventory(appState.inventory, data.inventory);
+                appState.sales = smartMergeArrays(appState.sales, data.sales);
+                appState.expenses = smartMergeArrays(appState.expenses, data.expenses);
+                appState.investments = smartMergeArrays(appState.investments, data.investments);
+                appState.capitalAdjustments = smartMergeArrays(appState.capitalAdjustments, data.capitalAdjustments);
+                appState.returns = smartMergeArrays(appState.returns, data.returns);
+                appState.promotions = smartMergeArrays(appState.promotions, data.promotions);
+                appState.discountTickets = smartMergeArrays(appState.discountTickets, data.discountTickets);
+                appState.ticketRules = smartMergeArrays(appState.ticketRules, data.ticketRules);
                 
-                appState.inventory = replaceIfNewer(appState.inventory, data.inventory, localTime);
-                appState.sales = replaceIfNewer(appState.sales, data.sales, localTime);
-                appState.expenses = replaceIfNewer(appState.expenses, data.expenses, localTime);
-                appState.investments = replaceIfNewer(appState.investments, data.investments, localTime);
-                appState.capitalAdjustments = replaceIfNewer(appState.capitalAdjustments, data.capitalAdjustments, localTime);
-                appState.returns = replaceIfNewer(appState.returns, data.returns, localTime);
-                appState.promotions = replaceIfNewer(appState.promotions, data.promotions, localTime);
-                appState.discountTickets = replaceIfNewer(appState.discountTickets, data.discountTickets, localTime);
-                appState.ticketRules = replaceIfNewer(appState.ticketRules, data.ticketRules, localTime);
-                
-                // Actualizar valores simples (solo si no hay conflicto)
-                if (data.cash !== undefined) appState.cash = parseFloat(data.cash) || 0;
-                if (data.bank !== undefined) appState.bank = parseFloat(data.bank) || 0;
+                // Actualizar valores simples
                 if (data.defaultMargin !== undefined) appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
                 if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
                 // autoPromotionConfig eliminado
@@ -12585,9 +12826,13 @@ RESULTADOS:
                 // Restaurar carrito local
                 appState.cart = localCart;
                 
+                // Recalcular cash y bank desde cero con TODAS las transacciones fusionadas
+                recalculateBalances();
+                
                 // Guardar en localStorage y renderizar
                 saveToLocalStorage(false); // false = no disparar syncToFirebase
                 lastSyncTime = Date.now(); // Actualizar para evitar re-merges
+                localStorage.setItem('kioscopro-last-sync', lastSyncTime);
                 renderAll();
                 
                 // Solo mostrar notificación si:

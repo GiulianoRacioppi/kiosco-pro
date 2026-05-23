@@ -2024,6 +2024,9 @@
                         <button onclick="saveBalancesFromSettings()" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg">
                             <i class="fas fa-save"></i> Guardar Saldos
                         </button>
+                        <button onclick="recalculateBalances(); renderAll(); showNotification('Saldos recalculados desde transacciones', 'success');" class="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 py-2 rounded-xl font-bold text-sm mt-2">
+                            <i class="fas fa-calculator"></i> Recalcular desde transacciones
+                        </button>
                     </div>
                 </div>
 
@@ -12825,9 +12828,6 @@ RESULTADOS:
                 
                 // Restaurar carrito local
                 appState.cart = localCart;
-                
-                // Recalcular cash y bank desde cero con TODAS las transacciones fusionadas
-                recalculateBalances();
                 
                 // Guardar en localStorage y renderizar
                 saveToLocalStorage(false); // false = no disparar syncToFirebase

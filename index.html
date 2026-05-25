@@ -8415,12 +8415,17 @@
                 
                 const totalCapital = appState.cash + appState.bank + inventoryValue;
                 
-                // Ganancia neta = Capital actual - Capital inicial inyectado (calculado desde ajustes)
+                // Ganancia neta = Capital actual - Capital inicial inyectado (inicial + reinversiones)
                 const capitalInjected = appState.capitalAdjustments
                     .filter(adj => adj.amount > 0)
                     .reduce((sum, adj) => sum + adj.amount, 0);
                 
-                const netProfit = totalCapital - (appState.initialCapital + capitalInjected);
+                // Inversión total = capital inicial + inyecciones de capital del dueño
+                // Las compras de stock NO cuentan como inversión nueva si se hicieron con ganancias del negocio
+                const totalInvested = (appState.initialCapital || 0) + capitalInjected;
+                const hasInvestmentData = totalInvested > 0;
+                
+                const netProfit = hasInvestmentData ? (totalCapital - totalInvested) : 0;
                 
                 // Calcular margen de ganancia promedio de todos los productos
                 let avgMargin = 0;
@@ -8440,22 +8445,21 @@
                 updateMetric('metric-capital-injected', `$${formatMoney(totalCapital)}`, 'text-blue-800');
                 updateMetric('metric-net-profit', `$${formatMoney(netProfit)}`, netProfit >= 0 ? 'text-emerald-800' : 'text-red-600');
                 
-                // Actualizar margen promedio
+                // Actualizar margen promedio (margen de productos, no de ganancia neta)
                 const marginEl = document.getElementById('metric-avg-margin');
                 if (marginEl) {
                     marginEl.textContent = `${fmtNumber(avgMargin, 1)}%`;
+                    marginEl.title = 'Margen promedio de productos (no margen de ganancia neta)';
                 }
                 
                 // ===== ROI Y RECUPERACIÓN =====
-                // Calcular inversión total (capital inicial + inyecciones)
-                const totalInvested = (appState.initialCapital || 0) + capitalInjected;
                 
                 // Calcular ROI % (ganancia neta sobre inversión)
                 const roiPercent = totalInvested > 0 ? ((netProfit / totalInvested) * 100) : 0;
                 
                 // Calcular tiempo de recuperación
                 let recoveryTimeText = '-';
-                let recoveryDetailText = 'Sin inversiones';
+                let recoveryDetailText = 'Registrá tu capital inicial en Configuración > Saldos';
                 
                 // Días transcurridos desde la primera venta/gasto
                 const allDates = [

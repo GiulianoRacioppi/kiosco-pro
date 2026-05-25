@@ -8415,17 +8415,14 @@
                 
                 const totalCapital = appState.cash + appState.bank + inventoryValue;
                 
-                // Ganancia neta = Capital actual - Capital inicial inyectado (inicial + reinversiones)
+                // Ganancia neta = suma del profit de TODAS las ventas (precio de venta - costo al momento de la venta)
+                const netProfit = appState.sales.reduce((sum, s) => sum + (s.profit || 0), 0);
+                
+                // Inversión total = capital inicial + inyecciones de capital del dueño
                 const capitalInjected = appState.capitalAdjustments
                     .filter(adj => adj.amount > 0)
                     .reduce((sum, adj) => sum + adj.amount, 0);
-                
-                // Inversión total = capital inicial + inyecciones de capital del dueño
-                // Las compras de stock NO cuentan como inversión nueva si se hicieron con ganancias del negocio
                 const totalInvested = (appState.initialCapital || 0) + capitalInjected;
-                const hasInvestmentData = totalInvested > 0;
-                
-                const netProfit = hasInvestmentData ? (totalCapital - totalInvested) : 0;
                 
                 // Calcular margen de ganancia promedio de todos los productos
                 let avgMargin = 0;

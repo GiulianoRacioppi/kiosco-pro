@@ -2018,8 +2018,16 @@
                             <label class="block text-sm font-medium text-gray-700 mb-2">🏦 Dinero en Cuenta</label>
                             <div class="relative">
                                 <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">$</span>
-                                <input type="number" id="settings-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();saveBalancesFromSettings();}">
+                                <input type="number" id="settings-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('settings-initial-capital').focus();}">
                             </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">🔥 Capital Inicial (plata que pusiste para empezar)</label>
+                            <div class="relative">
+                                <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">$</span>
+                                <input type="number" id="settings-initial-capital" class="w-full border-2 border-orange-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();saveBalancesFromSettings();}">
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Este valor se usa para calcular la ganancia neta y el ROI.</p>
                         </div>
                         <button onclick="saveBalancesFromSettings()" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg">
                             <i class="fas fa-save"></i> Guardar Saldos
@@ -2908,8 +2916,8 @@
             const yesterdayStr = formatDateISO(yesterday);
             
             const count = appState.cashCounts ? appState.cashCounts.find(c => c.date === yesterdayStr) : null;
-            if (count && count.openingAmount !== null && count.closingAmount === null) {
-                showNotification('⚠️ Alerta: No se hizo el cierre de caja del día anterior (' + yesterdayStr + '). Recordá cerrar el arqueo.', 'warning', 8000);
+            if (count && (count.openingAmount !== undefined && count.openingAmount !== null) && (count.closingAmount === undefined || count.closingAmount === null)) {
+                showNotification('⚠️ Alerta: No se hizo el cierre del día anterior (' + yesterdayStr + '). Recordá cerrar el arqueo.', 'warning', 8000);
             }
         }
 
@@ -8928,12 +8936,27 @@
         // ==================== ARQUEO DE CAJA ====================
         function calculateCashExpected(today) {
             const count = appState.cashCounts ? appState.cashCounts.find(c => c.date === today) : null;
-            const opening = count ? (count.openingAmount || 0) : 0;
-            const todaySales = appState.sales.filter(s => s.date === today && s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
-            const todayExpenses = appState.expenses.filter(e => e.date === today && e.source === 'cash').reduce((sum, e) => sum + e.amount, 0);
-            const todayInvestments = appState.investments.filter(i => i.date === today && i.source === 'cash').reduce((sum, i) => sum + i.amount, 0);
-            const todayReturns = appState.returns ? appState.returns.filter(r => r.date === today && r.paymentMethod === 'cash').reduce((sum, r) => sum + r.amount, 0) : 0;
-            return opening + todaySales - todayExpenses - todayInvestments - todayReturns;
+            const openingCash = count ? (count.openingCash !== undefined ? count.openingCash : (count.openingAmount || 0)) : 0;
+            const openingBank = count ? (count.openingBank || 0) : 0;
+            
+            // Transacciones de caja (efectivo)
+            const cashSales = appState.sales.filter(s => s.date === today && s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
+            const cashExpenses = appState.expenses.filter(e => e.date === today && e.source === 'cash').reduce((sum, e) => sum + e.amount, 0);
+            const cashInvestments = appState.investments.filter(i => i.date === today && i.source === 'cash').reduce((sum, i) => sum + i.amount, 0);
+            const cashReturns = appState.returns ? appState.returns.filter(r => r.date === today && r.paymentMethod === 'cash').reduce((sum, r) => sum + r.amount, 0) : 0;
+            const toBank = appState.cashMovements ? appState.cashMovements.filter(m => m.date === today && m.type === 'to_bank').reduce((sum, m) => sum + m.amount, 0) : 0;
+            const toCash = appState.cashMovements ? appState.cashMovements.filter(m => m.date === today && m.type === 'to_cash').reduce((sum, m) => sum + m.amount, 0) : 0;
+            
+            // Transacciones de cuenta (banco/débito)
+            const bankSales = appState.sales.filter(s => s.date === today && s.paymentMethod === 'debit').reduce((sum, s) => sum + (s.total - (s.mercadoCreditoFee || 0)), 0);
+            const bankExpenses = appState.expenses.filter(e => e.date === today && e.source === 'bank').reduce((sum, e) => sum + e.amount, 0);
+            const bankInvestments = appState.investments.filter(i => i.date === today && i.source === 'bank').reduce((sum, i) => sum + i.amount, 0);
+            const bankReturns = appState.returns ? appState.returns.filter(r => r.date === today && r.paymentMethod === 'debit').reduce((sum, r) => sum + r.amount, 0) : 0;
+            
+            const expectedCash = openingCash + cashSales - cashExpenses - cashInvestments - cashReturns + toCash - toBank;
+            const expectedBank = openingBank + bankSales - bankExpenses - bankInvestments - bankReturns - toCash + toBank;
+            
+            return { cash: expectedCash, bank: expectedBank, total: expectedCash + expectedBank };
         }
 
         function openCashCountModal() {
@@ -8943,30 +8966,46 @@
             document.getElementById('cash-count-date').textContent = today;
             const undoSection = document.getElementById('cash-count-undo-section');
             
-            if (!existing || !existing.openingAmount) {
+            if (!existing || existing.openingAmount === undefined || existing.openingAmount === null) {
                 document.getElementById('cash-count-opening-section').classList.remove('hidden');
                 document.getElementById('cash-count-closing-section').classList.add('hidden');
                 document.getElementById('cash-count-opening').value = '';
+                document.getElementById('cash-count-opening-bank').value = '';
                 if (undoSection) undoSection.classList.add('hidden');
-            } else if (!existing.closingAmount) {
+            } else if (existing.closingAmount === undefined || existing.closingAmount === null) {
                 document.getElementById('cash-count-opening-section').classList.add('hidden');
                 document.getElementById('cash-count-closing-section').classList.remove('hidden');
                 if (undoSection) undoSection.classList.remove('hidden');
                 
-                const todaySales = appState.sales.filter(s => s.date === today && s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
-                const todayExpenses = appState.expenses.filter(e => e.date === today && e.source === 'cash').reduce((sum, e) => sum + e.amount, 0);
-                const todayInvestments = appState.investments.filter(i => i.date === today && i.source === 'cash').reduce((sum, i) => sum + i.amount, 0);
+                const todayCashSales = appState.sales.filter(s => s.date === today && s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
+                const todayCashExpenses = appState.expenses.filter(e => e.date === today && e.source === 'cash').reduce((sum, e) => sum + e.amount, 0);
+                const todayCashInvestments = appState.investments.filter(i => i.date === today && i.source === 'cash').reduce((sum, i) => sum + i.amount, 0);
+                
+                const todayBankSales = appState.sales.filter(s => s.date === today && s.paymentMethod === 'debit').reduce((sum, s) => sum + (s.total - (s.mercadoCreditoFee || 0)), 0);
+                const todayBankExpenses = appState.expenses.filter(e => e.date === today && e.source === 'bank').reduce((sum, e) => sum + e.amount, 0);
+                const todayBankInvestments = appState.investments.filter(i => i.date === today && i.source === 'bank').reduce((sum, i) => sum + i.amount, 0);
+                
                 const expected = calculateCashExpected(today);
                 
-                document.getElementById('cc-opening').textContent = '$' + formatMoney(existing.openingAmount);
-                document.getElementById('cc-sales').textContent = '$' + formatMoney(todaySales);
-                document.getElementById('cc-expenses').textContent = '$' + formatMoney(todayExpenses + todayInvestments);
-                document.getElementById('cc-expected').textContent = '$' + formatMoney(expected);
+                const openingCash = existing.openingCash !== undefined ? existing.openingCash : (existing.openingAmount || 0);
+                const openingBank = existing.openingBank || 0;
+                
+                document.getElementById('cc-opening').textContent = '$' + formatMoney(openingCash);
+                document.getElementById('cc-sales').textContent = '$' + formatMoney(todayCashSales);
+                document.getElementById('cc-expenses').textContent = '$' + formatMoney(todayCashExpenses + todayCashInvestments);
+                document.getElementById('cc-expected').textContent = '$' + formatMoney(expected.cash);
+                
+                document.getElementById('cc-opening-bank').textContent = '$' + formatMoney(openingBank);
+                document.getElementById('cc-sales-bank').textContent = '$' + formatMoney(todayBankSales);
+                document.getElementById('cc-expenses-bank').textContent = '$' + formatMoney(todayBankExpenses + todayBankInvestments);
+                document.getElementById('cc-expected-bank').textContent = '$' + formatMoney(expected.bank);
+                
                 document.getElementById('cash-count-closing').value = '';
+                document.getElementById('cash-count-closing-bank').value = '';
                 document.getElementById('cash-count-notes').value = existing.notes || '';
                 document.getElementById('cash-count-diff-box').classList.add('hidden');
             } else {
-                showNotification('Ya se hizo el cierre de caja de hoy', 'info');
+                showNotification('Ya se hizo el cierre de hoy', 'info');
                 return;
             }
             
@@ -8976,14 +9015,17 @@
         function closeCashCountModal() {
             document.getElementById('cash-count-modal').classList.remove('active');
             document.getElementById('cash-count-opening').value = '';
+            document.getElementById('cash-count-opening-bank').value = '';
             document.getElementById('cash-count-closing').value = '';
+            document.getElementById('cash-count-closing-bank').value = '';
             document.getElementById('cash-count-notes').value = '';
         }
 
         function saveCashOpening() {
-            const amount = parseFloat(document.getElementById('cash-count-opening').value);
-            if (!amount || amount < 0) {
-                showNotification('Ingrese un monto válido', 'error');
+            const cashAmount = parseFloat(document.getElementById('cash-count-opening').value) || 0;
+            const bankAmount = parseFloat(document.getElementById('cash-count-opening-bank').value) || 0;
+            if (cashAmount < 0 || bankAmount < 0) {
+                showNotification('Ingrese montos válidos', 'error');
                 return;
             }
             const today = formatDateISO(appState.activeDate || new Date());
@@ -8992,9 +9034,17 @@
             appState.cashCounts = appState.cashCounts.filter(c => c.date !== today);
             appState.cashCounts.push({
                 date: today,
-                openingAmount: amount,
+                openingCash: cashAmount,
+                openingBank: bankAmount,
+                openingAmount: cashAmount + bankAmount,
+                closingCash: null,
+                closingBank: null,
                 closingAmount: null,
+                expectedCash: null,
+                expectedBank: null,
                 expectedAmount: null,
+                differenceCash: null,
+                differenceBank: null,
                 difference: null,
                 notes: '',
                 timestamp: Date.now()
@@ -9002,30 +9052,48 @@
             
             saveToLocalStorage();
             closeCashCountModal();
-            showNotification('Apertura de caja registrada: $' + formatMoney(amount), 'success');
+            showNotification('Apertura registrada: Caja $' + formatMoney(cashAmount) + ' | Cuenta $' + formatMoney(bankAmount), 'success');
         }
 
         function updateCashDifference() {
             const today = formatDateISO(appState.activeDate || new Date());
-            const closing = parseFloat(document.getElementById('cash-count-closing').value) || 0;
+            const closingCash = parseFloat(document.getElementById('cash-count-closing').value) || 0;
+            const closingBank = parseFloat(document.getElementById('cash-count-closing-bank').value) || 0;
             const expected = calculateCashExpected(today);
-            const diff = closing - expected;
+            const diffCash = closingCash - expected.cash;
+            const diffBank = closingBank - expected.bank;
+            const diffTotal = diffCash + diffBank;
+            
             const box = document.getElementById('cash-count-diff-box');
             const label = document.getElementById('cash-count-diff-label');
-            const amount = document.getElementById('cash-count-diff-amount');
+            const diffCashLabel = document.getElementById('cc-diff-cash-label');
+            const diffCashAmount = document.getElementById('cc-diff-cash-amount');
+            const diffBankLabel = document.getElementById('cc-diff-bank-label');
+            const diffBankAmount = document.getElementById('cc-diff-bank-amount');
+            const diffTotalLabel = document.getElementById('cc-diff-total-label');
+            const totalAmount = document.getElementById('cash-count-diff-amount');
             
             box.classList.remove('hidden');
-            if (diff > 0) {
+            if (diffTotal > 0) {
                 box.className = 'p-3 rounded-lg text-center font-bold bg-green-100 text-green-700';
-                label.textContent = '✅ Sobrante';
-            } else if (diff < 0) {
+                label.textContent = '✅ Sobrante total';
+            } else if (diffTotal < 0) {
                 box.className = 'p-3 rounded-lg text-center font-bold bg-red-100 text-red-700';
-                label.textContent = '⚠️ Faltante';
+                label.textContent = '⚠️ Faltante total';
             } else {
                 box.className = 'p-3 rounded-lg text-center font-bold bg-blue-100 text-blue-700';
                 label.textContent = '🎯 Cuadra perfecto';
             }
-            amount.textContent = '$' + formatMoney(Math.abs(diff));
+            
+            diffCashLabel.textContent = diffCash >= 0 ? 'Sobrante caja:' : 'Faltante caja:';
+            diffCashAmount.textContent = '$' + formatMoney(Math.abs(diffCash));
+            diffCashAmount.className = 'font-bold ' + (diffCash >= 0 ? 'text-green-600' : 'text-red-600');
+            
+            diffBankLabel.textContent = diffBank >= 0 ? 'Sobrante cuenta:' : 'Faltante cuenta:';
+            diffBankAmount.textContent = '$' + formatMoney(Math.abs(diffBank));
+            diffBankAmount.className = 'font-bold ' + (diffBank >= 0 ? 'text-green-600' : 'text-red-600');
+            
+            totalAmount.textContent = '$' + formatMoney(Math.abs(diffTotal));
         }
 
         function deleteCashCount(date) {
@@ -9058,26 +9126,41 @@
                 return;
             }
             
-            container.innerHTML = counts.map(c => `
+            container.innerHTML = counts.map(c => {
+                const openingCash = c.openingCash !== undefined ? c.openingCash : (c.openingAmount || 0);
+                const openingBank = c.openingBank || 0;
+                const closingCash = c.closingCash !== undefined ? c.closingCash : (c.closingAmount !== null ? c.closingAmount : null);
+                const closingBank = c.closingBank || 0;
+                const diffCash = c.differenceCash !== undefined ? c.differenceCash : (c.difference !== null ? c.difference : null);
+                const diffBank = c.differenceBank || 0;
+                const hasClose = closingCash !== null;
+                
+                return `
                 <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm">
-                    <div>
+                    <div class="flex-1 min-w-0">
                         <p class="font-bold text-gray-700">${c.date}</p>
                         <p class="text-xs text-gray-500">
-                            Apertura: $${formatMoney(c.openingAmount)} 
-                            ${c.closingAmount !== null ? '• Cierre: $' + formatMoney(c.closingAmount) + ' • Dif: $' + formatMoney(c.difference) : '• Sin cerrar'}
+                            💵 Apertura: $${formatMoney(openingCash)} 
+                            ${hasClose ? '• Cierre: $' + formatMoney(closingCash) + ' • Dif: $' + formatMoney(diffCash) : '• Sin cerrar'}
+                        </p>
+                        <p class="text-xs text-gray-500">
+                            🏦 Apertura: $${formatMoney(openingBank)} 
+                            ${hasClose ? '• Cierre: $' + formatMoney(closingBank) + ' • Dif: $' + formatMoney(diffBank) : ''}
                         </p>
                     </div>
-                    <button onclick="deleteCashCount('${c.date}')" class="text-red-500 hover:text-red-700 p-2" title="Eliminar">
+                    <button onclick="deleteCashCount('${c.date}')" class="text-red-500 hover:text-red-700 p-2 flex-shrink-0" title="Eliminar">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         function saveCashClosing() {
-            const closing = parseFloat(document.getElementById('cash-count-closing').value);
-            if (isNaN(closing) || closing < 0) {
-                showNotification('Ingrese un monto válido', 'error');
+            const closingCash = parseFloat(document.getElementById('cash-count-closing').value);
+            const closingBank = parseFloat(document.getElementById('cash-count-closing-bank').value);
+            if (isNaN(closingCash) || closingCash < 0 || isNaN(closingBank) || closingBank < 0) {
+                showNotification('Ingrese montos válidos para caja y cuenta', 'error');
                 return;
             }
             const today = formatDateISO(appState.activeDate || new Date());
@@ -9088,9 +9171,15 @@
             }
             
             const expected = calculateCashExpected(today);
-            record.closingAmount = closing;
-            record.expectedAmount = expected;
-            record.difference = closing - expected;
+            record.closingCash = closingCash;
+            record.closingBank = closingBank;
+            record.closingAmount = closingCash + closingBank;
+            record.expectedCash = expected.cash;
+            record.expectedBank = expected.bank;
+            record.expectedAmount = expected.total;
+            record.differenceCash = closingCash - expected.cash;
+            record.differenceBank = closingBank - expected.bank;
+            record.difference = (closingCash + closingBank) - expected.total;
             record.notes = document.getElementById('cash-count-notes').value || '';
             record.timestamp = Date.now();
             
@@ -10239,6 +10328,7 @@ Total de productos a comprar: ${shoppingList.length}
             document.getElementById('settings-margin').value = appState.defaultMargin;
             document.getElementById('settings-cash').value = appState.cash;
             document.getElementById('settings-bank').value = appState.bank;
+            document.getElementById('settings-initial-capital').value = appState.initialCapital || 0;
             document.getElementById('settings-mercado-fee').value = appState.mercadoCreditoFee || 5;
             
             document.getElementById('settings-product-count').textContent = appState.inventory.length;
@@ -10512,9 +10602,13 @@ Total de productos a comprar: ${shoppingList.length}
         function saveBalancesFromSettings() {
             const cash = parseFloat(document.getElementById('settings-cash').value) || 0;
             const bank = parseFloat(document.getElementById('settings-bank').value) || 0;
+            const initialCapital = parseFloat(document.getElementById('settings-initial-capital').value) || 0;
             
             appState.cash = cash;
             appState.bank = bank;
+            appState.initialCapital = initialCapital;
+            
+            console.log('Saldos guardados manualmente - Caja:', cash, 'Cuenta:', bank, 'Capital Inicial:', initialCapital);
             
             saveToLocalStorage();
             renderAll();
@@ -12672,7 +12766,9 @@ RESULTADOS:
         
         function recalculateBalances() {
             try {
-                let cash = parseFloat(appState.initialCapital) || 0;
+                // Empezar desde cero y sumar todas las transacciones registradas
+                // Las inyecciones de capital deben estar registradas como capitalAdjustments
+                let cash = 0;
                 let bank = 0;
                 
                 // Capital adjustments (inyecciones)
@@ -13109,31 +13205,61 @@ RESULTADOS:
     </script>
     <!-- ==================== ARQUEO DE CAJA MODAL ==================== -->
     <div id="cash-count-modal" class="modal">
-        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
-            <h3 class="text-xl font-bold mb-4 text-green-600"><i class="fas fa-cash-register"></i> Arqueo de Caja</h3>
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 class="text-xl font-bold mb-4 text-green-600"><i class="fas fa-cash-register"></i> Arqueo de Caja y Cuenta</h3>
             <div id="cash-count-opening-section">
-                <p class="text-sm text-gray-600 mb-2">Registrar apertura de caja para hoy</p>
+                <p class="text-sm text-gray-600 mb-2">Registrar apertura para hoy</p>
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">💵 Monto en caja (efectivo)</label>
+                    <input type="number" id="cash-count-opening" class="w-full border-2 border-green-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('cash-count-opening-bank').focus();}">
+                </div>
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Monto en caja al abrir</label>
-                    <input type="number" id="cash-count-opening" class="w-full border-2 border-green-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();saveCashOpening();}">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">🏦 Monto en cuenta (banco)</label>
+                    <input type="number" id="cash-count-opening-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();saveCashOpening();}">
                 </div>
                 <button onclick="saveCashOpening()" class="w-full bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700">Guardar Apertura</button>
             </div>
             <div id="cash-count-closing-section" class="hidden space-y-4">
-                <p class="text-sm text-gray-600 mb-2">Cierre de caja - <span id="cash-count-date"></span></p>
+                <p class="text-sm text-gray-600 mb-2">Cierre - <span id="cash-count-date"></span></p>
+                
                 <div class="bg-gray-50 rounded-lg p-3 space-y-2 text-sm">
+                    <p class="font-bold text-gray-700 mb-1">💵 Caja (efectivo)</p>
                     <div class="flex justify-between"><span>Apertura:</span><span class="font-bold" id="cc-opening">$0</span></div>
-                    <div class="flex justify-between"><span>Ventas efectivo hoy:</span><span class="font-bold text-green-600" id="cc-sales">$0</span></div>
-                    <div class="flex justify-between"><span>Gastos/Retiros hoy:</span><span class="font-bold text-red-600" id="cc-expenses">$0</span></div>
-                    <div class="border-t pt-2 flex justify-between font-bold text-lg"><span>Esperado:</span><span id="cc-expected">$0</span></div>
+                    <div class="flex justify-between"><span>Ventas efectivo:</span><span class="font-bold text-green-600" id="cc-sales">$0</span></div>
+                    <div class="flex justify-between"><span>Gastos/Retiros efectivo:</span><span class="font-bold text-red-600" id="cc-expenses">$0</span></div>
+                    <div class="flex justify-between"><span>Esperado caja:</span><span class="font-bold text-blue-600" id="cc-expected">$0</span></div>
+                </div>
+                <div class="bg-blue-50 rounded-lg p-3 space-y-2 text-sm">
+                    <p class="font-bold text-gray-700 mb-1">🏦 Cuenta (banco)</p>
+                    <div class="flex justify-between"><span>Apertura:</span><span class="font-bold" id="cc-opening-bank">$0</span></div>
+                    <div class="flex justify-between"><span>Ventas débito:</span><span class="font-bold text-green-600" id="cc-sales-bank">$0</span></div>
+                    <div class="flex justify-between"><span>Gastos/Retiros débito:</span><span class="font-bold text-red-600" id="cc-expenses-bank">$0</span></div>
+                    <div class="flex justify-between"><span>Esperado cuenta:</span><span class="font-bold text-blue-600" id="cc-expected-bank">$0</span></div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">💵 Monto real en caja (contado)</label>
+                    <input type="number" id="cash-count-closing" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" oninput="updateCashDifference()" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('cash-count-closing-bank').focus();}">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Monto real en caja</label>
-                    <input type="number" id="cash-count-closing" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" oninput="updateCashDifference()" onkeydown="if(event.key==='Enter'){event.preventDefault();saveCashClosing();}">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">🏦 Monto real en cuenta (banco)</label>
+                    <input type="number" id="cash-count-closing-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" oninput="updateCashDifference()" onkeydown="if(event.key==='Enter'){event.preventDefault();saveCashClosing();}">
                 </div>
+                
                 <div id="cash-count-diff-box" class="p-3 rounded-lg text-center font-bold hidden">
                     <p id="cash-count-diff-label"></p>
-                    <p id="cash-count-diff-amount" class="text-2xl"></p>
+                    <div class="flex justify-between text-sm mt-1">
+                        <span id="cc-diff-cash-label">Caja:</span>
+                        <span id="cc-diff-cash-amount" class="font-bold"></span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span id="cc-diff-bank-label">Cuenta:</span>
+                        <span id="cc-diff-bank-amount" class="font-bold"></span>
+                    </div>
+                    <div class="border-t pt-1 mt-1">
+                        <span id="cc-diff-total-label">Total:</span>
+                        <span id="cash-count-diff-amount" class="text-2xl"></span>
+                    </div>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Notas (opcional)</label>

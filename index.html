@@ -1507,7 +1507,7 @@
                         <p class="text-2xl font-bold text-emerald-800" id="metric-net-profit">$0</p>
                         <span class="text-sm font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full" id="metric-avg-margin">0%</span>
                     </div>
-                    <p class="text-xs text-emerald-500 mt-1">Margen promedio</p>
+                    <p class="text-xs text-emerald-500 mt-1">Margen sobre ventas</p>
                 </div>
                 <div class="bg-purple-50 rounded-xl p-4 border border-purple-200">
                     <p class="text-purple-600 text-xs font-bold uppercase">📈 Retorno de Inversión</p>
@@ -8424,29 +8424,18 @@
                     .reduce((sum, adj) => sum + adj.amount, 0);
                 const totalInvested = (appState.initialCapital || 0) + capitalInjected;
                 
-                // Calcular margen de ganancia promedio de todos los productos
-                let avgMargin = 0;
-                if (appState.inventory.length > 0) {
-                    const totalMargin = appState.inventory.reduce((sum, p) => {
-                        const cost = p.cost || 0;
-                        const price = p.salePrice || p.price || 0;
-                        if (cost > 0 && price > 0) {
-                            const margin = ((price - cost) / cost) * 100;
-                            return sum + margin;
-                        }
-                        return sum;
-                    }, 0);
-                    avgMargin = totalMargin / appState.inventory.length;
-                }
+                // Calcular margen de ganancia neta sobre ventas totales
+                const totalSalesAmount = appState.sales.reduce((sum, s) => sum + (s.total || 0), 0);
+                const netProfitMargin = totalSalesAmount > 0 ? ((netProfit / totalSalesAmount) * 100) : 0;
                 
                 updateMetric('metric-capital-injected', `$${formatMoney(totalCapital)}`, 'text-blue-800');
                 updateMetric('metric-net-profit', `$${formatMoney(netProfit)}`, netProfit >= 0 ? 'text-emerald-800' : 'text-red-600');
                 
-                // Actualizar margen promedio (margen de productos, no de ganancia neta)
+                // Actualizar margen de ganancia neta
                 const marginEl = document.getElementById('metric-avg-margin');
                 if (marginEl) {
-                    marginEl.textContent = `${fmtNumber(avgMargin, 1)}%`;
-                    marginEl.title = 'Margen promedio de productos (no margen de ganancia neta)';
+                    marginEl.textContent = `${fmtNumber(netProfitMargin, 1)}%`;
+                    marginEl.title = 'Margen de ganancia neta sobre ventas totales';
                 }
                 
                 // ===== ROI Y RECUPERACIÓN =====

@@ -2393,11 +2393,12 @@
                 <!-- Productos aplicables -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Productos incluidos</label>
-                    <input type="text" id="promo-product-search" class="w-full border-2 border-purple-200 rounded-xl px-4 py-2 mb-2 text-sm" placeholder="Buscar producto..." oninput="filterPromoProducts(this.value)">
-                    <div class="bg-gray-50 rounded-xl p-3 max-h-40 overflow-y-auto" id="promo-products-list">
-                        <p class="text-sm text-gray-500">Cargando productos...</p>
+                    <input type="text" id="promo-product-search" class="w-full border-2 border-purple-200 rounded-xl px-4 py-2 mb-2 text-sm" placeholder="Buscar producto..." oninput="filterPromoProductsSearch(this.value)">
+                    <div id="promo-search-results" class="bg-white border border-purple-200 rounded-xl max-h-32 overflow-y-auto mb-2 hidden"></div>
+                    <div id="promo-selected-products" class="space-y-2">
+                        <p class="text-sm text-gray-400 italic">Ningún producto seleccionado. Busca y agregá productos arriba.</p>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">Deja todos desmarcados para aplicar a TODOS los productos</p>
+                    <p class="text-xs text-gray-500 mt-1" id="promo-products-hint">Dejá vacío para aplicar a TODOS los productos</p>
                 </div>
 
                 <!-- Días y horarios -->
@@ -3997,7 +3998,13 @@
                                 case 'bundle': {
                                     const bundlePrice = promo.bundlePrice || promo.discount || 0;
                                     if (bundlePrice > 0) {
-                                        futureDiscount = futureSubtotal - bundlePrice;
+                                        const bundleItems = promo.bundleItems || (promo.productIds || []).map(id => ({ productId: id, qty: 1 }));
+                                        let bundleNormalPrice = 0;
+                                        for (const bi of bundleItems) {
+                                            const prod = appState.inventory.find(p => p.id === bi.productId);
+                                            bundleNormalPrice += (prod?.salePrice || 0) * (bi.qty || 1);
+                                        }
+                                        futureDiscount = bundleNormalPrice - bundlePrice;
                                         if (futureDiscount < 0) futureDiscount = 0;
                                     }
                                     break;
@@ -11526,20 +11533,20 @@ RESULTADOS:
                     }
                     case 'bundle': {
                         const bundlePrice = promo.bundlePrice || promo.discount || 0;
-                        const bundleProductIds = promo.productIds || [];
-                        if (bundlePrice > 0 && bundleProductIds.length >= 2) {
-                            // Ver cuántos sets completos del bundle hay (1 unidad de cada producto = 1 set)
+                        const bundleItems = promo.bundleItems || (promo.productIds || []).map(id => ({ productId: id, qty: 1 }));
+                        if (bundlePrice > 0 && bundleItems.length >= 1) {
+                            // Ver cuántos sets completos del bundle hay respetando cantidades por producto
                             let sets = Infinity;
-                            for (const pid of bundleProductIds) {
-                                const item = applicableItems.find(i => i.productId === pid);
+                            for (const bi of bundleItems) {
+                                const item = applicableItems.find(i => i.productId === bi.productId);
                                 if (!item) { sets = 0; break; }
-                                sets = Math.min(sets, item.quantity);
+                                sets = Math.min(sets, Math.floor(item.quantity / (bi.qty || 1)));
                             }
-                            if (sets > 0) {
+                            if (sets > 0 && sets !== Infinity) {
                                 let normalPrice = 0;
-                                for (const pid of bundleProductIds) {
-                                    const item = applicableItems.find(i => i.productId === pid);
-                                    normalPrice += item.price * sets;
+                                for (const bi of bundleItems) {
+                                    const item = applicableItems.find(i => i.productId === bi.productId);
+                                    normalPrice += item.price * sets * (bi.qty || 1);
                                 }
                                 discount = normalPrice - (sets * bundlePrice);
                                 if (discount < 0) discount = 0;
@@ -11810,7 +11817,16 @@ RESULTADOS:
                     else if (p.type === 'bundle') discountText = `$${formatMoney(p.bundlePrice || p.discount || 0)} combo`;
                     else discountText = `$${p.discount} off`;
                     
-                    const productCount = p.productIds && p.productIds.length > 0 ? `${p.productIds.length} productos` : 'Todos los productos';
+                    let productCount = 'Todos los productos';
+                    if (p.type === 'bundle' && p.bundleItems && p.bundleItems.length > 0) {
+                        productCount = p.bundleItems.map(bi => {
+                            const prod = appState.inventory.find(pr => pr.id === bi.productId);
+                            const name = prod ? prod.name.split(' ').slice(0, 2).join(' ') : bi.productId;
+                            return `${bi.qty || 1} ${name}`;
+                        }).join(' + ');
+                    } else if (p.productIds && p.productIds.length > 0) {
+                        productCount = `${p.productIds.length} productos`;
+                    }
                     const useCount = usageCounts[p.id] || 0;
                     
                     return `
@@ -12186,19 +12202,15 @@ RESULTADOS:
 
         // ==================== PROMO CRUD ====================
 
+        let promoModalSelected = [];
+
         function openPromoModal(promoId) {
             const modal = document.getElementById('promo-modal');
             const title = document.getElementById('promo-modal-title');
-            const productsList = document.getElementById('promo-products-list');
             
-            // Cargar productos para selección
-            productsList.innerHTML = appState.inventory.map(p => `
-                <label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-100 rounded px-2">
-                    <input type="checkbox" class="promo-product-check" value="${p.id}">
-                    <span class="text-sm">${escapeHtml(p.name)}</span>
-                    <span class="text-xs text-gray-400 ml-auto">$${formatMoney(p.salePrice)}</span>
-                </label>
-            `).join('');
+            // Limpiar búsqueda
+            document.getElementById('promo-product-search').value = '';
+            document.getElementById('promo-search-results').classList.add('hidden');
             
             if (promoId) {
                 const promo = appState.promotions.find(p => p.id === promoId);
@@ -12226,10 +12238,22 @@ RESULTADOS:
                     document.getElementById('promo-day-' + i).checked = promo.days ? promo.days.includes(i) : true;
                 }
                 
-                // Marcar productos
-                document.querySelectorAll('.promo-product-check').forEach(cb => {
-                    cb.checked = promo.productIds ? promo.productIds.includes(cb.value) : false;
-                });
+                // Cargar productos seleccionados
+                if (promo.type === 'bundle' && promo.bundleItems && promo.bundleItems.length > 0) {
+                    promoModalSelected = promo.bundleItems.map(bi => ({
+                        productId: bi.productId,
+                        qty: bi.qty || 1,
+                        name: appState.inventory.find(p => p.id === bi.productId)?.name || bi.productId
+                    }));
+                } else if (promo.productIds && promo.productIds.length > 0) {
+                    promoModalSelected = promo.productIds.map(pid => ({
+                        productId: pid,
+                        qty: 1,
+                        name: appState.inventory.find(p => p.id === pid)?.name || pid
+                    }));
+                } else {
+                    promoModalSelected = [];
+                }
                 
                 onPromoTypeChange();
             } else {
@@ -12253,23 +12277,107 @@ RESULTADOS:
                 for (let i = 0; i < 7; i++) {
                     document.getElementById('promo-day-' + i).checked = true;
                 }
-                document.querySelectorAll('.promo-product-check').forEach(cb => cb.checked = false);
+                promoModalSelected = [];
                 onPromoTypeChange();
             }
             
+            renderPromoSelectedProducts();
             modal.classList.remove('hidden');
         }
 
         function closePromoModal() {
             document.getElementById('promo-modal').classList.add('hidden');
+            promoModalSelected = [];
         }
 
-        function filterPromoProducts(query) {
+        function filterPromoProductsSearch(query) {
+            const resultsDiv = document.getElementById('promo-search-results');
             const q = (query || '').toLowerCase().trim();
-            document.querySelectorAll('#promo-products-list label').forEach(label => {
-                const text = label.textContent.toLowerCase();
-                label.style.display = text.includes(q) ? '' : 'none';
+            
+            if (!q) {
+                resultsDiv.classList.add('hidden');
+                return;
+            }
+            
+            const alreadySelected = new Set(promoModalSelected.map(s => s.productId));
+            const matches = appState.inventory.filter(p => {
+                if (alreadySelected.has(p.id)) return false;
+                return p.name.toLowerCase().includes(q);
+            }).slice(0, 8);
+            
+            if (matches.length === 0) {
+                resultsDiv.innerHTML = '<p class="text-sm text-gray-400 px-3 py-2">No se encontraron productos</p>';
+            } else {
+                resultsDiv.innerHTML = matches.map(p => `
+                    <div onclick="addProductToPromo('${p.id}')" class="flex items-center gap-2 px-3 py-2 hover:bg-purple-50 cursor-pointer border-b last:border-b-0">
+                        <span class="text-sm font-medium text-gray-800">${escapeHtml(p.name)}</span>
+                        <span class="text-xs text-gray-400 ml-auto">$${formatMoney(p.salePrice)}</span>
+                    </div>
+                `).join('');
+            }
+            
+            resultsDiv.classList.remove('hidden');
+        }
+
+        function addProductToPromo(productId) {
+            const product = appState.inventory.find(p => p.id === productId);
+            if (!product) return;
+            if (promoModalSelected.some(s => s.productId === productId)) return;
+            
+            promoModalSelected.push({
+                productId: productId,
+                qty: 1,
+                name: product.name
             });
+            
+            document.getElementById('promo-product-search').value = '';
+            document.getElementById('promo-search-results').classList.add('hidden');
+            renderPromoSelectedProducts();
+        }
+
+        function removeProductFromPromo(productId) {
+            promoModalSelected = promoModalSelected.filter(s => s.productId !== productId);
+            renderPromoSelectedProducts();
+        }
+
+        function updatePromoProductQty(productId, delta) {
+            const item = promoModalSelected.find(s => s.productId === productId);
+            if (!item) return;
+            item.qty = Math.max(1, (item.qty || 1) + delta);
+            renderPromoSelectedProducts();
+        }
+
+        function renderPromoSelectedProducts() {
+            const container = document.getElementById('promo-selected-products');
+            const type = document.getElementById('promo-type').value;
+            const isBundle = type === 'bundle';
+            
+            if (promoModalSelected.length === 0) {
+                container.innerHTML = '<p class="text-sm text-gray-400 italic">Ningún producto seleccionado. Busca y agregá productos arriba.</p>';
+                return;
+            }
+            
+            container.innerHTML = promoModalSelected.map(item => `
+                <div class="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 border">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-gray-800 truncate">${escapeHtml(item.name)}</p>
+                    </div>
+                    <div class="flex items-center gap-2 ml-3">
+                        ${isBundle ? `
+                        <button onclick="updatePromoProductQty('${item.productId}', -1)" class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                        <span class="text-sm font-bold w-6 text-center">${item.qty}</span>
+                        <button onclick="updatePromoProductQty('${item.productId}', 1)" class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        ` : `<span class="text-xs text-gray-500">1 u.</span>`}
+                        <button onclick="removeProductFromPromo('${item.productId}')" class="text-red-500 hover:text-red-700 ml-2 text-xs">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
         }
 
         function onPromoTypeChange() {
@@ -12309,6 +12417,9 @@ RESULTADOS:
                 hint.textContent = type === 'percent' ? 'Porcentaje de descuento' : 'Monto fijo de descuento';
                 document.getElementById('promo-discount').disabled = false;
             }
+            
+            // Re-renderizar productos seleccionados para mostrar/ocultar controles de cantidad
+            renderPromoSelectedProducts();
         }
         
         function savePromotion() {
@@ -12327,8 +12438,7 @@ RESULTADOS:
                 if (document.getElementById('promo-day-' + i).checked) days.push(i);
             }
             
-            const productIds = [];
-            document.querySelectorAll('.promo-product-check:checked').forEach(cb => productIds.push(cb.value));
+            const productIds = promoModalSelected.map(s => s.productId);
             
             const promo = {
                 id: id || 'PROMO-' + Date.now(),
@@ -12358,6 +12468,10 @@ RESULTADOS:
             
             if (type === 'bundle') {
                 promo.bundlePrice = parseFloat(document.getElementById('promo-bundle-price').value) || 0;
+                promo.bundleItems = promoModalSelected.map(s => ({
+                    productId: s.productId,
+                    qty: s.qty || 1
+                }));
             }
             
             if (type === 'threshold') {

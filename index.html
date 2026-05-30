@@ -3974,8 +3974,14 @@
                                         const bundleItems = promo.bundleItems || (promo.productIds || []).map(id => ({ productId: id, qty: 1 }));
                                         let bundleNormalPrice = 0;
                                         for (const bi of bundleItems) {
-                                            const prod = appState.inventory.find(p => p.id === bi.productId);
-                                            bundleNormalPrice += (prod?.salePrice || 0) * (bi.qty || 1);
+                                            const ids = bi.productIds || [bi.productId];
+                                            const qty = bi.qty || 1;
+                                            let maxPrice = 0;
+                                            for (const pid of ids) {
+                                                const prod = appState.inventory.find(p => p.id === pid);
+                                                if (prod && prod.salePrice > maxPrice) maxPrice = prod.salePrice;
+                                            }
+                                            bundleNormalPrice += maxPrice * qty;
                                         }
                                         futureDiscount = bundleNormalPrice - bundlePrice;
                                         if (futureDiscount < 0) futureDiscount = 0;
@@ -5469,6 +5475,13 @@
                 components: isComposite ? JSON.parse(JSON.stringify(pendingComponents)) : undefined
             };
 
+            // Si es producto compuesto, crear directamente sin pasar por modal de pago
+            if (isComposite) {
+                appState.pendingPurchasePayment = 'cash';
+                confirmPurchase();
+                return;
+            }
+
             document.getElementById('purchase-total-amount').textContent = `$${formatMoney(totalCost)}`;
             document.getElementById('purchase-cash-available').textContent = `$${formatMoney(appState.cash)}`;
             document.getElementById('purchase-bank-available').textContent = `$${formatMoney(appState.bank)}`;
@@ -5568,23 +5581,25 @@
             const method = appState.pendingPurchasePayment || 'cash';
             const currentCash = parseFloat(appState.cash) || 0;
             const currentBank = parseFloat(appState.bank) || 0;
-            
-            if (method === 'cash' && totalCost > currentCash) {
-                showNotification(`Fondos insuficientes en caja. Necesitas: $${formatMoney(totalCost)}, Tienes: $${formatMoney(currentCash)}`, 'error');
-                return;
-            }
-            if (method === 'bank' && totalCost > currentBank) {
-                showNotification(`Fondos insuficientes en cuenta. Necesitas: $${formatMoney(totalCost)}, Tienes: $${formatMoney(currentBank)}`, 'error');
-                return;
-            }
-
-            if (method === 'cash') {
-                appState.cash = currentCash - totalCost;
-            } else {
-                appState.bank = currentBank - totalCost;
-            }
-
             const isComposite = appState.pendingPurchase.isComposite || false;
+            
+            // Solo descontar dinero si NO es producto compuesto (los compuestos usan subproductos ya existentes)
+            if (!isComposite) {
+                if (method === 'cash' && totalCost > currentCash) {
+                    showNotification(`Fondos insuficientes en caja. Necesitas: $${formatMoney(totalCost)}, Tienes: $${formatMoney(currentCash)}`, 'error');
+                    return;
+                }
+                if (method === 'bank' && totalCost > currentBank) {
+                    showNotification(`Fondos insuficientes en cuenta. Necesitas: $${formatMoney(totalCost)}, Tienes: $${formatMoney(currentBank)}`, 'error');
+                    return;
+                }
+
+                if (method === 'cash') {
+                    appState.cash = currentCash - totalCost;
+                } else {
+                    appState.bank = currentBank - totalCost;
+                }
+            }
             
             // Crear producto con sistema de lotes
             const product = {
@@ -5637,27 +5652,27 @@
             appState.inventory.push(product);
             console.log('Inventario después:', appState.inventory.length, 'productos');
 
-            // Registrar como INVERSIÓN (no como gasto)
-            appState.investments.push({
-                id: 'PURCHASE-' + Date.now(),
-                date: formatDateISO(appState.activeDate),
-                concept: isComposite 
-                    ? `Preparación: ${product.name} (${product.components.length} componentes)` 
-                    : `Compra: ${product.name} (${product.stock} unidades)`,
-                amount: totalCost,
-                source: method === 'cash' ? 'cash' : 'bank',
-                type: 'purchase',
-                timestamp: Date.now()
-            });
-            
-            // Tracking de facturación
-            if (!appState.invoiceTracking) {
-                appState.invoiceTracking = { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 };
-            }
-            if (appState.pendingPurchase.invoiceType === 'white') {
-                appState.invoiceTracking.purchasedWhite += totalCost;
-            } else {
-                appState.invoiceTracking.purchasedBlack += totalCost;
+            // Registrar como INVERSIÓN (solo si no es compuesto)
+            if (!isComposite) {
+                appState.investments.push({
+                    id: 'PURCHASE-' + Date.now(),
+                    date: formatDateISO(appState.activeDate),
+                    concept: `Compra: ${product.name} (${product.stock} unidades)`,
+                    amount: totalCost,
+                    source: method === 'cash' ? 'cash' : 'bank',
+                    type: 'purchase',
+                    timestamp: Date.now()
+                });
+                
+                // Tracking de facturación
+                if (!appState.invoiceTracking) {
+                    appState.invoiceTracking = { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 };
+                }
+                if (appState.pendingPurchase.invoiceType === 'white') {
+                    appState.invoiceTracking.purchasedWhite += totalCost;
+                } else {
+                    appState.invoiceTracking.purchasedBlack += totalCost;
+                }
             }
 
             console.log('Guardando en localStorage...');
@@ -5692,7 +5707,9 @@
             console.log('renderAll completado');
             
             console.log('Mostrando notificación...');
-            showNotification(`Producto comprado y creado exitosamente. Pagado con ${method === 'cash' ? 'Caja' : 'Cuenta'}`, 'success');
+            showNotification(isComposite 
+                ? 'Producto compuesto creado exitosamente' 
+                : `Producto comprado y creado exitosamente. Pagado con ${method === 'cash' ? 'Caja' : 'Cuenta'}`, 'success');
             console.log('=== PROCESO COMPLETADO ===');
             
             // Volver foco al código de barras para escanear el siguiente producto
@@ -11602,18 +11619,33 @@ RESULTADOS:
                         const bundlePrice = promo.bundlePrice || promo.discount || 0;
                         const bundleItems = promo.bundleItems || (promo.productIds || []).map(id => ({ productId: id, qty: 1 }));
                         if (bundlePrice > 0 && bundleItems.length >= 1) {
-                            // Ver cuántos sets completos del bundle hay respetando cantidades por producto
                             let sets = Infinity;
                             for (const bi of bundleItems) {
-                                const item = applicableItems.find(i => i.productId === bi.productId);
-                                if (!item) { sets = 0; break; }
-                                sets = Math.min(sets, Math.floor(item.quantity / (bi.qty || 1)));
+                                const qtyNeeded = bi.qty || 1;
+                                const ids = bi.productIds || [bi.productId];
+                                let availableQty = 0;
+                                for (const pid of ids) {
+                                    const item = applicableItems.find(i => i.productId === pid);
+                                    if (item) availableQty += item.quantity;
+                                }
+                                sets = Math.min(sets, Math.floor(availableQty / qtyNeeded));
                             }
                             if (sets > 0 && sets !== Infinity) {
                                 let normalPrice = 0;
                                 for (const bi of bundleItems) {
-                                    const item = applicableItems.find(i => i.productId === bi.productId);
-                                    normalPrice += item.price * sets * (bi.qty || 1);
+                                    const qtyNeeded = bi.qty || 1;
+                                    let remaining = sets * qtyNeeded;
+                                    const ids = bi.productIds || [bi.productId];
+                                    const sortedItems = ids
+                                        .map(pid => applicableItems.find(i => i.productId === pid))
+                                        .filter(Boolean)
+                                        .sort((a, b) => b.price - a.price);
+                                    for (const item of sortedItems) {
+                                        if (remaining <= 0) break;
+                                        const count = Math.min(remaining, item.quantity);
+                                        normalPrice += count * item.price;
+                                        remaining -= count;
+                                    }
                                 }
                                 discount = normalPrice - (sets * bundlePrice);
                                 if (discount < 0) discount = 0;
@@ -12307,16 +12339,19 @@ RESULTADOS:
                 
                 // Cargar productos seleccionados
                 if (promo.type === 'bundle' && promo.bundleItems && promo.bundleItems.length > 0) {
-                    promoModalSelected = promo.bundleItems.map(bi => ({
-                        productId: bi.productId,
-                        qty: bi.qty || 1,
-                        name: appState.inventory.find(p => p.id === bi.productId)?.name || bi.productId
-                    }));
+                    promoModalSelected = promo.bundleItems.map(bi => {
+                        const ids = bi.productIds || [bi.productId];
+                        return {
+                            productIds: ids,
+                            qty: bi.qty || 1,
+                            names: ids.map(pid => appState.inventory.find(p => p.id === pid)?.name || pid)
+                        };
+                    });
                 } else if (promo.productIds && promo.productIds.length > 0) {
                     promoModalSelected = promo.productIds.map(pid => ({
-                        productId: pid,
+                        productIds: [pid],
                         qty: 1,
-                        name: appState.inventory.find(p => p.id === pid)?.name || pid
+                        names: [appState.inventory.find(p => p.id === pid)?.name || pid]
                     }));
                 } else {
                     promoModalSelected = [];
@@ -12376,7 +12411,7 @@ RESULTADOS:
                 resultsDiv.innerHTML = '<p class="text-sm text-gray-400 px-3 py-2">No se encontraron productos</p>';
             } else {
                 resultsDiv.innerHTML = matches.map(p => `
-                    <div onclick="addProductToPromo('${p.id}')" class="flex items-center gap-2 px-3 py-2 hover:bg-purple-50 cursor-pointer border-b last:border-b-0">
+                    <div onclick="addProductAsVariant('${p.id}')" class="flex items-center gap-2 px-3 py-2 hover:bg-purple-50 cursor-pointer border-b last:border-b-0">
                         <span class="text-sm font-medium text-gray-800">${escapeHtml(p.name)}</span>
                         <span class="text-xs text-gray-400 ml-auto">$${formatMoney(p.salePrice)}</span>
                     </div>
@@ -12386,15 +12421,34 @@ RESULTADOS:
             resultsDiv.classList.remove('hidden');
         }
 
-        function addProductToPromo(productId) {
+        let promoModalPendingVariant = null;
+
+        function addProductAsVariant(productId) {
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
-            if (promoModalSelected.some(s => s.productId === productId)) return;
+            
+            // Si hay un slot pendiente de variante, agregar ahí
+            if (typeof promoModalPendingVariant === 'number') {
+                const slot = promoModalSelected[promoModalPendingVariant];
+                if (slot && !slot.productIds.includes(productId)) {
+                    slot.productIds.push(productId);
+                    slot.names.push(product.name);
+                }
+                promoModalPendingVariant = null;
+                document.getElementById('promo-product-search').value = '';
+                document.getElementById('promo-search-results').classList.add('hidden');
+                renderPromoSelectedProducts();
+                return;
+            }
+            
+            // Verificar si ya existe en algún slot
+            const exists = promoModalSelected.some(s => s.productIds.includes(productId));
+            if (exists) return;
             
             promoModalSelected.push({
-                productId: productId,
+                productIds: [productId],
                 qty: 1,
-                name: product.name
+                names: [product.name]
             });
             
             document.getElementById('promo-product-search').value = '';
@@ -12402,13 +12456,19 @@ RESULTADOS:
             renderPromoSelectedProducts();
         }
 
+        function addVariantToPromoSlot(slotIndex) {
+            promoModalPendingVariant = slotIndex;
+            showNotification('Buscá el producto equivalente arriba y hacé clic para agregarlo', 'info', 3000);
+            document.getElementById('promo-product-search').focus();
+        }
+
         function removeProductFromPromo(productId) {
-            promoModalSelected = promoModalSelected.filter(s => s.productId !== productId);
+            promoModalSelected = promoModalSelected.filter(s => !s.productIds.includes(productId));
             renderPromoSelectedProducts();
         }
 
         function updatePromoProductQty(productId, delta) {
-            const item = promoModalSelected.find(s => s.productId === productId);
+            const item = promoModalSelected.find(s => s.productIds.includes(productId));
             if (!item) return;
             item.qty = Math.max(1, (item.qty || 1) + delta);
             renderPromoSelectedProducts();
@@ -12424,27 +12484,37 @@ RESULTADOS:
                 return;
             }
             
-            container.innerHTML = promoModalSelected.map(item => `
-                <div class="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 border">
+            container.innerHTML = promoModalSelected.map((item, index) => {
+                const nameText = item.names.join(' + ');
+                const firstId = item.productIds[0];
+                const isPending = promoModalPendingVariant === index;
+                return `
+                <div class="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 border ${isPending ? 'ring-2 ring-purple-400' : ''}">
                     <div class="flex-1 min-w-0">
-                        <p class="text-sm font-medium text-gray-800 truncate">${escapeHtml(item.name)}</p>
+                        <p class="text-sm font-medium text-gray-800 truncate">${escapeHtml(nameText)}</p>
                     </div>
                     <div class="flex items-center gap-2 ml-3">
                         ${isBundle ? `
-                        <button onclick="updatePromoProductQty('${item.productId}', -1)" class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs">
+                        <button onclick="updatePromoProductQty('${firstId}', -1)" class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs">
                             <i class="fas fa-minus"></i>
                         </button>
                         <span class="text-sm font-bold w-6 text-center">${item.qty}</span>
-                        <button onclick="updatePromoProductQty('${item.productId}', 1)" class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs">
+                        <button onclick="updatePromoProductQty('${firstId}', 1)" class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs">
                             <i class="fas fa-plus"></i>
                         </button>
                         ` : `<span class="text-xs text-gray-500">1 u.</span>`}
-                        <button onclick="removeProductFromPromo('${item.productId}')" class="text-red-500 hover:text-red-700 ml-2 text-xs">
+                        ${isBundle ? `
+                        <button onclick="addVariantToPromoSlot(${index})" class="text-purple-500 hover:text-purple-700 text-xs ${isPending ? 'animate-pulse' : ''}" title="Agregar variante equivalente">
+                            <i class="fas fa-plus-circle"></i>
+                        </button>
+                        ` : ''}
+                        <button onclick="removeProductFromPromo('${firstId}')" class="text-red-500 hover:text-red-700 text-xs">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         function onPromoTypeChange() {
@@ -12535,10 +12605,13 @@ RESULTADOS:
             
             if (type === 'bundle') {
                 promo.bundlePrice = parseFloat(document.getElementById('promo-bundle-price').value) || 0;
-                promo.bundleItems = promoModalSelected.map(s => ({
-                    productId: s.productId,
-                    qty: s.qty || 1
-                }));
+                promo.bundleItems = promoModalSelected.map(s => {
+                    if (s.productIds && s.productIds.length > 1) {
+                        return { productIds: s.productIds, qty: s.qty || 1 };
+                    }
+                    return { productId: s.productIds[0], qty: s.qty || 1 };
+                });
+                promo.productIds = promoModalSelected.flatMap(s => s.productIds || []);
             }
             
             if (type === 'threshold') {

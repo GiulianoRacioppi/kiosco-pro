@@ -1000,6 +1000,9 @@
                                 <p class="font-bold text-gray-800" id="last-added-text"></p>
                             </div>
                         </div>
+                        <button onclick="openManualSaleModal()" class="w-full mt-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition">
+                            <i class="fas fa-coins"></i> Venta Manual (sin stock)
+                        </button>
                     </div>
 
                     <div class="bg-white rounded-2xl shadow-lg p-6" id="cart-container">
@@ -4621,6 +4624,96 @@
             changeEl.className = change >= 0 
                 ? 'text-3xl font-bold text-green-800' 
                 : 'text-3xl font-bold text-red-600';
+        }
+
+        // ==================== VENTA MANUAL ====================
+        let manualSalePaymentMethod = 'cash';
+
+        function openManualSaleModal() {
+            document.getElementById('manual-sale-concept').value = '';
+            document.getElementById('manual-sale-amount').value = '';
+            manualSalePaymentMethod = 'cash';
+            setManualSalePayment('cash');
+            document.getElementById('manual-sale-modal').classList.add('active');
+            setTimeout(() => document.getElementById('manual-sale-concept').focus(), 100);
+        }
+
+        function closeManualSaleModal() {
+            document.getElementById('manual-sale-modal').classList.remove('active');
+        }
+
+        function setManualSalePayment(method) {
+            manualSalePaymentMethod = method;
+            const cashBtn = document.getElementById('btn-manual-cash');
+            const debitBtn = document.getElementById('btn-manual-debit');
+            if (cashBtn) {
+                cashBtn.className = method === 'cash'
+                    ? 'py-3 rounded-xl border-2 border-green-500 bg-green-50 text-green-700 font-bold text-sm flex items-center justify-center gap-2'
+                    : 'py-3 rounded-xl border-2 border-gray-200 text-gray-600 font-bold text-sm flex items-center justify-center gap-2';
+            }
+            if (debitBtn) {
+                debitBtn.className = method === 'debit'
+                    ? 'py-3 rounded-xl border-2 border-blue-500 bg-blue-50 text-blue-700 font-bold text-sm flex items-center justify-center gap-2'
+                    : 'py-3 rounded-xl border-2 border-gray-200 text-gray-600 font-bold text-sm flex items-center justify-center gap-2';
+            }
+        }
+
+        function saveManualSale() {
+            const concept = document.getElementById('manual-sale-concept').value.trim();
+            const amount = parseFloat(document.getElementById('manual-sale-amount').value);
+            
+            if (!concept) {
+                showNotification('Ingresá un concepto', 'error');
+                return;
+            }
+            if (!amount || amount <= 0) {
+                showNotification('Ingresá un monto válido', 'error');
+                return;
+            }
+            
+            // Actualizar caja o banco
+            if (manualSalePaymentMethod === 'cash') {
+                appState.cash += amount;
+            } else {
+                appState.bank += amount;
+            }
+            
+            const now = new Date();
+            const sale = {
+                id: 'SALE-' + Date.now(),
+                date: formatDateISO(appState.activeDate || now),
+                time: now.toLocaleTimeString('es-ES'),
+                items: [{
+                    productId: null,
+                    name: concept,
+                    quantity: 1,
+                    price: amount,
+                    cost: 0
+                }],
+                subtotal: amount,
+                discount: 0,
+                discountLabel: null,
+                promoId: null,
+                ticketId: null,
+                ticketNumber: null,
+                total: amount,
+                profit: amount,
+                paymentMethod: manualSalePaymentMethod,
+                received: amount,
+                change: 0,
+                isMercadoCredito: false,
+                mercadoCreditoFee: 0,
+                mercadoCreditoFeePct: 0,
+                timestamp: Date.now(),
+                invoiceBreakdown: { white: amount, black: 0, debit: manualSalePaymentMethod === 'debit' ? amount : 0 }
+            };
+            
+            appState.sales.push(sale);
+            saveToLocalStorage();
+            renderAll();
+            closeManualSaleModal();
+            showSuccessOverlay(amount);
+            showNotification(`Venta manual registrada: ${concept} $${formatMoney(amount)}`, 'success');
         }
 
         function completeSale() {
@@ -13661,7 +13754,7 @@ RESULTADOS:
 
             // === EXPONER FUNCIONES AL WINDOW PARA ONCLICK HANDLERS ===
             (function exposeLocalFunctions() {
-                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','loginAdmin','loginCollaborator','logout','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeypress','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
+                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','setManualSalePayment','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','loginAdmin','loginCollaborator','logout','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeypress','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
                 for (const name of fnNames) {
                     try {
                         const fn = eval(name);
@@ -13744,6 +13837,38 @@ RESULTADOS:
                 <div class="flex gap-2">
                     <button onclick="closeCashCountModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
                     <button onclick="saveCashClosing()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700">Guardar Cierre</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== VENTA MANUAL MODAL ==================== -->
+    <div id="manual-sale-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();saveManualSale();}">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-4 text-green-600"><i class="fas fa-coins"></i> Venta Manual</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Concepto</label>
+                    <input type="text" id="manual-sale-concept" class="w-full border-2 border-green-200 rounded-xl px-4 py-2" placeholder="Ej: Agua de canilla, Alquiler, Servicio...">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Monto ($)</label>
+                    <input type="number" id="manual-sale-amount" class="w-full border-2 border-green-200 rounded-xl px-4 py-2 text-xl font-bold text-center" placeholder="0" min="0.01" step="0.01">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Método de pago</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="setManualSalePayment('cash')" id="btn-manual-cash" class="py-3 rounded-xl border-2 border-green-500 bg-green-50 text-green-700 font-bold text-sm flex items-center justify-center gap-2">
+                            <i class="fas fa-money-bill-wave"></i> Efectivo
+                        </button>
+                        <button onclick="setManualSalePayment('debit')" id="btn-manual-debit" class="py-3 rounded-xl border-2 border-gray-200 text-gray-600 font-bold text-sm flex items-center justify-center gap-2">
+                            <i class="fas fa-credit-card"></i> Débito
+                        </button>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="closeManualSaleModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                    <button onclick="saveManualSale()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700">Guardar Venta</button>
                 </div>
             </div>
         </div>

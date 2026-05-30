@@ -5907,11 +5907,14 @@
                     <td class="px-3 py-2 text-sm text-gray-600">$${formatMoney((p.cost || 0))}</td>
                     <td class="px-3 py-2 text-sm font-bold text-green-600">$${formatMoney((p.salePrice || p.price || 0))}</td>
                     <td class="px-3 py-2">
-                        <button onclick="openAddStockModal('${p.id}')" class="text-blue-600 hover:text-blue-800 mr-2">
+                        <button onclick="openAddStockModal('${p.id}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Agregar stock">
                             <i class="fas fa-plus-circle"></i>
                         </button>
-                        <button onclick="openEditProductModal('${p.id}')" class="text-gray-600 hover:text-gray-800" title="Editar">
+                        <button onclick="openEditProductModal('${p.id}')" class="text-gray-600 hover:text-gray-800 mr-2" title="Editar">
                             <i class="fas fa-edit"></i>
+                        </button>
+                        <button onclick="deleteProduct('${p.id}')" class="text-red-500 hover:text-red-700" title="Eliminar producto">
+                            <i class="fas fa-trash"></i>
                         </button>
                     </td>
                 </tr>
@@ -6167,6 +6170,62 @@
 
         let addStockPaymentMethod = 'cash';
         let currentAddStockProduct = null;
+
+        function deleteProduct(productId) {
+            const product = appState.inventory.find(p => p.id === productId);
+            if (!product) return;
+            
+            if (!confirm(`¿Estás seguro de que querés eliminar "${product.name}" del inventario?\n\nEsta acción no se puede deshacer. Si el producto tiene ventas históricas, seguirán apareciendo en los registros.`)) {
+                return;
+            }
+            
+            // Eliminar de promociones
+            if (appState.promotions) {
+                appState.promotions.forEach(promo => {
+                    if (promo.productIds) {
+                        promo.productIds = promo.productIds.filter(id => id !== productId);
+                    }
+                    if (promo.bundleItems) {
+                        promo.bundleItems.forEach(bi => {
+                            if (bi.productIds) {
+                                bi.productIds = bi.productIds.filter(id => id !== productId);
+                            }
+                            if (bi.productId === productId) {
+                                bi.productId = null;
+                            }
+                        });
+                        // Limpiar bundleItems vacíos
+                        promo.bundleItems = promo.bundleItems.filter(bi => {
+                            const hasIds = bi.productIds && bi.productIds.length > 0;
+                            const hasProductId = bi.productId && bi.productId !== productId;
+                            return hasIds || hasProductId;
+                        });
+                    }
+                });
+                // Eliminar promos que quedaron sin productos (si no son de tipo threshold/percent que aplican a todos)
+                appState.promotions = appState.promotions.filter(promo => {
+                    const needsProducts = ['2x1', 'combo', 'bogo', 'pack', 'bundle'].includes(promo.type);
+                    if (!needsProducts) return true;
+                    const hasProducts = (promo.productIds && promo.productIds.length > 0) ||
+                        (promo.bundleItems && promo.bundleItems.length > 0);
+                    return hasProducts;
+                });
+            }
+            
+            // Eliminar de componentes de productos compuestos
+            appState.inventory.forEach(p => {
+                if (p.isComposite && p.components) {
+                    p.components = p.components.filter(c => c.productId !== productId);
+                }
+            });
+            
+            // Eliminar del inventario
+            appState.inventory = appState.inventory.filter(p => p.id !== productId);
+            
+            saveToLocalStorage();
+            renderAll();
+            showNotification(`Producto "${product.name}" eliminado del inventario`, 'success');
+        }
 
         function openAddStockModal(productId) {
             const product = appState.inventory.find(p => p.id === productId);

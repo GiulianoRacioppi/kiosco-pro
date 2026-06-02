@@ -2057,6 +2057,40 @@
                         </button>
                     </div>
                 </div>
+
+                <!-- Sincronización -->
+                <div class="bg-white rounded-2xl p-6 shadow-lg">
+                    <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-indigo-600">
+                        <i class="fas fa-sync-alt"></i> Sincronización
+                    </h3>
+                    <div class="space-y-4">
+                        <div class="bg-gray-50 rounded-xl p-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-sm text-gray-600">Estado:</span>
+                                <span id="settings-sync-status" class="text-sm font-bold text-gray-700">Desconocido</span>
+                            </div>
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-sm text-gray-600">Última sync:</span>
+                                <span id="settings-sync-time" class="text-sm font-mono text-gray-700">-</span>
+                            </div>
+                            <div class="flex items-center justify-between pt-2 border-t border-gray-200">
+                                <span class="text-sm text-gray-700 font-medium">💻 Este dispositivo es el principal</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="settings-master-device" class="sr-only peer" onchange="toggleMasterDevice(this.checked)">
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2">Marcá esto solo en la PC. El celular quedará como secundario y bajará productos/stock/saldos desde la PC.</p>
+                        </div>
+                        <button onclick="forceSync()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg">
+                            <i class="fas fa-sync"></i> Sincronizar Ahora
+                        </button>
+                        <button onclick="downloadFromCloud()" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-xl font-bold text-sm">
+                            <i class="fas fa-cloud-download-alt"></i> Descargar todo desde la nube
+                        </button>
+                        <p class="text-xs text-gray-500">Forzar la sincronización con la nube. Usá esto si los datos no se ven igual en otro dispositivo.</p>
+                    </div>
+                </div>
             </div>
 
             <!-- Información del Sistema -->
@@ -2836,9 +2870,8 @@
                 console.log('📦 Productos:', appState.inventory.length);
                 console.log('🛒 Ventas:', appState.sales.length);
             } else {
-                console.log('⚠️ Primera vez - No hay datos guardados');
-                // Guardar estado inicial
-                saveToLocalStorage();
+                console.log('⚠️ Primera vez - No hay datos guardados localmente');
+                // No guardar ni sincronizar estado vacío para no sobrescribir Firebase
             }
             
             // Mostrar estado de sincronización
@@ -4810,11 +4843,14 @@
                                 
                                 // Eliminar lotes vacíos
                                 compProduct.batches = compProduct.batches.filter(b => b.stock > 0);
+                                
+                                // Actualizar stock total del componente desde lotes
+                                compProduct.stock = compProduct.batches.reduce((sum, b) => sum + b.stock, 0);
+                            } else if (typeof compProduct.stock === 'number') {
+                                // Producto componente sin lotes: descontar directamente del stock
+                                const deductFromStock = Math.min(qtyToDeduct, compProduct.stock);
+                                compProduct.stock -= deductFromStock;
                             }
-                            
-                            // Actualizar stock total del componente
-                            const totalCompStock = compProduct.batches ? compProduct.batches.reduce((sum, b) => sum + b.stock, 0) : 0;
-                            compProduct.stock = totalCompStock;
                         }
                         
                         // Facturación del compuesto según su propio invoiceType
@@ -4857,11 +4893,22 @@
                             
                             // Eliminar lotes vacíos
                             product.batches = product.batches.filter(b => b.stock > 0);
+                            
+                            // Actualizar stock total desde lotes
+                            product.stock = product.batches.reduce((sum, b) => sum + b.stock, 0);
+                        } else if (typeof product.stock === 'number') {
+                            // Producto antiguo sin lotes: descontar directamente del stock
+                            const deductFromStock = Math.min(qtyToDeduct, product.stock);
+                            product.stock -= deductFromStock;
+                            qtyToDeduct -= deductFromStock;
+                            
+                            const stockValue = deductFromStock * item.price;
+                            if (product.invoiceType === 'white') {
+                                saleWhiteTotal += stockValue;
+                            } else {
+                                saleBlackTotal += stockValue;
+                            }
                         }
-                        
-                        // Compatibilidad: actualizar stock total (para productos antiguos sin lotes)
-                        const totalStock = product.batches ? product.batches.reduce((sum, b) => sum + b.stock, 0) : 0;
-                        product.stock = totalStock;
                         
                         product.lastSale = new Date().toISOString();
                         product.updatedAt = new Date().toISOString();
@@ -10734,6 +10781,36 @@ Total de productos a comprar: ${shoppingList.length}
             document.getElementById('settings-product-count').textContent = appState.inventory.length;
             document.getElementById('settings-sales-count').textContent = appState.sales.length;
             document.getElementById('settings-expenses-count').textContent = appState.expenses.length;
+            
+            // Actualizar estado de sincronización
+            const syncStatusEl = document.getElementById('settings-sync-status');
+            const syncTimeEl = document.getElementById('settings-sync-time');
+            const masterCheckbox = document.getElementById('settings-master-device');
+            
+            if (syncStatusEl) {
+                if (!navigator.onLine) {
+                    syncStatusEl.textContent = 'Sin internet';
+                    syncStatusEl.className = 'text-sm font-bold text-red-600';
+                } else if (window.db) {
+                    syncStatusEl.textContent = 'Conectado';
+                    syncStatusEl.className = 'text-sm font-bold text-green-600';
+                } else {
+                    syncStatusEl.textContent = 'Firebase no disponible';
+                    syncStatusEl.className = 'text-sm font-bold text-orange-600';
+                }
+            }
+            if (syncTimeEl) {
+                const lastSync = localStorage.getItem('kioscopro-last-sync');
+                if (lastSync) {
+                    const date = new Date(parseInt(lastSync));
+                    syncTimeEl.textContent = date.toLocaleString('es-AR');
+                } else {
+                    syncTimeEl.textContent = 'Nunca';
+                }
+            }
+            if (masterCheckbox) {
+                masterCheckbox.checked = isMasterDevice();
+            }
         }
 
         let billingPeriod = 'all'; // 'today' | 'week' | 'month' | 'all'
@@ -13453,15 +13530,38 @@ RESULTADOS:
                 }
             }
             
-            if (isRestore || firebaseTime > localTime || !hasLocalData) {
-                // Preservar carrito local (no se sincroniza)
-                const localCart = appState.cart;
+            // Preservar carrito local (no se sincroniza)
+            const localCart = appState.cart;
+            const master = isMasterDevice();
+            
+            if (!master) {
+                // DISPOSITIVO SECUNDARIO (ej: celular): la PC manda
+                // - Productos, stock, saldos, promos: reemplazar con datos de Firebase
+                // - Transacciones (ventas, gastos, etc.): fusionar para no perder lo hecho offline
+                appState.inventory = Array.isArray(data.inventory) ? JSON.parse(JSON.stringify(data.inventory)) : [];
+                appState.promotions = Array.isArray(data.promotions) ? JSON.parse(JSON.stringify(data.promotions)) : [];
+                appState.discountTickets = Array.isArray(data.discountTickets) ? JSON.parse(JSON.stringify(data.discountTickets)) : [];
+                appState.ticketRules = Array.isArray(data.ticketRules) ? JSON.parse(JSON.stringify(data.ticketRules)) : [];
                 
-                // ESTRATEGIA NUEVA: FUSIONAR datos en vez de reemplazar
-                // - Items que existen solo en local (offline) → se mantienen
-                // - Items que existen solo en Firebase → se agregan
-                // - Items que existen en ambos → se queda con el más reciente
+                // Saldos y config vienen de la PC
+                if (data.cash !== undefined) appState.cash = parseFloat(data.cash) || 0;
+                if (data.bank !== undefined) appState.bank = parseFloat(data.bank) || 0;
+                if (data.defaultMargin !== undefined) appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
+                if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
+                if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
                 
+                // Transacciones se fusionan (ventas del celular llegan a la PC, y viceversa)
+                appState.sales = smartMergeArrays(appState.sales, data.sales);
+                appState.expenses = smartMergeArrays(appState.expenses, data.expenses);
+                appState.investments = smartMergeArrays(appState.investments, data.investments);
+                appState.capitalAdjustments = smartMergeArrays(appState.capitalAdjustments, data.capitalAdjustments);
+                appState.returns = smartMergeArrays(appState.returns, data.returns);
+                appState.cashCounts = smartMergeArrays(appState.cashCounts || [], data.cashCounts || []);
+                appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
+                
+                console.log('📱 Modo secundario: datos de productos/stock/saldos reemplazados desde Firebase');
+            } else {
+                // DISPOSITIVO PRINCIPAL (ej: PC): fusión inteligente normal
                 appState.inventory = mergeInventory(appState.inventory, data.inventory);
                 appState.sales = smartMergeArrays(appState.sales, data.sales);
                 appState.expenses = smartMergeArrays(appState.expenses, data.expenses);
@@ -13471,37 +13571,45 @@ RESULTADOS:
                 appState.promotions = smartMergeArrays(appState.promotions, data.promotions);
                 appState.discountTickets = smartMergeArrays(appState.discountTickets, data.discountTickets);
                 appState.ticketRules = smartMergeArrays(appState.ticketRules, data.ticketRules);
+                appState.cashCounts = smartMergeArrays(appState.cashCounts || [], data.cashCounts || []);
+                appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 
-                // Actualizar valores simples
-                if (data.defaultMargin !== undefined) appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
-                if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
-                // autoPromotionConfig eliminado
-                
-                // Restaurar fechas
-                try {
-                    if (data.activeDate) appState.activeDate = parseDateLocal(data.activeDate);
-                    if (data.calendarMonth) appState.calendarMonth = parseDateLocal(data.calendarMonth);
-                } catch(e) {
-                    console.error('Error parseando fechas:', e);
+                // Para valores simples, usar Firebase solo si es más reciente o no hay datos locales
+                if (isRestore || firebaseTime > localTime || !hasLocalData) {
+                    if (data.defaultMargin !== undefined) appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
+                    if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
+                    if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
+                    
+                    // cash y bank solo se actualizan si Firebase es más reciente, para no pisar ajustes manuales
+                    if (data.cash !== undefined) appState.cash = parseFloat(data.cash) || 0;
+                    if (data.bank !== undefined) appState.bank = parseFloat(data.bank) || 0;
                 }
-                
-                // Restaurar carrito local
-                appState.cart = localCart;
-                
-                // Guardar en localStorage y renderizar
-                saveToLocalStorage(false); // false = no disparar syncToFirebase
-                lastSyncTime = Date.now(); // Actualizar para evitar re-merges
-                localStorage.setItem('kioscopro-last-sync', lastSyncTime);
-                renderAll();
-                
-                // Solo mostrar notificación si:
-                // - NO es la carga inicial
-                // - Y NO es el mismo dispositivo (datos de otro dispositivo)
-                if (!isInitialSync && !isSameDevice) {
-                    showNotification('📲 Datos sincronizados desde otro dispositivo', 'success');
-                } else if (isInitialSync) {
-                    console.log('📥 Datos cargados desde Firebase (inicial)');
-                }
+            }
+            
+            // Restaurar fechas en ambos modos
+            try {
+                if (data.activeDate) appState.activeDate = parseDateLocal(data.activeDate);
+                if (data.calendarMonth) appState.calendarMonth = parseDateLocal(data.calendarMonth);
+            } catch(e) {
+                console.error('Error parseando fechas:', e);
+            }
+            
+            // Restaurar carrito local
+            appState.cart = localCart;
+            
+            // Guardar en localStorage y renderizar
+            saveToLocalStorage(false); // false = no disparar syncToFirebase
+            lastSyncTime = Date.now();
+            localStorage.setItem('kioscopro-last-sync', lastSyncTime);
+            renderAll();
+            
+            // Solo mostrar notificación si:
+            // - NO es la carga inicial
+            // - Y NO es el mismo dispositivo (datos de otro dispositivo)
+            if (!isInitialSync && !isSameDevice) {
+                showNotification('📲 Datos sincronizados desde otro dispositivo', 'success');
+            } else if (isInitialSync) {
+                console.log('📥 Datos cargados desde Firebase (inicial)');
             }
             
             // Marcar que ya pasó la carga inicial
@@ -13576,6 +13684,43 @@ RESULTADOS:
             }
         }
 
+        function toggleMasterDevice(isMaster) {
+            localStorage.setItem('kioscopro-is-master', isMaster ? '1' : '0');
+            showNotification(isMaster ? '💻 Este dispositivo ahora es el PRINCIPAL' : '📱 Este dispositivo ahora es SECUNDARIO', 'success');
+        }
+        
+        function isMasterDevice() {
+            return localStorage.getItem('kioscopro-is-master') === '1';
+        }
+        
+        async function downloadFromCloud() {
+            if (!window.db) {
+                showNotification('Firebase no disponible', 'error');
+                return;
+            }
+            updateSyncStatus('syncing');
+            try {
+                const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                const docRef = doc(window.db, "kioscos", "main");
+                const docSnap = await getDoc(docRef);
+                
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    // Forzar merge completo como si fuera la primera vez
+                    isInitialSync = true;
+                    mergeFirebaseData(data);
+                    updateSyncStatus('synced');
+                    showNotification('☁️ Datos descargados desde la nube', 'success');
+                } else {
+                    showNotification('No hay datos en la nube', 'warning');
+                }
+            } catch (err) {
+                console.error('Error descargando:', err);
+                updateSyncStatus('error');
+                showNotification('Error al descargar datos', 'error');
+            }
+        }
+        
         // ==================== LOCAL STORAGE ====================
         function saveToLocalStorage(triggerSync = true) {
             localStorage.setItem('kioscopro-data', JSON.stringify(appState));

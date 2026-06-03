@@ -6331,7 +6331,7 @@
                     </td>
                     <td class="px-3 py-2 text-sm font-mono text-gray-600">${p.barcode}</td>
                     <td class="px-3 py-2 text-center">
-                        <span class="px-2 py-1 rounded-full text-xs font-bold ${statusClass}">${totalStock}</span>
+                        <span class="px-2 py-1 rounded-full text-xs font-bold ${statusClass}">${p.saleByWeight && p.weightPerUnit ? Math.round(totalStock * p.weightPerUnit) + 'g' : totalStock}</span>
                     </td>
                     <td class="px-3 py-2 text-sm">${batchesHtml}</td>
                     <td class="px-3 py-2 text-sm text-gray-600">$${formatMoney((p.cost || 0))}</td>
@@ -6494,6 +6494,13 @@
                 } else if (priority && priority.includes('🟠')) {
                     // Compra preventiva: stock para los días de stock deseado
                     toBuy = Math.max(0, Math.ceil(avgDaily * targetDays) - totalStock);
+                }
+                
+                // Para productos por peso, sugerir compra en bolsas enteras
+                if (p.saleByWeight && toBuy > 0 && toBuy < 1) {
+                    toBuy = 1;
+                } else if (p.saleByWeight && toBuy > 0) {
+                    toBuy = Math.ceil(toBuy);
                 }
                 
                 // Ajustar por vencimiento si aplica
@@ -7385,7 +7392,7 @@
                     p.name.toLowerCase().includes(search) || 
                     p.barcode.toLowerCase().includes(search)
                 )
-            ).slice(0, 6);
+            );
 
             document.getElementById('quick-stock-results').innerHTML = results.map(p => {
                 const stock = getProductStock(p);
@@ -10215,7 +10222,14 @@
                 // Calcular cuánto necesito para los días de stock deseado + stock mínimo de seguridad
                 const targetDemand = avgDaily * targetDays;
                 const targetStock = Math.ceil(targetDemand + minStock);
-                const suggestedQty = Math.max(0, targetStock - currentStock);
+                let suggestedQty = Math.max(0, targetStock - currentStock);
+                
+                // Para productos por peso, sugerir compra en bolsas enteras
+                if (product.saleByWeight && suggestedQty > 0 && suggestedQty < 1) {
+                    suggestedQty = 1;
+                } else if (product.saleByWeight && suggestedQty > 0) {
+                    suggestedQty = Math.ceil(suggestedQty);
+                }
                 
                 if (suggestedQty <= 0) return;
                 

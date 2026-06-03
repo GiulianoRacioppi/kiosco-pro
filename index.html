@@ -7074,11 +7074,12 @@
                 return;
             }
             
+            const isWeight = product.saleByWeight && product.weightPerUnit > 0;
             container.innerHTML = product.batches.map((batch, index) => `
-                <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border batch-row" data-batch-index="${index}" data-orig-qty="${batch.stock}">
+                <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border batch-row" data-batch-index="${index}" data-orig-qty="${batch.stock}" ${isWeight ? `data-sale-by-weight="true" data-weight-per-unit="${product.weightPerUnit}"` : ''}>
                     <div class="flex-1">
-                        <label class="text-xs text-gray-500">Cantidad</label>
-                        <input type="number" class="edit-batch-qty w-full border rounded px-2 py-1 text-sm" value="${batch.stock}" min="0">
+                        <label class="text-xs text-gray-500">${isWeight ? 'Cantidad (g)' : 'Cantidad'}</label>
+                        <input type="number" class="edit-batch-qty w-full border rounded px-2 py-1 text-sm" value="${isWeight ? Math.round(batch.stock * product.weightPerUnit) : batch.stock}" min="0" step="${isWeight ? '1' : '1'}">
                     </div>
                     <div class="flex-1">
                         <label class="text-xs text-gray-500">Vencimiento</label>
@@ -7106,12 +7107,20 @@
                 container.innerHTML = '';
             }
             
+            const productId = document.getElementById('edit-product-modal').dataset.productId;
+            const product = appState.inventory.find(p => p.id === productId);
+            const isWeight = product && product.saleByWeight && product.weightPerUnit > 0;
+            
             const row = document.createElement('div');
             row.className = 'flex items-center gap-2 p-2 bg-purple-50 rounded-lg border batch-row';
+            if (isWeight) {
+                row.dataset.saleByWeight = 'true';
+                row.dataset.weightPerUnit = product.weightPerUnit;
+            }
             row.innerHTML = `
                 <div class="flex-1">
-                    <label class="text-xs text-gray-500">Cantidad</label>
-                    <input type="number" class="edit-batch-qty w-full border rounded px-2 py-1 text-sm" value="1" min="1">
+                    <label class="text-xs text-gray-500">${isWeight ? 'Cantidad (g)' : 'Cantidad'}</label>
+                    <input type="number" class="edit-batch-qty w-full border rounded px-2 py-1 text-sm" value="${isWeight ? product.weightPerUnit : '1'}" min="1">
                 </div>
                 <div class="flex-1">
                     <label class="text-xs text-gray-500">Vencimiento</label>
@@ -7287,13 +7296,20 @@
                 // Procesar lotes del DOM
                 const batchRows = document.querySelectorAll('#edit-prod-batches .batch-row');
                 const newBatches = [];
+                const isWeight = product.saleByWeight && product.weightPerUnit > 0;
+                const weightPerUnit = product.weightPerUnit || 1;
                 
                 batchRows.forEach(row => {
-                    const qty = parseInt(row.querySelector('.edit-batch-qty').value) || 0;
+                    let qty = parseInt(row.querySelector('.edit-batch-qty').value) || 0;
                     const expiry = row.querySelector('.edit-batch-expiry').value || '';
                     const batchIndex = row.dataset.batchIndex;
                     const sourceSelect = row.querySelector('.edit-batch-source');
                     const domSource = sourceSelect ? sourceSelect.value : 'cash';
+                    
+                    // Si es producto por peso, convertir gramos a bolsas
+                    if (isWeight && qty > 0) {
+                        qty = qty / weightPerUnit;
+                    }
                     
                     if (batchIndex !== undefined) {
                         const idx = parseInt(batchIndex);

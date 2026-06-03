@@ -531,6 +531,26 @@
                     </div>
                     <p class="text-xs text-gray-500 mt-1">Cambiá el margen para recalcular el precio</p>
                 </div>
+                <!-- Sección Venta por Peso en Editar Producto -->
+                <div class="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                    <label class="flex items-center gap-2 mb-2 cursor-pointer">
+                        <input type="checkbox" id="edit-prod-sale-by-weight" onchange="toggleEditWeightSection()">
+                        <span class="text-sm font-bold text-blue-800">⚖️ Vender por peso (gramos)</span>
+                    </label>
+                    <div id="edit-prod-weight-section" class="hidden space-y-3 mt-3">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Gramos por unidad/bolsa</label>
+                                <input type="number" id="edit-prod-weight-per-unit" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="ej: 500" min="1" step="1" oninput="updateEditPricePerGram()">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Precio por gramo</label>
+                                <p class="text-sm font-bold text-blue-700 py-2" id="edit-prod-price-per-gram">$0</p>
+                            </div>
+                        </div>
+                        <p class="text-xs text-blue-600">El stock se maneja en bolsas, pero en ventas se podrá vender por gramos o por precio.</p>
+                    </div>
+                </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Lotes / Stock</label>
                     <div id="edit-prod-batches" class="space-y-2 mb-3"></div>
@@ -552,6 +572,7 @@
                         <option value="despensa">Despensa</option>
                         <option value="lacteos">Lácteos</option>
                         <option value="comidas">Comidas</option>
+                        <option value="caramelos">Caramelos</option>
                         <option value="basicos">Básicos</option>
                         <option value="limpieza">Limpieza</option>
                         <option value="combos">Combos</option>
@@ -1402,6 +1423,7 @@
                             <option value="despensa">Despensa</option>
                             <option value="lacteos">Lácteos</option>
                             <option value="comidas">Comidas</option>
+                            <option value="caramelos">Caramelos</option>
                         </select>
                     </div>
                     <div>
@@ -1415,6 +1437,28 @@
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Stock inicial</label>
                         <input type="number" id="inv-stock" class="w-full border rounded-lg px-3 py-2 text-sm" min="1" required onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-expiry').focus();}">
+                    </div>
+                    <!-- Sección Venta por Peso -->
+                    <div class="lg:col-span-4 bg-blue-50 rounded-xl p-4 border border-blue-200">
+                        <label class="flex items-center gap-2 mb-2 cursor-pointer">
+                            <input type="checkbox" id="inv-sale-by-weight" onchange="toggleWeightSection()">
+                            <span class="text-sm font-bold text-blue-800">⚖️ Vender por peso (gramos)</span>
+                        </label>
+                        <div id="inv-weight-section" class="hidden space-y-3 mt-3">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Gramos por unidad/bolsa</label>
+                                    <input type="number" id="inv-weight-per-unit" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="ej: 500" min="1" step="1" oninput="updatePricePerGram()">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Precio por gramo</label>
+                                    <p class="text-sm font-bold text-blue-700 py-2" id="inv-price-per-gram">$0</p>
+                                </div>
+                                <div class="flex items-end">
+                                    <p class="text-xs text-blue-600">El stock se maneja en bolsas, pero en ventas se podrá vender por gramos o por precio.</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Vencimiento</label>
@@ -3725,6 +3769,175 @@
             }
         }
 
+        let currentWeightProduct = null;
+        let currentWeightMode = 'grams';
+        
+        function toggleWeightSection() {
+            const checked = document.getElementById('inv-sale-by-weight')?.checked || false;
+            const section = document.getElementById('inv-weight-section');
+            if (section) section.classList.toggle('hidden', !checked);
+            if (checked) updatePricePerGram();
+        }
+        
+        function updatePricePerGram() {
+            const weightPerUnit = parseFloat(document.getElementById('inv-weight-per-unit')?.value) || 0;
+            const salePrice = parseFloat(document.getElementById('inv-price')?.value) || 0;
+            const perGram = weightPerUnit > 0 ? salePrice / weightPerUnit : 0;
+            document.getElementById('inv-price-per-gram').textContent = '$' + formatMoney(perGram);
+        }
+        
+        function toggleEditWeightSection() {
+            const checked = document.getElementById('edit-prod-sale-by-weight')?.checked || false;
+            const section = document.getElementById('edit-prod-weight-section');
+            if (section) section.classList.toggle('hidden', !checked);
+            if (checked) updateEditPricePerGram();
+        }
+        
+        function updateEditPricePerGram() {
+            const weightPerUnit = parseFloat(document.getElementById('edit-prod-weight-per-unit')?.value) || 0;
+            const salePrice = parseFloat(document.getElementById('edit-prod-price')?.value) || 0;
+            const perGram = weightPerUnit > 0 ? salePrice / weightPerUnit : 0;
+            document.getElementById('edit-prod-price-per-gram').textContent = '$' + formatMoney(perGram);
+        }
+        
+        function openWeightSaleModal(product) {
+            if (!product || !product.saleByWeight) return;
+            currentWeightProduct = product;
+            currentWeightMode = 'grams';
+            
+            const stockUnits = getProductStock(product);
+            const stockGrams = stockUnits * (product.weightPerUnit || 1);
+            const pricePerGram = product.salePrice / (product.weightPerUnit || 1);
+            
+            document.getElementById('weight-sale-product-name').textContent = product.name;
+            document.getElementById('weight-sale-price-per-gram').textContent = '$' + formatMoney(pricePerGram);
+            document.getElementById('weight-sale-stock-grams').textContent = formatMoney(stockGrams) + 'g (' + formatMoney(stockUnits) + ' unidades)';
+            
+            setWeightMode('grams');
+            document.getElementById('weight-sale-input').value = '';
+            document.getElementById('weight-sale-result').textContent = '$0';
+            document.getElementById('weight-sale-detail').textContent = '';
+            
+            document.getElementById('weight-sale-modal').classList.add('active');
+            setTimeout(() => document.getElementById('weight-sale-input').focus(), 100);
+        }
+        
+        function closeWeightSaleModal() {
+            document.getElementById('weight-sale-modal').classList.remove('active');
+            currentWeightProduct = null;
+        }
+        
+        function setWeightMode(mode) {
+            currentWeightMode = mode;
+            const btnGrams = document.getElementById('weight-mode-grams');
+            const btnPrice = document.getElementById('weight-mode-price');
+            const label = document.getElementById('weight-sale-input-label');
+            const input = document.getElementById('weight-sale-input');
+            const resultLabel = document.getElementById('weight-sale-result-label');
+            
+            if (mode === 'grams') {
+                btnGrams.className = 'flex-1 py-2 rounded-lg text-sm font-bold bg-white shadow text-blue-700 transition';
+                btnPrice.className = 'flex-1 py-2 rounded-lg text-sm font-bold text-gray-500 hover:text-gray-700 transition';
+                label.textContent = 'Gramos a vender';
+                input.placeholder = '0';
+                resultLabel.textContent = 'Total a cobrar';
+            } else {
+                btnGrams.className = 'flex-1 py-2 rounded-lg text-sm font-bold text-gray-500 hover:text-gray-700 transition';
+                btnPrice.className = 'flex-1 py-2 rounded-lg text-sm font-bold bg-white shadow text-blue-700 transition';
+                label.textContent = 'Pesos a cobrar';
+                input.placeholder = '0';
+                resultLabel.textContent = 'Gramos a entregar';
+            }
+            
+            onWeightSaleInput();
+        }
+        
+        function onWeightSaleInput() {
+            if (!currentWeightProduct) return;
+            
+            const input = parseFloat(document.getElementById('weight-sale-input').value) || 0;
+            const weightPerUnit = currentWeightProduct.weightPerUnit || 1;
+            const salePrice = currentWeightProduct.salePrice || 0;
+            const pricePerGram = salePrice / weightPerUnit;
+            const stockUnits = getProductStock(currentWeightProduct);
+            const stockGrams = stockUnits * weightPerUnit;
+            
+            let quantity = 0;
+            let grams = 0;
+            let price = 0;
+            
+            if (currentWeightMode === 'grams') {
+                grams = input;
+                quantity = grams / weightPerUnit;
+                price = grams * pricePerGram;
+                document.getElementById('weight-sale-result').textContent = '$' + formatMoney(price);
+                document.getElementById('weight-sale-detail').textContent = grams > 0 ? `= ${formatMoney(quantity)} unidades` : '';
+            } else {
+                price = input;
+                quantity = price / salePrice;
+                grams = quantity * weightPerUnit;
+                document.getElementById('weight-sale-result').textContent = formatMoney(grams) + 'g';
+                document.getElementById('weight-sale-detail').textContent = price > 0 ? `= ${formatMoney(quantity)} unidades` : '';
+            }
+            
+            if (quantity > stockUnits && stockUnits > 0) {
+                document.getElementById('weight-sale-detail').textContent += ' ⚠️ Sin stock suficiente';
+                document.getElementById('weight-sale-detail').classList.add('text-red-600');
+            } else {
+                document.getElementById('weight-sale-detail').classList.remove('text-red-600');
+            }
+        }
+        
+        function addWeightToCart() {
+            if (!currentWeightProduct) return;
+            
+            const input = parseFloat(document.getElementById('weight-sale-input').value) || 0;
+            const weightPerUnit = currentWeightProduct.weightPerUnit || 1;
+            const salePrice = currentWeightProduct.salePrice || 0;
+            const stockUnits = getProductStock(currentWeightProduct);
+            
+            let quantity, grams, price;
+            
+            if (currentWeightMode === 'grams') {
+                grams = input;
+                quantity = grams / weightPerUnit;
+                price = grams * (salePrice / weightPerUnit);
+            } else {
+                price = input;
+                quantity = price / salePrice;
+                grams = quantity * weightPerUnit;
+            }
+            
+            if (quantity <= 0) {
+                showNotification('Ingresá un valor mayor a 0', 'error');
+                return;
+            }
+            
+            if (quantity > stockUnits) {
+                showNotification('No hay stock suficiente', 'error');
+                return;
+            }
+            
+            const existingItem = appState.cart.find(item => item.productId === currentWeightProduct.id);
+            if (existingItem) {
+                existingItem.quantity += quantity;
+                existingItem.weightGrams = (existingItem.weightGrams || 0) + grams;
+            } else {
+                appState.cart.push({
+                    productId: currentWeightProduct.id,
+                    name: currentWeightProduct.name,
+                    price: salePrice,
+                    cost: currentWeightProduct.cost,
+                    quantity: quantity,
+                    weightGrams: grams
+                });
+            }
+            
+            closeWeightSaleModal();
+            renderCart();
+            showNotification(`${currentWeightProduct.name} ${formatMoney(grams)}g agregado`, 'success');
+        }
+
         function addToCartFromSearch(productId) {
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
@@ -3732,6 +3945,14 @@
             const availableStock = getProductStock(product);
             if (availableStock <= 0) {
                 showNotification('Sin stock disponible', 'error');
+                return;
+            }
+            
+            // Si es venta por peso, abrir modal especial
+            if (product.saleByWeight && product.weightPerUnit > 0) {
+                openWeightSaleModal(product);
+                document.getElementById('sell-search-input').value = '';
+                document.getElementById('sell-search-results').classList.add('hidden');
                 return;
             }
             
@@ -3881,6 +4102,12 @@
                 showNotification('Sin stock disponible', 'error');
                 return;
             }
+            
+            // Si es venta por peso, abrir modal especial
+            if (product.saleByWeight && product.weightPerUnit > 0) {
+                openWeightSaleModal(product);
+                return;
+            }
 
             const existingItem = appState.cart.find(item => item.productId === product.id);
             if (existingItem) {
@@ -3932,6 +4159,28 @@
                 } else {
                     cartContainer.innerHTML = appState.cart.map((item, index) => {
                         const price = parseFloat(item.price) || 0;
+                        const product = appState.inventory.find(p => p.id === item.productId);
+                        const isWeight = product && product.saleByWeight && product.weightPerUnit > 0;
+                        const grams = isWeight ? (item.weightGrams || (item.quantity * product.weightPerUnit)) : 0;
+                        const subtotal = item.quantity * price;
+                        
+                        if (isWeight) {
+                            return `
+                            <div class="sale-item flex justify-between items-center p-3 rounded-lg border border-blue-200 bg-blue-50">
+                                <div class="flex-1">
+                                    <p class="font-bold text-gray-800">${escapeHtml(item.name || 'Producto')}</p>
+                                    <p class="text-sm text-gray-500">$${formatMoney(price)} por ${product.weightPerUnit}g</p>
+                                    <p class="text-sm text-blue-700 font-bold">${formatMoney(grams)}g = $${formatMoney(subtotal)}</p>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <button onclick="removeFromCart(${index})" class="text-red-500 hover:text-red-700 ml-2">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            `;
+                        }
+                        
                         return `
                         <div class="sale-item flex justify-between items-center p-3 rounded-lg border">
                             <div class="flex-1">
@@ -4215,6 +4464,13 @@
         function updateCartQuantity(index, delta) {
             const item = appState.cart[index];
             const product = appState.inventory.find(p => p.id === item.productId);
+            
+            // No permitir modificar cantidad de productos por peso con +/-
+            if (product && product.saleByWeight) {
+                showNotification('Usá el ícono de papelera para quitar productos por peso', 'warning');
+                return;
+            }
+            
             const availableStock = getProductStock(product);
             
             if (delta > 0) {
@@ -4235,6 +4491,16 @@
         }
 
         function setCartQuantity(index, newQty) {
+            const item = appState.cart[index];
+            const product = appState.inventory.find(p => p.id === item.productId);
+            
+            // No permitir modificar cantidad de productos por peso manualmente
+            if (product && product.saleByWeight) {
+                showNotification('La cantidad de productos por peso se define en gramos al agregarlos', 'warning');
+                renderCart();
+                return;
+            }
+            
             const qty = parseInt(newQty);
             if (isNaN(qty) || qty < 1) {
                 showNotification('Cantidad inválida', 'error');
@@ -4242,8 +4508,6 @@
                 return;
             }
             
-            const item = appState.cart[index];
-            const product = appState.inventory.find(p => p.id === item.productId);
             const availableStock = getProductStock(product);
             
             if (qty > availableStock) {
@@ -6032,12 +6296,14 @@
                                   'bg-green-100 text-green-700';
                 
                 const compositeBadge = isComposite ? '<span class="text-[10px] bg-orange-100 text-orange-700 px-1 rounded mr-1">🧩</span>' : '';
+                const weightBadge = p.saleByWeight ? '<span class="text-[10px] bg-blue-100 text-blue-700 px-1 rounded mr-1">⚖️</span>' : '';
+                const weightInfo = p.saleByWeight && p.weightPerUnit ? `<span class="text-xs text-blue-600">(${formatMoney(totalStock * p.weightPerUnit)}g)</span>` : '';
                 
                 return `
                 <tr class="hover:bg-gray-50">
                     <td class="px-3 py-2">
-                        <div class="font-medium text-gray-900">${compositeBadge}${escapeHtml(p.name)}</div>
-                        <div class="text-xs text-gray-500">${p.category || 'Sin cat.'}</div>
+                        <div class="font-medium text-gray-900">${compositeBadge}${weightBadge}${escapeHtml(p.name)}</div>
+                        <div class="text-xs text-gray-500">${p.category || 'Sin cat.'} ${weightInfo}</div>
                     </td>
                     <td class="px-3 py-2 text-sm font-mono text-gray-600">${p.barcode}</td>
                     <td class="px-3 py-2 text-center">
@@ -6888,6 +7154,19 @@
                 editVatApplied = product.vatApplied || false;
             }
             
+            // Cargar venta por peso
+            const saleByWeightCheckbox = document.getElementById('edit-prod-sale-by-weight');
+            if (saleByWeightCheckbox) {
+                saleByWeightCheckbox.checked = product.saleByWeight || false;
+                if (product.saleByWeight) {
+                    document.getElementById('edit-prod-weight-per-unit').value = product.weightPerUnit || '';
+                    toggleEditWeightSection();
+                    updateEditPricePerGram();
+                } else {
+                    document.getElementById('edit-prod-weight-section').classList.add('hidden');
+                }
+            }
+            
             // Calcular margen inicial
             calculateEditMargin();
             
@@ -7113,6 +7392,16 @@
                     product.batches.forEach(batch => {
                         batch.invoiceType = newInvoiceType;
                     });
+                }
+                
+                // Guardar venta por peso
+                const saleByWeightEdit = document.getElementById('edit-prod-sale-by-weight')?.checked || false;
+                if (saleByWeightEdit) {
+                    product.saleByWeight = true;
+                    product.weightPerUnit = parseFloat(document.getElementById('edit-prod-weight-per-unit')?.value) || 0;
+                } else {
+                    delete product.saleByWeight;
+                    delete product.weightPerUnit;
                 }
                 
                 product.updatedAt = new Date().toISOString();
@@ -13909,6 +14198,19 @@ RESULTADOS:
                     } catch(e) {}
                 }
             })();
+            
+            // Exponer funciones adicionales de venta por peso y sync
+            (function exposeAdditionalFunctions() {
+                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice'];
+                for (const name of extraFns) {
+                    try {
+                        const fn = eval(name);
+                        if (typeof fn === 'function' && !window[name]) {
+                            window[name] = fn;
+                        }
+                    } catch(e) {}
+                }
+            })();
         }
     </script>
     <!-- ==================== ARQUEO DE CAJA MODAL ==================== -->
@@ -14014,6 +14316,46 @@ RESULTADOS:
                 <div class="flex gap-2">
                     <button onclick="closeManualSaleModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
                     <button onclick="saveManualSale()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700">Guardar Venta</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== VENTA POR PESO MODAL ==================== -->
+    <div id="weight-sale-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-4 text-blue-600"><i class="fas fa-weight"></i> <span id="weight-sale-product-name">Producto</span></h3>
+            <div class="space-y-4">
+                <div class="bg-blue-50 rounded-xl p-3 text-sm">
+                    <div class="flex justify-between mb-1">
+                        <span class="text-gray-600">Precio por gramo:</span>
+                        <span class="font-bold text-blue-700" id="weight-sale-price-per-gram">$0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Stock disponible:</span>
+                        <span class="font-bold text-blue-700" id="weight-sale-stock-grams">0g</span>
+                    </div>
+                </div>
+                
+                <div class="flex gap-2 bg-gray-100 rounded-xl p-1">
+                    <button type="button" id="weight-mode-grams" onclick="setWeightMode('grams')" class="flex-1 py-2 rounded-lg text-sm font-bold bg-white shadow text-blue-700 transition">Gramos</button>
+                    <button type="button" id="weight-mode-price" onclick="setWeightMode('price')" class="flex-1 py-2 rounded-lg text-sm font-bold text-gray-500 hover:text-gray-700 transition">Precio ($)</button>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1" id="weight-sale-input-label">Gramos a vender</label>
+                    <input type="number" id="weight-sale-input" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center" placeholder="0" min="0.01" step="0.01" oninput="onWeightSaleInput()">
+                </div>
+                
+                <div class="bg-green-50 rounded-xl p-4 text-center">
+                    <p class="text-xs text-gray-500 mb-1" id="weight-sale-result-label">Total a cobrar</p>
+                    <p class="text-3xl font-bold text-green-700" id="weight-sale-result">$0</p>
+                    <p class="text-xs text-gray-500 mt-1" id="weight-sale-detail"></p>
+                </div>
+                
+                <div class="flex gap-2">
+                    <button onclick="closeWeightSaleModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                    <button onclick="addWeightToCart()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg"><i class="fas fa-cart-plus"></i> Agregar</button>
                 </div>
             </div>
         </div>

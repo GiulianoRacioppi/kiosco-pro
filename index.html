@@ -6532,6 +6532,7 @@
                     totalBuyUnits += toBuy;
                     totalInvestment += buyCost;
                     
+                    const pIsWeight = p.saleByWeight && p.weightPerUnit > 0;
                     shoppingList.push({
                         name: p.name,
                         stock: totalStock,
@@ -6542,7 +6543,9 @@
                         alertColor: alertColor,
                         cost: p.cost || 0,
                         avgDaily: fmtNumber(avgDaily, 1),
-                        nextBuyDay: daysUntilBuy !== null ? (daysUntilBuy === 0 ? 'Hoy' : daysUntilBuy === 1 ? 'Mañana' : `En ${daysUntilBuy}d`) : 'Sin definir'
+                        nextBuyDay: daysUntilBuy !== null ? (daysUntilBuy === 0 ? 'Hoy' : daysUntilBuy === 1 ? 'Mañana' : `En ${daysUntilBuy}d`) : 'Sin definir',
+                        isWeight: pIsWeight,
+                        weightPerUnit: p.weightPerUnit || 1
                     });
                 }
             });
@@ -6594,7 +6597,7 @@
                                 <div class="text-xs text-gray-500">${item.avgDaily}/día • Próx.compra: ${item.nextBuyDay}</div>
                             </td>
                             <td class="px-4 py-3 text-center">
-                                <span class="font-bold ${item.stock === 0 ? 'text-red-600' : 'text-gray-700'}">${item.stock}</span>
+                                <span class="font-bold ${item.stock === 0 ? 'text-red-600' : 'text-gray-700'}">${item.isWeight ? Math.round(item.stock * item.weightPerUnit) + 'g' : item.stock}</span>
                                 <div class="text-xs text-gray-500">${item.daysOfStock}d</div>
                             </td>
                             <td class="px-4 py-3 text-center font-bold text-blue-600">${item.toBuy}</td>

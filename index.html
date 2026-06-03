@@ -7250,12 +7250,9 @@
                 product.supplierPhone = document.getElementById('edit-prod-supplier-phone').value.trim();
                 product.buyDays = getSelectedBuyDays('edit');
                 
-                // Procesar lotes del DOM con control financiero completo
+                // Procesar lotes del DOM
                 const batchRows = document.querySelectorAll('#edit-prod-batches .batch-row');
                 const newBatches = [];
-                const processedIndices = new Set();
-                const addedBySource = { cash: 0, bank: 0 };
-                const returnedBySource = { cash: 0, bank: 0 };
                 
                 batchRows.forEach(row => {
                     const qty = parseInt(row.querySelector('.edit-batch-qty').value) || 0;
@@ -7266,19 +7263,11 @@
                     
                     if (batchIndex !== undefined) {
                         const idx = parseInt(batchIndex);
-                        processedIndices.add(idx);
                         const orig = product.batches[idx] || {};
                         const origQty = parseInt(row.dataset.origQty) || orig.stock || 0;
-                        const origCost = orig.cost || oldCost;
-                        const origSource = orig.source || 'cash';
                         
                         // Si cantidad es 0, tratar como lote eliminado
                         if (qty <= 0) return;
-                        
-                        // Valor original vs nuevo del lote
-                        const origValue = origQty * origCost;
-                        const newValue = qty * product.cost;
-                        const valueDiff = newValue - origValue;
                         
                         newBatches.push({
                             stock: qty,
@@ -7286,20 +7275,13 @@
                             expiry: expiry,
                             dateAdded: orig.dateAdded || formatDateISO(appState.activeDate),
                             invoiceType: orig.invoiceType || (document.getElementById('edit-prod-invoice-type').value || 'white'),
-                            source: origSource,
+                            source: orig.source || 'cash',
                             cost: product.cost,
                             updatedAt: new Date().toISOString()
                         });
-                        
-                        if (valueDiff > 0) {
-                            addedBySource[origSource] += valueDiff;
-                        } else if (valueDiff < 0) {
-                            returnedBySource[origSource] += Math.abs(valueDiff);
-                        }
                     } else {
                         // Nuevo lote
                         if (qty <= 0) return;
-                        const value = qty * product.cost;
                         newBatches.push({
                             stock: qty,
                             initialStock: qty,
@@ -7309,56 +7291,6 @@
                             source: domSource,
                             cost: product.cost,
                             updatedAt: new Date().toISOString()
-                        });
-                        addedBySource[domSource] += value;
-                    }
-                });
-                
-                // Procesar lotes eliminados (que estaban en product.batches pero no en el DOM)
-                product.batches.forEach((orig, idx) => {
-                    if (!processedIndices.has(idx)) {
-                        const origValue = orig.stock * (orig.cost || oldCost);
-                        const origSource = orig.source || 'cash';
-                        returnedBySource[origSource] += origValue;
-                    }
-                });
-                
-                // Aplicar descontar dinero por aumentos (compras adicionales)
-                Object.entries(addedBySource).forEach(([src, amount]) => {
-                    if (amount > 0) {
-                        if (src === 'cash') {
-                            appState.cash -= amount;
-                        } else {
-                            appState.bank -= amount;
-                        }
-                        appState.investments.push({
-                            id: 'RESTOCK-' + Date.now() + '-' + src,
-                            date: formatDateISO(appState.activeDate),
-                            concept: `Ajuste stock: ${product.name} (+$${formatMoney(amount)})`,
-                            amount: amount,
-                            source: src,
-                            type: 'restock',
-                            timestamp: Date.now()
-                        });
-                    }
-                });
-                
-                // Aplicar devolución de dinero por disminuciones/eliminaciones
-                Object.entries(returnedBySource).forEach(([src, amount]) => {
-                    if (amount > 0) {
-                        if (src === 'cash') {
-                            appState.cash += amount;
-                        } else {
-                            appState.bank += amount;
-                        }
-                        appState.investments.push({
-                            id: 'ADJUST-' + Date.now() + '-' + src,
-                            date: formatDateISO(appState.activeDate),
-                            concept: `Ajuste stock: ${product.name} (devolución $${formatMoney(amount)})`,
-                            amount: -amount,
-                            source: src,
-                            type: 'adjustment',
-                            timestamp: Date.now()
                         });
                     }
                 });

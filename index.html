@@ -5861,6 +5861,9 @@
             
             const invoiceType = 'white'; // Default, se elige en el modal de pago
             
+            const saleByWeight = document.getElementById('inv-sale-by-weight')?.checked || false;
+            const weightPerUnit = saleByWeight ? (parseFloat(document.getElementById('inv-weight-per-unit')?.value) || 0) : 0;
+            
             appState.pendingPurchase = {
                 barcode: document.getElementById('inv-barcode').value || '',
                 name: document.getElementById('inv-name').value.trim(),
@@ -5876,7 +5879,9 @@
                 totalCost: totalCost,
                 invoiceType: invoiceType,
                 isComposite: isComposite,
-                components: isComposite ? JSON.parse(JSON.stringify(pendingComponents)) : undefined
+                components: isComposite ? JSON.parse(JSON.stringify(pendingComponents)) : undefined,
+                saleByWeight: saleByWeight,
+                weightPerUnit: weightPerUnit
             };
 
             // Si es producto compuesto, crear directamente sin pasar por modal de pago
@@ -6023,6 +6028,12 @@
                 updatedAt: new Date().toISOString(),
                 lastSale: null
             };
+            
+            // Guardar configuración de venta por peso
+            if (appState.pendingPurchase.saleByWeight && appState.pendingPurchase.weightPerUnit > 0) {
+                product.saleByWeight = true;
+                product.weightPerUnit = appState.pendingPurchase.weightPerUnit;
+            }
             
             if (isComposite) {
                 product.isComposite = true;

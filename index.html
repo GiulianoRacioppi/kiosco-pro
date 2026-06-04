@@ -8072,13 +8072,8 @@
             if (product && product.batches && product.batches.length > 0) {
                 // Eliminar el último lote (el más reciente)
                 product.batches.pop();
-                // Si no quedan lotes, eliminar el producto
-                if (product.batches.length === 0) {
-                    const productIndex = appState.inventory.findIndex(p => p.id === product.id);
-                    if (productIndex !== -1) {
-                        appState.inventory.splice(productIndex, 1);
-                    }
-                }
+                // Actualizar stock del producto (no eliminarlo, solo dejar stock 0)
+                product.stock = getProductStock(product);
             }
 
             // Eliminar la inversión

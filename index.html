@@ -415,13 +415,19 @@
             <h3 class="text-xl font-bold mb-4 text-purple-600"><i class="fas fa-box-open"></i> Agregar Stock</h3>
             <div id="add-stock-product-info" class="mb-4 p-3 bg-gray-50 rounded-lg"></div>
             <div class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Cantidad a agregar</label>
-                    <input type="number" id="add-stock-qty" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" value="1" min="1" required oninput="updateAddStockCost()" onkeypress="handleAddStockKeypress(event)">
+                <div id="add-stock-weight-info" class="hidden p-2 bg-blue-50 rounded-lg text-xs text-blue-700">
+                    <span id="add-stock-weight-badge">⚖️ Producto por peso</span>
+                    <span id="add-stock-weight-per-unit"></span>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Costo unitario ($)</label>
+                    <label id="add-stock-qty-label" class="block text-sm font-medium text-gray-700 mb-2">Cantidad a agregar</label>
+                    <input type="number" id="add-stock-qty" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" value="1" min="1" required oninput="updateAddStockCost()" onkeypress="handleAddStockKeypress(event)">
+                    <p id="add-stock-qty-hint" class="text-xs text-gray-500 mt-1"></p>
+                </div>
+                <div>
+                    <label id="add-stock-cost-label" class="block text-sm font-medium text-gray-700 mb-2">Costo unitario ($)</label>
                     <input type="number" id="add-stock-unit-cost" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-lg font-bold text-center" step="0.01" oninput="onAddStockCostInput()" onkeypress="handleAddStockKeypress(event)">
+                    <div id="add-stock-cost-per-gram" class="text-xs text-blue-600 mt-1 hidden"></div>
                     <label class="flex items-center gap-2 mt-1 cursor-pointer">
                         <input type="checkbox" id="add-stock-vat" onchange="toggleAddStockVat()">
                         <span class="text-xs text-gray-600">💰 + IVA 21%</span>
@@ -438,7 +444,12 @@
                     <div class="flex items-center gap-2">
                         <span class="text-orange-600 font-bold">$</span>
                         <input type="number" id="add-stock-new-price" class="flex-1 border-2 border-orange-300 rounded-lg px-3 py-2 font-bold text-lg" 
-                            placeholder="Precio actual" step="0.01" onkeypress="handleAddStockKeypress(event)">
+                            placeholder="Precio actual" step="0.01" oninput="updateAddStockMarginDisplay()" onkeypress="handleAddStockKeypress(event)">
+                    </div>
+                    <div class="mt-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Margen de ganancia (%)</label>
+                        <input type="number" id="add-stock-margin" class="w-full border-2 border-orange-200 rounded-lg px-3 py-2 font-bold text-center" step="0.1" value="30" oninput="calculateAddStockPriceFromMargin()">
+                        <p id="add-stock-margin-result" class="text-xs text-orange-600 mt-1"></p>
                     </div>
                     <p class="text-xs text-orange-600 mt-1">
                         <i class="fas fa-info-circle"></i> 
@@ -1420,16 +1431,18 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs font-medium text-gray-600 mb-1">Costo ($)</label>
+                        <label id="inv-cost-label" class="block text-xs font-medium text-gray-600 mb-1">Costo ($)</label>
                         <input type="number" id="inv-cost" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" required oninput="onInvCostInput()" onkeydown="handleInvCostKeydown(event)">
+                        <p id="inv-cost-hint" class="text-xs text-gray-500 mt-1"></p>
                         <label class="flex items-center gap-2 mt-1 cursor-pointer">
                             <input type="checkbox" id="inv-vat" onchange="toggleInvVat()">
                             <span class="text-xs text-gray-600">💰 + IVA 21% (calcular sobre costo con IVA)</span>
                         </label>
                     </div>
                     <div>
-                        <label class="block text-xs font-medium text-gray-600 mb-1">Stock inicial</label>
+                        <label id="inv-stock-label" class="block text-xs font-medium text-gray-600 mb-1">Stock inicial</label>
                         <input type="number" id="inv-stock" class="w-full border rounded-lg px-3 py-2 text-sm" min="1" required onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-expiry').focus();}">
+                        <p id="inv-stock-hint" class="text-xs text-gray-500 mt-1"></p>
                     </div>
                     <!-- Sección Venta por Peso -->
                     <div class="lg:col-span-4 bg-blue-50 rounded-xl p-4 border border-blue-200">
@@ -1448,7 +1461,7 @@
                                     <p class="text-sm font-bold text-blue-700 py-2" id="inv-price-per-gram">$0</p>
                                 </div>
                                 <div class="flex items-end">
-                                    <p class="text-xs text-blue-600">El stock se maneja en bolsas, pero en ventas se podrá vender por gramos o por precio.</p>
+                                    <p class="text-xs text-blue-600">Ingresá los gramos que compraste y el costo total. El sistema calculará el costo por gramo.</p>
                                 </div>
                             </div>
                         </div>
@@ -3790,8 +3803,28 @@
         function toggleWeightSection() {
             const checked = document.getElementById('inv-sale-by-weight')?.checked || false;
             const section = document.getElementById('inv-weight-section');
+            const costLabel = document.getElementById('inv-cost-label');
+            const costHint = document.getElementById('inv-cost-hint');
+            const stockLabel = document.getElementById('inv-stock-label');
+            const stockHint = document.getElementById('inv-stock-hint');
+            const stockInput = document.getElementById('inv-stock');
+            
             if (section) section.classList.toggle('hidden', !checked);
             if (checked) updatePricePerGram();
+            
+            if (checked) {
+                if (costLabel) costLabel.textContent = 'Costo total de la compra ($)';
+                if (costHint) costHint.textContent = 'Precio que pagaste por todo';
+                if (stockLabel) stockLabel.textContent = 'Gramos comprados';
+                if (stockHint) stockHint.textContent = 'Peso total en gramos';
+                if (stockInput) { stockInput.min = 1; stockInput.step = 1; }
+            } else {
+                if (costLabel) costLabel.textContent = 'Costo ($)';
+                if (costHint) costHint.textContent = '';
+                if (stockLabel) stockLabel.textContent = 'Stock inicial';
+                if (stockHint) stockHint.textContent = '';
+                if (stockInput) { stockInput.min = 1; stockInput.step = 1; }
+            }
         }
         
         function updatePricePerGram() {
@@ -5752,13 +5785,12 @@
         }
 
         function calculateInventoryPrice() {
-            const costInput = document.getElementById('inv-cost');
             const priceInput = document.getElementById('inv-price');
             const marginInput = document.getElementById('inv-margin');
             const roundCheckbox = document.getElementById('inv-round-price');
             const isRoundEnabled = roundCheckbox ? roundCheckbox.value === 'true' : false;
-            // Normalizar: reemplazar coma por punto para parseFloat
-            const cost = parseFloat(costInput.value.replace(',', '.')) || 0;
+            
+            const cost = getInvUnitCost();
             
             // Si hay costo, recalcular automáticamente el precio basado en el margen DEFAULT
             if (cost > 0) {
@@ -5775,14 +5807,27 @@
             }
         }
 
+        function getInvUnitCost() {
+            // Helper: devuelve el costo UNITARIO real, considerando productos por peso
+            let cost = parseFloat(document.getElementById('inv-cost')?.value.replace(',', '.')) || 0;
+            const isWeight = document.getElementById('inv-sale-by-weight')?.checked || false;
+            if (isWeight) {
+                const grams = parseFloat(document.getElementById('inv-stock')?.value) || 0;
+                const weightPerUnit = parseFloat(document.getElementById('inv-weight-per-unit')?.value) || 0;
+                if (grams > 0 && weightPerUnit > 0) {
+                    cost = (cost / grams) * weightPerUnit;
+                }
+            }
+            return cost;
+        }
+
         function calculateInventoryPriceFromMargin() {
-            const costInput = document.getElementById('inv-cost');
             const priceInput = document.getElementById('inv-price');
             const marginInput = document.getElementById('inv-margin');
             const roundCheckbox = document.getElementById('inv-round-price');
             const isRoundEnabled = roundCheckbox ? roundCheckbox.value === 'true' : false;
             
-            const cost = parseFloat(costInput.value.replace(',', '.')) || 0;
+            const cost = getInvUnitCost();
             const margin = parseFloat(marginInput.value.replace(',', '.')) || 0;
             
             if (cost > 0 && margin > 0 && margin < 100) {
@@ -5801,15 +5846,13 @@
         }
 
         function calculateInventoryMargin() {
-            const costInput = document.getElementById('inv-cost');
             const priceInput = document.getElementById('inv-price');
             const marginInput = document.getElementById('inv-margin');
             const marginDisplay = document.getElementById('inv-margin-display');
             
-            if (!costInput || !priceInput || !marginInput) return;
+            if (!priceInput || !marginInput) return;
             
-            // Normalizar: reemplazar coma por punto para parseFloat (soporte español)
-            const cost = parseFloat(costInput.value.replace(',', '.')) || 0;
+            const cost = getInvUnitCost();
             const price = parseFloat(priceInput.value.replace(',', '.')) || 0;
             
             if (cost > 0 && price > 0) {
@@ -5832,25 +5875,38 @@
             console.log('preparePurchase llamado');
             
             const isComposite = document.getElementById('inv-is-composite')?.checked || false;
+            const saleByWeight = document.getElementById('inv-sale-by-weight')?.checked || false;
+            const weightPerUnit = saleByWeight ? (parseFloat(document.getElementById('inv-weight-per-unit')?.value) || 0) : 0;
             
             // Normalizar: reemplazar coma por punto para parseFloat (soporte español)
-            const cost = parseFloat(document.getElementById('inv-cost').value.replace(',', '.')) || 0;
-            const stock = parseInt(document.getElementById('inv-stock').value) || 0;
+            const rawCost = parseFloat(document.getElementById('inv-cost').value.replace(',', '.')) || 0;
+            const rawStock = saleByWeight ? (parseFloat(document.getElementById('inv-stock').value) || 0) : (parseInt(document.getElementById('inv-stock').value) || 0);
             const priceValue = parseFloat(document.getElementById('inv-price').value.replace(',', '.')) || 0;
-            const totalCost = isComposite ? cost : (cost * stock);
             
-            console.log('Valores:', { cost, stock, priceValue, totalCost, isComposite });
+            // Para productos por peso: rawCost es el costo TOTAL, rawStock es gramos
+            let unitCost, stockBags, totalCost;
+            if (saleByWeight && weightPerUnit > 0) {
+                unitCost = rawStock > 0 ? (rawCost / rawStock) * weightPerUnit : rawCost;
+                stockBags = rawStock / weightPerUnit;
+                totalCost = rawCost;
+            } else {
+                unitCost = rawCost;
+                stockBags = rawStock;
+                totalCost = isComposite ? rawCost : (rawCost * rawStock);
+            }
+            
+            console.log('Valores:', { rawCost, rawStock, unitCost, stockBags, priceValue, totalCost, isComposite, saleByWeight, weightPerUnit });
 
             // Validaciones
             if (!document.getElementById('inv-name').value.trim()) {
                 showNotification('Ingresa el nombre del producto', 'error');
                 return;
             }
-            if (cost <= 0) {
+            if (rawCost <= 0) {
                 showNotification('El costo debe ser mayor a 0', 'error');
                 return;
             }
-            if (!isComposite && stock <= 0) {
+            if (!isComposite && rawStock <= 0) {
                 showNotification('El stock debe ser mayor a 0', 'error');
                 return;
             }
@@ -5876,9 +5932,6 @@
             
             const invoiceType = 'white'; // Default, se elige en el modal de pago
             
-            const saleByWeight = document.getElementById('inv-sale-by-weight')?.checked || false;
-            const weightPerUnit = saleByWeight ? (parseFloat(document.getElementById('inv-weight-per-unit')?.value) || 0) : 0;
-            
             appState.pendingPurchase = {
                 barcode: document.getElementById('inv-barcode').value || '',
                 name: document.getElementById('inv-name').value.trim(),
@@ -5887,9 +5940,9 @@
                 supplier: document.getElementById('inv-supplier')?.value || '',
                 supplierPhone: document.getElementById('inv-supplier-phone')?.value || '',
                 buyDays: getSelectedBuyDays('inv') || [],
-                cost: cost,
+                cost: unitCost,
                 salePrice: priceValue,
-                stock: isComposite ? 0 : stock,
+                stock: isComposite ? 0 : stockBags,
                 expiry: document.getElementById('inv-expiry').value || '',
                 totalCost: totalCost,
                 invoiceType: invoiceType,
@@ -6084,10 +6137,12 @@
 
             // Registrar como INVERSIÓN (solo si no es compuesto)
             if (!isComposite) {
+                const isWeight = product.saleByWeight && product.weightPerUnit > 0;
+                const qtyLabel = isWeight ? `${Math.round(product.stock * product.weightPerUnit)}g` : `${product.stock} unidades`;
                 appState.investments.push({
                     id: 'PURCHASE-' + Date.now(),
                     date: formatDateISO(appState.activeDate),
-                    concept: `Compra: ${product.name} (${product.stock} unidades)`,
+                    concept: `Compra: ${product.name} (${qtyLabel})`,
                     amount: totalCost,
                     source: method === 'cash' ? 'cash' : 'bank',
                     type: 'purchase',
@@ -6113,6 +6168,7 @@
             closePurchaseModal();
             document.getElementById('add-inventory-form').reset();
             restoreInventoryFormState();
+            toggleWeightSection(); // Restaurar labels de stock/costo a estado normal
             // Limpiar estado de compuestos (el reset no dispara onchange)
             pendingComponents = [];
             const compositeSection = document.getElementById('inv-composite-section');
@@ -6299,8 +6355,10 @@
                             ? '<span class="text-[10px] bg-blue-100 text-blue-600 px-1 rounded mr-1" title="Facturado">B</span>' 
                             : '<span class="text-[10px] bg-gray-200 text-gray-600 px-1 rounded mr-1" title="Sin factura">N</span>';
                         
+                        const batchGrams = p.saleByWeight && p.weightPerUnit ? Math.round(b.stock * p.weightPerUnit) : null;
+                        const batchDisplay = batchGrams !== null ? `${batchGrams}g` : `${b.stock}u`;
                         return `<div class="text-xs flex justify-between items-center py-0.5 ${isFirst ? 'bg-blue-50 rounded px-1' : ''}">
-                            <span>${badge}${invoiceBadge}<strong>${b.stock}u</strong></span>
+                            <span>${badge}${invoiceBadge}<strong>${batchDisplay}</strong></span>
                             <span class="${expiryClass}">${expiryText}</span>
                         </div>`;
                     }).join('');
@@ -6309,7 +6367,7 @@
                     const daysUntil = Math.ceil((new Date(p.expiry) - new Date()) / (1000 * 60 * 60 * 24));
                     let expiryClass = daysUntil <= 7 ? 'text-red-600 font-bold' : daysUntil <= 15 ? 'text-orange-600' : 'text-green-600';
                     batchesHtml = `<div class="text-xs flex justify-between py-0.5 bg-blue-50 rounded px-1">
-                        <span><span class="text-xs bg-blue-100 text-blue-700 px-1 rounded mr-1">VENDER PRIMERO</span><strong>${totalStock}u</strong></span>
+                        <span><span class="text-xs bg-blue-100 text-blue-700 px-1 rounded mr-1">VENDER PRIMERO</span><strong>${p.saleByWeight && p.weightPerUnit ? Math.round(totalStock * p.weightPerUnit) + 'g' : totalStock + 'u'}</strong></span>
                         <span class="${expiryClass}">${p.expiry} (${daysUntil}d)</span>
                     </div>`;
                 } else {
@@ -6323,7 +6381,7 @@
                 
                 const compositeBadge = isComposite ? '<span class="text-[10px] bg-orange-100 text-orange-700 px-1 rounded mr-1">🧩</span>' : '';
                 const weightBadge = p.saleByWeight ? '<span class="text-[10px] bg-blue-100 text-blue-700 px-1 rounded mr-1">⚖️</span>' : '';
-                const weightInfo = p.saleByWeight && p.weightPerUnit ? `<span class="text-xs text-blue-600">(${formatMoney(totalStock * p.weightPerUnit)}g)</span>` : '';
+                const weightInfo = p.saleByWeight && p.weightPerUnit ? `<span class="text-xs text-blue-600">(${Math.round(totalStock * p.weightPerUnit)}g)</span>` : '';
                 
                 return `
                 <tr class="hover:bg-gray-50">
@@ -6700,10 +6758,15 @@
             const totalStock = getProductStock(product);
             const isComposite = product.isComposite && product.components && product.components.length > 0;
             
+            const isWeight = product.saleByWeight && product.weightPerUnit > 0;
+            const weightInfo = isWeight ? `<span class="text-sm text-blue-600">⚖️ Venta por peso • ${product.weightPerUnit}g por unidad</span>` : '';
+            const currentGrams = isWeight ? Math.round(totalStock * product.weightPerUnit) : null;
+            
             document.getElementById('add-stock-product-info').innerHTML = `
                 <p class="font-bold text-gray-800">${isComposite ? '🧩 ' : ''}${product.name}</p>
-                <p class="text-sm text-gray-500">Stock total: <strong>${totalStock}</strong> unidades${isComposite ? ' (calculado por componentes)' : ''}</p>
-                <p class="text-sm text-gray-500">Costo unitario: $${formatMoney(product.cost)}</p>
+                <p class="text-sm text-gray-500">Stock total: <strong>${isWeight ? currentGrams + 'g' : totalStock}</strong> ${isWeight ? '' : 'unidades'}${isComposite ? ' (calculado por componentes)' : ''}</p>
+                <p class="text-sm text-gray-500">Costo unitario: $${formatMoney(product.cost)} ${isWeight ? '• $' + formatMoney(product.cost / product.weightPerUnit) + '/g' : ''}</p>
+                ${weightInfo}
                 ${expiryInfo}
                 ${isComposite ? '<p class="text-sm text-orange-600 font-bold mt-1">⚠️ Las preparaciones no reciben stock directo. Comprá los subproductos.</p>' : ''}
             `;
@@ -6712,7 +6775,36 @@
             document.getElementById('addstock-cash-available').textContent = formatMoney(appState.cash);
             document.getElementById('addstock-account-available').textContent = formatMoney(appState.bank);
             
-            document.getElementById('add-stock-qty').value = 1;
+            // Configurar campos según tipo de producto
+            const qtyLabel = document.getElementById('add-stock-qty-label');
+            const qtyHint = document.getElementById('add-stock-qty-hint');
+            const costLabel = document.getElementById('add-stock-cost-label');
+            const costPerGram = document.getElementById('add-stock-cost-per-gram');
+            const weightBadge = document.getElementById('add-stock-weight-info');
+            const weightPerUnit = document.getElementById('add-stock-weight-per-unit');
+            const qtyInput = document.getElementById('add-stock-qty');
+            
+            if (isWeight) {
+                qtyLabel.textContent = 'Cantidad a agregar (gramos)';
+                qtyHint.textContent = `Se convertirá a ${product.weightPerUnit}g por unidad`;
+                costLabel.textContent = 'Costo total de la compra ($)';
+                costPerGram.classList.remove('hidden');
+                weightBadge.classList.remove('hidden');
+                weightPerUnit.textContent = `• ${product.weightPerUnit}g/u`;
+                qtyInput.value = product.weightPerUnit;
+                qtyInput.min = 1;
+                qtyInput.step = 1;
+            } else {
+                qtyLabel.textContent = 'Cantidad a agregar';
+                qtyHint.textContent = '';
+                costLabel.textContent = 'Costo unitario ($)';
+                costPerGram.classList.add('hidden');
+                weightBadge.classList.add('hidden');
+                qtyInput.value = 1;
+                qtyInput.min = 1;
+                qtyInput.step = 1;
+            }
+            
             // Precargar costo unitario y estado de IVA
             const unitCostInput = document.getElementById('add-stock-unit-cost');
             if (unitCostInput) unitCostInput.value = product.cost || 0;
@@ -6728,6 +6820,8 @@
             document.getElementById('add-stock-current-price').textContent = `$${formatMoney(product.salePrice)}`;
             document.getElementById('add-stock-new-price').value = '';
             document.getElementById('add-stock-new-price').placeholder = product.salePrice.toFixed(2);
+            document.getElementById('add-stock-margin').value = '30';
+            document.getElementById('add-stock-margin-result').textContent = '';
             
             // Mostrar información de lotes existentes
             let batchesInfo = '';
@@ -6735,7 +6829,8 @@
                 batchesInfo = '<div class="mt-2 text-xs"><p class="font-bold text-gray-600 mb-1">Lotes existentes:</p>' + 
                     product.batches.map((b, i) => {
                         const daysUntil = b.expiry ? Math.ceil((new Date(b.expiry) - new Date()) / (1000 * 60 * 60 * 24)) : 'N/A';
-                        return `<div class="flex justify-between text-gray-500"><span>Lote ${i+1}: ${b.stock}u</span><span>${b.expiry || 'Sin venc.'} (${daysUntil}d)</span></div>`;
+                        const batchDisplay = isWeight && product.weightPerUnit ? `${Math.round(b.stock * product.weightPerUnit)}g` : `${b.stock}u`;
+                        return `<div class="flex justify-between text-gray-500"><span>Lote ${i+1}: ${batchDisplay}</span><span>${b.expiry || 'Sin venc.'} (${daysUntil}d)</span></div>`;
                     }).join('') + '</div>';
             }
             
@@ -6776,11 +6871,98 @@
         function updateAddStockCost() {
             if (!currentAddStockProduct) return;
             
-            const qty = parseInt(document.getElementById('add-stock-qty').value) || 0;
+            const isWeight = currentAddStockProduct.saleByWeight && currentAddStockProduct.weightPerUnit > 0;
+            const qtyInput = document.getElementById('add-stock-qty');
+            const qty = isWeight ? (parseFloat(qtyInput.value) || 0) : (parseInt(qtyInput.value) || 0);
             const unitCostInput = document.getElementById('add-stock-unit-cost');
-            const unitCost = unitCostInput ? (parseFloat(unitCostInput.value.replace(',', '.')) || currentAddStockProduct.cost || 0) : (currentAddStockProduct.cost || 0);
-            const totalCost = qty * unitCost;
+            const costValue = unitCostInput ? (parseFloat(unitCostInput.value.replace(',', '.')) || currentAddStockProduct.cost || 0) : (currentAddStockProduct.cost || 0);
+            
+            let totalCost, unitCost, costPerGram;
+            if (isWeight) {
+                // Para productos por peso: qty está en gramos, costValue es el costo TOTAL de la compra
+                totalCost = costValue;
+                if (qty > 0) {
+                    costPerGram = totalCost / qty;
+                    unitCost = costPerGram * currentAddStockProduct.weightPerUnit;
+                } else {
+                    costPerGram = 0;
+                    unitCost = currentAddStockProduct.cost || 0;
+                }
+                document.getElementById('add-stock-cost-per-gram').textContent = `Costo por gramo: $${formatMoney(costPerGram)} → Costo unitario: $${formatMoney(unitCost)}`;
+            } else {
+                unitCost = costValue;
+                totalCost = qty * unitCost;
+            }
+            
             document.getElementById('add-stock-total-cost').textContent = `$${formatMoney(totalCost)}`;
+        }
+
+        function calculateAddStockPriceFromMargin() {
+            if (!currentAddStockProduct) return;
+            
+            const isWeight = currentAddStockProduct.saleByWeight && currentAddStockProduct.weightPerUnit > 0;
+            const unitCostInput = document.getElementById('add-stock-unit-cost');
+            const marginInput = document.getElementById('add-stock-margin');
+            const priceInput = document.getElementById('add-stock-new-price');
+            
+            const costValue = unitCostInput ? (parseFloat(unitCostInput.value.replace(',', '.')) || currentAddStockProduct.cost || 0) : (currentAddStockProduct.cost || 0);
+            const margin = parseFloat(marginInput.value) || 0;
+            
+            // Calcular el costo unitario real
+            let unitCost;
+            if (isWeight) {
+                const qtyInput = document.getElementById('add-stock-qty');
+                const grams = parseFloat(qtyInput.value) || 0;
+                const totalCost = costValue;
+                if (grams > 0) {
+                    unitCost = (totalCost / grams) * currentAddStockProduct.weightPerUnit;
+                } else {
+                    unitCost = currentAddStockProduct.cost || 0;
+                }
+            } else {
+                unitCost = costValue;
+            }
+            
+            if (unitCost > 0 && margin >= 0) {
+                let price = unitCost * (1 + margin / 100);
+                price = roundTo50Up(price);
+                priceInput.value = price.toFixed(2);
+                updateAddStockMarginDisplay();
+            }
+        }
+
+        function updateAddStockMarginDisplay() {
+            if (!currentAddStockProduct) return;
+            
+            const isWeight = currentAddStockProduct.saleByWeight && currentAddStockProduct.weightPerUnit > 0;
+            const unitCostInput = document.getElementById('add-stock-unit-cost');
+            const priceInput = document.getElementById('add-stock-new-price');
+            const marginResult = document.getElementById('add-stock-margin-result');
+            
+            const costValue = unitCostInput ? (parseFloat(unitCostInput.value.replace(',', '.')) || currentAddStockProduct.cost || 0) : (currentAddStockProduct.cost || 0);
+            const price = parseFloat(priceInput.value) || 0;
+            
+            let unitCost;
+            if (isWeight) {
+                const qtyInput = document.getElementById('add-stock-qty');
+                const grams = parseFloat(qtyInput.value) || 0;
+                const totalCost = costValue;
+                if (grams > 0) {
+                    unitCost = (totalCost / grams) * currentAddStockProduct.weightPerUnit;
+                } else {
+                    unitCost = currentAddStockProduct.cost || 0;
+                }
+            } else {
+                unitCost = costValue;
+            }
+            
+            if (unitCost > 0 && price > 0) {
+                const margin = ((price - unitCost) / unitCost) * 100;
+                const profit = price - unitCost;
+                marginResult.textContent = `Margen: ${margin.toFixed(1)}% • Ganancia: $${formatMoney(profit)} por unidad`;
+            } else {
+                marginResult.textContent = '';
+            }
         }
 
         function setAddStockInvoiceType(type) {
@@ -6847,7 +7029,7 @@
             if (product.batches && product.batches.length > 0) {
                 return product.batches.reduce((sum, b) => sum + (b.stock || 0), 0);
             }
-            return parseInt(product.stock) || 0;
+            return parseFloat(product.stock) || 0;
         }
 
         // Restaurar stock de un producto (maneja compuestos y normales)
@@ -6916,10 +7098,18 @@
 
         function executeAddStock() {
             const productId = document.getElementById('add-stock-modal').dataset.productId;
-            const qty = parseInt(document.getElementById('add-stock-qty').value);
+            const product = appState.inventory.find(p => p.id === productId);
+            if (!product) {
+                showNotification('Producto no encontrado', 'error');
+                return;
+            }
+            
+            const isWeight = product.saleByWeight && product.weightPerUnit > 0;
+            const qtyInput = document.getElementById('add-stock-qty');
+            const grams = isWeight ? (parseFloat(qtyInput.value) || 0) : 0;
+            const qty = isWeight ? grams : parseInt(qtyInput.value);
             const newExpiry = document.getElementById('add-stock-expiry').value;
             
-            const product = appState.inventory.find(p => p.id === productId);
             if (!product || qty <= 0) {
                 showNotification('Cantidad inválida', 'error');
                 return;
@@ -6942,12 +7132,28 @@
                 return;
             }
             
-            // Leer costo unitario del input (puede haber cambiado)
+            // Leer costo del input
             const unitCostInput = document.getElementById('add-stock-unit-cost');
-            const newUnitCost = unitCostInput ? (parseFloat(unitCostInput.value.replace(',', '.')) || product.cost || 0) : (product.cost || 0);
+            const costValue = unitCostInput ? (parseFloat(unitCostInput.value.replace(',', '.')) || product.cost || 0) : (product.cost || 0);
             const vatApplied = document.getElementById('add-stock-vat')?.checked || false;
             
-            const totalCost = qty * newUnitCost;
+            let totalCost, newUnitCost, qtyBags;
+            if (isWeight) {
+                // Para productos por peso: costValue es el costo TOTAL, qty es gramos
+                totalCost = costValue;
+                qtyBags = grams / product.weightPerUnit;
+                if (grams > 0) {
+                    const costPerGram = totalCost / grams;
+                    newUnitCost = costPerGram * product.weightPerUnit;
+                } else {
+                    newUnitCost = product.cost || 0;
+                    qtyBags = 0;
+                }
+            } else {
+                newUnitCost = costValue;
+                totalCost = qty * newUnitCost;
+                qtyBags = qty;
+            }
             
             // Verificar si hay un nuevo precio de venta
             const newPriceInput = document.getElementById('add-stock-new-price').value;
@@ -6993,8 +7199,8 @@
             
             // Agregar nuevo lote
             product.batches.push({
-                stock: qty,
-                initialStock: qty,
+                stock: qtyBags,
+                initialStock: qtyBags,
                 expiry: newExpiry || '',
                 dateAdded: formatDateISO(appState.activeDate),
                 invoiceType: invoiceType,
@@ -7019,10 +7225,11 @@
             }
             
             // Registrar como INVERSIÓN (no como gasto)
+            const qtyLabel = isWeight ? `${grams}g` : `${qty} unidades`;
             appState.investments.push({
                 id: 'RESTOCK-' + Date.now(),
                 date: formatDateISO(appState.activeDate),
-                concept: `Reposición: ${product.name} (+${qty} unidades)${newExpiry ? ' Venc: ' + newExpiry : ''}`,
+                concept: `Reposición: ${product.name} (+${qtyLabel})${newExpiry ? ' Venc: ' + newExpiry : ''}`,
                 amount: totalCost,
                 source: addStockPaymentMethod === 'cash' ? 'cash' : 'bank',
                 type: 'restock',
@@ -14215,7 +14422,7 @@ RESULTADOS:
             
             // Exponer funciones adicionales de venta por peso y sync
             (function exposeAdditionalFunctions() {
-                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice'];
+                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost'];
                 for (const name of extraFns) {
                     try {
                         const fn = eval(name);

@@ -3217,6 +3217,11 @@
                 // Seleccionar el día activo por defecto
                 selectedCalendarDate = formatDateISO(appState.activeDate);
                 renderCalendar();
+                // Refrescar detalle del día si está visible
+                const dayDetail = document.getElementById('day-detail');
+                if (dayDetail && !dayDetail.classList.contains('hidden') && selectedCalendarDate) {
+                    showDayDetail(selectedCalendarDate);
+                }
             }
             if (sectionId === 'inventory') {
                 renderInventory();
@@ -5056,6 +5061,12 @@
             appState.sales.push(sale);
             saveToLocalStorage();
             renderAll();
+            renderCalendar();
+            // Refrescar detalle del día si está visible y es la fecha de la venta
+            const dayDetail = document.getElementById('day-detail');
+            if (dayDetail && !dayDetail.classList.contains('hidden') && selectedCalendarDate === sale.date) {
+                showDayDetail(sale.date);
+            }
             closeManualSaleModal();
             showSuccessOverlay(amount);
             showNotification(`Venta manual registrada: ${concept} $${formatMoney(amount)}`, 'success');
@@ -5317,6 +5328,12 @@
                 
                 saveToLocalStorage();
                 renderAll();
+                renderCalendar();
+                // Refrescar detalle del día si está visible y es la fecha de la venta
+                const dayDetail = document.getElementById('day-detail');
+                if (dayDetail && !dayDetail.classList.contains('hidden') && selectedCalendarDate === sale.date) {
+                    showDayDetail(sale.date);
+                }
                 
                 // Resetear método de pago a efectivo y actualizar la UI
                 setPaymentMethod('cash');
@@ -9734,6 +9751,7 @@
             
             appState.cashCounts = appState.cashCounts.filter(c => c.date !== today);
             appState.cashCounts.push({
+                id: 'CASHCOUNT-' + Date.now(),
                 date: today,
                 openingCash: cashAmount,
                 openingBank: bankAmount,
@@ -9752,6 +9770,8 @@
             });
             
             saveToLocalStorage();
+            renderAll();
+            renderCashflow();
             closeCashCountModal();
             showNotification('Apertura registrada: Caja $' + formatMoney(cashAmount) + ' | Cuenta $' + formatMoney(bankAmount), 'success');
         }
@@ -9885,6 +9905,8 @@
             record.timestamp = Date.now();
             
             saveToLocalStorage();
+            renderAll();
+            renderCashflow();
             closeCashCountModal();
             showNotification('Cierre de caja registrado. Diferencia: $' + formatMoney(record.difference), record.difference === 0 ? 'success' : 'warning');
         }
@@ -14292,6 +14314,16 @@ RESULTADOS:
                     appState.promotions = Array.isArray(appState.promotions) ? appState.promotions : [];
                     appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
                     appState.ticketRules = Array.isArray(appState.ticketRules) ? appState.ticketRules : [];
+                    appState.cashCounts = Array.isArray(appState.cashCounts) ? appState.cashCounts : [];
+                    
+                    // === MIGRACIÓN: agregar id a arqueos antiguos que no lo tienen ===
+                    if (Array.isArray(appState.cashCounts)) {
+                        appState.cashCounts.forEach((c, idx) => {
+                            if (!c.id) {
+                                c.id = 'CASHCOUNT-' + (c.timestamp || Date.now()) + '-' + idx;
+                            }
+                        });
+                    }
                     
                     // === MIGRACIÓN: agregar source y cost a lotes antiguos ===
                     if (Array.isArray(appState.inventory)) {

@@ -2856,6 +2856,8 @@
             ticketRules: [],
             // Arqueo de caja
             cashCounts: [],
+            // Productos eliminados (para evitar que vuelvan por sync)
+            deletedProductIds: [],
             // Mermas y pérdidas
             losses: [],
             // Devoluciones
@@ -3756,12 +3758,14 @@
             
             resultsContainer.innerHTML = results.map(p => {
                 const stock = getProductStock(p);
-                const isLowStock = stock <= 5;
+                const isWeight = p.saleByWeight && p.weightPerUnit > 0;
+                const stockDisplay = isWeight ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
+                const isLowStock = isWeight ? (stock * p.weightPerUnit <= 100) : (stock <= 5);
                 return `
                 <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-purple-50 cursor-pointer transition" onclick="addToCartFromSearch('${p.id}')">
                     <div>
                         <p class="font-bold text-gray-800">${p.name}</p>
-                        <p class="text-xs text-gray-500">Código: ${p.barcode || 'N/A'} | Stock: <span class="${isLowStock ? 'text-red-600 font-bold' : ''}">${stock}</span></p>
+                        <p class="text-xs text-gray-500">Código: ${p.barcode || 'N/A'} | Stock: <span class="${isLowStock ? 'text-red-600 font-bold' : ''}">${stockDisplay}</span></p>
                     </div>
                     <div class="text-right">
                         <p class="font-bold text-green-600">$${formatMoney(p.salePrice)}</p>
@@ -5538,7 +5542,11 @@
                 // Llenar select de componentes
                 if (componentSelect) {
                     componentSelect.innerHTML = '<option value="">Seleccionar subproducto...</option>' +
-                        appState.inventory.map(p => `<option value="${p.id}">${escapeHtml(p.name)} (Stock: ${getProductStock(p)})</option>`).join('');
+                        appState.inventory.map(p => {
+                            const stock = getProductStock(p);
+                            const stockDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
+                            return `<option value="${p.id}">${escapeHtml(p.name)} (Stock: ${stockDisplay})</option>`;
+                        }).join('');
                 }
             } else {
                 section.classList.add('hidden');
@@ -5637,7 +5645,11 @@
                 if (componentSelect) {
                     componentSelect.innerHTML = '<option value="">Seleccionar subproducto...</option>' +
                         appState.inventory.filter(p => p.id !== document.getElementById('edit-product-modal').dataset.productId)
-                        .map(p => `<option value="${p.id}">${escapeHtml(p.name)} (Stock: ${getProductStock(p)})</option>`).join('');
+                        .map(p => {
+                            const stock = getProductStock(p);
+                            const stockDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
+                            return `<option value="${p.id}">${escapeHtml(p.name)} (Stock: ${stockDisplay})</option>`;
+                        }).join('');
                 }
             } else {
                 section.classList.add('hidden');
@@ -6740,7 +6752,20 @@
             // Eliminar del inventario
             appState.inventory = appState.inventory.filter(p => p.id !== productId);
             
+            // Registrar en lista de eliminados para evitar que vuelva por sync
+            if (!appState.deletedProductIds) appState.deletedProductIds = [];
+            appState.deletedProductIds.push({
+                id: productId,
+                deletedAt: Date.now()
+            });
+            // Mantener solo los últimos 200 registros para no crecer indefinidamente
+            if (appState.deletedProductIds.length > 200) {
+                appState.deletedProductIds = appState.deletedProductIds.slice(-200);
+            }
+            
             saveToLocalStorage();
+            // Forzar sync inmediato a Firebase para que el borrado se propague
+            syncToFirebase(true);
             renderAll();
             showNotification(`Producto "${product.name}" eliminado del inventario`, 'success');
         }
@@ -9916,7 +9941,11 @@
             const select = document.getElementById('loss-product');
             select.innerHTML = '<option value="">Seleccionar producto...</option>' +
                 appState.inventory.filter(p => !p.isComposite)
-                .map(p => `<option value="${p.id}">${escapeHtml(p.name)} (Stock: ${getProductStock(p)})</option>`).join('');
+                .map(p => {
+                    const stock = getProductStock(p);
+                    const stockDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
+                    return `<option value="${p.id}">${escapeHtml(p.name)} (Stock: ${stockDisplay})</option>`;
+                }).join('');
             document.getElementById('loss-quantity').value = '';
             document.getElementById('loss-cost').value = '';
             document.getElementById('loss-notes').value = '';
@@ -11635,6 +11664,7 @@ Total de productos a comprar: ${shoppingList.length}
                         discountTickets: [],
                         ticketRules: [],
                         cashCounts: [],
+                        deletedProductIds: [],
                         losses: [],
                         returns: [],
                         cash: 0,
@@ -11689,6 +11719,7 @@ Total de productos a comprar: ${shoppingList.length}
                 discountTickets: [],
                 ticketRules: [],
                 cashCounts: [],
+                deletedProductIds: [],
                 losses: [],
                 returns: [],
                 // autoPromotionConfig eliminado - ahora es una promo normal
@@ -11970,6 +12001,14 @@ RESULTADOS:
             try {
                 renderBilling();
             } catch(e) { console.error('Error en renderBilling:', e); }
+            
+            try {
+                renderAlerts();
+            } catch(e) { console.error('Error en renderAlerts:', e); }
+            
+            try {
+                renderPredictions();
+            } catch(e) { console.error('Error en renderPredictions:', e); }
         }
 
         function updateSidebar() {
@@ -13674,14 +13713,15 @@ RESULTADOS:
         
         // Función para guardar en Firebase (con debounce)
         let syncTimeout = null;
-        function syncToFirebase() {
+        function syncToFirebase(immediate = false) {
             if (!window.db) {
                 console.log('Firebase no disponible, usando solo localStorage');
                 return;
             }
             
-            // Debounce: esperar 1 segundo después del último cambio
+            // Debounce: esperar 1 segundo después del último cambio (o inmediato si se pide)
             clearTimeout(syncTimeout);
+            const delay = immediate ? 0 : 1000;
             syncTimeout = setTimeout(async () => {
                 try {
                     const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
@@ -13843,6 +13883,14 @@ RESULTADOS:
                 if (item && item.id) localMap.set(item.id, item);
             }
             
+            // Construir set de IDs eliminados para filtrar
+            const deletedIds = new Set();
+            if (Array.isArray(appState.deletedProductIds)) {
+                for (const d of appState.deletedProductIds) {
+                    if (d && d.id) deletedIds.add(d.id);
+                }
+            }
+            
             const merged = [];
             const mergedIds = new Set();
             
@@ -13850,7 +13898,10 @@ RESULTADOS:
                 mergedIds.add(id);
                 const localItem = localMap.get(id);
                 if (!localItem) {
-                    merged.push(JSON.parse(JSON.stringify(remoteItem)));
+                    // No restaurar productos que fueron eliminados localmente
+                    if (!deletedIds.has(id)) {
+                        merged.push(JSON.parse(JSON.stringify(remoteItem)));
+                    }
                     continue;
                 }
                 
@@ -14079,10 +14130,20 @@ RESULTADOS:
                 appState.returns = smartMergeArrays(appState.returns, data.returns);
                 appState.cashCounts = smartMergeArrays(appState.cashCounts || [], data.cashCounts || []);
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
+                // Tomar deletedProductIds de Firebase (la PC es la fuente de verdad)
+                appState.deletedProductIds = Array.isArray(data.deletedProductIds) ? data.deletedProductIds : [];
                 
                 console.log('📱 Modo secundario: datos de productos/stock/saldos reemplazados desde Firebase');
             } else {
                 // DISPOSITIVO PRINCIPAL (ej: PC): fusión inteligente normal
+                // Fusionar lista de productos eliminados
+                const remoteDeleted = Array.isArray(data.deletedProductIds) ? data.deletedProductIds : [];
+                const localDeleted = Array.isArray(appState.deletedProductIds) ? appState.deletedProductIds : [];
+                const deletedMap = new Map();
+                for (const d of localDeleted) { if (d && d.id) deletedMap.set(d.id, d); }
+                for (const d of remoteDeleted) { if (d && d.id && !deletedMap.has(d.id)) deletedMap.set(d.id, d); }
+                appState.deletedProductIds = Array.from(deletedMap.values()).slice(-200);
+                
                 appState.inventory = mergeInventory(appState.inventory, data.inventory);
                 appState.sales = smartMergeArrays(appState.sales, data.sales);
                 appState.expenses = smartMergeArrays(appState.expenses, data.expenses);
@@ -14313,6 +14374,7 @@ RESULTADOS:
                     appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
                     appState.ticketRules = Array.isArray(appState.ticketRules) ? appState.ticketRules : [];
                     appState.cashCounts = Array.isArray(appState.cashCounts) ? appState.cashCounts : [];
+                    appState.deletedProductIds = Array.isArray(appState.deletedProductIds) ? appState.deletedProductIds : [];
                     
                     // === MIGRACIÓN: agregar id a arqueos antiguos que no lo tienen ===
                     if (Array.isArray(appState.cashCounts)) {

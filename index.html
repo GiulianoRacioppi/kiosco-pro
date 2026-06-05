@@ -5545,8 +5545,10 @@
                         appState.inventory.map(p => {
                             const stock = getProductStock(p);
                             const stockDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
-                            return `<option value="${p.id}">${escapeHtml(p.name)} (Stock: ${stockDisplay})</option>`;
+                            const costDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `$${formatMoney(p.cost / p.weightPerUnit)}/g` : `$${formatMoney(p.cost)}/u`;
+                            return `<option value="${p.id}" data-weight="${p.saleByWeight && p.weightPerUnit > 0 ? p.weightPerUnit : 0}">${escapeHtml(p.name)} (Stock: ${stockDisplay} • ${costDisplay})</option>`;
                         }).join('');
+                    componentSelect.onchange = () => updateCompQtyPlaceholder(componentSelect, 'inv-component-qty');
                 }
             } else {
                 section.classList.add('hidden');
@@ -5575,12 +5577,18 @@
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
             
+            const isWeight = product.saleByWeight && product.weightPerUnit > 0;
+            const quantityUnits = isWeight ? (quantity / product.weightPerUnit) : quantity;
+            
             // Evitar duplicados: si ya existe, sumar cantidad
             const existing = pendingComponents.find(c => c.productId === productId);
             if (existing) {
-                existing.quantity += quantity;
+                existing.quantity += quantityUnits;
+                if (isWeight) existing.grams = (existing.grams || 0) + quantity;
             } else {
-                pendingComponents.push({ productId, quantity, name: product.name });
+                const compData = { productId, quantity: quantityUnits, name: product.name };
+                if (isWeight) compData.grams = quantity;
+                pendingComponents.push(compData);
             }
             
             select.value = '';
@@ -5604,9 +5612,12 @@
                 container.innerHTML = pendingComponents.map((comp, i) => {
                     const compProduct = appState.inventory.find(p => p.id === comp.productId);
                     const compCost = compProduct ? compProduct.cost : 0;
+                    const isWeight = compProduct?.saleByWeight && compProduct?.weightPerUnit > 0;
+                    const grams = comp.grams || (isWeight ? Math.round(comp.quantity * compProduct.weightPerUnit) : null);
+                    const qtyDisplay = grams ? `${grams}g` : `x${comp.quantity}`;
                     return `
                         <div class="flex justify-between items-center bg-white rounded p-2 border text-sm">
-                            <span>${escapeHtml(comp.name)} x${comp.quantity}</span>
+                            <span>${escapeHtml(comp.name)} ${qtyDisplay}</span>
                             <div class="flex items-center gap-2">
                                 <span class="text-xs text-gray-500">$${formatMoney(compCost * comp.quantity)}</span>
                                 <button type="button" onclick="removeInvComponent(${i})" class="text-red-500 hover:text-red-700 text-xs font-bold">✕</button>
@@ -5648,8 +5659,10 @@
                         .map(p => {
                             const stock = getProductStock(p);
                             const stockDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
-                            return `<option value="${p.id}">${escapeHtml(p.name)} (Stock: ${stockDisplay})</option>`;
+                            const costDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `$${formatMoney(p.cost / p.weightPerUnit)}/g` : `$${formatMoney(p.cost)}/u`;
+                            return `<option value="${p.id}" data-weight="${p.saleByWeight && p.weightPerUnit > 0 ? p.weightPerUnit : 0}">${escapeHtml(p.name)} (Stock: ${stockDisplay} • ${costDisplay})</option>`;
                         }).join('');
+                    componentSelect.onchange = () => updateCompQtyPlaceholder(componentSelect, 'edit-prod-component-qty');
                 }
             } else {
                 section.classList.add('hidden');
@@ -5671,11 +5684,17 @@
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
             
+            const isWeight = product.saleByWeight && product.weightPerUnit > 0;
+            const quantityUnits = isWeight ? (quantity / product.weightPerUnit) : quantity;
+            
             const existing = editProdComponents.find(c => c.productId === productId);
             if (existing) {
-                existing.quantity += quantity;
+                existing.quantity += quantityUnits;
+                if (isWeight) existing.grams = (existing.grams || 0) + quantity;
             } else {
-                editProdComponents.push({ productId, quantity, name: product.name });
+                const compData = { productId, quantity: quantityUnits, name: product.name };
+                if (isWeight) compData.grams = quantity;
+                editProdComponents.push(compData);
             }
             
             select.value = '';
@@ -5699,9 +5718,12 @@
                 container.innerHTML = editProdComponents.map((comp, i) => {
                     const compProduct = appState.inventory.find(p => p.id === comp.productId);
                     const compCost = compProduct ? compProduct.cost : 0;
+                    const isWeight = compProduct?.saleByWeight && compProduct?.weightPerUnit > 0;
+                    const grams = comp.grams || (isWeight ? Math.round(comp.quantity * compProduct.weightPerUnit) : null);
+                    const qtyDisplay = grams ? `${grams}g` : `x${comp.quantity}`;
                     return `
                         <div class="flex justify-between items-center bg-white rounded p-2 border text-sm">
-                            <span>${escapeHtml(comp.name)} x${comp.quantity}</span>
+                            <span>${escapeHtml(comp.name)} ${qtyDisplay}</span>
                             <div class="flex items-center gap-2">
                                 <span class="text-xs text-gray-500">$${formatMoney(compCost * comp.quantity)}</span>
                                 <button type="button" onclick="removeEditProdComponent(${i})" class="text-red-500 hover:text-red-700 text-xs font-bold">✕</button>
@@ -5721,6 +5743,18 @@
             if (costInput && document.getElementById('edit-prod-is-composite')?.checked) {
                 costInput.value = totalCost.toFixed(2);
                 calculateEditPrice();
+            }
+        }
+
+        function updateCompQtyPlaceholder(select, qtyInputId) {
+            const qtyInput = document.getElementById(qtyInputId);
+            if (!qtyInput) return;
+            const selectedOption = select.options[select.selectedIndex];
+            const weightPerUnit = parseFloat(selectedOption?.dataset?.weight) || 0;
+            if (weightPerUnit > 0) {
+                qtyInput.placeholder = 'Gramos';
+            } else {
+                qtyInput.placeholder = 'Cant';
             }
         }
 

@@ -596,11 +596,9 @@
                     <div id="edit-prod-composite-section" class="hidden space-y-3 mt-3">
                         <p class="text-xs text-orange-700 font-bold uppercase">Receta / Componentes</p>
                         <div class="flex gap-2">
-                            <div class="flex-1 relative">
-                                <input type="text" id="edit-prod-component-search" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Buscar subproducto..." oninput="filterEditComponents()" onkeydown="handleEditCompKeypress(event)">
-                                <input type="hidden" id="edit-prod-component-selected-id">
-                                <div id="edit-prod-component-results" class="absolute z-20 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto hidden"></div>
-                            </div>
+                            <select id="edit-prod-component-select" class="flex-1 border rounded-lg px-3 py-2 text-sm">
+                                <option value="">Seleccionar subproducto...</option>
+                            </select>
                             <input type="number" id="edit-prod-component-qty" class="w-24 border rounded-lg px-3 py-2 text-sm" placeholder="Cant" min="0.01" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();addEditProdComponent();}">
                             <button type="button" onclick="addEditProdComponent()" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-bold">+</button>
                         </div>
@@ -1487,11 +1485,9 @@
                         <div id="inv-composite-section" class="hidden space-y-3 mt-3">
                             <p class="text-xs text-orange-700 font-bold uppercase">Receta / Componentes</p>
                             <div class="flex gap-2">
-                                <div class="flex-1 relative">
-                                    <input type="text" id="inv-component-search" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Buscar subproducto..." oninput="filterInvComponents()" onkeydown="handleInvCompKeypress(event)">
-                                    <input type="hidden" id="inv-component-selected-id">
-                                    <div id="inv-component-results" class="absolute z-20 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto hidden"></div>
-                                </div>
+                                <select id="inv-component-select" class="flex-1 border rounded-lg px-3 py-2 text-sm">
+                                    <option value="">Seleccionar subproducto...</option>
+                                </select>
                                 <input type="number" id="inv-component-qty" class="w-24 border rounded-lg px-3 py-2 text-sm" placeholder="Cant" min="0.01" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();addInvComponent();}">
                                 <button type="button" onclick="addInvComponent()" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-bold">+</button>
                             </div>
@@ -5533,6 +5529,7 @@
             const section = document.getElementById('inv-composite-section');
             const stockInput = document.getElementById('inv-stock');
             const costInput = document.getElementById('inv-cost');
+            const componentSelect = document.getElementById('inv-component-select');
             
             if (checkbox && checkbox.checked) {
                 section.classList.remove('hidden');
@@ -5542,13 +5539,17 @@
                     stockInput.classList.add('bg-gray-100');
                 }
                 if (costInput) costInput.classList.add('bg-gray-100');
-                // Limpiar autocomplete de componentes
-                const searchInput = document.getElementById('inv-component-search');
-                const hiddenInput = document.getElementById('inv-component-selected-id');
-                const resultsDiv = document.getElementById('inv-component-results');
-                if (searchInput) searchInput.value = '';
-                if (hiddenInput) hiddenInput.value = '';
-                if (resultsDiv) resultsDiv.classList.add('hidden');
+                // Llenar select de componentes
+                if (componentSelect) {
+                    componentSelect.innerHTML = '<option value="">Seleccionar subproducto...</option>' +
+                        appState.inventory.map(p => {
+                            const stock = getProductStock(p);
+                            const stockDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
+                            const costDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `$${formatMoney(p.cost / p.weightPerUnit)}/g` : `$${formatMoney(p.cost)}/u`;
+                            return `<option value="${p.id}" data-weight="${p.saleByWeight && p.weightPerUnit > 0 ? p.weightPerUnit : 0}">${escapeHtml(p.name)} (Stock: ${stockDisplay} • ${costDisplay})</option>`;
+                        }).join('');
+                    componentSelect.onchange = () => updateCompQtyPlaceholder(componentSelect, 'inv-component-qty');
+                }
             } else {
                 section.classList.add('hidden');
                 if (stockInput) {
@@ -5562,12 +5563,11 @@
         }
 
         function addInvComponent() {
-            const hidden = document.getElementById('inv-component-selected-id');
-            const search = document.getElementById('inv-component-search');
+            const select = document.getElementById('inv-component-select');
             const qtyInput = document.getElementById('inv-component-qty');
-            if (!hidden || !qtyInput) return;
+            if (!select || !qtyInput) return;
             
-            const productId = hidden.value;
+            const productId = select.value;
             const quantity = parseFloat(qtyInput.value);
             if (!productId || !quantity || quantity <= 0) {
                 showNotification('Seleccioná un subproducto y una cantidad válida', 'error');
@@ -5591,11 +5591,8 @@
                 pendingComponents.push(compData);
             }
             
-            hidden.value = '';
-            if (search) search.value = '';
+            select.value = '';
             qtyInput.value = '';
-            const resultsDiv = document.getElementById('inv-component-results');
-            if (resultsDiv) resultsDiv.classList.add('hidden');
             renderInvComponentsList();
         }
 
@@ -5652,28 +5649,32 @@
         function toggleEditCompositeSection() {
             const checkbox = document.getElementById('edit-prod-is-composite');
             const section = document.getElementById('edit-prod-composite-section');
+            const componentSelect = document.getElementById('edit-prod-component-select');
             
             if (checkbox && checkbox.checked) {
                 section.classList.remove('hidden');
-                // Limpiar autocomplete de componentes
-                const searchInput = document.getElementById('edit-prod-component-search');
-                const hiddenInput = document.getElementById('edit-prod-component-selected-id');
-                const resultsDiv = document.getElementById('edit-prod-component-results');
-                if (searchInput) searchInput.value = '';
-                if (hiddenInput) hiddenInput.value = '';
-                if (resultsDiv) resultsDiv.classList.add('hidden');
+                if (componentSelect) {
+                    componentSelect.innerHTML = '<option value="">Seleccionar subproducto...</option>' +
+                        appState.inventory.filter(p => p.id !== document.getElementById('edit-product-modal').dataset.productId)
+                        .map(p => {
+                            const stock = getProductStock(p);
+                            const stockDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
+                            const costDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `$${formatMoney(p.cost / p.weightPerUnit)}/g` : `$${formatMoney(p.cost)}/u`;
+                            return `<option value="${p.id}" data-weight="${p.saleByWeight && p.weightPerUnit > 0 ? p.weightPerUnit : 0}">${escapeHtml(p.name)} (Stock: ${stockDisplay} • ${costDisplay})</option>`;
+                        }).join('');
+                    componentSelect.onchange = () => updateCompQtyPlaceholder(componentSelect, 'edit-prod-component-qty');
+                }
             } else {
                 section.classList.add('hidden');
             }
         }
 
         function addEditProdComponent() {
-            const hidden = document.getElementById('edit-prod-component-selected-id');
-            const search = document.getElementById('edit-prod-component-search');
+            const select = document.getElementById('edit-prod-component-select');
             const qtyInput = document.getElementById('edit-prod-component-qty');
-            if (!hidden || !qtyInput) return;
+            if (!select || !qtyInput) return;
             
-            const productId = hidden.value;
+            const productId = select.value;
             const quantity = parseFloat(qtyInput.value);
             if (!productId || !quantity || quantity <= 0) {
                 showNotification('Seleccioná un subproducto y una cantidad válida', 'error');
@@ -5696,11 +5697,8 @@
                 editProdComponents.push(compData);
             }
             
-            hidden.value = '';
-            if (search) search.value = '';
+            select.value = '';
             qtyInput.value = '';
-            const resultsDiv = document.getElementById('edit-prod-component-results');
-            if (resultsDiv) resultsDiv.classList.add('hidden');
             renderEditProdComponentsList();
         }
 
@@ -5748,78 +5746,19 @@
             }
         }
 
-        function updateCompQtyPlaceholder(productId, qtyInputId) {
+        function updateCompQtyPlaceholder(select, qtyInputId) {
             const qtyInput = document.getElementById(qtyInputId);
             if (!qtyInput) return;
-            const product = appState.inventory.find(p => p.id === productId);
-            if (product && product.saleByWeight && product.weightPerUnit > 0) {
+            const selectedOption = select.options[select.selectedIndex];
+            const weightPerUnit = parseFloat(selectedOption?.dataset?.weight) || 0;
+            if (weightPerUnit > 0) {
                 qtyInput.placeholder = 'Gramos';
             } else {
                 qtyInput.placeholder = 'Cant';
             }
         }
 
-        function renderCompDropdown(results, containerId, inputId, hiddenId, prefix) {
-            const container = document.getElementById(containerId);
-            if (!container) return;
-            if (results.length === 0) {
-                container.innerHTML = '<p class="p-2 text-xs text-gray-400">No se encontraron productos</p>';
-                container.classList.remove('hidden');
-                return;
-            }
-            container.innerHTML = results.map(p => {
-                const stock = getProductStock(p);
-                const stockDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
-                const costDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `$${formatMoney(p.cost / p.weightPerUnit)}/g` : `$${formatMoney(p.cost)}/u`;
-                return `<div class="p-2 hover:bg-orange-50 cursor-pointer text-sm border-b last:border-b-0" onclick="selectCompOption('${p.id}', '${escapeHtml(p.name).replace(/'/g, '\\'')}', '${inputId}', '${hiddenId}', '${containerId}', '${prefix}')">
-                    <div class="font-medium text-gray-800">${escapeHtml(p.name)}</div>
-                    <div class="text-xs text-gray-500">Stock: ${stockDisplay} • ${costDisplay}</div>
-                </div>`;
-            }).join('');
-            container.classList.remove('hidden');
-        }
-
-        function selectCompOption(productId, productName, inputId, hiddenId, containerId, prefix) {
-            const input = document.getElementById(inputId);
-            const hidden = document.getElementById(hiddenId);
-            const container = document.getElementById(containerId);
-            if (input) input.value = productName;
-            if (hidden) hidden.value = productId;
-            if (container) container.classList.add('hidden');
-            const qtyId = prefix === 'inv' ? 'inv-component-qty' : 'edit-prod-component-qty';
-            updateCompQtyPlaceholder(productId, qtyId);
-        }
-
-        function filterInvComponents() {
-            const search = document.getElementById('inv-component-search')?.value.trim() || '';
-            const products = appState.inventory;
-            const results = search ? fuzzySearchProducts(search, products, 10) : products.slice(0, 10);
-            renderCompDropdown(results, 'inv-component-results', 'inv-component-search', 'inv-component-selected-id', 'inv');
-        }
-
-        function filterEditComponents() {
-            const search = document.getElementById('edit-prod-component-search')?.value.trim() || '';
-            const currentProductId = document.getElementById('edit-product-modal')?.dataset?.productId;
-            const products = appState.inventory.filter(p => p.id !== currentProductId);
-            const results = search ? fuzzySearchProducts(search, products, 10) : products.slice(0, 10);
-            renderCompDropdown(results, 'edit-prod-component-results', 'edit-prod-component-search', 'edit-prod-component-selected-id', 'edit');
-        }
-
-        function handleInvCompKeypress(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                addInvComponent();
-            }
-        }
-
-        function handleEditCompKeypress(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                addEditProdComponent();
-            }
-        }
-
-        function setInvInvoiceType(type){
+        function setInvInvoiceType(type) {
             const input = document.getElementById('inv-invoice-type');
             if (input) input.value = type;
             appState.lastInvoiceType = type;
@@ -14604,7 +14543,7 @@ RESULTADOS:
             
             // Exponer funciones adicionales de venta por peso y sync
             (function exposeAdditionalFunctions() {
-                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder'];
+                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost'];
                 for (const name of extraFns) {
                     try {
                         const fn = eval(name);

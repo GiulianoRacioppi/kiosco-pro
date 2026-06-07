@@ -10900,40 +10900,22 @@
         }
 
         function renderPredictions() {
-            // Limpiar cache de estadísticas
             statsCache.clear();
-            
-            // Mostrar estado de carga inmediatamente
-            const cardsContainer = document.getElementById('prediction-cards');
-            const shoppingContainer = document.getElementById('auto-shopping-list');
-            const topProductsContainer = document.getElementById('top-products-analysis');
-            
-            if (cardsContainer) {
-                cardsContainer.innerHTML = `
-                    <div class="col-span-3 text-center py-8 text-gray-400">
-                        <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-                        <p>Analizando datos y generando predicciones...</p>
-                    </div>
-                `;
-            }
-            
-            // Usar setTimeout para no bloquear la UI
-            setTimeout(() => {
-                try {
-                    renderPredictionsContent();
-                } catch (err) {
-                    console.error('Error en renderPredictions:', err);
-                    if (cardsContainer) {
-                        cardsContainer.innerHTML = `
-                            <div class="col-span-3 text-center py-8 text-red-500">
-                                <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
-                                <p>Error al generar predicciones. Intentá recargar la página.</p>
-                                <p class="text-sm mt-2 text-gray-500">${err.message}</p>
-                            </div>
-                        `;
-                    }
+            try {
+                renderPredictionsContent();
+            } catch (err) {
+                console.error('Error en renderPredictions:', err);
+                const cardsContainer = document.getElementById('prediction-cards');
+                if (cardsContainer) {
+                    cardsContainer.innerHTML = `
+                        <div class="col-span-3 text-center py-8 text-red-500">
+                            <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                            <p>Error al generar predicciones. Intentá recargar la página.</p>
+                            <p class="text-sm mt-2 text-gray-500">${err.message}</p>
+                        </div>
+                    `;
                 }
-            }, 10);
+            }
         }
         
         function renderPredictionsContent() {
@@ -10975,7 +10957,7 @@
             
             const targetDays = appState.stockTargetDays || 7;
             
-            inventory.forEach(product => {
+            appState.inventory.forEach(product => {
                 const stock = getProductStock(product);
                 const minStock = parseInt(product.min) || 5;
                 const prediction = predictDemand(product.id, targetDays);

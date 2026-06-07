@@ -3435,7 +3435,8 @@
             const today = new Date();
             
             // 1. Productos SIN STOCK (Crítico)
-            const noStockProducts = appState.inventory.filter(p => getProductStock(p) === 0);
+            const activeInv = getActiveInventory();
+            const noStockProducts = activeInv.filter(p => getProductStock(p) === 0);
             if (noStockProducts.length > 0) {
                 alerts.push({
                     type: 'critical',
@@ -3452,7 +3453,7 @@
             }
             
             // 2. Productos con Stock Bajo (Advertencia)
-            const lowStockProducts = appState.inventory.filter(p => {
+            const lowStockProducts = activeInv.filter(p => {
                 const stock = getProductStock(p);
                 return stock > 0 && stock <= (p.min || 5);
             });
@@ -3474,7 +3475,7 @@
             // 3. Productos por VENCER (Próximos 7 días) - con sugerencia de PROMOCIÓN
             // Buscar en el primer lote de cada producto (FIFO - el que se vende primero)
             const expiringProducts = [];
-            appState.inventory.forEach(p => {
+            activeInv.forEach(p => {
                 if (p.batches && p.batches.length > 0) {
                     // Ordenar por vencimiento y tomar el primero (FIFO)
                     const sortedBatches = [...p.batches].sort((a, b) => {
@@ -3521,7 +3522,7 @@
             
             // 4. Productos próximos a vencer (8-15 días) - Advertencia temprana
             const earlyExpiring = [];
-            appState.inventory.forEach(p => {
+            activeInv.forEach(p => {
                 if (p.batches && p.batches.length > 0) {
                     const sortedBatches = [...p.batches].sort((a, b) => {
                         if (!a.expiry) return 1;
@@ -3750,16 +3751,15 @@
                 let count = 0;
                 
                 // Calcular demanda promedio para este día de la semana
-                if (Array.isArray(appState.inventory)) {
-                    appState.inventory.forEach(product => {
-                        const stats = calculateProductStats(product.id);
-                        if (stats && stats.avgDaily > 0) {
-                            const dayAvg = stats.avgByDayOfWeek[dayOfWeek] || stats.avgDaily;
-                            totalDemand += dayAvg;
-                            count++;
-                        }
-                    });
-                }
+                const activeInv = getActiveInventory();
+                activeInv.forEach(product => {
+                    const stats = calculateProductStats(product.id);
+                    if (stats && stats.avgDaily > 0) {
+                        const dayAvg = stats.avgByDayOfWeek[dayOfWeek] || stats.avgDaily;
+                        totalDemand += dayAvg;
+                        count++;
+                    }
+                });
                 
                 predictions.push({
                     date: dateStr,
@@ -3799,7 +3799,8 @@
             }
             
             // Buscar usando fuzzy search (ignora tildes y tolera errores)
-            const results = fuzzySearchProducts(search, appState.inventory, 5);
+            const activeInv = getActiveInventory();
+            const results = fuzzySearchProducts(search, activeInv, 5);
             
             if (results.length === 0) {
                 resultsContainer.innerHTML = '<p class="text-gray-400 text-center py-2">No se encontraron productos</p>';
@@ -3831,10 +3832,11 @@
         function handleSellSearchKeypress(e) {
             if (e.key === 'Enter') {
                 const search = e.target.value.trim();
+                const activeInv = getActiveInventory();
                 
                 // Intentar encontrar por código exacto primero (normalizado)
                 const normalizedSearch = normalizeText(search);
-                const productByBarcode = appState.inventory.find(p => 
+                const productByBarcode = activeInv.find(p => 
                     normalizeText(p.barcode) === normalizedSearch
                 );
                 if (productByBarcode) {
@@ -3843,7 +3845,7 @@
                 }
                 
                 // Buscar usando fuzzy search
-                const results = fuzzySearchProducts(search, appState.inventory, 10);
+                const results = fuzzySearchProducts(search, activeInv, 10);
                 
                 if (results.length === 1) {
                     addToCartFromSearch(results[0].id);
@@ -4105,7 +4107,8 @@
             const today = new Date();
             
             // 1. Productos sin stock
-            const noStockProducts = appState.inventory.filter(p => getProductStock(p) === 0);
+            const activeInv = getActiveInventory();
+            const noStockProducts = activeInv.filter(p => getProductStock(p) === 0);
             if (noStockProducts.length > 0) {
                 alerts.push({
                     type: 'critical',
@@ -4127,7 +4130,7 @@
             }
             
             // 2. Stock bajo
-            const lowStockProducts = appState.inventory.filter(p => {
+            const lowStockProducts = activeInv.filter(p => {
                 const stock = getProductStock(p);
                 return stock > 0 && stock <= (p.min || 5);
             });
@@ -4150,7 +4153,7 @@
             
             // 3. Productos por vencer (próximos 7 días)
             const expiringProducts = [];
-            appState.inventory.forEach(p => {
+            activeInv.forEach(p => {
                 if (p.batches && p.batches.length > 0) {
                     const sortedBatches = [...p.batches].sort((a, b) => {
                         if (!a.expiry) return 1;
@@ -4198,7 +4201,8 @@
         }
 
         function addToCartByBarcode(barcode) {
-            const product = appState.inventory.find(p => p.barcode === barcode);
+            const activeInv = getActiveInventory();
+            const product = activeInv.find(p => p.barcode === barcode);
             if (!product) {
                 showNotification('Producto no encontrado', 'error');
                 return;
@@ -5839,7 +5843,7 @@
 
         function filterInvComponents() {
             const search = document.getElementById('inv-component-search')?.value.trim() || '';
-            const products = appState.inventory;
+            const products = getActiveInventory();
             const results = search ? fuzzySearchProducts(search, products, 10) : products.slice(0, 10);
             renderCompDropdown(results, 'inv-component-results', 'inv-component-search', 'inv-component-selected-id', 'inv');
         }
@@ -5847,7 +5851,7 @@
         function filterEditComponents() {
             const search = document.getElementById('edit-prod-component-search')?.value.trim() || '';
             const currentProductId = document.getElementById('edit-product-modal')?.dataset?.productId;
-            const products = appState.inventory.filter(p => p.id !== currentProductId);
+            const products = getActiveInventory().filter(p => p.id !== currentProductId);
             const results = search ? fuzzySearchProducts(search, products, 10) : products.slice(0, 10);
             renderCompDropdown(results, 'edit-prod-component-results', 'edit-prod-component-search', 'edit-prod-component-selected-id', 'edit');
         }
@@ -6473,18 +6477,13 @@
         }
 
         function renderInventory() {
-            console.log('renderInventory llamado. Total productos:', appState.inventory?.length || 0);
-            
-            // Asegurar que inventory sea un array
-            if (!Array.isArray(appState.inventory)) {
-                console.warn('inventory no es array, inicializando...');
-                appState.inventory = [];
-            }
+            const activeInventory = getActiveInventory();
+            console.log('renderInventory llamado. Total productos:', activeInventory.length);
             
             const search = document.getElementById('search-inventory').value;
             const filtered = search 
-                ? fuzzySearchProducts(search, appState.inventory, 100)
-                : appState.inventory;
+                ? fuzzySearchProducts(search, activeInventory, 100)
+                : activeInventory;
             
             console.log('Productos filtrados para mostrar:', filtered.length);
 
@@ -6496,11 +6495,12 @@
                 
                 // Formatear lotes o componentes para mostrar
                 let batchesHtml = '';
+                const allInventory = appState.inventory; // for component lookup
                 if (isComposite) {
                     batchesHtml = `<div class="text-xs space-y-1">
                         <span class="px-1 py-0.5 rounded bg-orange-100 text-orange-700 font-bold">🧩 PREPARACIÓN</span>
                         ${p.components.map(comp => {
-                            const compProduct = appState.inventory.find(cp => cp.id === comp.productId);
+                            const compProduct = allInventory.find(cp => cp.id === comp.productId);
                             return `<div class="text-xs text-gray-600">• ${escapeHtml(compProduct ? compProduct.name : '???')} x${comp.quantity}</div>`;
                         }).join('')}
                     </div>`;
@@ -6650,7 +6650,7 @@
 
         // Actualizar KPIs de stock y lista de compras sugerida
         function updateStockKPIs() {
-            const inventory = Array.isArray(appState.inventory) ? appState.inventory : [];
+            const inventory = getActiveInventory();
             
             let criticalCount = 0;
             let warningCount = 0;
@@ -7780,6 +7780,21 @@
                     delete product.weightPerUnit;
                 }
                 
+                // Si el producto quedó sin lotes y no es compuesto, eliminarlo completamente
+                if (!product.isComposite && product.batches.length === 0) {
+                    appState.inventory = appState.inventory.filter(p => p.id !== productId);
+                    if (!appState.deletedProductIds) appState.deletedProductIds = [];
+                    appState.deletedProductIds.push({ id: productId, deletedAt: Date.now() });
+                    if (appState.deletedProductIds.length > 200) {
+                        appState.deletedProductIds = appState.deletedProductIds.slice(-200);
+                    }
+                    saveToLocalStorage();
+                    renderAll();
+                    closeEditProductModal();
+                    showNotification('Producto eliminado porque quedó sin stock', 'info');
+                    return;
+                }
+                
                 product.updatedAt = new Date().toISOString();
                 
                 saveToLocalStorage();
@@ -7797,7 +7812,8 @@
             }
             
             // Buscar por nombre o código (excluir compuestos: no reciben stock directo)
-            const results = appState.inventory.filter(p => 
+            const activeInv = getActiveInventory();
+            const results = activeInv.filter(p => 
                 !p.isComposite && (
                     p.name.toLowerCase().includes(search) || 
                     p.barcode.toLowerCase().includes(search)
@@ -7825,7 +7841,8 @@
                 const search = e.target.value.trim().toLowerCase();
                 
                 // Primero intentar encontrar por código exacto (excluir compuestos)
-                const productByBarcode = appState.inventory.find(p => !p.isComposite && p.barcode.toLowerCase() === search);
+                const activeInv = getActiveInventory();
+                const productByBarcode = activeInv.find(p => !p.isComposite && p.barcode.toLowerCase() === search);
                 if (productByBarcode) {
                     openAddStockModal(productByBarcode.id);
                     e.target.value = '';
@@ -7834,7 +7851,7 @@
                 }
                 
                 // Si no es código exacto, ver si hay un solo resultado en la búsqueda (excluir compuestos)
-                const results = appState.inventory.filter(p => 
+                const results = activeInv.filter(p => 
                     !p.isComposite && (
                         p.name.toLowerCase().includes(search) || 
                         p.barcode.toLowerCase().includes(search)
@@ -8250,7 +8267,8 @@
             }
 
             // Buscar el producto y reducir el stock
-            const product = appState.inventory.find(p => investment.concept.includes(p.name));
+            const activeInv = getActiveInventory();
+            const product = activeInv.find(p => investment.concept.includes(p.name));
             if (product && product.batches && product.batches.length > 0) {
                 // Eliminar el último lote (el más reciente)
                 product.batches.pop();
@@ -9301,7 +9319,8 @@
             try {
                 // ===== CAPITAL =====
                 // Calcular capital automáticamente: Caja + Cuenta + Valor de Stock
-                const inventoryValue = appState.inventory.reduce((sum, p) => {
+                const activeInv = getActiveInventory();
+                const inventoryValue = activeInv.reduce((sum, p) => {
                     const stock = p.batches ? p.batches.reduce((s, b) => s + (b.stock || 0), 0) : (p.stock || 0);
                     return sum + ((p.cost || 0) * stock);
                 }, 0);
@@ -10081,8 +10100,9 @@
 
         function openLossModal() {
             const select = document.getElementById('loss-product');
+            const activeInv = getActiveInventory();
             select.innerHTML = '<option value="">Seleccionar producto...</option>' +
-                appState.inventory.filter(p => !p.isComposite)
+                activeInv.filter(p => !p.isComposite)
                 .map(p => {
                     const stock = getProductStock(p);
                     const stockDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
@@ -10613,13 +10633,41 @@
             };
         }
 
+        function getActiveInventory() {
+            const deletedIds = new Set();
+            if (Array.isArray(appState.deletedProductIds)) {
+                for (const d of appState.deletedProductIds) {
+                    if (d && d.id) deletedIds.add(d.id);
+                }
+            }
+            return appState.inventory.filter(p => p && p.id && !deletedIds.has(p.id));
+        }
+
+        function cleanupDeletedProducts() {
+            if (!Array.isArray(appState.inventory)) return;
+            const deletedIds = new Set();
+            if (Array.isArray(appState.deletedProductIds)) {
+                for (const d of appState.deletedProductIds) {
+                    if (d && d.id) deletedIds.add(d.id);
+                }
+            }
+            const before = appState.inventory.length;
+            appState.inventory = appState.inventory.filter(p => p && p.id && !deletedIds.has(p.id));
+            const removed = before - appState.inventory.length;
+            if (removed > 0) {
+                console.log('cleanupDeletedProducts: eliminados ' + removed + ' productos marcados como borrados');
+            }
+        }
+
         function generateShoppingList() {
             const list = [];
             const today = new Date();
             const todayDayOfWeek = today.getDay();
             
+            const activeInventory = getActiveInventory();
+            
             // Limitar a los primeros 100 productos para evitar sobrecarga
-            const productsToAnalyze = appState.inventory.slice(0, 100);
+            const productsToAnalyze = activeInventory.slice(0, 100);
             
             productsToAnalyze.forEach(product => {
                 if (!product || !product.id) return;
@@ -10728,8 +10776,9 @@
             
             const today = new Date();
             const items = [];
+            const activeInventory = getActiveInventory();
             
-            appState.inventory.forEach(product => {
+            activeInventory.forEach(product => {
                 if (product.batches && product.batches.length > 0) {
                     product.batches.forEach(batch => {
                         if (batch.expiry && batch.stock > 0) {
@@ -10926,7 +10975,7 @@
             
             const targetDays = appState.stockTargetDays || 7;
             
-            appState.inventory.forEach(product => {
+            inventory.forEach(product => {
                 const stock = getProductStock(product);
                 const minStock = parseInt(product.min) || 5;
                 const prediction = predictDemand(product.id, targetDays);
@@ -11219,8 +11268,10 @@
             const container = document.getElementById('top-products-analysis');
             if (!container) return;
             
+            const activeInventory = getActiveInventory();
+            
             // Obtener top 5 productos por volumen de ventas
-            const productRanking = appState.inventory
+            const productRanking = activeInventory
                 .map(p => {
                     const stats = calculateProductStats(p.id);
                     return {
@@ -11358,8 +11409,9 @@ Total de productos a comprar: ${shoppingList.length}
         function renderAlerts() {
             const alerts = [];
             const today = new Date();
+            const activeInv = getActiveInventory();
             
-            appState.inventory.forEach(p => {
+            activeInv.forEach(p => {
                 const stock = getProductStock(p);
                 if (stock <= 3) {
                     alerts.push({
@@ -11458,7 +11510,7 @@ Total de productos a comprar: ${shoppingList.length}
             document.getElementById('settings-mercado-fee').value = appState.mercadoCreditoFee || 5;
             document.getElementById('settings-stock-days').value = appState.stockTargetDays || 7;
             
-            document.getElementById('settings-product-count').textContent = appState.inventory.length;
+            document.getElementById('settings-product-count').textContent = getActiveInventory().length;
             document.getElementById('settings-sales-count').textContent = appState.sales.length;
             document.getElementById('settings-expenses-count').textContent = appState.expenses.length;
             
@@ -11530,7 +11582,8 @@ Total de productos a comprar: ${shoppingList.length}
             let purchasedWhite = 0;
             let purchasedBlack = 0;
             
-            appState.inventory.forEach(product => {
+            const activeInv = getActiveInventory();
+            activeInv.forEach(product => {
                 if (product.batches && Array.isArray(product.batches)) {
                     product.batches.forEach(batch => {
                         if (!startDate || batch.dateAdded >= startDate) {
@@ -11939,8 +11992,9 @@ Total de productos a comprar: ${shoppingList.length}
             const topProduct = Object.entries(productSales).sort((a, b) => b[1].qty - a[1].qty)[0];
 
             // Stock valorizado
-            const stockCost = appState.inventory.reduce((sum, p) => sum + ((p.cost || 0) * getProductStock(p)), 0);
-            const stockSale = appState.inventory.reduce((sum, p) => sum + (((p.salePrice || p.price || 0)) * getProductStock(p)), 0);
+            const activeInv = getActiveInventory();
+            const stockCost = activeInv.reduce((sum, p) => sum + ((p.cost || 0) * getProductStock(p)), 0);
+            const stockSale = activeInv.reduce((sum, p) => sum + (((p.salePrice || p.price || 0)) * getProductStock(p)), 0);
 
             // ===== HOJA 1: RESUMEN =====
             const summaryData = [
@@ -12007,8 +12061,9 @@ Total de productos a comprar: ${shoppingList.length}
 
         function exportInventoryReport() {
             let csv = 'Nombre,Código,Categoría,Stock Total,Costo,Precio,Proveedor,Lotes\n';
+            const activeInv = getActiveInventory();
             
-            appState.inventory.forEach(p => {
+            activeInv.forEach(p => {
                 const totalStock = getProductStock(p);
                 let batchesInfo = '';
                 if (p.batches && p.batches.length > 0) {
@@ -12037,8 +12092,9 @@ Total de productos a comprar: ${shoppingList.length}
             const totalProfit = appState.sales.reduce((sum, s) => sum + s.profit, 0);
             const totalExpenses = appState.expenses.reduce((sum, e) => sum + e.amount, 0);
             
-            const inventoryCost = appState.inventory.reduce((sum, p) => sum + (p.cost * getProductStock(p)), 0);
-            const inventorySale = appState.inventory.reduce((sum, p) => sum + (p.salePrice * getProductStock(p)), 0);
+            const activeInv = getActiveInventory();
+            const inventoryCost = activeInv.reduce((sum, p) => sum + (p.cost * getProductStock(p)), 0);
+            const inventorySale = activeInv.reduce((sum, p) => sum + (p.salePrice * getProductStock(p)), 0);
             
             const report = `
 RESUMEN FINANCIERO KIOSCOPRO
@@ -12092,6 +12148,9 @@ RESULTADOS:
 
         // ==================== UTILITIES ====================
         function renderAll() {
+            // Asegurar que productos eliminados no estén en el inventario
+            cleanupDeletedProducts();
+            
             try {
                 renderDashboard();
             } catch(e) { console.error('Error en renderDashboard:', e); }
@@ -12372,7 +12431,7 @@ RESULTADOS:
                         showNotification('📴 Backup restaurado localmente (sin conexión a internet)', 'info');
                     }
                     
-                    showNotification('✅ Backup restaurado completamente. Se cargaron ' + appState.inventory.length + ' productos y ' + appState.sales.length + ' ventas.', 'success');
+                    showNotification('✅ Backup restaurado completamente. Se cargaron ' + getActiveInventory().length + ' productos activos y ' + appState.sales.length + ' ventas.', 'success');
                     
                 } catch (err) {
                     console.error('Error al restaurar:', err);
@@ -12655,7 +12714,8 @@ RESULTADOS:
             
             // Cargar productos
             const productsList = document.getElementById('manual-ticket-products');
-            productsList.innerHTML = appState.inventory.map(p => `
+            const activeInv = getActiveInventory();
+            productsList.innerHTML = activeInv.map(p => `
                 <label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-100 rounded px-2">
                     <input type="checkbox" class="manual-ticket-product-check" value="${p.id}">
                     <span class="text-sm">${escapeHtml(p.name)}</span>
@@ -12752,7 +12812,8 @@ RESULTADOS:
             // Productos de la venta pre-seleccionados
             const saleProductIds = sale.items.map(i => i.productId);
             const productsList = document.getElementById('manual-ticket-products');
-            productsList.innerHTML = appState.inventory.map(p => `
+            const activeInv = getActiveInventory();
+            productsList.innerHTML = activeInv.map(p => `
                 <label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-100 rounded px-2">
                     <input type="checkbox" class="manual-ticket-product-check" value="${p.id}" ${saleProductIds.includes(p.id) ? 'checked' : ''}>
                     <span class="text-sm">${escapeHtml(p.name)}</span>
@@ -12846,10 +12907,11 @@ RESULTADOS:
                     else if (p.type === 'bundle') discountText = `$${formatMoney(p.bundlePrice || p.discount || 0)} combo`;
                     else discountText = `$${p.discount} off`;
                     
+                    const allInventory = appState.inventory;
                     let productCount = 'Todos los productos';
                     if (p.type === 'bundle' && p.bundleItems && p.bundleItems.length > 0) {
                         productCount = p.bundleItems.map(bi => {
-                            const prod = appState.inventory.find(pr => pr.id === bi.productId);
+                            const prod = allInventory.find(pr => pr.id === bi.productId);
                             const name = prod ? prod.name.split(' ').slice(0, 2).join(' ') : bi.productId;
                             return `${bi.qty || 1} ${name}`;
                         }).join(' + ');
@@ -12981,7 +13043,8 @@ RESULTADOS:
             // Cargar productos en ambos selects
             const categoryList = document.getElementById('ticket-rule-category-products');
             const appliesList = document.getElementById('ticket-rule-applies-products');
-            const productsHtml = appState.inventory.map(p => `
+            const activeInv = getActiveInventory();
+            const productsHtml = activeInv.map(p => `
                 <label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-100 rounded px-2">
                     <input type="checkbox" class="ticket-rule-cat-check" value="${p.id}">
                     <span class="text-sm">${escapeHtml(p.name)}</span>
@@ -13332,7 +13395,8 @@ RESULTADOS:
             }
             
             const alreadySelected = new Set(promoModalSelected.map(s => s.productId));
-            const matches = appState.inventory.filter(p => {
+            const activeInv = getActiveInventory();
+            const matches = activeInv.filter(p => {
                 if (alreadySelected.has(p.id)) return false;
                 return p.name.toLowerCase().includes(q);
             }).slice(0, 8);
@@ -14322,6 +14386,9 @@ RESULTADOS:
             // Restaurar carrito local
             appState.cart = localCart;
             
+            // Limpiar productos eliminados después de cualquier merge
+            cleanupDeletedProducts();
+            
             // Guardar en localStorage y renderizar
             saveToLocalStorage(false); // false = no disparar syncToFirebase
             lastSyncTime = Date.now();
@@ -14631,6 +14698,9 @@ RESULTADOS:
                     showNotification('Error al cargar datos guardados', 'error');
                 }
             }
+            
+            // Limpiar productos eliminados del inventario
+            cleanupDeletedProducts();
             
             // Iniciar listener de Firebase después de cargar datos locales
             setTimeout(() => {

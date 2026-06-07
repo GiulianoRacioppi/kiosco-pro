@@ -6844,72 +6844,80 @@
         let currentAddStockProduct = null;
 
         function deleteProduct(productId) {
-            const product = appState.inventory.find(p => p.id === productId);
-            if (!product) return;
-            
-            if (!confirm(`¿Estás seguro de que querés eliminar "${product.name}" del inventario?\n\nEsta acción no se puede deshacer. Si el producto tiene ventas históricas, seguirán apareciendo en los registros.`)) {
-                return;
-            }
-            
-            // Eliminar de promociones
-            if (appState.promotions) {
-                appState.promotions.forEach(promo => {
-                    if (promo.productIds) {
-                        promo.productIds = promo.productIds.filter(id => id !== productId);
-                    }
-                    if (promo.bundleItems) {
-                        promo.bundleItems.forEach(bi => {
-                            if (bi.productIds) {
-                                bi.productIds = bi.productIds.filter(id => id !== productId);
-                            }
-                            if (bi.productId === productId) {
-                                bi.productId = null;
-                            }
-                        });
-                        // Limpiar bundleItems vacíos
-                        promo.bundleItems = promo.bundleItems.filter(bi => {
-                            const hasIds = bi.productIds && bi.productIds.length > 0;
-                            const hasProductId = bi.productId && bi.productId !== productId;
-                            return hasIds || hasProductId;
-                        });
-                    }
-                });
-                // Eliminar promos que quedaron sin productos (si no son de tipo threshold/percent que aplican a todos)
-                appState.promotions = appState.promotions.filter(promo => {
-                    const needsProducts = ['2x1', 'combo', 'bogo', 'pack', 'bundle'].includes(promo.type);
-                    if (!needsProducts) return true;
-                    const hasProducts = (promo.productIds && promo.productIds.length > 0) ||
-                        (promo.bundleItems && promo.bundleItems.length > 0);
-                    return hasProducts;
-                });
-            }
-            
-            // Eliminar de componentes de productos compuestos
-            appState.inventory.forEach(p => {
-                if (p.isComposite && p.components) {
-                    p.components = p.components.filter(c => c.productId !== productId);
+            try {
+                const product = appState.inventory.find(p => p.id === productId);
+                if (!product) {
+                    showNotification('Producto no encontrado en el inventario', 'error');
+                    return;
                 }
-            });
-            
-            // Eliminar del inventario
-            appState.inventory = appState.inventory.filter(p => p.id !== productId);
-            
-            // Registrar en lista de eliminados para evitar que vuelva por sync
-            if (!appState.deletedProductIds) appState.deletedProductIds = [];
-            appState.deletedProductIds.push({
-                id: productId,
-                deletedAt: Date.now()
-            });
-            // Mantener solo los últimos 200 registros para no crecer indefinidamente
-            if (appState.deletedProductIds.length > 200) {
-                appState.deletedProductIds = appState.deletedProductIds.slice(-200);
+                
+                if (!confirm(`¿Estás seguro de que querés eliminar "${product.name}" del inventario?\n\nEsta acción no se puede deshacer. Si el producto tiene ventas históricas, seguirán apareciendo en los registros.`)) {
+                    return;
+                }
+                
+                // Eliminar de promociones
+                try {
+                    if (appState.promotions) {
+                        appState.promotions.forEach(promo => {
+                            if (promo.productIds) {
+                                promo.productIds = promo.productIds.filter(id => id !== productId);
+                            }
+                            if (promo.bundleItems) {
+                                promo.bundleItems.forEach(bi => {
+                                    if (bi.productIds) {
+                                        bi.productIds = bi.productIds.filter(id => id !== productId);
+                                    }
+                                    if (bi.productId === productId) {
+                                        bi.productId = null;
+                                    }
+                                });
+                                promo.bundleItems = promo.bundleItems.filter(bi => {
+                                    const hasIds = bi.productIds && bi.productIds.length > 0;
+                                    const hasProductId = bi.productId && bi.productId !== productId;
+                                    return hasIds || hasProductId;
+                                });
+                            }
+                        });
+                        appState.promotions = appState.promotions.filter(promo => {
+                            const needsProducts = ['2x1', 'combo', 'bogo', 'pack', 'bundle'].includes(promo.type);
+                            if (!needsProducts) return true;
+                            const hasProducts = (promo.productIds && promo.productIds.length > 0) ||
+                                (promo.bundleItems && promo.bundleItems.length > 0);
+                            return hasProducts;
+                        });
+                    }
+                } catch(e) { console.warn('Error limpiando promociones:', e); }
+                
+                // Eliminar de componentes de productos compuestos
+                try {
+                    appState.inventory.forEach(p => {
+                        if (p.isComposite && p.components) {
+                            p.components = p.components.filter(c => c.productId !== productId);
+                        }
+                    });
+                } catch(e) { console.warn('Error limpiando componentes:', e); }
+                
+                // Eliminar del inventario
+                appState.inventory = appState.inventory.filter(p => p.id !== productId);
+                
+                // Registrar en lista de eliminados
+                if (!appState.deletedProductIds) appState.deletedProductIds = [];
+                appState.deletedProductIds.push({
+                    id: productId,
+                    deletedAt: Date.now()
+                });
+                if (appState.deletedProductIds.length > 200) {
+                    appState.deletedProductIds = appState.deletedProductIds.slice(-200);
+                }
+                
+                saveToLocalStorage();
+                syncToFirebase(true);
+                renderAll();
+                showNotification(`Producto "${product.name}" eliminado del inventario`, 'success');
+            } catch(err) {
+                console.error('Error en deleteProduct:', err);
+                showNotification('Error al eliminar producto: ' + err.message, 'error');
             }
-            
-            saveToLocalStorage();
-            // Forzar sync inmediato a Firebase para que el borrado se propague
-            syncToFirebase(true);
-            renderAll();
-            showNotification(`Producto "${product.name}" eliminado del inventario`, 'success');
         }
 
         function openAddStockModal(productId) {
@@ -7778,21 +7786,6 @@
                 } else {
                     delete product.saleByWeight;
                     delete product.weightPerUnit;
-                }
-                
-                // Si el producto quedó sin lotes y no es compuesto, eliminarlo completamente
-                if (!product.isComposite && product.batches.length === 0) {
-                    appState.inventory = appState.inventory.filter(p => p.id !== productId);
-                    if (!appState.deletedProductIds) appState.deletedProductIds = [];
-                    appState.deletedProductIds.push({ id: productId, deletedAt: Date.now() });
-                    if (appState.deletedProductIds.length > 200) {
-                        appState.deletedProductIds = appState.deletedProductIds.slice(-200);
-                    }
-                    saveToLocalStorage();
-                    renderAll();
-                    closeEditProductModal();
-                    showNotification('Producto eliminado porque quedó sin stock', 'info');
-                    return;
                 }
                 
                 product.updatedAt = new Date().toISOString();

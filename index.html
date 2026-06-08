@@ -1673,6 +1673,45 @@
                 </div>
             </div>
 
+            <!-- Sobrantes, Faltantes y Mermas -->
+            <div class="bg-white rounded-2xl p-6 shadow-lg sidebar-admin-only">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold flex items-center gap-2 text-gray-800">
+                        <i class="fas fa-balance-scale text-purple-600"></i> Sobrantes, Faltantes y Mermas
+                    </h3>
+                    <div class="flex bg-gray-100 rounded-lg p-1" id="cash-diff-period-selector">
+                        <button onclick="setCashDiffPeriod('week')" class="cash-diff-period-btn px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white" data-period="week">Semana</button>
+                        <button onclick="setCashDiffPeriod('month')" class="cash-diff-period-btn px-3 py-1 text-xs font-bold rounded bg-white text-gray-800 shadow-sm" data-period="month">Mes</button>
+                        <button onclick="setCashDiffPeriod('year')" class="cash-diff-period-btn px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white" data-period="year">Año</button>
+                        <button onclick="setCashDiffPeriod('all')" class="cash-diff-period-btn px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white" data-period="all">Todo</button>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-green-50 rounded-xl p-4 border border-green-200 text-center">
+                        <p class="text-green-600 text-xs font-bold uppercase">Sobrantes</p>
+                        <p class="text-2xl font-bold text-green-800" id="cd-total-surplus">$0</p>
+                    </div>
+                    <div class="bg-red-50 rounded-xl p-4 border border-red-200 text-center">
+                        <p class="text-red-600 text-xs font-bold uppercase">Faltantes</p>
+                        <p class="text-2xl font-bold text-red-800" id="cd-total-shortage">$0</p>
+                    </div>
+                    <div class="bg-orange-50 rounded-xl p-4 border border-orange-200 text-center">
+                        <p class="text-orange-600 text-xs font-bold uppercase">Pérdida Mermas</p>
+                        <p class="text-2xl font-bold text-orange-800" id="cd-total-losses">$0</p>
+                    </div>
+                    <div class="bg-purple-50 rounded-xl p-4 border border-purple-200 text-center">
+                        <p class="text-purple-600 text-xs font-bold uppercase">Ganancia Fantasma</p>
+                        <p class="text-2xl font-bold text-purple-800" id="cd-ghost-profit">$0</p>
+                        <p class="text-[10px] text-purple-500 mt-1">Sobrantes - Mermas</p>
+                    </div>
+                </div>
+                
+                <div id="cash-differences-list" class="space-y-2 max-h-64 overflow-y-auto">
+                    <p class="text-center text-gray-400 py-4 text-sm">Sin registros de sobrantes o faltantes</p>
+                </div>
+            </div>
+
             <!-- Resumen Financiero Simple -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="bg-blue-50 rounded-xl p-4 border border-blue-200">
@@ -2911,6 +2950,8 @@
             ticketRules: [],
             // Arqueo de caja
             cashCounts: [],
+            // Sobrantes y faltantes de caja
+            cashDifferences: [],
             // Productos eliminados (para evitar que vuelvan por sync)
             deletedProductIds: [],
             // Mermas y pérdidas
@@ -8520,6 +8561,106 @@
             
             // Renderizar historial de arqueos
             renderCashCountsList();
+            
+            // Renderizar sobrantes, faltantes y mermas
+            renderCashDifferences();
+        }
+        
+        let cashDiffPeriod = 'month';
+        
+        function setCashDiffPeriod(period) {
+            cashDiffPeriod = period;
+            document.querySelectorAll('.cash-diff-period-btn').forEach(btn => {
+                if (btn.dataset.period === period) {
+                    btn.classList.add('bg-white', 'text-gray-800', 'shadow-sm');
+                    btn.classList.remove('text-gray-600', 'hover:bg-white');
+                } else {
+                    btn.classList.remove('bg-white', 'text-gray-800', 'shadow-sm');
+                    btn.classList.add('text-gray-600', 'hover:bg-white');
+                }
+            });
+            renderCashDifferences();
+        }
+        
+        function getCashDiffStartDate(period) {
+            const today = new Date();
+            const start = new Date(today);
+            if (period === 'week') {
+                const dayOfWeek = start.getDay();
+                start.setDate(start.getDate() - dayOfWeek);
+            } else if (period === 'month') {
+                start.setDate(1);
+            } else if (period === 'year') {
+                start.setMonth(0, 1);
+            } else {
+                return null; // all time
+            }
+            start.setHours(0, 0, 0, 0);
+            return start;
+        }
+        
+        function renderCashDifferences() {
+            const surplusEl = document.getElementById('cd-total-surplus');
+            const shortageEl = document.getElementById('cd-total-shortage');
+            const lossesEl = document.getElementById('cd-total-losses');
+            const ghostEl = document.getElementById('cd-ghost-profit');
+            const listEl = document.getElementById('cash-differences-list');
+            if (!surplusEl || !listEl) return;
+            
+            const startDate = getCashDiffStartDate(cashDiffPeriod);
+            const diffs = appState.cashDifferences || [];
+            
+            const filteredDiffs = startDate 
+                ? diffs.filter(d => new Date(d.date + 'T00:00:00') >= startDate)
+                : [...diffs];
+            
+            const totalSurplus = filteredDiffs
+                .filter(d => d.type === 'surplus')
+                .reduce((sum, d) => sum + d.amount, 0);
+            const totalShortage = filteredDiffs
+                .filter(d => d.type === 'shortage')
+                .reduce((sum, d) => sum + Math.abs(d.amount), 0);
+            
+            // Calcular pérdidas por mermas en el mismo período
+            const losses = appState.losses || [];
+            const filteredLosses = startDate
+                ? losses.filter(l => new Date((l.date || '') + 'T00:00:00') >= startDate)
+                : [...losses];
+            const totalLossesCost = filteredLosses.reduce((sum, l) => sum + (l.cost || 0), 0);
+            
+            // Ganancia fantasma = sobrantes - pérdida por mermas
+            const ghostProfit = totalSurplus - totalLossesCost;
+            
+            surplusEl.textContent = '$' + formatMoney(totalSurplus);
+            shortageEl.textContent = '$' + formatMoney(totalShortage);
+            lossesEl.textContent = '$' + formatMoney(totalLossesCost);
+            ghostEl.textContent = (ghostProfit >= 0 ? '+' : '-') + '$' + formatMoney(Math.abs(ghostProfit));
+            ghostEl.className = 'text-2xl font-bold ' + (ghostProfit >= 0 ? 'text-purple-800' : 'text-red-600');
+            
+            if (filteredDiffs.length === 0) {
+                listEl.innerHTML = '<p class="text-center text-gray-400 py-4 text-sm">Sin registros de sobrantes o faltantes en este período</p>';
+                return;
+            }
+            
+            listEl.innerHTML = filteredDiffs.sort((a, b) => b.date.localeCompare(a.date)).map(d => `
+                <div class="flex justify-between items-center p-3 rounded-lg ${d.type === 'surplus' ? 'bg-green-50 border border-green-100' : 'bg-red-50 border border-red-100'}">
+                    <div class="flex items-center gap-3">
+                        <span class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${d.type === 'surplus' ? 'bg-green-200 text-green-700' : 'bg-red-200 text-red-700'}">
+                            ${d.type === 'surplus' ? '+' : '-'}
+                        </span>
+                        <div>
+                            <p class="font-bold text-sm ${d.type === 'surplus' ? 'text-green-700' : 'text-red-700'}">
+                                ${d.type === 'surplus' ? 'Sobrante' : 'Faltante'}: $${formatMoney(Math.abs(d.amount))}
+                            </p>
+                            <p class="text-xs text-gray-500">${d.date} ${d.notes ? '• ' + escapeHtml(d.notes) : ''}</p>
+                        </div>
+                    </div>
+                    <div class="text-right text-xs text-gray-500">
+                        <div>Caja: $${formatMoney(d.cashAmount || 0)}</div>
+                        <div>Cuenta: $${formatMoney(d.bankAmount || 0)}</div>
+                    </div>
+                </div>
+            `).join('');
         }
         
         function renderCashMovements() {
@@ -9259,7 +9400,18 @@
                 const totalCapital = appState.cash + appState.bank + inventoryValue;
                 
                 // Ganancia neta = suma del profit de TODAS las ventas (precio de venta - costo al momento de la venta)
-                const netProfit = appState.sales.reduce((sum, s) => sum + (s.profit || 0), 0);
+                const salesProfit = appState.sales.reduce((sum, s) => sum + (s.profit || 0), 0);
+                
+                // Ganancia fantasma = sobrantes de caja - pérdidas por mermas (todo el historial)
+                const totalSurplus = (appState.cashDifferences || [])
+                    .filter(d => d.type === 'surplus')
+                    .reduce((sum, d) => sum + d.amount, 0);
+                const totalLossesCost = (appState.losses || [])
+                    .reduce((sum, l) => sum + (l.cost || 0), 0);
+                const ghostProfit = totalSurplus - totalLossesCost;
+                
+                // Ganancia neta ajustada = profit de ventas + ganancia fantasma
+                const netProfit = salesProfit + ghostProfit;
                 
                 // Inversión total = capital inicial + inyecciones de capital del dueño
                 const capitalInjected = appState.capitalAdjustments
@@ -9273,6 +9425,12 @@
                 
                 updateMetric('metric-capital-injected', `$${formatMoney(totalCapital)}`, 'text-blue-800');
                 updateMetric('metric-net-profit', `$${formatMoney(netProfit)}`, netProfit >= 0 ? 'text-emerald-800' : 'text-red-600');
+                
+                // Actualizar tooltip de ganancia neta para mostrar el desglose
+                const netProfitEl = document.getElementById('metric-net-profit');
+                if (netProfitEl) {
+                    netProfitEl.title = `Ventas: $${formatMoney(salesProfit)} | Fantasma: ${ghostProfit >= 0 ? '+' : '-'}$${formatMoney(Math.abs(ghostProfit))}`;
+                }
                 
                 // Actualizar margen de ganancia neta
                 const marginEl = document.getElementById('metric-avg-margin');
@@ -9945,9 +10103,14 @@
             if (!confirm('¿Eliminar el registro de arqueo del ' + targetDate + '?')) return;
             
             appState.cashCounts.splice(idx, 1);
+            // También eliminar el sobrante/faltante asociado a esa fecha
+            if (appState.cashDifferences) {
+                appState.cashDifferences = appState.cashDifferences.filter(d => d.date !== targetDate);
+            }
             saveToLocalStorage();
             closeCashCountModal();
             renderCashCountsList();
+            renderCashDifferences();
             showNotification('Arqueo eliminado', 'success');
         }
 
@@ -10018,6 +10181,27 @@
             record.difference = (closingCash + closingBank) - expected.total;
             record.notes = document.getElementById('cash-count-notes').value || '';
             record.timestamp = Date.now();
+            
+            // Ajustar saldos reales de caja y banco al monto contado
+            appState.cash = closingCash;
+            appState.bank = closingBank;
+            
+            // Registrar sobrante o faltante en cashDifferences
+            if (!appState.cashDifferences) appState.cashDifferences = [];
+            // Eliminar registro previo del mismo día si existe
+            appState.cashDifferences = appState.cashDifferences.filter(d => d.date !== today);
+            if (record.difference !== 0) {
+                appState.cashDifferences.push({
+                    id: 'CASHDIFF-' + Date.now(),
+                    date: today,
+                    amount: record.difference,
+                    type: record.difference > 0 ? 'surplus' : 'shortage',
+                    cashAmount: record.differenceCash,
+                    bankAmount: record.differenceBank,
+                    notes: record.notes || '',
+                    timestamp: Date.now()
+                });
+            }
             
             saveToLocalStorage();
             renderAll();
@@ -11830,6 +12014,7 @@ Total de productos a comprar: ${shoppingList.length}
                         discountTickets: [],
                         ticketRules: [],
                         cashCounts: [],
+                        cashDifferences: [],
                         deletedProductIds: [],
                         losses: [],
                         returns: [],
@@ -11885,6 +12070,7 @@ Total de productos a comprar: ${shoppingList.length}
                 discountTickets: [],
                 ticketRules: [],
                 cashCounts: [],
+                cashDifferences: [],
                 deletedProductIds: [],
                 losses: [],
                 returns: [],
@@ -14255,6 +14441,11 @@ RESULTADOS:
                     appState.promotions = [];
                     appState.discountTickets = [];
                     appState.ticketRules = [];
+                    appState.cashCounts = [];
+                    appState.cashDifferences = [];
+                    appState.losses = [];
+                    appState.returns = [];
+                    appState.deletedProductIds = [];
                     appState.cash = parseFloat(data.cash) || 0;
                     appState.bank = parseFloat(data.bank) || 0;
                     appState.initialCapital = parseFloat(data.initialCapital) || 0;
@@ -14306,6 +14497,7 @@ RESULTADOS:
                 appState.capitalAdjustments = smartMergeArrays(appState.capitalAdjustments, data.capitalAdjustments);
                 appState.returns = smartMergeArrays(appState.returns, data.returns);
                 appState.cashCounts = smartMergeArrays(appState.cashCounts || [], data.cashCounts || []);
+                appState.cashDifferences = smartMergeArrays(appState.cashDifferences || [], data.cashDifferences || []);
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 // Tomar deletedProductIds de Firebase (la PC es la fuente de verdad)
                 appState.deletedProductIds = Array.isArray(data.deletedProductIds) ? data.deletedProductIds : [];
@@ -14331,6 +14523,7 @@ RESULTADOS:
                 appState.discountTickets = smartMergeArrays(appState.discountTickets, data.discountTickets);
                 appState.ticketRules = smartMergeArrays(appState.ticketRules, data.ticketRules);
                 appState.cashCounts = smartMergeArrays(appState.cashCounts || [], data.cashCounts || []);
+                appState.cashDifferences = smartMergeArrays(appState.cashDifferences || [], data.cashDifferences || []);
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 
                 // Para valores simples, usar Firebase solo si es más reciente o no hay datos locales
@@ -14554,6 +14747,7 @@ RESULTADOS:
                     appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
                     appState.ticketRules = Array.isArray(appState.ticketRules) ? appState.ticketRules : [];
                     appState.cashCounts = Array.isArray(appState.cashCounts) ? appState.cashCounts : [];
+                    appState.cashDifferences = Array.isArray(appState.cashDifferences) ? appState.cashDifferences : [];
                     appState.deletedProductIds = Array.isArray(appState.deletedProductIds) ? appState.deletedProductIds : [];
                     appState.losses = Array.isArray(appState.losses) ? appState.losses : [];
                     

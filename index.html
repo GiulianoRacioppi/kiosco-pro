@@ -1263,7 +1263,7 @@
         <div id="inventory" class="section hidden space-y-6 fade-in">
             
             <!-- KPIs de Stock -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div class="bg-red-50 rounded-xl p-4 border border-red-200 text-center">
                     <p class="text-red-600 text-xs font-bold uppercase">🚨 Crítico</p>
                     <p class="text-3xl font-bold text-red-700" id="critical-stock-count">0</p>
@@ -1283,6 +1283,11 @@
                     <p class="text-green-600 text-xs font-bold uppercase">💰 Inversión</p>
                     <p class="text-xl font-bold text-green-700" id="total-buy-investment">$0</p>
                     <p class="text-xs text-green-500">Para stock óptimo</p>
+                </div>
+                <div class="bg-yellow-50 rounded-xl p-4 border border-yellow-200 text-center">
+                    <p class="text-yellow-600 text-xs font-bold uppercase">⏰ Por Vencer</p>
+                    <p class="text-3xl font-bold text-yellow-700" id="expiring-soon-count">0</p>
+                    <p class="text-xs text-yellow-500">En 30 días</p>
                 </div>
             </div>
 
@@ -1360,6 +1365,13 @@
                 </div>
                 <div id="expiry-list-content" class="hidden">
                     <div class="px-6 pb-6">
+                        <div class="mb-4 flex items-center gap-3">
+                            <label class="text-sm text-gray-600 font-medium">Mostrar productos que vencen en los próximos</label>
+                            <input type="number" id="expiry-days-filter" value="30" min="1" max="365" 
+                                   class="w-20 border rounded-lg px-3 py-1 text-sm text-center"
+                                   onchange="renderExpiryList()">
+                            <span class="text-sm text-gray-600">días</span>
+                        </div>
                         <div class="overflow-x-auto">
                             <table class="w-full">
                                 <thead class="bg-red-50">
@@ -6651,144 +6663,98 @@
         // Actualizar KPIs de stock y lista de compras sugerida
         function updateStockKPIs() {
             const inventory = getActiveInventory();
+            const today = new Date();
             
             let criticalCount = 0;
             let warningCount = 0;
             let totalBuyUnits = 0;
             let totalInvestment = 0;
-            const shoppingList = [];
-            
-            const today = new Date();
+            let expiringSoonCount = 0;
             
             inventory.forEach(p => {
-                // Saltear productos compuestos: no se compran directamente
                 if (p.isComposite) return;
                 
                 const totalStock = getProductStock(p);
-                
-                // Obtener demanda diaria del producto
                 const stats = calculateProductStats(p.id);
                 const avgDaily = stats ? stats.avgDaily : 0;
-                
-                // Días hasta próxima compra posible
                 const daysUntilBuy = getDaysUntilNextBuy(p);
-                
-                // Días de stock actual
                 const daysOfStock = getDaysOfStock(p, avgDaily);
-                
                 const targetDays = appState.stockTargetDays || 7;
                 const bufferDays = Math.ceil(targetDays / 2);
                 
-                // Calcular necesidad de compra inteligente
-                // Necesito stock para: días hasta próxima compra + días de stock deseado
                 const requiredDays = (daysUntilBuy !== null ? daysUntilBuy : 0) + targetDays;
                 const requiredStock = Math.ceil(avgDaily * requiredDays);
                 
-                // Determinar prioridad basada en si me alcanza el stock hasta la próxima compra
                 let priority = null;
                 let alertColor = null;
                 
                 if (totalStock === 0) {
-                    // Sin stock = CRÍTICO (rojo)
                     priority = '🔴 SIN STOCK';
                     alertColor = 'red';
                     criticalCount++;
                 } else if (daysUntilBuy !== null && daysOfStock < daysUntilBuy) {
-                    // No me alcanza hasta la próxima compra = CRÍTICO (rojo)
                     priority = `🔴 Faltan ${daysUntilBuy - daysOfStock} días`;
                     alertColor = 'red';
                     criticalCount++;
                 } else if (daysUntilBuy !== null && daysOfStock < daysUntilBuy + bufferDays) {
-                    // Me alcanza justo o con poco margen = ADVERTENCIA (naranja)
                     priority = `🟠 ${daysOfStock - daysUntilBuy} días de margen`;
                     alertColor = 'orange';
                     warningCount++;
                 } else if (totalStock < ((p.min || p.minStock) || 5)) {
-                    // Stock bajo el mínimo configurado = ADVERTENCIA (naranja)
                     priority = '🟠 Stock bajo mínimo';
                     alertColor = 'orange';
                     warningCount++;
                 } else if (avgDaily > 0 && daysOfStock < targetDays * 3) {
-                    // Menos del triple de días de stock deseado = PRECAUCIÓN (amarillo)
                     priority = `🟡 ${daysOfStock} días de stock`;
                     alertColor = 'yellow';
                 }
                 
-                // Calcular cuánto comprar
                 let toBuy = 0;
                 if (priority && priority.includes('🔴')) {
-                    // Compra urgente: necesito para los días de stock deseado desde hoy
                     toBuy = Math.max(0, Math.ceil(avgDaily * targetDays) - totalStock);
                     if (toBuy === 0 && totalStock === 0) toBuy = Math.max(2, Math.ceil(avgDaily * targetDays) || 5);
                 } else if (priority && priority.includes('🟠')) {
-                    // Compra preventiva: stock para los días de stock deseado
                     toBuy = Math.max(0, Math.ceil(avgDaily * targetDays) - totalStock);
                 }
                 
-                // Para productos por peso, sugerir compra en bolsas enteras
                 if (p.saleByWeight && toBuy > 0 && toBuy < 1) {
                     toBuy = 1;
                 } else if (p.saleByWeight && toBuy > 0) {
                     toBuy = Math.ceil(toBuy);
                 }
                 
-                // Ajustar por vencimiento si aplica
-                let expiryNote = '';
-                if (p.expiry && toBuy > 0) {
-                    const expiryDate = new Date(p.expiry);
-                    const daysUntilExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-                    
-                    // Si el stock actual se vence antes de la próxima compra
-                    if (daysUntilExpiry < (daysUntilBuy || 7)) {
-                        priority = priority ? priority.replace('🟠', '🔴').replace('🟡', '🔴') : '🔴 Stock se vence pronto';
-                        alertColor = 'red';
-                        criticalCount++;
-                        expiryNote = ` (vence en ${daysUntilExpiry}d)`;
-                    }
-                    
-                    // Calcular vencimiento óptimo para la compra
-                    // El stock nuevo debería durar: toBuy / avgDaily días
-                    const suggestedExpiryDays = avgDaily > 0 ? Math.ceil(toBuy / avgDaily * 1.5) : 30;
-                    const suggestedExpiryDate = new Date(today);
-                    suggestedExpiryDate.setDate(today.getDate() + suggestedExpiryDays);
-                    expiryNote += ` → venc. ideal: ${formatDateISO(suggestedExpiryDate).slice(5)}`;
+                if (toBuy > 0) {
+                    totalBuyUnits += toBuy;
+                    totalInvestment += toBuy * (p.cost || 0);
                 }
                 
-                if (toBuy > 0) {
-                    const buyCost = toBuy * (p.cost || 0);
-                    totalBuyUnits += toBuy;
-                    totalInvestment += buyCost;
-                    
-                    const pIsWeight = p.saleByWeight && p.weightPerUnit > 0;
-                    shoppingList.push({
-                        name: p.name,
-                        stock: totalStock,
-                        daysOfStock: daysOfStock,
-                        daysUntilBuy: daysUntilBuy,
-                        toBuy: toBuy,
-                        priority: priority + expiryNote,
-                        alertColor: alertColor,
-                        cost: p.cost || 0,
-                        avgDaily: fmtNumber(avgDaily, 1),
-                        nextBuyDay: daysUntilBuy !== null ? (daysUntilBuy === 0 ? 'Hoy' : daysUntilBuy === 1 ? 'Mañana' : `En ${daysUntilBuy}d`) : 'Sin definir',
-                        isWeight: pIsWeight,
-                        weightPerUnit: p.weightPerUnit || 1
+                // Contar productos próximos a vencer (batches con stock > 0 y vencen en <=30 días)
+                if (p.batches && p.batches.length > 0) {
+                    p.batches.forEach(batch => {
+                        if (batch.expiry && batch.stock > 0) {
+                            const daysUntil = Math.ceil((new Date(batch.expiry) - today) / (1000 * 60 * 60 * 24));
+                            if (daysUntil <= 30 && daysUntil >= 0) expiringSoonCount++;
+                        }
                     });
+                } else if (p.expiry) {
+                    const stock = getProductStock(p);
+                    const daysUntil = Math.ceil((new Date(p.expiry) - today) / (1000 * 60 * 60 * 24));
+                    if (stock > 0 && daysUntil <= 30 && daysUntil >= 0) expiringSoonCount++;
                 }
             });
             
-            // Actualizar KPIs
             const criticalEl = document.getElementById('critical-stock-count');
             const lowEl = document.getElementById('low-stock-count');
             const unitsEl = document.getElementById('total-buy-units');
             const investmentEl = document.getElementById('total-buy-investment');
+            const expiringEl = document.getElementById('expiring-soon-count');
             
             if (criticalEl) criticalEl.textContent = criticalCount;
             if (lowEl) lowEl.textContent = warningCount;
             if (unitsEl) unitsEl.textContent = totalBuyUnits;
             if (investmentEl) investmentEl.textContent = `$${formatMoney(totalInvestment)}`;
+            if (expiringEl) expiringEl.textContent = expiringSoonCount;
             
-            // Actualizar badge del sidebar
             const restockBadge = document.getElementById('restock-badge');
             if (restockBadge) {
                 const totalAlerts = criticalCount + warningCount;
@@ -6801,43 +6767,7 @@
                 }
             }
             
-            // Actualizar tabla de compras sugeridas
-            const tableBody = document.getElementById('auto-shopping-list');
-            if (tableBody) {
-                if (shoppingList.length === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-green-600"><i class="fas fa-check-circle"></i> ¡Stock óptimo! No hay compras pendientes</td></tr>';
-                } else {
-                    // Ordenar: críticos primero, luego naranja, luego amarillo
-                    shoppingList.sort((a, b) => {
-                        const priorityOrder = { 'red': 0, 'orange': 1, 'yellow': 2 };
-                        return priorityOrder[a.alertColor] - priorityOrder[b.alertColor];
-                    });
-                    
-                    tableBody.innerHTML = shoppingList.map(item => {
-                        const colorClass = item.alertColor === 'red' ? 'bg-red-100 text-red-700' : 
-                                          item.alertColor === 'orange' ? 'bg-orange-100 text-orange-700' : 
-                                          'bg-yellow-100 text-yellow-700';
-                        return `
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-3">
-                                <div class="font-medium">${escapeHtml(item.name)}</div>
-                                <div class="text-xs text-gray-500">${item.avgDaily}/día • Próx.compra: ${item.nextBuyDay}</div>
-                            </td>
-                            <td class="px-4 py-3 text-center">
-                                <span class="font-bold ${item.stock === 0 ? 'text-red-600' : 'text-gray-700'}">${item.isWeight ? Math.round(item.stock * item.weightPerUnit) + 'g' : item.stock}</span>
-                                <div class="text-xs text-gray-500">${item.daysOfStock}d</div>
-                            </td>
-                            <td class="px-4 py-3 text-center font-bold text-blue-600">${item.toBuy}</td>
-                            <td class="px-4 py-3 text-center">
-                                <span class="px-2 py-1 rounded-full text-xs font-bold ${colorClass}">${item.priority}</span>
-                            </td>
-                            <td class="px-4 py-3 text-right text-xs text-gray-500">$${formatMoney((item.toBuy * item.cost))}</td>
-                        </tr>
-                    `}).join('');
-                }
-            }
-            
-            return { criticalCount, warningCount, shoppingList };
+            return { criticalCount, warningCount, totalBuyUnits, totalInvestment, expiringSoonCount };
         }
 
         let addStockPaymentMethod = 'cash';
@@ -10729,7 +10659,7 @@
                 list.push({
                     product: product,
                     currentStock: currentStock,
-                    weeklyDemand: weeklyDemand,
+                    weeklyDemand: avgDaily * 7,
                     suggestedQty: suggestedQty,
                     daysUntilStockout: daysUntilStockout,
                     nextBuyDay: nextBuyDay,
@@ -10745,13 +10675,11 @@
             });
             
             return list.sort((a, b) => {
-                // Primero por día de compra
-                if (a.daysUntilBuy !== null && b.daysUntilBuy !== null) {
-                    if (a.daysUntilBuy !== b.daysUntilBuy) {
-                        return a.daysUntilBuy - b.daysUntilBuy;
-                    }
+                // Ordenar por stock actual ascendente (del que menos stock tiene al que más)
+                if (a.currentStock !== b.currentStock) {
+                    return a.currentStock - b.currentStock;
                 }
-                // Luego por prioridad
+                // Desempate por prioridad
                 const priorityOrder = { 'CRÍTICO': 0, 'ALTA': 1, 'MEDIA': 2, 'BAJA': 3 };
                 return priorityOrder[a.priority] - priorityOrder[b.priority];
             });
@@ -10801,14 +10729,20 @@
             // Ordenar: vencidos primero, luego por días hasta vencimiento (ascendente)
             items.sort((a, b) => a.daysUntil - b.daysUntil);
             
-            if (countEl) countEl.textContent = `${items.length} productos`;
+            // Leer filtro de días (por defecto 30)
+            const filterInput = document.getElementById('expiry-days-filter');
+            const daysFilter = filterInput ? (parseInt(filterInput.value) || 30) : 30;
             
-            if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-gray-400">No hay productos con fecha de vencimiento registrada</td></tr>';
+            const filteredItems = items.filter(item => item.daysUntil <= daysFilter);
+            
+            if (countEl) countEl.textContent = `${filteredItems.length} productos`;
+            
+            if (filteredItems.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-gray-400">No hay productos que venzan en los próximos ' + daysFilter + ' días</td></tr>';
                 return;
             }
             
-            tbody.innerHTML = items.map(item => {
+            tbody.innerHTML = filteredItems.map(item => {
                 let statusClass = 'bg-green-100 text-green-700';
                 let statusText = 'OK';
                 let rowClass = '';
@@ -10875,9 +10809,27 @@
                 other: 'bg-purple-100 text-purple-700'
             };
             
-            tbody.innerHTML = sorted.map(loss => {
+            // Estado de expansión
+            if (typeof window.lossesExpanded === 'undefined') window.lossesExpanded = false;
+            const limit = window.lossesExpanded ? sorted.length : 10;
+            const displayItems = sorted.slice(0, limit);
+            
+            // Agrupar por fecha
+            let currentDate = null;
+            let html = '';
+            
+            displayItems.forEach(loss => {
+                const lossDate = loss.date || '-';
+                if (lossDate !== currentDate) {
+                    currentDate = lossDate;
+                    html += `
+                        <tr class="bg-gray-100">
+                            <td colspan="6" class="px-4 py-1 text-xs font-bold text-gray-500 uppercase tracking-wider">${lossDate}</td>
+                        </tr>
+                    `;
+                }
                 const reason = loss.reason || 'other';
-                return `
+                html += `
                     <tr>
                         <td class="px-4 py-3 text-sm text-gray-600">${loss.date || '-'}</td>
                         <td class="px-4 py-3 font-medium text-gray-900">${escapeHtml(loss.productName || '-')}</td>
@@ -10889,7 +10841,27 @@
                         <td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(loss.notes || '-')}</td>
                     </tr>
                 `;
-            }).join('');
+            });
+            
+            // Botón expandir/colapsar
+            if (sorted.length > 10) {
+                html += `
+                    <tr>
+                        <td colspan="6" class="text-center py-3">
+                            <button onclick="toggleLossesExpanded()" class="text-blue-600 text-sm font-bold hover:underline">
+                                ${window.lossesExpanded ? '▲ Mostrar menos' : '▼ Mostrar más (' + (sorted.length - 10) + ' más)'}
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }
+            
+            tbody.innerHTML = html;
+        }
+        
+        function toggleLossesExpanded() {
+            window.lossesExpanded = !window.lossesExpanded;
+            renderLossesHistory();
         }
 
         function renderPredictions() {
@@ -10912,14 +10884,14 @@
         }
         
         function renderPredictionsContent() {
-            // Verificar si hay productos en el inventario
-            const hasInventory = Array.isArray(appState.inventory) && appState.inventory.length > 0;
+            const inventory = getActiveInventory();
+            const hasInventory = inventory.length > 0;
             
             if (!hasInventory) {
                 const cardsContainer = document.getElementById('prediction-cards');
                 if (cardsContainer) {
                     cardsContainer.innerHTML = `
-                        <div class="col-span-4 text-center py-8 text-gray-400">
+                        <div class="col-span-5 text-center py-8 text-gray-400">
                             <i class="fas fa-box-open text-4xl mb-3"></i>
                             <p class="text-lg font-medium mb-1">No hay productos en el inventario</p>
                             <p class="text-sm">Agregá productos para ver el control de stock</p>
@@ -10947,10 +10919,11 @@
             let lowCount = 0;
             let normalCount = 0;
             let totalBuyQty = 0;
-            
+            let expiringSoonCount = 0;
+            const today = new Date();
             const targetDays = appState.stockTargetDays || 7;
             
-            appState.inventory.forEach(product => {
+            inventory.forEach(product => {
                 const stock = getProductStock(product);
                 const minStock = parseInt(product.min) || 5;
                 const prediction = predictDemand(product.id, targetDays);
@@ -10968,9 +10941,22 @@
                 } else {
                     normalCount++;
                 }
+                
+                // Contar productos próximos a vencer
+                if (product.batches && product.batches.length > 0) {
+                    product.batches.forEach(batch => {
+                        if (batch.expiry && batch.stock > 0) {
+                            const daysUntil = Math.ceil((new Date(batch.expiry) - today) / (1000 * 60 * 60 * 24));
+                            if (daysUntil <= 30 && daysUntil >= 0) expiringSoonCount++;
+                        }
+                    });
+                } else if (product.expiry) {
+                    const daysUntil = Math.ceil((new Date(product.expiry) - today) / (1000 * 60 * 60 * 24));
+                    if (stock > 0 && daysUntil <= 30 && daysUntil >= 0) expiringSoonCount++;
+                }
             });
             
-            // Renderizar tarjetas de resumen de stock (reemplazo de predicciones diarias)
+            // Renderizar tarjetas de resumen de stock
             const cardsContainer = document.getElementById('prediction-cards');
             if (cardsContainer) {
                 cardsContainer.innerHTML = `
@@ -11017,82 +11003,61 @@
                         <p class="text-3xl font-bold text-gray-800 mb-1">${normalCount}</p>
                         <p class="text-sm text-gray-500">productos con stock normal</p>
                     </div>
+                    
+                    <div class="bg-gradient-to-br from-yellow-50 to-white rounded-xl p-4 border border-yellow-200">
+                        <div class="flex items-center gap-3 mb-2">
+                            <div class="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center">
+                                <i class="fas fa-clock text-yellow-600"></i>
+                            </div>
+                            <span class="text-yellow-600 font-bold">Próx. a Vencer</span>
+                        </div>
+                        <p class="text-3xl font-bold text-gray-800 mb-1">${expiringSoonCount}</p>
+                        <p class="text-sm text-gray-500">en los próximos 30 días</p>
+                    </div>
                 `;
             }
             
-            // Generar y renderizar lista de compras
+            // Generar y renderizar lista de compras (ordenada por stock ascendente)
             const shoppingList = generateShoppingList();
             
-            // Agrupar por día de compra
-            const groupedByDay = {};
-            const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-            
-            shoppingList.forEach(item => {
-                const dayName = item.buyDayName || 'Sin definir';
-                if (!groupedByDay[dayName]) groupedByDay[dayName] = [];
-                groupedByDay[dayName].push(item);
-            });
+            // Ordenar por stock actual ascendente (menor stock primero)
+            shoppingList.sort((a, b) => a.currentStock - b.currentStock);
             
             const shoppingContainer = document.getElementById('auto-shopping-list');
             if (shoppingContainer) {
                 if (shoppingList.length === 0) {
                     shoppingContainer.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-400"><i class="fas fa-check-circle text-4xl mb-2"></i><br>No hay productos que requieran reposición</td></tr>';
                 } else {
-                    let html = '';
-                    
-                    // Ordenar días empezando desde hoy
-                    const sortedDays = Object.keys(groupedByDay).sort((a, b) => {
-                        const aIndex = dayNames.indexOf(a);
-                        const bIndex = dayNames.indexOf(b);
-                        if (a === 'Sin definir') return 1;
-                        if (b === 'Sin definir') return -1;
-                        return aIndex - bIndex;
-                    });
-                    
-                    sortedDays.forEach(dayName => {
-                        const items = groupedByDay[dayName];
-                        const dayHeader = dayName === 'Sin definir' ? 'Sin día definido' : `Comprar: ${dayName}`;
-                        
-                        html += `
-                            <tr class="bg-purple-100">
-                                <td colspan="6" class="px-4 py-2 font-bold text-purple-800">
-                                    📅 ${dayHeader} (${items.length} productos)
-                                </td>
-                            </tr>
-                        `;
-                        
-                        html += items.map(item => {
-                            const minStock = parseInt(item.product.min) || 5;
-                            return `
-                            <tr class="hover:bg-gray-50 border-l-4 ${item.priority === 'CRÍTICO' ? 'border-red-500' : item.priority === 'ALTA' ? 'border-orange-500' : item.priority === 'MEDIA' ? 'border-yellow-500' : 'border-green-500'}">
-                                <td class="px-4 py-3">
-                                    <div class="font-medium text-gray-900">${item.product.name}</div>
-                                    <div class="text-xs text-gray-500">${item.supplier}</div>
-                                </td>
-                                <td class="px-4 py-3 text-center">
-                                    <span class="${item.currentStock === 0 ? 'text-red-600 font-bold' : 'text-gray-600'}">${item.product.saleByWeight && item.product.weightPerUnit ? Math.round(item.currentStock * item.product.weightPerUnit) + 'g' : item.currentStock}</span>
-                                </td>
-                                <td class="px-4 py-3 text-center">
-                                    <span class="text-gray-500">${minStock}</span>
-                                </td>
-                                <td class="px-4 py-3 text-center">
-                                    <span class="font-bold text-blue-600">${item.suggestedQty} u.</span>
-                                </td>
-                                <td class="px-4 py-3 text-center">
-                                    <div class="text-sm text-gray-600">${fmtNumber(item.avgDaily, 1)}/día</div>
-                                    <div class="text-xs ${item.daysUntilStockout <= 3 ? 'text-red-500 font-bold' : 'text-gray-400'}">Agota en ${item.daysUntilStockout}d</div>
-                                </td>
-                                <td class="px-4 py-3 text-center">
-                                    <span class="px-2 py-1 rounded-full text-xs font-bold ${item.priority === 'CRÍTICO' ? 'bg-red-100 text-red-700' : item.priority === 'ALTA' ? 'bg-orange-100 text-orange-700' : item.priority === 'MEDIA' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}">
-                                        ${item.priority}
-                                    </span>
-                                </td>
-                            </tr>
-                        `;
-                        }).join('');
-                    });
-                    
-                    shoppingContainer.innerHTML = html;
+                    shoppingContainer.innerHTML = shoppingList.map(item => {
+                        const minStock = parseInt(item.product.min) || 5;
+                        const avgWeekly = item.avgDaily * 7;
+                        return `
+                        <tr class="hover:bg-gray-50 border-l-4 ${item.priority === 'CRÍTICO' ? 'border-red-500' : item.priority === 'ALTA' ? 'border-orange-500' : item.priority === 'MEDIA' ? 'border-yellow-500' : 'border-green-500'}">
+                            <td class="px-4 py-3">
+                                <div class="font-medium text-gray-900">${item.product.name}</div>
+                                <div class="text-xs text-gray-500">${item.supplier}${item.nextBuyDay !== null ? ' • Próx.compra: ' + item.buyDayName : ''}</div>
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="${item.currentStock === 0 ? 'text-red-600 font-bold' : 'text-gray-600'}">${item.product.saleByWeight && item.product.weightPerUnit ? Math.round(item.currentStock * item.product.weightPerUnit) + 'g' : item.currentStock}</span>
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="text-gray-500">${minStock}</span>
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="font-bold text-blue-600">${item.suggestedQty} u.</span>
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <div class="text-sm text-gray-600">${fmtNumber(avgWeekly, 1)}/sem</div>
+                                <div class="text-xs ${item.daysUntilStockout <= 3 ? 'text-red-500 font-bold' : 'text-gray-400'}">Agota en ${item.daysUntilStockout}d</div>
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="px-2 py-1 rounded-full text-xs font-bold ${item.priority === 'CRÍTICO' ? 'bg-red-100 text-red-700' : item.priority === 'ALTA' ? 'bg-orange-100 text-orange-700' : item.priority === 'MEDIA' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}">
+                                    ${item.priority}
+                                </span>
+                            </td>
+                        </tr>
+                    `;
+                    }).join('');
                 }
             }
             
@@ -11245,8 +11210,8 @@
             
             const activeInventory = getActiveInventory();
             
-            // Obtener top 5 productos por volumen de ventas
-            const productRanking = activeInventory
+            // Obtener ranking completo
+            const fullRanking = activeInventory
                 .map(p => {
                     const stats = calculateProductStats(p.id);
                     return {
@@ -11255,19 +11220,24 @@
                     };
                 })
                 .filter(item => item.stats && item.stats.totalSold > 0)
-                .sort((a, b) => b.stats.totalSold - a.stats.totalSold)
-                .slice(0, 5);
+                .sort((a, b) => b.stats.totalSold - a.stats.totalSold);
             
-            if (productRanking.length === 0) {
+            if (fullRanking.length === 0) {
                 container.innerHTML = '<p class="text-center text-gray-400 py-4">No hay suficientes datos de ventas</p>';
                 return;
             }
             
-            container.innerHTML = productRanking.map((item, idx) => {
+            // Estado de expansión
+            if (typeof window.topProductsExpanded === 'undefined') window.topProductsExpanded = false;
+            const limit = window.topProductsExpanded ? fullRanking.length : Math.min(10, fullRanking.length);
+            const productRanking = fullRanking.slice(0, limit);
+            
+            let html = productRanking.map((item, idx) => {
                 const trendIcon = item.stats.trend > 10 ? '📈' : item.stats.trend < -10 ? '📉' : '➡️';
                 const trendColor = item.stats.trend > 10 ? 'text-green-600' : item.stats.trend < -10 ? 'text-red-600' : 'text-gray-600';
                 const productStock = getProductStock(item.product);
                 const daysLeft = item.stats.avgDaily > 0 ? Math.floor(productStock / item.stats.avgDaily) : 'N/A';
+                const avgWeekly = item.stats.avgDaily * 7;
                 
                 return `
                     <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
@@ -11286,13 +11256,31 @@
                             </div>
                             <div class="flex gap-4 mt-2 text-sm">
                                 <span class="text-gray-600">📦 Stock: ${productStock}</span>
-                                <span class="text-gray-600">📊 ~${formatMoney(item.stats.avgDaily)}/día</span>
+                                <span class="text-gray-600">📊 ~${fmtNumber(avgWeekly, 1)}/sem</span>
                                 <span class="${daysLeft <= 3 && daysLeft !== 'N/A' ? 'text-red-600 font-bold' : 'text-gray-600'}">⏱️ ${daysLeft} días restantes</span>
                             </div>
                         </div>
                     </div>
                 `;
             }).join('');
+            
+            // Botón expandir/colapsar
+            if (fullRanking.length > 10) {
+                html += `
+                    <div class="text-center py-3">
+                        <button onclick="toggleTopProductsExpanded()" class="text-blue-600 text-sm font-bold hover:underline">
+                            ${window.topProductsExpanded ? '▲ Mostrar menos' : '▼ Mostrar más (' + (fullRanking.length - 10) + ' más)'}
+                        </button>
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        function toggleTopProductsExpanded() {
+            window.topProductsExpanded = !window.topProductsExpanded;
+            renderTopProductsAnalysis();
         }
 
         function exportShoppingList() {
@@ -11348,7 +11336,7 @@ Total de productos a comprar: ${shoppingList.length}
                     text += `   ├── Stock actual: ${item.currentStock} unidades\n`;
                     text += `   ├── COMPRAR: ${item.suggestedQty} unidades\n`;
                     text += `   ├── Prioridad: ${item.priority}\n`;
-                    text += `   ├── Demanda: ${fmtNumber(item.avgDaily, 1)} unidades/día\n`;
+                    text += `   ├── Demanda: ${fmtNumber(item.avgDaily * 7, 1)} unidades/semana\n`;
                     text += `   ├── Se agota en: ${item.daysUntilStockout} días\n`;
                     text += `   ├── Vencimiento ideal: ${item.optimalExpiryDays} días (${item.optimalExpiryDate})\n`;
                     text += `   └── Precio costo: $${formatMoney(product.cost)} c/u = $${formatMoney((product.cost * item.suggestedQty))}\n`;

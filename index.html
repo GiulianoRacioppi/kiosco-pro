@@ -1543,6 +1543,7 @@
                                         <th class="px-4 py-3 text-left text-xs font-medium text-red-600 uppercase">Motivo</th>
                                         <th class="px-4 py-3 text-right text-xs font-medium text-red-600 uppercase">Costo</th>
                                         <th class="px-4 py-3 text-left text-xs font-medium text-red-600 uppercase">Notas</th>
+                                        <th class="px-4 py-3 text-right text-xs font-medium text-red-600 uppercase">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody id="losses-list-body" class="divide-y divide-gray-200">
@@ -1701,8 +1702,8 @@
                         <p class="text-2xl font-bold text-orange-800" id="cd-total-losses">$0</p>
                     </div>
                     <div class="bg-purple-50 rounded-xl p-4 border border-purple-200 text-center">
-                        <p class="text-purple-600 text-xs font-bold uppercase">Ganancia Fantasma</p>
-                        <p class="text-2xl font-bold text-purple-800" id="cd-ghost-profit">$0</p>
+                        <p class="text-purple-600 text-xs font-bold uppercase">Balance</p>
+                        <p class="text-2xl font-bold text-purple-800" id="cd-balance">$0</p>
                         <p class="text-[10px] text-purple-500 mt-1">Sobrantes - Mermas</p>
                     </div>
                 </div>
@@ -8603,7 +8604,7 @@
             const surplusEl = document.getElementById('cd-total-surplus');
             const shortageEl = document.getElementById('cd-total-shortage');
             const lossesEl = document.getElementById('cd-total-losses');
-            const ghostEl = document.getElementById('cd-ghost-profit');
+            const balanceEl = document.getElementById('cd-balance');
             const listEl = document.getElementById('cash-differences-list');
             if (!surplusEl || !listEl) return;
             
@@ -8628,14 +8629,14 @@
                 : [...losses];
             const totalLossesCost = filteredLosses.reduce((sum, l) => sum + (l.cost || 0), 0);
             
-            // Ganancia fantasma = sobrantes - pérdida por mermas
-            const ghostProfit = totalSurplus - totalLossesCost;
+            // Balance = sobrantes - pérdida por mermas
+            const balance = totalSurplus - totalLossesCost;
             
             surplusEl.textContent = '$' + formatMoney(totalSurplus);
             shortageEl.textContent = '$' + formatMoney(totalShortage);
             lossesEl.textContent = '$' + formatMoney(totalLossesCost);
-            ghostEl.textContent = (ghostProfit >= 0 ? '+' : '-') + '$' + formatMoney(Math.abs(ghostProfit));
-            ghostEl.className = 'text-2xl font-bold ' + (ghostProfit >= 0 ? 'text-purple-800' : 'text-red-600');
+            balanceEl.textContent = (balance >= 0 ? '+' : '-') + '$' + formatMoney(Math.abs(balance));
+            balanceEl.className = 'text-2xl font-bold ' + (balance >= 0 ? 'text-purple-800' : 'text-red-600');
             
             if (filteredDiffs.length === 0) {
                 listEl.innerHTML = '<p class="text-center text-gray-400 py-4 text-sm">Sin registros de sobrantes o faltantes en este período</p>';
@@ -9408,10 +9409,10 @@
                     .reduce((sum, d) => sum + d.amount, 0);
                 const totalLossesCost = (appState.losses || [])
                     .reduce((sum, l) => sum + (l.cost || 0), 0);
-                const ghostProfit = totalSurplus - totalLossesCost;
+                const balance = totalSurplus - totalLossesCost;
                 
-                // Ganancia neta ajustada = profit de ventas + ganancia fantasma
-                const netProfit = salesProfit + ghostProfit;
+                // Ganancia neta ajustada = profit de ventas + balance (sobrantes - mermas)
+                const netProfit = salesProfit + balance;
                 
                 // Inversión total = capital inicial + inyecciones de capital del dueño
                 const capitalInjected = appState.capitalAdjustments
@@ -9429,7 +9430,7 @@
                 // Actualizar tooltip de ganancia neta para mostrar el desglose
                 const netProfitEl = document.getElementById('metric-net-profit');
                 if (netProfitEl) {
-                    netProfitEl.title = `Ventas: $${formatMoney(salesProfit)} | Fantasma: ${ghostProfit >= 0 ? '+' : '-'}$${formatMoney(Math.abs(ghostProfit))}`;
+                    netProfitEl.title = `Ventas: $${formatMoney(salesProfit)} | Balance: ${balance >= 0 ? '+' : '-'}$${formatMoney(Math.abs(balance))}`;
                 }
                 
                 // Actualizar margen de ganancia neta
@@ -11017,7 +11018,7 @@
             if (countEl) countEl.textContent = `${sorted.length} registros`;
             
             if (sorted.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-400">No hay mermas registradas</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">No hay mermas registradas</td></tr>';
                 return;
             }
             
@@ -11052,7 +11053,7 @@
                     currentDate = lossDate;
                     html += `
                         <tr class="bg-gray-100">
-                            <td colspan="6" class="px-4 py-1 text-xs font-bold text-gray-500 uppercase tracking-wider">${lossDate}</td>
+                            <td colspan="7" class="px-4 py-1 text-xs font-bold text-gray-500 uppercase tracking-wider">${lossDate}</td>
                         </tr>
                     `;
                 }
@@ -11067,6 +11068,11 @@
                         </td>
                         <td class="px-4 py-3 text-right text-gray-600">$${formatMoney(loss.cost || 0)}</td>
                         <td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(loss.notes || '-')}</td>
+                        <td class="px-4 py-3 text-right">
+                            <button onclick="deleteLoss('${loss.id}')" class="text-red-500 hover:text-red-700 p-1 hover:bg-red-100 rounded" title="Eliminar merma">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
                     </tr>
                 `;
             });
@@ -11075,7 +11081,7 @@
             if (sorted.length > 10) {
                 html += `
                     <tr>
-                        <td colspan="6" class="text-center py-3">
+                        <td colspan="7" class="text-center py-3">
                             <button onclick="toggleLossesExpanded()" class="text-blue-600 text-sm font-bold hover:underline">
                                 ${window.lossesExpanded ? '▲ Mostrar menos' : '▼ Mostrar más (' + (sorted.length - 10) + ' más)'}
                             </button>
@@ -11085,6 +11091,44 @@
             }
             
             tbody.innerHTML = html;
+        }
+        
+        function deleteLoss(lossId) {
+            if (!confirm('¿Eliminar esta merma? El stock será devuelto al producto.')) return;
+            
+            const idx = appState.losses.findIndex(l => l.id === lossId);
+            if (idx === -1) {
+                showNotification('Merma no encontrada', 'error');
+                return;
+            }
+            
+            const loss = appState.losses[idx];
+            const product = appState.inventory.find(p => p.id === loss.productId);
+            
+            // Devolver stock al producto
+            if (product) {
+                if (product.batches && product.batches.length > 0) {
+                    // Agregar al primer lote existente o crear uno nuevo
+                    const firstBatch = product.batches[0];
+                    if (firstBatch) {
+                        firstBatch.stock += loss.quantity;
+                    } else {
+                        product.batches.push({
+                            stock: loss.quantity,
+                            cost: product.cost || 0,
+                            date: formatDateISO(new Date()),
+                            source: 'cash'
+                        });
+                    }
+                } else {
+                    product.stock = (product.stock || 0) + loss.quantity;
+                }
+            }
+            
+            appState.losses.splice(idx, 1);
+            saveToLocalStorage();
+            renderAll();
+            showNotification('Merma eliminada y stock devuelto', 'success');
         }
         
         function toggleLossesExpanded() {

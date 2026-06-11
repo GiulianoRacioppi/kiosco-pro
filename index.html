@@ -2252,6 +2252,21 @@
                             <i class="fas fa-cloud-download-alt"></i> Descargar todo desde la nube
                         </button>
                         <p class="text-xs text-gray-500">Forzar la sincronización con la nube. Usá esto si los datos no se ven igual en otro dispositivo.</p>
+                        
+                        <!-- Backup automático de emergencia -->
+                        <div id="auto-backup-info" class="hidden bg-amber-50 border border-amber-200 rounded-xl p-4">
+                            <div class="flex items-start gap-3">
+                                <i class="fas fa-shield-alt text-amber-600 mt-1"></i>
+                                <div class="flex-1">
+                                    <h4 class="font-bold text-amber-800 text-sm">Backup automático disponible</h4>
+                                    <p id="auto-backup-time" class="text-xs text-amber-700 mb-2">-</p>
+                                    <button onclick="restoreFromAutoBackup()" class="w-full bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg font-bold text-sm">
+                                        <i class="fas fa-undo"></i> Restaurar desde Backup Automático
+                                    </button>
+                                    <p class="text-xs text-amber-600 mt-1">Usá esto como emergencia si ves datos en 0 o faltantes.</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -11778,6 +11793,19 @@ Total de productos a comprar: ${shoppingList.length}
             if (masterCheckbox) {
                 masterCheckbox.checked = isMasterDevice();
             }
+            
+            // Mostrar/ocultar info de backup automático
+            const backupInfoEl = document.getElementById('auto-backup-info');
+            const backupTimeEl = document.getElementById('auto-backup-time');
+            if (backupInfoEl && backupTimeEl) {
+                const backupTime = localStorage.getItem('kioscopro-auto-backup-time');
+                if (backupTime) {
+                    backupInfoEl.classList.remove('hidden');
+                    backupTimeEl.textContent = 'Guardado el ' + new Date(parseInt(backupTime)).toLocaleString('es-AR');
+                } else {
+                    backupInfoEl.classList.add('hidden');
+                }
+            }
         }
 
         let billingPeriod = 'all'; // 'today' | 'week' | 'month' | 'all'
@@ -14167,6 +14195,21 @@ RESULTADOS:
             const delay = immediate ? 0 : 1000;
             syncTimeout = setTimeout(async () => {
                 try {
+                    // ========== PROTECCIÓN: no sincronizar estado vacío recién inicializado ==========
+                    const hasLocalData = !!localStorage.getItem('kioscopro-data');
+                    const stateLooksEmpty = (
+                        (!Array.isArray(appState.inventory) || appState.inventory.length === 0) &&
+                        (!Array.isArray(appState.sales) || appState.sales.length === 0) &&
+                        (!Array.isArray(appState.expenses) || appState.expenses.length === 0) &&
+                        parseFloat(appState.cash || 0) === 0 &&
+                        parseFloat(appState.bank || 0) === 0
+                    );
+                    if (stateLooksEmpty && !hasLocalData) {
+                        console.warn('⛔ syncToFirebase bloqueado: estado vacío sin datos locales previos. Se evita sobrescribir datos en la nube.');
+                        updateSyncStatus('offline');
+                        return;
+                    }
+                    
                     const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
                     
                     // Preparar datos para Firebase (sin cart que es temporal)
@@ -14488,6 +14531,51 @@ RESULTADOS:
             }
         }
         
+        // Backup automático de seguridad antes de operaciones destructivas
+        function createAutoBackup(reason) {
+            try {
+                const backup = JSON.parse(JSON.stringify(appState));
+                backup._backupReason = reason || 'auto';
+                backup._backupTime = new Date().toISOString();
+                localStorage.setItem('kioscopro-auto-backup', JSON.stringify(backup));
+                localStorage.setItem('kioscopro-auto-backup-time', Date.now().toString());
+                console.log('💾 Backup automático creado:', reason);
+            } catch (e) {
+                console.error('Error creando backup automático:', e);
+            }
+        }
+        
+        // Restaurar desde backup automático (emergencia)
+        function restoreFromAutoBackup() {
+            try {
+                const saved = localStorage.getItem('kioscopro-auto-backup');
+                if (!saved) {
+                    showNotification('No hay backup automático disponible', 'error');
+                    return false;
+                }
+                const backup = JSON.parse(saved);
+                if (!confirm('¿Restaurar datos desde el backup automático del ' + (backup._backupTime ? new Date(backup._backupTime).toLocaleString() : 'desconocido') + '? Esto reemplazará tus datos actuales.')) {
+                    return false;
+                }
+                // No restaurar campos temporales
+                delete backup._backupReason;
+                delete backup._backupTime;
+                appState = { ...appState, ...backup };
+                // Asegurar fechas
+                appState.currentDate = new Date();
+                try { appState.activeDate = parseDateLocal(backup.activeDate || new Date()); } catch(e) { appState.activeDate = new Date(); }
+                try { appState.calendarMonth = parseDateLocal(backup.calendarMonth || new Date()); } catch(e) { appState.calendarMonth = new Date(); }
+                saveToLocalStorage(false);
+                renderAll();
+                showNotification('✅ Datos restaurados desde backup automático', 'success');
+                return true;
+            } catch (e) {
+                console.error('Error restaurando backup:', e);
+                showNotification('Error al restaurar backup', 'error');
+                return false;
+            }
+        }
+        
         // Fusionar datos de Firebase con estado local
         function mergeFirebaseData(data) {
             const deviceId = localStorage.getItem('kioscopro-device-id') || generateDeviceId();
@@ -14557,18 +14645,76 @@ RESULTADOS:
                 // DISPOSITIVO SECUNDARIO (ej: celular): la PC manda
                 // - Productos, stock, saldos, promos: reemplazar con datos de Firebase
                 // - Transacciones (ventas, gastos, etc.): fusionar para no perder lo hecho offline
-                appState.inventory = Array.isArray(data.inventory) ? JSON.parse(JSON.stringify(data.inventory)) : [];
-                appState.promotions = Array.isArray(data.promotions) ? JSON.parse(JSON.stringify(data.promotions)) : [];
-                appState.discountTickets = Array.isArray(data.discountTickets) ? JSON.parse(JSON.stringify(data.discountTickets)) : [];
-                appState.ticketRules = Array.isArray(data.ticketRules) ? JSON.parse(JSON.stringify(data.ticketRules)) : [];
                 
-                // Saldos y config vienen de la PC
-                if (data.cash !== undefined) appState.cash = parseFloat(data.cash) || 0;
-                if (data.bank !== undefined) appState.bank = parseFloat(data.bank) || 0;
-                if (data.defaultMargin !== undefined) appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
-                if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
-                if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
-                if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
+                // ========== PROTECCIÓN: no reemplazar con datos vacíos o muy incompletos ==========
+                const remoteInv = Array.isArray(data.inventory) ? data.inventory : [];
+                const localInv = Array.isArray(appState.inventory) ? appState.inventory : [];
+                const remoteSales = Array.isArray(data.sales) ? data.sales.length : 0;
+                const localSales = Array.isArray(appState.sales) ? appState.sales.length : 0;
+                const remoteLastSync = new Date(data.lastSync || 0).getTime();
+                
+                // Detectar datos remotos sospechosamente vacíos/incompletos
+                const remoteLooksEmpty = remoteInv.length === 0 && remoteSales === 0 && remoteLastSync === 0;
+                const remoteLooksIncomplete = localInv.length > 0 && remoteInv.length < Math.max(1, localInv.length * 0.3);
+                
+                if (remoteLooksEmpty && localInv.length > 0) {
+                    // CRÍTICO: Firebase está vacío pero local tiene datos. NO reemplazar.
+                    console.warn('🛡️ Modo secundario: Firebase devolvió datos vacíos. Se conservan', localInv.length, 'productos locales para evitar pérdida de datos.');
+                    showNotification('🛡️ Los datos en la nube parecen vacíos. Se conservaron tus datos locales.', 'warning');
+                    // No tocar inventory, pero sí fusionar transacciones nuevas que pudiera haber
+                    createAutoBackup('firebase-empty-secondary-protect');
+                } else if (remoteLooksIncomplete && localInv.length > 0) {
+                    // Datos remotos muy incompletos (menos del 30% de productos locales) pero local tiene datos. Fusionar en lugar de reemplazar.
+                    console.warn('🛡️ Modo secundario: Firebase tiene', remoteInv.length, 'productos vs', localInv.length, 'locales. Se fusiona en lugar de reemplazar.');
+                    if (!isInitialSync) {
+                        showNotification('🛡️ Datos en la nube incompletos. Se fusionaron con los locales.', 'warning');
+                    }
+                    createAutoBackup('firebase-incomplete-secondary-merge');
+                    appState.inventory = mergeInventory(localInv, remoteInv);
+                } else {
+                    // Datos remotos parecen válidos: reemplazar normalmente, pero hacer backup primero
+                    if (localInv.length > 0) {
+                        createAutoBackup('secondary-replace-before-firebase');
+                    }
+                    appState.inventory = JSON.parse(JSON.stringify(remoteInv));
+                }
+                
+                // Promociones y reglas: misma protección contra vacío
+                const remotePromos = Array.isArray(data.promotions) ? data.promotions : [];
+                const localPromos = Array.isArray(appState.promotions) ? appState.promotions : [];
+                if (remotePromos.length === 0 && localPromos.length > 0) {
+                    console.warn('🛡️ Modo secundario: promociones vacías en Firebase, se conservan locales');
+                } else {
+                    appState.promotions = JSON.parse(JSON.stringify(remotePromos));
+                }
+                
+                const remoteTickets = Array.isArray(data.discountTickets) ? data.discountTickets : [];
+                const localTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
+                if (remoteTickets.length === 0 && localTickets.length > 0) {
+                    console.warn('🛡️ Modo secundario: tickets vacíos en Firebase, se conservan locales');
+                } else {
+                    appState.discountTickets = JSON.parse(JSON.stringify(remoteTickets));
+                }
+                
+                const remoteRules = Array.isArray(data.ticketRules) ? data.ticketRules : [];
+                const localRules = Array.isArray(appState.ticketRules) ? appState.ticketRules : [];
+                if (remoteRules.length === 0 && localRules.length > 0) {
+                    console.warn('🛡️ Modo secundario: reglas vacías en Firebase, se conservan locales');
+                } else {
+                    appState.ticketRules = JSON.parse(JSON.stringify(remoteRules));
+                }
+                
+                // Saldos y config vienen de la PC, solo si los datos remotos parecen válidos
+                if (!remoteLooksEmpty) {
+                    if (data.cash !== undefined) appState.cash = parseFloat(data.cash) || 0;
+                    if (data.bank !== undefined) appState.bank = parseFloat(data.bank) || 0;
+                    if (data.defaultMargin !== undefined) appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
+                    if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
+                    if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
+                    if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
+                } else {
+                    console.warn('🛡️ Modo secundario: saldos/config no se actualizan porque Firebase está vacío');
+                }
                 
                 // Transacciones se fusionan (ventas del celular llegan a la PC, y viceversa)
                 appState.sales = smartMergeArrays(appState.sales, data.sales);
@@ -14579,10 +14725,12 @@ RESULTADOS:
                 appState.cashCounts = smartMergeArrays(appState.cashCounts || [], data.cashCounts || []);
                 appState.cashDifferences = smartMergeArrays(appState.cashDifferences || [], data.cashDifferences || []);
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
-                // Tomar deletedProductIds de Firebase (la PC es la fuente de verdad)
-                appState.deletedProductIds = Array.isArray(data.deletedProductIds) ? data.deletedProductIds : [];
+                // Tomar deletedProductIds de Firebase (la PC es la fuente de verdad), pero si Firebase está vacío no borrar locales
+                if (!remoteLooksEmpty) {
+                    appState.deletedProductIds = Array.isArray(data.deletedProductIds) ? data.deletedProductIds : [];
+                }
                 
-                console.log('📱 Modo secundario: datos de productos/stock/saldos reemplazados desde Firebase');
+                console.log('📱 Modo secundario: datos procesados desde Firebase (protección anti-borrado activa)');
             } else {
                 // DISPOSITIVO PRINCIPAL (ej: PC): fusión inteligente normal
                 // Fusionar lista de productos eliminados
@@ -14967,7 +15115,7 @@ RESULTADOS:
             
             // Exponer funciones adicionales de venta por peso y sync
             (function exposeAdditionalFunctions() {
-                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder'];
+                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup'];
                 for (const name of extraFns) {
                     try {
                         const fn = eval(name);

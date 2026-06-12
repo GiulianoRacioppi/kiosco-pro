@@ -6009,7 +6009,9 @@
             const costInput = document.getElementById('edit-prod-cost');
             if (costInput && document.getElementById('edit-prod-is-composite')?.checked) {
                 costInput.value = totalCost.toFixed(2);
-                calculateEditPrice();
+                // Solo actualizar el margen mostrado, NO recalcular el precio de venta
+                calculateEditMargin();
+                updateEditWeightCalculations();
             }
         }
 
@@ -6161,14 +6163,18 @@
                 costInput.value = (currentCost / 1.21).toFixed(2);
                 editVatApplied = false;
             }
-            calculateEditPrice();
+            // No recalcular precio automáticamente. Solo actualizar el margen mostrado.
+            calculateEditMargin();
+            updateEditWeightCalculations();
         }
 
         function onEditCostInput() {
             editVatApplied = false;
             const checkbox = document.getElementById('edit-prod-vat');
             if (checkbox) checkbox.checked = false;
-            calculateEditPrice();
+            // No recalcular precio automáticamente. Solo actualizar el margen mostrado.
+            calculateEditMargin();
+            updateEditWeightCalculations();
         }
 
         function calculateInventoryPrice() {

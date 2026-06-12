@@ -3152,6 +3152,8 @@
             newDate.setDate(newDate.getDate() + days);
             appState.activeDate = newDate;
             updateDateDisplay();
+            // Cerrar modal de arqueo si está abierto para evitar guardar en fecha equivocada
+            closeCashCountModal();
             renderAll();
             checkCashCountAlert();
         }
@@ -3159,6 +3161,8 @@
         function resetToToday() {
             appState.activeDate = new Date();
             updateDateDisplay();
+            // Cerrar modal de arqueo si está abierto para evitar guardar en fecha equivocada
+            closeCashCountModal();
             renderAll();
             checkCashCountAlert();
         }
@@ -10120,6 +10124,12 @@
             const today = formatDateISO(appState.activeDate || new Date());
             const existing = appState.cashCounts ? appState.cashCounts.find(c => c.date === today) : null;
             
+            // Fijar la fecha en el modal para evitar cambios si la fecha activa cambia mientras está abierto
+            const modal = document.getElementById('cash-count-modal');
+            modal.dataset.cashCountDate = today;
+            const dateDisplay = document.getElementById('cash-count-modal-date');
+            if (dateDisplay) dateDisplay.textContent = 'Fecha del arqueo: ' + today;
+            
             document.getElementById('cash-count-date').textContent = today;
             const undoSection = document.getElementById('cash-count-undo-section');
             
@@ -10185,28 +10195,58 @@
                 showNotification('Ingrese montos válidos', 'error');
                 return;
             }
-            const today = formatDateISO(appState.activeDate || new Date());
+            const modal = document.getElementById('cash-count-modal');
+            const targetDate = modal.dataset.cashCountDate || formatDateISO(appState.activeDate || new Date());
+            
+            // Validación de seguridad: la fecha del modal debe coincidir con la fecha activa
+            const activeDate = formatDateISO(appState.activeDate || new Date());
+            if (targetDate !== activeDate) {
+                if (!confirm(`⚠️ La fecha del arqueo (${targetDate}) no coincide con la fecha activa (${activeDate}). ¿Guardar igual para ${targetDate}?`)) {
+                    return;
+                }
+            }
+            
             if (!appState.cashCounts) appState.cashCounts = [];
             
-            appState.cashCounts = appState.cashCounts.filter(c => c.date !== today);
-            appState.cashCounts.push({
-                id: 'CASHCOUNT-' + Date.now(),
-                date: today,
-                openingCash: cashAmount,
-                openingBank: bankAmount,
-                openingAmount: cashAmount + bankAmount,
-                closingCash: null,
-                closingBank: null,
-                closingAmount: null,
-                expectedCash: null,
-                expectedBank: null,
-                expectedAmount: null,
-                differenceCash: null,
-                differenceBank: null,
-                difference: null,
-                notes: '',
-                timestamp: Date.now()
-            });
+            // Buscar registro existente para actualizar, no borrar
+            let record = appState.cashCounts.find(c => c.date === targetDate);
+            if (!record) {
+                record = {
+                    id: 'CASHCOUNT-' + Date.now(),
+                    date: targetDate,
+                    openingCash: cashAmount,
+                    openingBank: bankAmount,
+                    openingAmount: cashAmount + bankAmount,
+                    closingCash: null,
+                    closingBank: null,
+                    closingAmount: null,
+                    expectedCash: null,
+                    expectedBank: null,
+                    expectedAmount: null,
+                    differenceCash: null,
+                    differenceBank: null,
+                    difference: null,
+                    notes: '',
+                    timestamp: Date.now()
+                };
+                appState.cashCounts.push(record);
+            } else {
+                // Actualizar solo la apertura, preservar cierre si ya existe
+                record.openingCash = cashAmount;
+                record.openingBank = bankAmount;
+                record.openingAmount = cashAmount + bankAmount;
+                record.timestamp = Date.now();
+                // Si ya había cierre, recalcular diferencias
+                if (record.closingAmount !== null && record.closingAmount !== undefined) {
+                    const expected = calculateCashExpected(targetDate);
+                    record.expectedCash = expected.cash;
+                    record.expectedBank = expected.bank;
+                    record.expectedAmount = expected.total;
+                    record.differenceCash = record.closingCash - expected.cash;
+                    record.differenceBank = record.closingBank - expected.bank;
+                    record.difference = record.closingAmount - expected.total;
+                }
+            }
             
             saveToLocalStorage();
             renderAll();
@@ -10216,10 +10256,11 @@
         }
 
         function updateCashDifference() {
-            const today = formatDateISO(appState.activeDate || new Date());
+            const modal = document.getElementById('cash-count-modal');
+            const targetDate = modal.dataset.cashCountDate || formatDateISO(appState.activeDate || new Date());
             const closingCash = parseFloat(document.getElementById('cash-count-closing').value) || 0;
             const closingBank = parseFloat(document.getElementById('cash-count-closing-bank').value) || 0;
-            const expected = calculateCashExpected(today);
+            const expected = calculateCashExpected(targetDate);
             const diffCash = closingCash - expected.cash;
             const diffBank = closingBank - expected.bank;
             const diffTotal = diffCash + diffBank;
@@ -10257,7 +10298,8 @@
         }
 
         function deleteCashCount(date) {
-            const targetDate = date || formatDateISO(appState.activeDate || new Date());
+            const modal = document.getElementById('cash-count-modal');
+            const targetDate = date || modal.dataset.cashCountDate || formatDateISO(appState.activeDate || new Date());
             if (!appState.cashCounts) return;
             
             const idx = appState.cashCounts.findIndex(c => c.date === targetDate);
@@ -10328,14 +10370,24 @@
                 showNotification('Ingrese montos válidos para caja y cuenta', 'error');
                 return;
             }
-            const today = formatDateISO(appState.activeDate || new Date());
-            const record = appState.cashCounts ? appState.cashCounts.find(c => c.date === today) : null;
+            const modal = document.getElementById('cash-count-modal');
+            const targetDate = modal.dataset.cashCountDate || formatDateISO(appState.activeDate || new Date());
+            
+            // Validación de seguridad: la fecha del modal debe coincidir con la fecha activa
+            const activeDate = formatDateISO(appState.activeDate || new Date());
+            if (targetDate !== activeDate) {
+                if (!confirm(`⚠️ La fecha del arqueo (${targetDate}) no coincide con la fecha activa (${activeDate}). ¿Guardar el cierre igual para ${targetDate}?`)) {
+                    return;
+                }
+            }
+            
+            const record = appState.cashCounts ? appState.cashCounts.find(c => c.date === targetDate) : null;
             if (!record) {
                 showNotification('Primero debe registrar la apertura', 'error');
                 return;
             }
             
-            const expected = calculateCashExpected(today);
+            const expected = calculateCashExpected(targetDate);
             record.closingCash = closingCash;
             record.closingBank = closingBank;
             record.closingAmount = closingCash + closingBank;
@@ -10355,11 +10407,11 @@
             // Registrar sobrante o faltante en cashDifferences
             if (!appState.cashDifferences) appState.cashDifferences = [];
             // Eliminar registro previo del mismo día si existe
-            appState.cashDifferences = appState.cashDifferences.filter(d => d.date !== today);
+            appState.cashDifferences = appState.cashDifferences.filter(d => d.date !== targetDate);
             if (record.difference !== 0) {
                 appState.cashDifferences.push({
                     id: 'CASHDIFF-' + Date.now(),
-                    date: today,
+                    date: targetDate,
                     amount: record.difference,
                     type: record.difference > 0 ? 'surplus' : 'shortage',
                     cashAmount: record.differenceCash,
@@ -15278,11 +15330,12 @@ RESULTADOS:
         }
     </script>
     <!-- ==================== ARQUEO DE CAJA MODAL ==================== -->
-    <div id="cash-count-modal" class="modal">
+    <div id="cash-count-modal" class="modal" data-cash-count-date="">
         <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
             <h3 class="text-xl font-bold mb-4 text-green-600"><i class="fas fa-cash-register"></i> Arqueo de Caja y Cuenta</h3>
+            <p id="cash-count-modal-date" class="text-sm font-bold text-indigo-600 mb-3 text-center bg-indigo-50 rounded-lg py-1"></p>
             <div id="cash-count-opening-section">
-                <p class="text-sm text-gray-600 mb-2">Registrar apertura para hoy</p>
+                <p class="text-sm text-gray-600 mb-2">Registrar apertura</p>
                 <div class="mb-3">
                     <label class="block text-sm font-medium text-gray-700 mb-2">💵 Monto en caja (efectivo)</label>
                     <input type="number" id="cash-count-opening" class="w-full border-2 border-green-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('cash-count-opening-bank').focus();}">

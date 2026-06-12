@@ -994,6 +994,21 @@
                 <!-- Se llena con alertas inteligentes via JS -->
             </div>
             
+            <!-- Selector de período -->
+            <div class="bg-white rounded-2xl shadow-lg p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <h3 class="text-lg font-bold text-gray-700"><i class="fas fa-chart-pie text-purple-600 mr-2"></i> Métricas por período</h3>
+                <div class="flex items-center gap-2">
+                    <label class="text-sm text-gray-600">Período:</label>
+                    <select id="dashboard-period" onchange="changeDashboardPeriod(this.value)" class="border-2 border-purple-200 rounded-lg px-3 py-2 font-bold text-purple-700 focus:border-purple-500 focus:outline-none">
+                        <option value="today">Hoy</option>
+                        <option value="week">Esta semana</option>
+                        <option value="month">Este mes</option>
+                        <option value="year">Este año</option>
+                        <option value="all">Todo el historial</option>
+                    </select>
+                </div>
+            </div>
+            
             <!-- KPI Cards Row -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" id="dashboard-kpis">
                 <!-- Se llena con JS -->
@@ -1210,6 +1225,30 @@
                     <div class="text-center text-xs font-bold text-gray-500 py-2">Sáb</div>
                 </div>
                 <div id="calendar-grid" class="grid grid-cols-7 gap-2"></div>
+                
+                <!-- Métricas del mes -->
+                <div class="mt-6 pt-4 border-t border-gray-200">
+                    <h4 class="text-sm font-bold text-gray-600 mb-3 uppercase">Resumen del mes</h4>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div class="bg-purple-50 rounded-xl p-3 text-center">
+                            <p class="text-xs text-purple-600 font-bold uppercase">Ventas</p>
+                            <p class="text-xl font-bold text-purple-800" id="calendar-month-sales">$0</p>
+                            <p class="text-xs text-purple-500" id="calendar-month-sales-count">0 ventas</p>
+                        </div>
+                        <div class="bg-green-50 rounded-xl p-3 text-center">
+                            <p class="text-xs text-green-600 font-bold uppercase">Ganancia</p>
+                            <p class="text-xl font-bold text-green-800" id="calendar-month-profit">$0</p>
+                        </div>
+                        <div class="bg-red-50 rounded-xl p-3 text-center">
+                            <p class="text-xs text-red-600 font-bold uppercase">Gastos</p>
+                            <p class="text-xl font-bold text-red-800" id="calendar-month-expenses">$0</p>
+                        </div>
+                        <div class="bg-blue-50 rounded-xl p-3 text-center">
+                            <p class="text-xs text-blue-600 font-bold uppercase">Inversión</p>
+                            <p class="text-xl font-bold text-blue-800" id="calendar-month-investments">$0</p>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <div id="day-detail" class="bg-white rounded-2xl shadow-lg p-6 hidden">
@@ -3410,20 +3449,73 @@
         }
 
         // ==================== DASHBOARD ====================
+        function changeDashboardPeriod(period) {
+            dashboardPeriod = period;
+            renderDashboard();
+        }
+        
+        // Filtrar transacciones por período
+        function filterByPeriod(items, period, dateField = 'date') {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            return items.filter(item => {
+                const itemDateStr = item[dateField];
+                if (!itemDateStr) return false;
+                const itemDate = new Date(itemDateStr + 'T00:00:00');
+                
+                switch (period) {
+                    case 'today':
+                        return itemDateStr === formatDateISO(today);
+                    case 'week': {
+                        const monday = new Date(today);
+                        monday.setDate(today.getDate() - today.getDay() + (today.getDay() === 0 ? -6 : 1));
+                        monday.setHours(0, 0, 0, 0);
+                        const sunday = new Date(monday);
+                        sunday.setDate(monday.getDate() + 6);
+                        sunday.setHours(23, 59, 59, 999);
+                        return itemDate >= monday && itemDate <= sunday;
+                    }
+                    case 'month':
+                        return itemDate.getMonth() === today.getMonth() && itemDate.getFullYear() === today.getFullYear();
+                    case 'year':
+                        return itemDate.getFullYear() === today.getFullYear();
+                    case 'all':
+                    default:
+                        return true;
+                }
+            });
+        }
+        
         function renderDashboard() {
             // Si no hay usuario logueado, no renderizar
             if (!appState.currentUser) return;
             
+            // Sincronizar selector con estado actual
+            const periodSelect = document.getElementById('dashboard-period');
+            if (periodSelect) periodSelect.value = dashboardPeriod;
+            
+            const periodLabel = {
+                'today': 'Hoy',
+                'week': 'Esta semana',
+                'month': 'Este mes',
+                'year': 'Este año',
+                'all': 'Todo el historial'
+            }[dashboardPeriod];
+            
+            const filteredSales = filterByPeriod(appState.sales, dashboardPeriod);
+            const filteredExpenses = filterByPeriod(appState.expenses, dashboardPeriod);
+            const filteredInvestments = filterByPeriod(appState.investments, dashboardPeriod);
+            
+            const periodRevenue = filteredSales.reduce((sum, s) => sum + s.total, 0);
+            const periodProfit = filteredSales.reduce((sum, s) => sum + s.profit, 0);
+            const periodExpenseAmount = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+            const periodInvestmentAmount = filteredInvestments.reduce((sum, i) => sum + i.amount, 0);
+            const netBalance = periodRevenue - periodExpenseAmount - periodInvestmentAmount;
+            
+            // Para la lista de ventas del día, siempre mostrar el día activo (independiente del filtro de período)
             const today = formatDateISO(appState.activeDate);
             const todaySales = appState.sales.filter(s => s.date === today);
-            const todayExpenses = appState.expenses.filter(e => e.date === today);
-            const todayInvestments = appState.investments.filter(i => i.date === today);
-            
-            const todayRevenue = todaySales.reduce((sum, s) => sum + s.total, 0);
-            const todayProfit = todaySales.reduce((sum, s) => sum + s.profit, 0);
-            const todayExpenseAmount = todayExpenses.reduce((sum, e) => sum + e.amount, 0);
-            const todayInvestmentAmount = todayInvestments.reduce((sum, i) => sum + i.amount, 0);
-            const netBalance = todayRevenue - todayExpenseAmount - todayInvestmentAmount;
             
             const isAdmin = appState.currentUser && appState.currentUser.role === 'admin';
 
@@ -3459,12 +3551,12 @@
                 const chartsRow = document.querySelector('#dashboard .grid.grid-cols-1.lg\\:grid-cols-2');
                 if (chartsRow) chartsRow.style.display = 'none';
             } else {
-                // VISTA ADMIN: Todo completo
+                // VISTA ADMIN: Todo completo, filtrado por período
                 const kpiData = [
-                    { title: 'Ventas Hoy', value: `$${formatMoney(todayRevenue)}`, icon: 'fa-dollar-sign', color: 'purple', subtext: `${todaySales.length} ventas` },
-                    { title: 'Ganancia Neta', value: `$${formatMoney(todayProfit)}`, icon: 'fa-chart-line', color: 'green', subtext: 'después de costos' },
-                    { title: 'Gastos Hoy', value: `$${formatMoney(todayExpenseAmount)}`, icon: 'fa-receipt', color: 'red', subtext: `${todayExpenses.length} gastos` },
-                    { title: 'Inversión Hoy', value: `$${formatMoney(todayInvestmentAmount)}`, icon: 'fa-boxes', color: 'blue', subtext: `${todayInvestments.length} compras` }
+                    { title: `Ventas ${periodLabel}`, value: `$${formatMoney(periodRevenue)}`, icon: 'fa-dollar-sign', color: 'purple', subtext: `${filteredSales.length} ventas` },
+                    { title: `Ganancia Neta ${periodLabel}`, value: `$${formatMoney(periodProfit)}`, icon: 'fa-chart-line', color: 'green', subtext: 'después de costos' },
+                    { title: `Gastos ${periodLabel}`, value: `$${formatMoney(periodExpenseAmount)}`, icon: 'fa-receipt', color: 'red', subtext: `${filteredExpenses.length} gastos` },
+                    { title: `Inversión ${periodLabel}`, value: `$${formatMoney(periodInvestmentAmount)}`, icon: 'fa-boxes', color: 'blue', subtext: `${filteredInvestments.length} compras` }
                 ];
 
                 document.getElementById('dashboard-kpis').innerHTML = kpiData.map(kpi => `
@@ -3487,6 +3579,7 @@
                 if (chartsRow) chartsRow.style.display = 'grid';
             }
 
+            const todayRevenue = todaySales.reduce((sum, s) => sum + s.total, 0);
             document.getElementById('today-sales-count').textContent = `(${todaySales.length} ventas)`;
             document.getElementById('today-total-sales').textContent = `$${formatMoney(todayRevenue)}`;
             
@@ -5438,6 +5531,16 @@
                 showNotification('❌ Stock insuficiente:\n' + stockErrors.join('\n'), 'error');
                 console.error('Stock validation failed:', stockErrors);
                 return;
+            }
+            
+            // ========== ALERTA DE FECHA ==========
+            // Si la fecha activa no es hoy, pedir confirmación para evitar cargar ventas en otra fecha por error
+            const activeDateStr = formatDateISO(appState.activeDate || new Date());
+            const todayStr = formatDateISO(new Date());
+            if (activeDateStr !== todayStr) {
+                if (!confirm(`⚠️ ATENCIÓN: Estás por registrar una venta en la fecha ${activeDateStr}, que NO es hoy (${todayStr}).\n\n¿Estás seguro de que querés continuar?`)) {
+                    return;
+                }
             }
 
             const subtotal = appState.cartSubtotal || appState.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -8085,6 +8188,29 @@
             }
             
             document.getElementById('calendar-grid').innerHTML = html;
+            
+            // Calcular y mostrar métricas del mes
+            const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+            const monthSales = appState.sales.filter(s => s.date && s.date.startsWith(monthPrefix));
+            const monthExpenses = appState.expenses.filter(e => e.date && e.date.startsWith(monthPrefix));
+            const monthInvestments = appState.investments.filter(i => i.date && i.date.startsWith(monthPrefix));
+            
+            const monthSalesTotal = monthSales.reduce((sum, s) => sum + s.total, 0);
+            const monthProfitTotal = monthSales.reduce((sum, s) => sum + s.profit, 0);
+            const monthExpensesTotal = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
+            const monthInvestmentsTotal = monthInvestments.reduce((sum, i) => sum + i.amount, 0);
+            
+            const monthSalesEl = document.getElementById('calendar-month-sales');
+            const monthSalesCountEl = document.getElementById('calendar-month-sales-count');
+            const monthProfitEl = document.getElementById('calendar-month-profit');
+            const monthExpensesEl = document.getElementById('calendar-month-expenses');
+            const monthInvestmentsEl = document.getElementById('calendar-month-investments');
+            
+            if (monthSalesEl) monthSalesEl.textContent = '$' + formatMoney(monthSalesTotal);
+            if (monthSalesCountEl) monthSalesCountEl.textContent = monthSales.length + ' ventas';
+            if (monthProfitEl) monthProfitEl.textContent = '$' + formatMoney(monthProfitTotal);
+            if (monthExpensesEl) monthExpensesEl.textContent = '$' + formatMoney(monthExpensesTotal);
+            if (monthInvestmentsEl) monthInvestmentsEl.textContent = '$' + formatMoney(monthInvestmentsTotal);
         }
 
         function changeCalendarMonth(delta) {
@@ -12023,6 +12149,7 @@ Total de productos a comprar: ${shoppingList.length}
         }
 
         let billingPeriod = 'all'; // 'today' | 'week' | 'month' | 'all'
+        let dashboardPeriod = 'today'; // 'today' | 'week' | 'month' | 'year' | 'all'
 
         function setBillingPeriod(period) {
             billingPeriod = period;
@@ -15329,7 +15456,7 @@ RESULTADOS:
             
             // Exponer funciones adicionales de venta por peso y sync
             (function exposeAdditionalFunctions() {
-                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup'];
+                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup','changeDashboardPeriod'];
                 for (const name of extraFns) {
                     try {
                         const fn = eval(name);

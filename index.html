@@ -994,18 +994,34 @@
                 <!-- Se llena con alertas inteligentes via JS -->
             </div>
             
-            <!-- Selector de período -->
+            <!-- Selector de período y métricas -->
             <div class="bg-white rounded-2xl shadow-lg p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <h3 class="text-lg font-bold text-gray-700"><i class="fas fa-chart-pie text-purple-600 mr-2"></i> Métricas por período</h3>
-                <div class="flex items-center gap-2">
-                    <label class="text-sm text-gray-600">Período:</label>
-                    <select id="dashboard-period" onchange="changeDashboardPeriod(this.value)" class="border-2 border-purple-200 rounded-lg px-3 py-2 font-bold text-purple-700 focus:border-purple-500 focus:outline-none">
-                        <option value="today">Hoy</option>
-                        <option value="week">Esta semana</option>
-                        <option value="month">Este mes</option>
-                        <option value="year">Este año</option>
-                        <option value="all">Todo el historial</option>
-                    </select>
+                <div class="flex flex-col sm:flex-row items-center gap-3">
+                    <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1" id="dashboard-metric-toggles">
+                        <button onclick="toggleDashboardMetric('sales')" id="btn-dashboard-sales" class="px-2 py-1 text-xs font-bold rounded flex items-center gap-1 border transition bg-purple-100 text-purple-700 border-purple-200" title="Mostrar/ocultar Ventas">
+                            <span class="w-2 h-2 rounded-full bg-purple-500"></span> Ventas
+                        </button>
+                        <button onclick="toggleDashboardMetric('profit')" id="btn-dashboard-profit" class="px-2 py-1 text-xs font-bold rounded flex items-center gap-1 border transition bg-green-100 text-green-700 border-green-200" title="Mostrar/ocultar Ganancia">
+                            <span class="w-2 h-2 rounded-full bg-green-500"></span> Ganancia
+                        </button>
+                        <button onclick="toggleDashboardMetric('expenses')" id="btn-dashboard-expenses" class="px-2 py-1 text-xs font-bold rounded flex items-center gap-1 border transition bg-red-100 text-red-700 border-red-200" title="Mostrar/ocultar Gastos">
+                            <span class="w-2 h-2 rounded-full bg-red-500"></span> Gastos
+                        </button>
+                        <button onclick="toggleDashboardMetric('investment')" id="btn-dashboard-investment" class="px-2 py-1 text-xs font-bold rounded flex items-center gap-1 border transition bg-blue-100 text-blue-700 border-blue-200" title="Mostrar/ocultar Inversión">
+                            <span class="w-2 h-2 rounded-full bg-blue-500"></span> Inversión
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="text-sm text-gray-600">Período:</label>
+                        <select id="dashboard-period" onchange="changeDashboardPeriod(this.value)" class="border-2 border-purple-200 rounded-lg px-3 py-2 font-bold text-purple-700 focus:border-purple-500 focus:outline-none">
+                            <option value="today">Hoy</option>
+                            <option value="week">Esta semana</option>
+                            <option value="month">Este mes</option>
+                            <option value="year">Este año</option>
+                            <option value="all">Todo el historial</option>
+                        </select>
+                    </div>
                 </div>
             </div>
             
@@ -1898,13 +1914,26 @@
 
             <!-- Gráfico Financiero -->
             <div class="bg-white rounded-2xl p-4 shadow-lg">
-                <div class="flex justify-between items-center mb-3">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
                     <h3 class="text-base font-bold"><i class="fas fa-chart-area text-purple-600"></i> Evolución Financiera</h3>
-                    <div class="flex bg-gray-100 rounded-lg p-1">
-                        <button onclick="setChartPeriod('day')" id="btn-period-day" class="px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white">Día</button>
-                        <button onclick="setChartPeriod('week')" id="btn-period-week" class="px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white">Semana</button>
-                        <button onclick="setChartPeriod('month')" id="btn-period-month" class="px-3 py-1 text-xs font-bold rounded bg-white text-gray-800 shadow-sm">Mes</button>
-                        <button onclick="setChartPeriod('year')" id="btn-period-year" class="px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white">Año</button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="flex bg-gray-100 rounded-lg p-1" id="chart-metric-toggles">
+                            <button onclick="toggleChartMetric('sales')" id="btn-metric-sales" class="px-2 py-1 text-xs font-bold rounded flex items-center gap-1 bg-green-100 text-green-700 border border-green-200" title="Mostrar/ocultar Facturado">
+                                <span class="w-2 h-2 rounded-full bg-green-500"></span> Facturado
+                            </button>
+                            <button onclick="toggleChartMetric('profit')" id="btn-metric-profit" class="px-2 py-1 text-xs font-bold rounded flex items-center gap-1 bg-blue-100 text-blue-700 border border-blue-200" title="Mostrar/ocultar Ganado">
+                                <span class="w-2 h-2 rounded-full bg-blue-500"></span> Ganado
+                            </button>
+                            <button onclick="toggleChartMetric('expenses')" id="btn-metric-expenses" class="px-2 py-1 text-xs font-bold rounded flex items-center gap-1 bg-red-100 text-red-700 border border-red-200" title="Mostrar/ocultar Gastos">
+                                <span class="w-2 h-2 rounded-full bg-red-500"></span> Gastos
+                            </button>
+                        </div>
+                        <div class="flex bg-gray-100 rounded-lg p-1">
+                            <button onclick="setChartPeriod('day')" id="btn-period-day" class="px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white">Día</button>
+                            <button onclick="setChartPeriod('week')" id="btn-period-week" class="px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white">Semana</button>
+                            <button onclick="setChartPeriod('month')" id="btn-period-month" class="px-3 py-1 text-xs font-bold rounded bg-white text-gray-800 shadow-sm">Mes</button>
+                            <button onclick="setChartPeriod('year')" id="btn-period-year" class="px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white">Año</button>
+                        </div>
                     </div>
                 </div>
                 
@@ -3001,6 +3030,7 @@
             alerts: [],
             pendingPurchase: null,
             pendingPurchasePayment: 'cash',
+            pendingPurchaseInvoiceType: 'white',
             initialCapital: 0,
             capitalAdjustments: [],
             // Login
@@ -3032,6 +3062,8 @@
             lastCategory: null,
             lastExpiryDate: null,
             billedDays: [], // { date, amount, timestamp }
+            chartVisibleMetrics: { sales: true, profit: true, expenses: true },
+            dashboardVisibleMetrics: { sales: true, profit: true, expenses: true, investment: true },
             invoiceTracking: {
                 purchasedWhite: 0,
                 purchasedBlack: 0,
@@ -3055,6 +3087,8 @@
         let currentCashflowPeriod = 'month'; // today, week, month, year, all
         let chartMode = 'money'; // 'money' or 'percent'
         let chartDays = 30; // 30 or 365
+        let chartVisibleMetrics = { sales: true, profit: true, expenses: true };
+        let dashboardVisibleMetrics = { sales: true, profit: true, expenses: true, investment: true };
         
         // trendChartInstance se guarda en window para persistencia entre renders
 
@@ -3454,6 +3488,43 @@
             renderDashboard();
         }
         
+        // ==================== SELECTOR DE MÉTRICAS DEL DASHBOARD ====================
+        function toggleDashboardMetric(metric) {
+            if (!dashboardVisibleMetrics || typeof dashboardVisibleMetrics !== 'object') {
+                dashboardVisibleMetrics = { sales: true, profit: true, expenses: true, investment: true };
+            }
+            if (dashboardVisibleMetrics.hasOwnProperty(metric)) {
+                dashboardVisibleMetrics[metric] = !dashboardVisibleMetrics[metric];
+                // Evitar que todas queden ocultas
+                const anyVisible = Object.values(dashboardVisibleMetrics).some(v => v);
+                if (!anyVisible) {
+                    dashboardVisibleMetrics[metric] = true;
+                    showNotification('Debe mostrarse al menos una métrica', 'warning');
+                }
+            }
+            appState.dashboardVisibleMetrics = { ...dashboardVisibleMetrics };
+            saveToLocalStorage();
+            renderDashboardMetricToggles();
+            renderDashboard();
+        }
+        
+        function renderDashboardMetricToggles() {
+            const map = {
+                sales: { btn: 'btn-dashboard-sales', active: 'bg-purple-100 text-purple-700 border-purple-200', inactive: 'bg-gray-100 text-gray-400 border-gray-200 opacity-60' },
+                profit: { btn: 'btn-dashboard-profit', active: 'bg-green-100 text-green-700 border-green-200', inactive: 'bg-gray-100 text-gray-400 border-gray-200 opacity-60' },
+                expenses: { btn: 'btn-dashboard-expenses', active: 'bg-red-100 text-red-700 border-red-200', inactive: 'bg-gray-100 text-gray-400 border-gray-200 opacity-60' },
+                investment: { btn: 'btn-dashboard-investment', active: 'bg-blue-100 text-blue-700 border-blue-200', inactive: 'bg-gray-100 text-gray-400 border-gray-200 opacity-60' }
+            };
+            Object.keys(map).forEach(key => {
+                const cfg = map[key];
+                const btn = document.getElementById(cfg.btn);
+                if (btn) {
+                    const isActive = dashboardVisibleMetrics && dashboardVisibleMetrics[key];
+                    btn.className = `px-2 py-1 text-xs font-bold rounded flex items-center gap-1 border transition ${isActive ? cfg.active : cfg.inactive}`;
+                }
+            });
+        }
+        
         // Filtrar transacciones por período
         function filterByPeriod(items, period, dateField = 'date') {
             const today = new Date();
@@ -3519,6 +3590,9 @@
             
             const isAdmin = appState.currentUser && appState.currentUser.role === 'admin';
 
+            // Sincronizar toggles visibles del dashboard
+            renderDashboardMetricToggles();
+            
             if (!isAdmin) {
                 // VISTA COLABORADOR: Solo caja inicial y cierre
                 const initialCash = appState.initialCapital || 0;
@@ -3552,12 +3626,13 @@
                 if (chartsRow) chartsRow.style.display = 'none';
             } else {
                 // VISTA ADMIN: Todo completo, filtrado por período
-                const kpiData = [
-                    { title: `Ventas ${periodLabel}`, value: `$${formatMoney(periodRevenue)}`, icon: 'fa-dollar-sign', color: 'purple', subtext: `${filteredSales.length} ventas` },
-                    { title: `Ganancia Neta ${periodLabel}`, value: `$${formatMoney(periodProfit)}`, icon: 'fa-chart-line', color: 'green', subtext: 'después de costos' },
-                    { title: `Gastos ${periodLabel}`, value: `$${formatMoney(periodExpenseAmount)}`, icon: 'fa-receipt', color: 'red', subtext: `${filteredExpenses.length} gastos` },
-                    { title: `Inversión ${periodLabel}`, value: `$${formatMoney(periodInvestmentAmount)}`, icon: 'fa-boxes', color: 'blue', subtext: `${filteredInvestments.length} compras` }
+                const kpiDataAll = [
+                    { key: 'sales', title: `Ventas ${periodLabel}`, value: `$${formatMoney(periodRevenue)}`, icon: 'fa-dollar-sign', color: 'purple', subtext: `${filteredSales.length} ventas` },
+                    { key: 'profit', title: `Ganancia Neta ${periodLabel}`, value: `$${formatMoney(periodProfit)}`, icon: 'fa-chart-line', color: 'green', subtext: 'después de costos' },
+                    { key: 'expenses', title: `Gastos ${periodLabel}`, value: `$${formatMoney(periodExpenseAmount)}`, icon: 'fa-receipt', color: 'red', subtext: `${filteredExpenses.length} gastos` },
+                    { key: 'investment', title: `Inversión ${periodLabel}`, value: `$${formatMoney(periodInvestmentAmount)}`, icon: 'fa-boxes', color: 'blue', subtext: `${filteredInvestments.length} compras` }
                 ];
+                const kpiData = kpiDataAll.filter(k => !dashboardVisibleMetrics || dashboardVisibleMetrics[k.key] !== false);
 
                 document.getElementById('dashboard-kpis').innerHTML = kpiData.map(kpi => `
                     <div class="kpi-card kpi-${kpi.color} card-hover">
@@ -5435,10 +5510,15 @@
                         let compQtyToDeduct = item.quantity * (comp.quantity || 1);
                         
                         if (compProduct.batches && compProduct.batches.length > 0) {
+                            // FIFO por fecha de creación del lote
                             compProduct.batches.sort((a, b) => {
+                                const dateA = a.dateAdded ? new Date(a.dateAdded).getTime() : 0;
+                                const dateB = b.dateAdded ? new Date(b.dateAdded).getTime() : 0;
+                                if (dateA !== dateB) return dateA - dateB;
+                                if (a.expiry && b.expiry) return new Date(a.expiry) - new Date(b.expiry);
                                 if (!a.expiry) return 1;
                                 if (!b.expiry) return -1;
-                                return new Date(a.expiry) - new Date(b.expiry);
+                                return 0;
                             });
                             for (let batch of compProduct.batches) {
                                 if (compQtyToDeduct <= 0) break;
@@ -5456,10 +5536,15 @@
                 } else {
                     // Producto normal
                     if (product.batches && product.batches.length > 0) {
+                        // FIFO por fecha de creación del lote; si no tiene, por vencimiento o índice original
                         product.batches.sort((a, b) => {
+                            const dateA = a.dateAdded ? new Date(a.dateAdded).getTime() : 0;
+                            const dateB = b.dateAdded ? new Date(b.dateAdded).getTime() : 0;
+                            if (dateA !== dateB) return dateA - dateB;
+                            if (a.expiry && b.expiry) return new Date(a.expiry) - new Date(b.expiry);
                             if (!a.expiry) return 1;
                             if (!b.expiry) return -1;
-                            return new Date(a.expiry) - new Date(b.expiry);
+                            return 0;
                         });
                         for (let batch of product.batches) {
                             if (qtyToDeduct <= 0) break;
@@ -5544,10 +5629,26 @@
             }
 
             const subtotal = appState.cartSubtotal || appState.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const profit = appState.cart.reduce((sum, item) => {
+            
+            // Calcular costo FIFO para cada ítem ANTES de descontar stock
+            for (const item of appState.cart) {
                 const product = appState.inventory.find(p => p.id === item.productId);
-                const itemCost = product && product.isComposite ? calculateCompositeCost(product) : (item.cost || 0);
-                return sum + ((item.price - itemCost) * item.quantity);
+                if (!product) continue;
+                if (product.isComposite && product.components) {
+                    const compositeCost = calculateCompositeCost(product);
+                    item.cost = compositeCost;
+                    item.batchBreakdown = [{ quantity: item.quantity, cost: compositeCost, isComposite: true }];
+                } else {
+                    const breakdown = getFifoBatchBreakdown(product, item.quantity);
+                    const totalCost = breakdown.reduce((sum, b) => sum + (b.quantity * b.cost), 0);
+                    item.cost = item.quantity > 0 ? (totalCost / item.quantity) : 0;
+                    item.batchBreakdown = breakdown;
+                }
+            }
+            
+            const profit = appState.cart.reduce((sum, item) => {
+                const totalItemCost = (item.batchBreakdown || []).reduce((s, b) => s + (b.quantity * b.cost), 0);
+                return sum + ((item.price * item.quantity) - totalItemCost);
             }, 0);
             
             // Usar los descuentos ya calculados en updateCartTotals
@@ -6433,7 +6534,9 @@
                 appState.lastExpiryDate = expiryValue;
             }
             
-            const invoiceType = 'white'; // Default, se elige en el modal de pago
+            // Usar preferencias previas del usuario; si no existen, usar defaults
+            const invoiceType = appState.pendingPurchaseInvoiceType || 'white';
+            const paymentMethod = appState.pendingPurchasePayment || 'cash';
             
             appState.pendingPurchase = {
                 barcode: document.getElementById('inv-barcode').value || '',
@@ -6457,7 +6560,6 @@
 
             // Si es producto compuesto, crear directamente sin pasar por modal de pago
             if (isComposite) {
-                appState.pendingPurchasePayment = 'cash';
                 confirmPurchase();
                 return;
             }
@@ -6466,7 +6568,7 @@
             document.getElementById('purchase-cash-available').textContent = `$${formatMoney(appState.cash)}`;
             document.getElementById('purchase-bank-available').textContent = `$${formatMoney(appState.bank)}`;
             
-            setPurchasePayment('cash');
+            setPurchasePayment(paymentMethod);
             setPurchaseInvoiceType(invoiceType);
             const modal = document.getElementById('purchase-payment-modal');
             if (!modal) {
@@ -7387,6 +7489,7 @@
             const isWeight = currentAddStockProduct.saleByWeight && currentAddStockProduct.weightPerUnit > 0;
             const unitCostInput = document.getElementById('add-stock-unit-cost');
             const priceInput = document.getElementById('add-stock-new-price');
+            const marginInput = document.getElementById('add-stock-margin');
             const marginResult = document.getElementById('add-stock-margin-result');
             
             const costValue = unitCostInput ? (parseFloat(unitCostInput.value.replace(',', '.')) || currentAddStockProduct.cost || 0) : (currentAddStockProduct.cost || 0);
@@ -7409,7 +7512,11 @@
             if (unitCost > 0 && price > 0) {
                 const margin = ((price - unitCost) / unitCost) * 100;
                 const profit = price - unitCost;
-                marginResult.textContent = `Margen: ${margin.toFixed(1)}% • Ganancia: $${formatMoney(profit)} por unidad`;
+                // Actualizar input de margen solo si el usuario no lo está editando en este momento
+                if (marginInput && document.activeElement !== marginInput) {
+                    marginInput.value = margin.toFixed(1);
+                }
+                marginResult.textContent = `Ganancia: $${formatMoney(profit)} por unidad`;
             } else {
                 marginResult.textContent = '';
             }
@@ -7461,6 +7568,58 @@
             }
         }
 
+        // ==================== FIFO: COSTO POR LOTE ====================
+        function getFifoBatchBreakdown(product, quantity) {
+            if (!product || quantity <= 0) return [];
+            if (product.isComposite && product.components) {
+                return [{
+                    quantity: quantity,
+                    cost: calculateCompositeCost(product),
+                    isComposite: true
+                }];
+            }
+            const result = [];
+            let remaining = quantity;
+            if (product.batches && product.batches.length > 0) {
+                // Ordenar por fecha de creación (FIFO); si no tiene dateAdded, usar fecha de vencimiento o índice
+                const sortedBatches = product.batches.map((b, idx) => ({ ...b, originalIndex: idx }))
+                    .sort((a, b) => {
+                        const dateA = a.dateAdded ? new Date(a.dateAdded).getTime() : 0;
+                        const dateB = b.dateAdded ? new Date(b.dateAdded).getTime() : 0;
+                        if (dateA !== dateB) return dateA - dateB;
+                        if (a.expiry && b.expiry) return new Date(a.expiry) - new Date(b.expiry);
+                        return a.originalIndex - b.originalIndex;
+                    });
+                for (const batch of sortedBatches) {
+                    if (remaining <= 0) break;
+                    const batchStock = batch.stock || 0;
+                    if (batchStock <= 0) continue;
+                    const take = Math.min(remaining, batchStock);
+                    result.push({
+                        quantity: take,
+                        cost: batch.cost || product.cost || 0,
+                        batchIndex: batch.originalIndex,
+                        dateAdded: batch.dateAdded,
+                        expiry: batch.expiry
+                    });
+                    remaining -= take;
+                }
+            }
+            // Si quedó stock por cubrir sin lotes, usar stock directo/product.cost
+            if (remaining > 0) {
+                result.push({
+                    quantity: remaining,
+                    cost: product.cost || 0
+                });
+            }
+            return result;
+        }
+        
+        function calculateFifoCost(product, quantity) {
+            const breakdown = getFifoBatchBreakdown(product, quantity);
+            return breakdown.reduce((sum, entry) => sum + (entry.quantity * entry.cost), 0);
+        }
+        
         // Función auxiliar para obtener stock total de un producto (desde lotes o stock directo)
         function getProductStock(product) {
             if (!product) return 0;
@@ -7659,11 +7818,15 @@
                 updatedAt: new Date().toISOString()
             });
             
-            // Ordenar lotes por vencimiento (FIFO - el que vence primero, primero en la lista)
+            // Ordenar lotes por fecha de creación (FIFO - el primero en entrar, primero en salir)
             product.batches.sort((a, b) => {
+                const dateA = a.dateAdded ? new Date(a.dateAdded).getTime() : 0;
+                const dateB = b.dateAdded ? new Date(b.dateAdded).getTime() : 0;
+                if (dateA !== dateB) return dateA - dateB;
+                if (a.expiry && b.expiry) return new Date(a.expiry) - new Date(b.expiry);
                 if (!a.expiry) return 1;
                 if (!b.expiry) return -1;
-                return new Date(a.expiry) - new Date(b.expiry);
+                return 0;
             });
             
             // Aplicar nuevo precio si se proporcionó (ajuste por inflación)
@@ -9349,6 +9512,41 @@
             }
         }
         
+        // ==================== SELECTOR DE MÉTRICAS DEL GRÁFICO ====================
+        function toggleChartMetric(metric) {
+            if (!chartVisibleMetrics || typeof chartVisibleMetrics !== 'object') {
+                chartVisibleMetrics = { sales: true, profit: true, expenses: true };
+            }
+            if (chartVisibleMetrics.hasOwnProperty(metric)) {
+                chartVisibleMetrics[metric] = !chartVisibleMetrics[metric];
+                // Evitar que todas queden ocultas
+                if (!chartVisibleMetrics.sales && !chartVisibleMetrics.profit && !chartVisibleMetrics.expenses) {
+                    chartVisibleMetrics[metric] = true;
+                    showNotification('Debe mostrarse al menos una métrica', 'warning');
+                }
+            }
+            appState.chartVisibleMetrics = { ...chartVisibleMetrics };
+            saveToLocalStorage();
+            renderChartMetricToggles();
+            renderCashFlowChartByPeriod();
+        }
+        
+        function renderChartMetricToggles() {
+            const map = {
+                sales: { btn: 'btn-metric-sales', active: 'bg-green-100 text-green-700 border-green-200', inactive: 'bg-gray-100 text-gray-400 border-gray-200 opacity-60' },
+                profit: { btn: 'btn-metric-profit', active: 'bg-blue-100 text-blue-700 border-blue-200', inactive: 'bg-gray-100 text-gray-400 border-gray-200 opacity-60' },
+                expenses: { btn: 'btn-metric-expenses', active: 'bg-red-100 text-red-700 border-red-200', inactive: 'bg-gray-100 text-gray-400 border-gray-200 opacity-60' }
+            };
+            Object.keys(map).forEach(key => {
+                const cfg = map[key];
+                const btn = document.getElementById(cfg.btn);
+                if (btn) {
+                    const isActive = chartVisibleMetrics && chartVisibleMetrics[key];
+                    btn.className = `px-2 py-1 text-xs font-bold rounded flex items-center gap-1 border transition ${isActive ? cfg.active : cfg.inactive}`;
+                }
+            });
+        }
+        
         function renderCashFlowChartByPeriod() {
             const ctx = document.getElementById('cashFlowChart');
             if (!ctx) return;
@@ -9357,6 +9555,9 @@
                 cashFlowChartInstance.destroy();
                 cashFlowChartInstance = null;
             }
+            
+            // Actualizar toggles visuales
+            renderChartMetricToggles();
             
             // Actualizar label del período
             const periodLabel = document.getElementById('chart-period-label');
@@ -9526,36 +9727,44 @@
                 msg.remove();
             }
             
+            // Construir datasets filtrados por métricas visibles
+            const datasets = [];
+            if (!chartVisibleMetrics || chartVisibleMetrics.sales !== false) {
+                datasets.push({
+                    label: 'Facturado',
+                    data: salesData,
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                });
+            }
+            if (!chartVisibleMetrics || chartVisibleMetrics.profit !== false) {
+                datasets.push({
+                    label: 'Ganancia',
+                    data: profitData,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                });
+            }
+            if (!chartVisibleMetrics || chartVisibleMetrics.expenses !== false) {
+                datasets.push({
+                    label: 'Gastos',
+                    data: expenseData,
+                    borderColor: '#ef4444',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                });
+            }
+            
             cashFlowChartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
-                    datasets: [
-                        {
-                            label: 'Facturado',
-                            data: salesData,
-                            borderColor: '#10b981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                            fill: true,
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Ganancia',
-                            data: profitData,
-                            borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                            fill: true,
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Gastos',
-                            data: expenseData,
-                            borderColor: '#ef4444',
-                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                            fill: true,
-                            tension: 0.4
-                        }
-                    ]
+                    datasets: datasets
                 },
                 options: {
                     responsive: true,
@@ -12473,7 +12682,10 @@ Total de productos a comprar: ${shoppingList.length}
                         initialCapital: 0,
                         pendingPurchase: null,
                         pendingPurchasePayment: 'cash',
+                        pendingPurchaseInvoiceType: 'white',
                         // autoPromotionConfig eliminado - ahora es una promo normal,
+                        chartVisibleMetrics: { sales: true, profit: true, expenses: true },
+                        dashboardVisibleMetrics: { sales: true, profit: true, expenses: true, investment: true },
                         cart: [],
                         currentDate: new Date().toISOString(),
                         activeDate: new Date().toISOString(),
@@ -12529,6 +12741,8 @@ Total de productos a comprar: ${shoppingList.length}
                 lastCategory: null,
                 lastExpiryDate: null,
                 billedDays: [],
+                chartVisibleMetrics: { sales: true, profit: true, expenses: true },
+                dashboardVisibleMetrics: { sales: true, profit: true, expenses: true, investment: true },
                 invoiceTracking: {
                     purchasedWhite: 0,
                     purchasedBlack: 0,
@@ -12986,12 +13200,15 @@ RESULTADOS:
                             soldDebit: 0
                         },
                         billedDays: Array.isArray(backupData.billedDays) ? backupData.billedDays : [],
+                        chartVisibleMetrics: backupData.chartVisibleMetrics || { sales: true, profit: true, expenses: true },
+                        dashboardVisibleMetrics: backupData.dashboardVisibleMetrics || { sales: true, profit: true, expenses: true, investment: true },
                         
                         // Estado temporal
                         cart: [],
                         paymentMethod: 'cash',
                         pendingPurchase: null,
-                        pendingPurchasePayment: 'cash',
+                        pendingPurchasePayment: backupData.pendingPurchasePayment || 'cash',
+                        pendingPurchaseInvoiceType: backupData.pendingPurchaseInvoiceType || 'white',
                         
                         // Usuario (no restaurar sesión por seguridad)
                         currentUser: null
@@ -15287,6 +15504,31 @@ RESULTADOS:
                     appState.defaultMargin = parseFloat(appState.defaultMargin);
                     appState.defaultMargin = isNaN(appState.defaultMargin) ? 30 : appState.defaultMargin;
                     
+                    // Restaurar métricas visibles del gráfico
+                    if (appState.chartVisibleMetrics && typeof appState.chartVisibleMetrics === 'object') {
+                        chartVisibleMetrics = {
+                            sales: appState.chartVisibleMetrics.sales !== false,
+                            profit: appState.chartVisibleMetrics.profit !== false,
+                            expenses: appState.chartVisibleMetrics.expenses !== false
+                        };
+                    } else {
+                        chartVisibleMetrics = { sales: true, profit: true, expenses: true };
+                        appState.chartVisibleMetrics = { ...chartVisibleMetrics };
+                    }
+                    
+                    // Restaurar métricas visibles del dashboard
+                    if (appState.dashboardVisibleMetrics && typeof appState.dashboardVisibleMetrics === 'object') {
+                        dashboardVisibleMetrics = {
+                            sales: appState.dashboardVisibleMetrics.sales !== false,
+                            profit: appState.dashboardVisibleMetrics.profit !== false,
+                            expenses: appState.dashboardVisibleMetrics.expenses !== false,
+                            investment: appState.dashboardVisibleMetrics.investment !== false
+                        };
+                    } else {
+                        dashboardVisibleMetrics = { sales: true, profit: true, expenses: true, investment: true };
+                        appState.dashboardVisibleMetrics = { ...dashboardVisibleMetrics };
+                    }
+                    
                     appState.stockTargetDays = parseInt(appState.stockTargetDays);
                     appState.stockTargetDays = isNaN(appState.stockTargetDays) ? 7 : appState.stockTargetDays;
                     
@@ -15456,7 +15698,7 @@ RESULTADOS:
             
             // Exponer funciones adicionales de venta por peso y sync
             (function exposeAdditionalFunctions() {
-                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup','changeDashboardPeriod'];
+                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup','changeDashboardPeriod','toggleChartMetric','renderChartMetricToggles','toggleDashboardMetric','renderDashboardMetricToggles'];
                 for (const name of extraFns) {
                     try {
                         const fn = eval(name);

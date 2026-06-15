@@ -7907,6 +7907,10 @@
                         <input type="number" class="edit-batch-qty w-full border rounded px-2 py-1 text-sm" value="${isWeight ? Math.round(batch.stock * product.weightPerUnit) : batch.stock}" min="0" step="${isWeight ? '1' : '1'}">
                     </div>
                     <div class="flex-1">
+                        <label class="text-xs text-gray-500">Costo unitario</label>
+                        <input type="number" class="edit-batch-cost w-full border rounded px-2 py-1 text-sm" value="${(batch.cost || product.cost || 0).toFixed(2)}" min="0" step="0.01">
+                    </div>
+                    <div class="flex-1">
                         <label class="text-xs text-gray-500">Vencimiento</label>
                         <input type="date" class="edit-batch-expiry w-full border rounded px-2 py-1 text-sm" value="${batch.expiry || ''}">
                     </div>
@@ -7946,6 +7950,10 @@
                 <div class="flex-1">
                     <label class="text-xs text-gray-500">${isWeight ? 'Cantidad (g)' : 'Cantidad'}</label>
                     <input type="number" class="edit-batch-qty w-full border rounded px-2 py-1 text-sm" value="${isWeight ? product.weightPerUnit : '1'}" min="1">
+                </div>
+                <div class="flex-1">
+                    <label class="text-xs text-gray-500">Costo unitario</label>
+                    <input type="number" class="edit-batch-cost w-full border rounded px-2 py-1 text-sm" value="${(product.cost || 0).toFixed(2)}" min="0" step="0.01">
                 </div>
                 <div class="flex-1">
                     <label class="text-xs text-gray-500">Vencimiento</label>
@@ -8131,6 +8139,8 @@
                 batchRows.forEach(row => {
                     let qty = parseInt(row.querySelector('.edit-batch-qty').value) || 0;
                     const expiry = row.querySelector('.edit-batch-expiry').value || '';
+                    const costInput = row.querySelector('.edit-batch-cost');
+                    const batchCost = costInput ? (parseFloat(costInput.value.replace(',', '.')) || 0) : 0;
                     const batchIndex = row.dataset.batchIndex;
                     const sourceSelect = row.querySelector('.edit-batch-source');
                     const domSource = sourceSelect ? sourceSelect.value : 'cash';
@@ -8154,8 +8164,8 @@
                             expiry: expiry,
                             dateAdded: orig.dateAdded || formatDateISO(appState.activeDate),
                             invoiceType: orig.invoiceType || (document.getElementById('edit-prod-invoice-type').value || 'white'),
-                            source: orig.source || 'cash',
-                            cost: product.cost,
+                            source: orig.source || domSource || 'cash',
+                            cost: batchCost > 0 ? batchCost : (orig.cost || product.cost || 0),
                             updatedAt: new Date().toISOString()
                         });
                     } else {
@@ -8168,7 +8178,7 @@
                             dateAdded: formatDateISO(appState.activeDate),
                             invoiceType: document.getElementById('edit-prod-invoice-type').value || 'white',
                             source: domSource,
-                            cost: product.cost,
+                            cost: batchCost > 0 ? batchCost : (product.cost || 0),
                             updatedAt: new Date().toISOString()
                         });
                     }

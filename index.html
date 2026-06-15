@@ -2828,8 +2828,8 @@
             <div class="p-4" id="ticket-print-content">
                 <div class="text-center border-b-2 border-dashed border-gray-300 pb-4 mb-4">
                     <h2 class="text-lg font-bold">🎫 TICKET DE DESCUENTO</h2>
-                    <p class="text-xs font-bold text-gray-700">Kiosco Benito</p>
-                    <p class="text-xs text-gray-500">Benito Pérez Galdos 4781</p>
+                    <p class="text-xs font-bold text-gray-700">Kiosco 47</p>
+                    <p class="text-xs text-gray-500">Kiosco 47</p>
                 </div>
                 <div class="text-center mb-4">
                     <p class="text-xs text-gray-500">NÚMERO DE TICKET</p>
@@ -2851,7 +2851,7 @@
                     <div class="mt-2 inline-block p-2 bg-gray-100 rounded">
                         <svg id="ticket-barcode" class="w-full h-10"></svg>
                     </div>
-                    <p class="text-[10px] text-gray-400 mt-2">Benito Pérez Galdos 4781</p>
+                    <p class="text-[10px] text-gray-400 mt-2">Kiosco 47</p>
                     <p class="text-[10px] text-gray-400">Powered by KioscoPro App</p>
                 </div>
             </div>
@@ -5924,8 +5924,8 @@
                 <html>
                 <head><title>Ticket ${sale.id}</title></head>
                 <body style="font-family: monospace; padding: 20px; max-width: 300px;">
-                    <h2 style="text-align: center;">KIOSCO BENITO</h2>
-                    <p style="text-align: center; font-size: 10px;">Benito Pérez Galdos 4781</p>
+                    <h2 style="text-align: center;">KIOSCO 47</h2>
+                    <p style="text-align: center; font-size: 10px;">Kiosco 47</p>
                     <p style="text-align: center;">${sale.date} ${sale.time}</p>
                     <hr>
                     ${sale.items.map(item => `
@@ -11265,9 +11265,20 @@
                 s.items && s.items.some(i => i.productId === productId)
             );
             
+            // Si no hay ventas, devolver stats por defecto para que el producto
+            // aún pueda aparecer en listas de compras y análisis de stock.
             if (productSales.length === 0) {
-                statsCache.set(productId, null);
-                return null;
+                const defaultResult = {
+                    totalSold: 0,
+                    uniqueDays: 0,
+                    avgDaily: 0,
+                    avgByDayOfWeek: [0, 0, 0, 0, 0, 0, 0],
+                    recentAvg: 0,
+                    trend: 0,
+                    lastSale: null
+                };
+                statsCache.set(productId, defaultResult);
+                return defaultResult;
             }
 
             const totalQty = productSales.reduce((sum, s) => {
@@ -11330,9 +11341,56 @@
                 lastSale: lastSale
             };
             
+            // Calcular demanda promedio por período (basado en stockTargetDays)
+            const periodDays = appState.stockTargetDays || 7;
+            const periodDemand = calculatePeriodDemand(productId, productSales, periodDays);
+            result.avgPeriodDemand = periodDemand.avg;
+            result.periodDays = periodDays;
+            result.periodTotals = periodDemand.periods;
+            
             // Guardar en cache
             statsCache.set(productId, result);
             return result;
+        }
+        
+        // Calcular demanda promedio por períodos completos de N días.
+        // Ej: si periodDays = 7, agrupa ventas por semana y devuelve el promedio semanal.
+        function calculatePeriodDemand(productId, productSales, periodDays = 7) {
+            if (!productSales || productSales.length === 0) {
+                return { periods: [], avg: 0 };
+            }
+            
+            const sortedSales = productSales.slice().sort((a, b) => {
+                const dateA = a.date ? new Date(a.date + 'T00:00:00').getTime() : 0;
+                const dateB = b.date ? new Date(b.date + 'T00:00:00').getTime() : 0;
+                return dateA - dateB;
+            });
+            
+            const firstSaleDate = new Date(sortedSales[0].date + 'T00:00:00');
+            firstSaleDate.setHours(0, 0, 0, 0);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            const totalDays = Math.max(1, Math.floor((today - firstSaleDate) / (1000 * 60 * 60 * 24)) + 1);
+            const numPeriods = Math.max(1, Math.ceil(totalDays / periodDays));
+            const periodTotals = new Array(numPeriods).fill(0);
+            
+            sortedSales.forEach(sale => {
+                if (!sale.date) return;
+                const saleDate = new Date(sale.date + 'T00:00:00');
+                saleDate.setHours(0, 0, 0, 0);
+                const daysDiff = Math.floor((saleDate - firstSaleDate) / (1000 * 60 * 60 * 24));
+                const periodIndex = Math.floor(daysDiff / periodDays);
+                if (periodIndex >= 0 && periodIndex < numPeriods) {
+                    const item = sale.items.find(i => i.productId === productId);
+                    if (item) {
+                        periodTotals[periodIndex] += (item.quantity || 0);
+                    }
+                }
+            });
+            
+            const avg = periodTotals.reduce((sum, qty) => sum + qty, 0) / numPeriods;
+            return { periods: periodTotals, avg: avg };
         }
 
         function predictDemand(productId, daysAhead = 7) {
@@ -11418,10 +11476,8 @@
             
             const activeInventory = getActiveInventory();
             
-            // Limitar a los primeros 100 productos para evitar sobrecarga
-            const productsToAnalyze = activeInventory.slice(0, 100);
-            
-            productsToAnalyze.forEach(product => {
+            // Analizar TODOS los productos activos (sin límite artificial)
+            activeInventory.forEach(product => {
                 if (!product || !product.id) return;
                 if (product.isComposite) return; // Las preparaciones no se compran directamente
                 
@@ -11429,12 +11485,15 @@
                 const prediction = predictDemand(product.id, targetDays);
                 if (!prediction || !prediction.stats) return;
                 
-                const avgDaily = prediction.stats.avgDaily || 0;
+                // Demanda promedio por período (ej. semana si targetDays = 7)
+                const avgPeriodDemand = prediction.stats.avgPeriodDemand || 0;
+                // Demanda diaria real para calcular días hasta agotarse
+                const avgDaily = targetDays > 0 ? (avgPeriodDemand / targetDays) : (prediction.stats.avgDaily || 0);
                 const currentStock = getProductStock(product);
                 const minStock = parseInt(product.min) || 5;
                 
-                // Calcular cuánto necesito para los días de stock deseado + stock mínimo de seguridad
-                const targetDemand = avgDaily * targetDays;
+                // Calcular cuánto necesito para el período de stock deseado + stock mínimo de seguridad
+                const targetDemand = avgPeriodDemand;
                 const targetStock = Math.ceil(targetDemand + minStock);
                 let suggestedQty = Math.max(0, targetStock - currentStock);
                 
@@ -11479,6 +11538,8 @@
                 if (currentStock === 0) priority = 'CRÍTICO';
                 else if (daysUntilStockout <= 2) priority = 'ALTA';
                 else if (daysUntilStockout <= 5) priority = 'MEDIA';
+                // Productos sin historial de ventas pero por debajo del stock mínimo
+                else if (avgDaily === 0 && currentStock < minStock) priority = 'MEDIA';
                 
                 // Si el próximo día de compra es después de que se agote el stock, aumentar prioridad
                 if (daysUntilBuy !== null && daysUntilStockout < daysUntilBuy) {
@@ -11488,7 +11549,7 @@
                 list.push({
                     product: product,
                     currentStock: currentStock,
-                    weeklyDemand: avgDaily * 7,
+                    weeklyDemand: avgPeriodDemand,
                     suggestedQty: suggestedQty,
                     daysUntilStockout: daysUntilStockout,
                     nextBuyDay: nextBuyDay,
@@ -11799,8 +11860,9 @@
                 const stock = getProductStock(product);
                 const minStock = parseInt(product.min) || 5;
                 const prediction = predictDemand(product.id, targetDays);
-                const avgDaily = prediction?.stats?.avgDaily || 0;
-                const targetDemand = avgDaily * targetDays;
+                const avgPeriodDemand = prediction?.stats?.avgPeriodDemand || 0;
+                const avgDaily = targetDays > 0 ? (avgPeriodDemand / targetDays) : (prediction?.stats?.avgDaily || 0);
+                const targetDemand = avgPeriodDemand;
                 const targetStock = Math.ceil(targetDemand + minStock);
                 const suggestedQty = Math.max(0, targetStock - stock);
                 const daysUntilStockout = avgDaily > 0 ? Math.floor(stock / avgDaily) : 999;
@@ -11902,7 +11964,7 @@
                 } else {
                     shoppingContainer.innerHTML = shoppingList.map(item => {
                         const minStock = parseInt(item.product.min) || 5;
-                        const avgWeekly = item.avgDaily * 7;
+                        const avgWeekly = item.weeklyDemand;
                         return `
                         <tr class="hover:bg-gray-50 border-l-4 ${item.priority === 'CRÍTICO' ? 'border-red-500' : item.priority === 'ALTA' ? 'border-orange-500' : item.priority === 'MEDIA' ? 'border-yellow-500' : 'border-green-500'}">
                             <td class="px-4 py-3">
@@ -12108,8 +12170,10 @@
                 const trendIcon = item.stats.trend > 10 ? '📈' : item.stats.trend < -10 ? '📉' : '➡️';
                 const trendColor = item.stats.trend > 10 ? 'text-green-600' : item.stats.trend < -10 ? 'text-red-600' : 'text-gray-600';
                 const productStock = getProductStock(item.product);
-                const daysLeft = item.stats.avgDaily > 0 ? Math.floor(productStock / item.stats.avgDaily) : 'N/A';
-                const avgWeekly = item.stats.avgDaily * 7;
+                const periodDays = item.stats.periodDays || appState.stockTargetDays || 7;
+                const avgDailyFromPeriod = periodDays > 0 ? (item.stats.avgPeriodDemand / periodDays) : item.stats.avgDaily;
+                const daysLeft = avgDailyFromPeriod > 0 ? Math.floor(productStock / avgDailyFromPeriod) : 'N/A';
+                const avgWeekly = item.stats.avgPeriodDemand;
                 
                 return `
                     <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
@@ -12208,7 +12272,7 @@ Total de productos a comprar: ${shoppingList.length}
                     text += `   ├── Stock actual: ${item.currentStock} unidades\n`;
                     text += `   ├── COMPRAR: ${item.suggestedQty} unidades\n`;
                     text += `   ├── Prioridad: ${item.priority}\n`;
-                    text += `   ├── Demanda: ${fmtNumber(item.avgDaily * 7, 1)} unidades/semana\n`;
+                    text += `   ├── Demanda: ${fmtNumber(item.weeklyDemand, 1)} unidades/semana\n`;
                     text += `   ├── Se agota en: ${item.daysUntilStockout} días\n`;
                     text += `   ├── Vencimiento ideal: ${item.optimalExpiryDays} días (${item.optimalExpiryDate})\n`;
                     text += `   └── Precio costo: $${formatMoney(product.cost)} c/u = $${formatMoney((product.cost * item.suggestedQty))}\n`;
@@ -12651,7 +12715,9 @@ Total de productos a comprar: ${shoppingList.length}
             const days = parseInt(document.getElementById('settings-stock-days').value);
             if (days >= 1 && days <= 90) {
                 appState.stockTargetDays = days;
+                statsCache.clear(); // Limpiar caché para recalcular demanda por el nuevo período
                 saveToLocalStorage();
+                renderAll();
                 showNotification(`Días de stock actualizados a ${days} días`, 'success');
             } else {
                 showNotification('Los días de stock deben estar entre 1 y 90', 'error');

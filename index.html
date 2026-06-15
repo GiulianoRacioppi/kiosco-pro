@@ -3019,6 +3019,7 @@
             defaultMargin: 30,
             cash: 0,
             bank: 0,
+            balancesUpdatedAt: 0,
             inventory: [],
             sales: [],
             expenses: [],
@@ -10804,6 +10805,31 @@
                 });
             }
             
+            // Registrar las diferencias de cierre como ajustes de capital para mantener saldos consistentes al recalcular
+            if (!Array.isArray(appState.capitalAdjustments)) appState.capitalAdjustments = [];
+            const closeNow = Date.now();
+            if (Math.abs(record.differenceCash) > 0.001) {
+                appState.capitalAdjustments.push({
+                    id: 'ADJ-CLOSE-CASH-' + closeNow,
+                    amount: Math.round(record.differenceCash * 100) / 100,
+                    target: 'cash',
+                    date: targetDate,
+                    timestamp: closeNow,
+                    note: 'Ajuste por cierre de caja del ' + targetDate
+                });
+            }
+            if (Math.abs(record.differenceBank) > 0.001) {
+                appState.capitalAdjustments.push({
+                    id: 'ADJ-CLOSE-BANK-' + (closeNow + 1),
+                    amount: Math.round(record.differenceBank * 100) / 100,
+                    target: 'bank',
+                    date: targetDate,
+                    timestamp: closeNow + 1,
+                    note: 'Ajuste por cierre de cuenta del ' + targetDate
+                });
+            }
+            appState.balancesUpdatedAt = closeNow;
+            
             saveToLocalStorage();
             renderAll();
             renderCashflow();
@@ -12736,15 +12762,43 @@ Total de productos a comprar: ${shoppingList.length}
         }
 
         function saveBalancesFromSettings() {
-            const cash = parseFloat(document.getElementById('settings-cash').value) || 0;
-            const bank = parseFloat(document.getElementById('settings-bank').value) || 0;
+            const newCash = parseFloat(document.getElementById('settings-cash').value) || 0;
+            const newBank = parseFloat(document.getElementById('settings-bank').value) || 0;
             const initialCapital = parseFloat(document.getElementById('settings-initial-capital').value) || 0;
             
-            appState.cash = cash;
-            appState.bank = bank;
-            appState.initialCapital = initialCapital;
+            const currentCash = parseFloat(appState.cash) || 0;
+            const currentBank = parseFloat(appState.bank) || 0;
             
-            console.log('Saldos guardados manualmente - Caja:', cash, 'Cuenta:', bank, 'Capital Inicial:', initialCapital);
+            // Registrar la diferencia como ajuste de capital para que recalculateBalances sea consistente
+            if (!Array.isArray(appState.capitalAdjustments)) appState.capitalAdjustments = [];
+            const now = Date.now();
+            if (Math.abs(newCash - currentCash) > 0.001) {
+                appState.capitalAdjustments.push({
+                    id: 'ADJ-CASH-' + now,
+                    amount: Math.round((newCash - currentCash) * 100) / 100,
+                    target: 'cash',
+                    date: new Date().toISOString().split('T')[0],
+                    timestamp: now,
+                    note: 'Ajuste manual de caja'
+                });
+            }
+            if (Math.abs(newBank - currentBank) > 0.001) {
+                appState.capitalAdjustments.push({
+                    id: 'ADJ-BANK-' + (now + 1),
+                    amount: Math.round((newBank - currentBank) * 100) / 100,
+                    target: 'bank',
+                    date: new Date().toISOString().split('T')[0],
+                    timestamp: now + 1,
+                    note: 'Ajuste manual de cuenta bancaria'
+                });
+            }
+            
+            appState.cash = newCash;
+            appState.bank = newBank;
+            appState.initialCapital = initialCapital;
+            appState.balancesUpdatedAt = now;
+            
+            console.log('Saldos guardados manualmente - Caja:', newCash, 'Cuenta:', newBank, 'Capital Inicial:', initialCapital);
             
             saveToLocalStorage();
             renderAll();
@@ -12780,6 +12834,7 @@ Total de productos a comprar: ${shoppingList.length}
                         returns: [],
                         cash: 0,
                         bank: 0,
+                        balancesUpdatedAt: 0,
                         defaultMargin: 30,
                         initialCapital: 0,
                         pendingPurchase: null,
@@ -12816,6 +12871,7 @@ Total de productos a comprar: ${shoppingList.length}
                 defaultMargin: 30,
                 cash: 0,
                 bank: 0,
+                balancesUpdatedAt: 0,
                 inventory: [],
                 sales: [],
                 expenses: [],
@@ -13281,6 +13337,7 @@ RESULTADOS:
                         // Saldos
                         cash: backupData.cash || 0,
                         bank: backupData.bank || 0,
+                        balancesUpdatedAt: backupData.balancesUpdatedAt || 0,
                         
                         // Arrays de datos (lo más importante)
                         inventory: Array.isArray(backupData.inventory) ? backupData.inventory : [],
@@ -14872,6 +14929,11 @@ RESULTADOS:
                     
                     const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
                     
+                    // Asegurar que cash/bank sean números válidos antes de enviar
+                    appState.cash = parseFloat(appState.cash) || 0;
+                    appState.bank = parseFloat(appState.bank) || 0;
+                    if (!appState.balancesUpdatedAt) appState.balancesUpdatedAt = 0;
+                    
                     // Preparar datos para Firebase (sin cart que es temporal)
                     const dataToSync = {
                         ...appState,
@@ -14880,6 +14942,7 @@ RESULTADOS:
                         activeDate: appState.activeDate.toISOString(),
                         calendarMonth: appState.calendarMonth.toISOString(),
                         lastSync: new Date().toISOString(),
+                        balancesUpdatedAt: appState.balancesUpdatedAt,
                         deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId()
                     };
                     
@@ -14887,7 +14950,7 @@ RESULTADOS:
                     lastSyncTime = Date.now();
                     localStorage.setItem('kioscopro-last-sync', lastSyncTime);
                     updateSyncStatus('synced');
-                    console.log('✅ Sincronizado con Firebase');
+                    console.log('✅ Sincronizado con Firebase - Caja:', appState.cash, 'Cuenta:', appState.bank, 'balancesUpdatedAt:', appState.balancesUpdatedAt);
                 } catch (err) {
                     console.error('Error sincronizando:', err);
                     updateSyncStatus('error');
@@ -15276,6 +15339,7 @@ RESULTADOS:
                     appState.deletedProductIds = [];
                     appState.cash = parseFloat(data.cash) || 0;
                     appState.bank = parseFloat(data.bank) || 0;
+                    appState.balancesUpdatedAt = 0;
                     appState.initialCapital = parseFloat(data.initialCapital) || 0;
                     appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
                     // autoPromotionConfig eliminado
@@ -15366,12 +15430,23 @@ RESULTADOS:
                 
                 // Saldos y config vienen de la PC, solo si los datos remotos parecen válidos
                 if (!remoteLooksEmpty) {
-                    if (data.cash !== undefined) appState.cash = parseFloat(data.cash) || 0;
-                    if (data.bank !== undefined) appState.bank = parseFloat(data.bank) || 0;
+                    const remoteBalancesUpdatedAt = parseInt(data.balancesUpdatedAt) || 0;
+                    const localBalancesUpdatedAt = parseInt(appState.balancesUpdatedAt) || 0;
+                    // Actualizar saldos si el remoto tiene un ajuste más reciente, o si no tenemos ajuste local
+                    if (remoteBalancesUpdatedAt >= localBalancesUpdatedAt || localBalancesUpdatedAt === 0) {
+                        if (data.cash !== undefined) appState.cash = parseFloat(data.cash) || 0;
+                        if (data.bank !== undefined) appState.bank = parseFloat(data.bank) || 0;
+                    } else {
+                        console.log('🛡️ Modo secundario: saldos locales más recientes, se conservan');
+                    }
                     if (data.defaultMargin !== undefined) appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
                     if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
                     if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
                     if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
+                    // Propagar el timestamp de saldos si el remoto es más reciente
+                    if (remoteBalancesUpdatedAt > localBalancesUpdatedAt) {
+                        appState.balancesUpdatedAt = remoteBalancesUpdatedAt;
+                    }
                 } else {
                     console.warn('🛡️ Modo secundario: saldos/config no se actualizan porque Firebase está vacío');
                 }
@@ -15420,10 +15495,20 @@ RESULTADOS:
                     if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
                     if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
                     if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
-                    
-                    // cash y bank solo se actualizan si Firebase es más reciente, para no pisar ajustes manuales
+                }
+                
+                // cash y bank: usar Firebase solo si el remoto tiene un ajuste de saldos más reciente
+                const remoteBalancesUpdatedAt = parseInt(data.balancesUpdatedAt) || 0;
+                const localBalancesUpdatedAt = parseInt(appState.balancesUpdatedAt) || 0;
+                if (isRestore || !hasLocalData || remoteBalancesUpdatedAt > localBalancesUpdatedAt) {
                     if (data.cash !== undefined) appState.cash = parseFloat(data.cash) || 0;
                     if (data.bank !== undefined) appState.bank = parseFloat(data.bank) || 0;
+                    if (remoteBalancesUpdatedAt > localBalancesUpdatedAt) {
+                        appState.balancesUpdatedAt = remoteBalancesUpdatedAt;
+                    }
+                    console.log('💰 Saldos actualizados desde Firebase - Caja:', appState.cash, 'Cuenta:', appState.bank);
+                } else {
+                    console.log('🛡️ Saldos locales más recientes, se conservan - Caja:', appState.cash, 'Cuenta:', appState.bank);
                 }
             }
             
@@ -15602,6 +15687,8 @@ RESULTADOS:
                     
                     appState.bank = parseFloat(appState.bank);
                     appState.bank = isNaN(appState.bank) ? initialBank : appState.bank;
+                    
+                    appState.balancesUpdatedAt = parseInt(appState.balancesUpdatedAt) || 0;
                     
                     appState.defaultMargin = parseFloat(appState.defaultMargin);
                     appState.defaultMargin = isNaN(appState.defaultMargin) ? 30 : appState.defaultMargin;

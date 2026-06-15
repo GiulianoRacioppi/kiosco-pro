@@ -4565,6 +4565,33 @@
                         const grams = isWeight ? (item.weightGrams || (item.quantity * product.weightPerUnit)) : 0;
                         const subtotal = item.quantity * price;
                         
+                        // Ítem manual: no requiere stock ni producto
+                        if (!item.productId || item.isManual) {
+                            return `
+                            <div class="sale-item flex justify-between items-center p-3 rounded-lg border border-green-200 bg-green-50">
+                                <div class="flex-1">
+                                    <p class="font-bold text-gray-800"><i class="fas fa-pen-square text-green-600 mr-1"></i>${escapeHtml(item.name || 'Ítem manual')}</p>
+                                    <p class="text-sm text-gray-500">$${formatMoney(price)} c/u</p>
+                                    <p class="text-xs text-green-600 font-medium">Sin stock</p>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <button onclick="updateCartQuantity(${index}, -1)" class="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center">
+                                        <i class="fas fa-minus text-xs"></i>
+                                    </button>
+                                    <input type="number" id="cart-qty-${index}" value="${item.quantity || 1}" min="1" 
+                                        class="font-bold w-14 text-center border-2 border-gray-300 rounded-lg py-1 text-sm focus:border-purple-500 focus:outline-none"
+                                        onchange="setCartQuantity(${index}, this.value)" onkeypress="if(event.key==='Enter'){this.blur();}">
+                                    <button onclick="updateCartQuantity(${index}, 1)" class="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center">
+                                        <i class="fas fa-plus text-xs"></i>
+                                    </button>
+                                    <button onclick="removeFromCart(${index})" class="text-red-500 hover:text-red-700 ml-2">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            `;
+                        }
+                        
                         if (isWeight) {
                             return `
                             <div class="sale-item flex justify-between items-center p-3 rounded-lg border border-blue-200 bg-blue-50">
@@ -4871,6 +4898,16 @@
             const item = appState.cart[index];
             const product = appState.inventory.find(p => p.id === item.productId);
             
+            // Ítems manuales no tienen límite de stock
+            if (!item.productId || item.isManual) {
+                item.quantity += delta;
+                if (item.quantity <= 0) {
+                    appState.cart.splice(index, 1);
+                }
+                renderCart();
+                return;
+            }
+            
             // No permitir modificar cantidad de productos por peso con +/-
             if (product && product.saleByWeight) {
                 showNotification('Usá el ícono de papelera para quitar productos por peso', 'warning');
@@ -4899,6 +4936,19 @@
         function setCartQuantity(index, newQty) {
             const item = appState.cart[index];
             const product = appState.inventory.find(p => p.id === item.productId);
+            
+            // Ítems manuales no tienen límite de stock
+            if (!item.productId || item.isManual) {
+                const qty = parseInt(newQty);
+                if (isNaN(qty) || qty < 1) {
+                    showNotification('Cantidad inválida', 'error');
+                    renderCart();
+                    return;
+                }
+                item.quantity = qty;
+                renderCart();
+                return;
+            }
             
             // No permitir modificar cantidad de productos por peso manualmente
             if (product && product.saleByWeight) {
@@ -5374,55 +5424,20 @@
                 return;
             }
             
-            // Actualizar caja o banco
-            if (manualSalePaymentMethod === 'cash') {
-                appState.cash += amount;
-            } else {
-                appState.bank += amount;
-            }
+            // Agregar al carrito como ítem manual (no desconta stock)
+            appState.cart.push({
+                productId: null,
+                name: concept,
+                quantity: 1,
+                price: amount,
+                cost: 0,
+                isManual: true
+            });
             
-            const now = new Date();
-            const sale = {
-                id: 'SALE-' + Date.now(),
-                date: formatDateISO(appState.activeDate || now),
-                time: now.toLocaleTimeString('es-ES'),
-                items: [{
-                    productId: null,
-                    name: concept,
-                    quantity: 1,
-                    price: amount,
-                    cost: 0
-                }],
-                subtotal: amount,
-                discount: 0,
-                discountLabel: null,
-                promoId: null,
-                ticketId: null,
-                ticketNumber: null,
-                total: amount,
-                profit: amount,
-                paymentMethod: manualSalePaymentMethod,
-                received: amount,
-                change: 0,
-                isMercadoCredito: false,
-                mercadoCreditoFee: 0,
-                mercadoCreditoFeePct: 0,
-                timestamp: Date.now(),
-                invoiceBreakdown: { white: amount, black: 0, debit: manualSalePaymentMethod === 'debit' ? amount : 0 }
-            };
-            
-            appState.sales.push(sale);
-            saveToLocalStorage();
-            renderAll();
-            renderCalendar();
-            // Refrescar detalle del día si está visible y es la fecha de la venta
-            const dayDetail = document.getElementById('day-detail');
-            if (dayDetail && !dayDetail.classList.contains('hidden') && selectedCalendarDate === sale.date) {
-                showDayDetail(sale.date);
-            }
             closeManualSaleModal();
-            showSuccessOverlay(amount);
-            showNotification(`Venta manual registrada: ${concept} $${formatMoney(amount)}`, 'success');
+            showSection('sell');
+            renderCart();
+            showNotification(`Ítem manual agregado al carrito: ${concept} $${formatMoney(amount)}`, 'success');
         }
 
         // ========== CONTROL DE STOCK ROBUSTO EN VENTAS ==========
@@ -5431,6 +5446,8 @@
         function validateStockForSale(cart) {
             const errors = [];
             for (const item of cart) {
+                // Ítems manuales no requieren stock
+                if (!item.productId || item.isManual) continue;
                 const product = appState.inventory.find(p => p.id === item.productId);
                 if (!product) {
                     errors.push(`Producto no encontrado: ${item.name}`);
@@ -5466,6 +5483,13 @@
             let saleBlackTotal = 0;
             
             for (const item of cart) {
+                // Ítems manuales no descontar stock; se facturan como blanco
+                if (!item.productId || item.isManual) {
+                    const itemValue = item.quantity * item.price;
+                    saleWhiteTotal += itemValue;
+                    continue;
+                }
+                
                 const product = appState.inventory.find(p => p.id === item.productId);
                 if (!product) continue;
                 
@@ -8561,6 +8585,8 @@
             const sale = appState.sales[saleIndex];
 
             sale.items.forEach(item => {
+                // Los ítems manuales no tienen stock que restaurar
+                if (!item.productId || item.isManual) return;
                 const product = appState.inventory.find(p => p.id === item.productId);
                 if (product) {
                     restoreProductStock(product, item.quantity);

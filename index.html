@@ -865,6 +865,11 @@
                 <i class="fas fa-chart-line w-4 text-xs"></i> Finanzas
             </button>
             
+            <!-- FLUJO DE CAJA: Solo admin -->
+            <button onclick="showSection('cashflow-projection')" id="nav-cashflow-projection" class="nav-btn sidebar-admin-only w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="cashflow-projection">
+                <i class="fas fa-water w-4 text-xs"></i> Flujo de Caja
+            </button>
+            
             <!-- REPORTES: Solo admin -->
             <button onclick="showSection('reports')" id="nav-reports" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="reports">
                 <i class="fas fa-chart-pie w-4 text-xs"></i> Reportes
@@ -1954,6 +1959,127 @@
                     <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-blue-500"></span> Ganado</span>
                     <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-red-500"></span> Gastado</span>
                 </div>
+            </div>
+        </div>
+
+        <!-- FLUJO DE CAJA - Proyección y gastos fijos -->
+        <div id="cashflow-projection" class="section hidden space-y-6 fade-in">
+            <!-- Header -->
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                        <i class="fas fa-water text-blue-600"></i> Flujo de Caja
+                    </h2>
+                    <p class="text-sm text-gray-500">Proyección de saldos, gastos fijos y punto de equilibrio</p>
+                </div>
+                <button onclick="openRecurringExpensesModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow">
+                    <i class="fas fa-calendar-check"></i> Gastos Fijos
+                </button>
+            </div>
+
+            <!-- KPIs -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white rounded-2xl p-5 shadow border border-gray-100">
+                    <p class="text-xs font-bold text-gray-400 uppercase">Saldo Actual (Caja + Cuenta)</p>
+                    <p class="text-2xl font-bold text-gray-800 mt-1" id="cfp-total-balance">$0</p>
+                </div>
+                <div class="bg-white rounded-2xl p-5 shadow border border-gray-100">
+                    <p class="text-xs font-bold text-gray-400 uppercase">Gastos Fijos Mensuales</p>
+                    <p class="text-2xl font-bold text-red-600 mt-1" id="cfp-fixed-monthly">$0</p>
+                </div>
+                <div class="bg-white rounded-2xl p-5 shadow border border-gray-100">
+                    <p class="text-xs font-bold text-gray-400 uppercase">Punto de Equilibrio Diario</p>
+                    <p class="text-2xl font-bold text-purple-700 mt-1" id="cfp-break-even-daily">$0</p>
+                    <p class="text-[10px] text-gray-400 mt-1">Lo que hay que vender por día</p>
+                </div>
+                <div class="bg-white rounded-2xl p-5 shadow border border-gray-100">
+                    <p class="text-xs font-bold text-gray-400 uppercase">Próximo Pago Crítico</p>
+                    <p class="text-lg font-bold text-gray-800 mt-1" id="cfp-next-due">-</p>
+                    <p class="text-[10px] text-gray-400 mt-1" id="cfp-next-due-amount"></p>
+                </div>
+            </div>
+
+            <!-- Controles -->
+            <div class="bg-white rounded-2xl p-4 shadow border border-gray-100">
+                <div class="flex flex-col md:flex-row gap-4 items-end md:items-center">
+                    <div>
+                        <label class="text-xs font-bold text-gray-500 uppercase block mb-1">Horizonte</label>
+                        <div class="flex bg-gray-100 rounded-lg p-1">
+                            <button onclick="setCashFlowProjectionDays(30)" class="cfp-days-btn px-3 py-1 text-xs font-bold rounded" data-days="30">30 días</button>
+                            <button onclick="setCashFlowProjectionDays(60)" class="cfp-days-btn px-3 py-1 text-xs font-bold rounded" data-days="60">60 días</button>
+                            <button onclick="setCashFlowProjectionDays(90)" class="cfp-days-btn px-3 py-1 text-xs font-bold rounded" data-days="90">90 días</button>
+                        </div>
+                    </div>
+                    <div class="flex-1 w-full md:w-auto">
+                        <label class="text-xs font-bold text-gray-500 uppercase block mb-1">Ingreso diario estimado</label>
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-500 text-sm">$</span>
+                            <input type="number" id="cfp-estimated-income" class="border-2 border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full" placeholder="Promedio histórico" step="0.01" min="0" onchange="saveCashFlowEstimatedIncome()">
+                            <button onclick="resetCashFlowEstimatedIncome()" class="text-xs text-blue-600 hover:text-blue-800 font-bold" title="Usar promedio histórico">Auto</button>
+                        </div>
+                    </div>
+                    <div class="w-full md:w-auto">
+                        <label class="text-xs font-bold text-gray-500 uppercase block mb-1">Alerta si saldo baja de</label>
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-500 text-sm">$</span>
+                            <input type="number" id="cfp-low-threshold" class="border-2 border-gray-200 rounded-lg px-3 py-1.5 text-sm w-32" placeholder="0" step="0.01" min="0" onchange="saveCashFlowLowThreshold()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alertas -->
+            <div id="cfp-alerts-container" class="hidden">
+                <div class="bg-red-50 border border-red-200 rounded-2xl p-4">
+                    <h3 class="text-sm font-bold text-red-700 mb-2 flex items-center gap-2">
+                        <i class="fas fa-exclamation-triangle"></i> Alertas de liquidez
+                    </h3>
+                    <div id="cfp-alerts-list" class="space-y-1 text-sm text-red-800"></div>
+                </div>
+            </div>
+
+            <!-- Tabla de proyección -->
+            <div class="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
+                <div class="p-4 border-b border-gray-100 flex justify-between items-center">
+                    <h3 class="font-bold text-gray-800"><i class="fas fa-table text-blue-600 mr-2"></i> Proyección diaria</h3>
+                    <span class="text-xs text-gray-400">Ingresos - Egresos fijos = Saldo proyectado</span>
+                </div>
+                <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-50 sticky top-0">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Fecha</th>
+                                <th class="px-4 py-2 text-right text-xs font-medium text-gray-500">Ingreso est.</th>
+                                <th class="px-4 py-2 text-right text-xs font-medium text-gray-500">Egresos caja</th>
+                                <th class="px-4 py-2 text-right text-xs font-medium text-gray-500">Egresos cuenta</th>
+                                <th class="px-4 py-2 text-right text-xs font-medium text-gray-500">Saldo caja</th>
+                                <th class="px-4 py-2 text-right text-xs font-medium text-gray-500">Saldo cuenta</th>
+                                <th class="px-4 py-2 text-center text-xs font-medium text-gray-500">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cfp-projection-table" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Punto de equilibrio detallado -->
+            <div class="bg-white rounded-2xl p-6 shadow border border-gray-100">
+                <h3 class="font-bold text-gray-800 mb-4"><i class="fas fa-balance-scale text-purple-600 mr-2"></i> Punto de equilibrio</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-purple-50 rounded-xl p-4 border border-purple-100">
+                        <p class="text-xs font-bold text-purple-500 uppercase">Mensual</p>
+                        <p class="text-xl font-bold text-purple-800" id="cfp-break-even-monthly">$0</p>
+                    </div>
+                    <div class="bg-purple-50 rounded-xl p-4 border border-purple-100">
+                        <p class="text-xs font-bold text-purple-500 uppercase">Semanal</p>
+                        <p class="text-xl font-bold text-purple-800" id="cfp-break-even-weekly">$0</p>
+                    </div>
+                    <div class="bg-purple-50 rounded-xl p-4 border border-purple-100">
+                        <p class="text-xs font-bold text-purple-500 uppercase">Margen Promedio</p>
+                        <p class="text-xl font-bold text-purple-800" id="cfp-avg-margin">0%</p>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-3">Se calcula como: Gastos fijos ÷ Margen de ganancia promedio. No incluye el costo de la mercadería porque ya está descontado en el margen.</p>
             </div>
         </div>
 
@@ -3052,6 +3178,13 @@
             losses: [],
             // Devoluciones
             returns: [],
+            // Flujo de caja
+            recurringExpenses: [],
+            cashFlowSettings: {
+                projectionDays: 30,
+                estimatedDailyIncome: null,
+                lowBalanceThreshold: 0
+            },
             // Configuración MercadoCrédito
             mercadoCreditoFee: 5,
             // Configuración de stock
@@ -3371,7 +3504,7 @@
             }
             
             // Protección: colaboradores no pueden ver ciertas secciones
-            const adminOnlySections = ['sales-calendar', 'cashflow', 'reports', 'billing', 'settings', 'promotions'];
+            const adminOnlySections = ['sales-calendar', 'cashflow', 'cashflow-projection', 'reports', 'billing', 'settings', 'promotions'];
             if (adminOnlySections.includes(sectionId) && !isAdmin()) {
                 showNotification('Acceso restringido solo para administradores', 'error');
                 sectionId = 'sell';
@@ -3396,6 +3529,7 @@
                 'sales-calendar': 'Historial de Ventas',
                 'inventory': 'Gestión de Inventario',
                 'cashflow': 'Flujo de Caja',
+                'cashflow-projection': 'Proyección de Caja',
                 'predictions': 'Control de Stock',
                 'alerts': 'Alertas',
                 'reports': 'Reportes',
@@ -3433,6 +3567,9 @@
             if (sectionId === 'cashflow') {
                 renderCashflow();
                 setTimeout(() => renderCashFlowChartByPeriod(), 100);
+            }
+            if (sectionId === 'cashflow-projection') {
+                renderCashFlowProjection();
             }
             if (sectionId === 'predictions') {
                 showSection('inventory');
@@ -3833,6 +3970,46 @@
                         message: `${urgentCount} crítico${urgentCount !== 1 ? 's' : ''}, ${highCount} alta prioridad`,
                         action: 'Ver lista',
                         actionFn: "showSection('inventory')",
+                        bgColor: 'bg-blue-50',
+                        borderColor: 'border-blue-500',
+                        textColor: 'text-blue-800',
+                        iconBg: 'bg-blue-100'
+                    });
+                }
+            }
+            
+            // 6. Alertas de flujo de caja
+            const recurring = appState.recurringExpenses || [];
+            if (recurring.length > 0) {
+                const settings = appState.cashFlowSettings || { estimatedDailyIncome: null, lowBalanceThreshold: 0 };
+                const estimatedDailyIncome = settings.estimatedDailyIncome === null ? calculateHistoricalDailyIncome(30) : (parseFloat(settings.estimatedDailyIncome) || 0);
+                const projection = calculateProjectedCashFlow(30, estimatedDailyIncome);
+                const flowAlerts = getCashFlowAlerts(projection, parseFloat(settings.lowBalanceThreshold) || 0);
+                const firstCritical = flowAlerts.find(a => a.severity === 'critical');
+                const todayStr = formatDateISO(new Date());
+                const nextDue = generateProjectedExpenses(todayStr, 60).filter(e => e.date >= todayStr).sort((a, b) => a.date.localeCompare(b.date))[0];
+                
+                if (firstCritical) {
+                    alerts.push({
+                        type: 'cashflow',
+                        icon: '💧',
+                        title: 'Alerta de liquidez',
+                        message: firstCritical.message,
+                        action: 'Ver flujo',
+                        actionFn: "showSection('cashflow-projection')",
+                        bgColor: 'bg-red-50',
+                        borderColor: 'border-red-500',
+                        textColor: 'text-red-800',
+                        iconBg: 'bg-red-100'
+                    });
+                } else if (nextDue) {
+                    alerts.push({
+                        type: 'cashflow',
+                        icon: '💧',
+                        title: `Próximo pago fijo: ${nextDue.name}`,
+                        message: `$${formatMoney(nextDue.amount)} el ${nextDue.date} (${nextDue.source === 'bank' ? 'cuenta' : 'caja'})`,
+                        action: 'Ver flujo',
+                        actionFn: "showSection('cashflow-projection')",
                         bgColor: 'bg-blue-50',
                         borderColor: 'border-blue-500',
                         textColor: 'text-blue-800',
@@ -9074,6 +9251,535 @@
             renderCashDifferences();
         }
         
+        // ==================== FLUJO DE CAJA / PROYECCIÓN ====================
+        
+        function renderCashFlowProjection() {
+            const section = document.getElementById('cashflow-projection');
+            if (!section || section.classList.contains('hidden')) return;
+            
+            const settings = appState.cashFlowSettings || { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 };
+            const days = settings.projectionDays || 30;
+            const estimatedDailyIncome = settings.estimatedDailyIncome === null ? calculateHistoricalDailyIncome(30) : (parseFloat(settings.estimatedDailyIncome) || 0);
+            const lowThreshold = parseFloat(settings.lowBalanceThreshold) || 0;
+            
+            // KPIs
+            const totalBalance = (parseFloat(appState.cash) || 0) + (parseFloat(appState.bank) || 0);
+            const fixedMonthly = calculateFixedExpensesTotal('month');
+            const breakEven = calculateBreakEven();
+            
+            const totalBalanceEl = document.getElementById('cfp-total-balance');
+            const fixedMonthlyEl = document.getElementById('cfp-fixed-monthly');
+            const breakEvenDailyEl = document.getElementById('cfp-break-even-daily');
+            const breakEvenMonthlyEl = document.getElementById('cfp-break-even-monthly');
+            const breakEvenWeeklyEl = document.getElementById('cfp-break-even-weekly');
+            const avgMarginEl = document.getElementById('cfp-avg-margin');
+            const nextDueEl = document.getElementById('cfp-next-due');
+            const nextDueAmountEl = document.getElementById('cfp-next-due-amount');
+            
+            if (totalBalanceEl) totalBalanceEl.textContent = '$' + formatMoney(totalBalance);
+            if (fixedMonthlyEl) fixedMonthlyEl.textContent = '$' + formatMoney(fixedMonthly);
+            if (breakEvenDailyEl) breakEvenDailyEl.textContent = '$' + formatMoney(breakEven.daily);
+            if (breakEvenMonthlyEl) breakEvenMonthlyEl.textContent = '$' + formatMoney(breakEven.monthly);
+            if (breakEvenWeeklyEl) breakEvenWeeklyEl.textContent = '$' + formatMoney(breakEven.weekly);
+            if (avgMarginEl) avgMarginEl.textContent = formatMoney(breakEven.avgMargin) + '%';
+            
+            // Próximo pago crítico
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const nextOccurrences = generateProjectedExpenses(formatDateISO(today), 60)
+                .filter(e => e.date >= formatDateISO(today))
+                .sort((a, b) => a.date.localeCompare(b.date));
+            if (nextOccurrences.length > 0) {
+                const next = nextOccurrences[0];
+                if (nextDueEl) nextDueEl.textContent = next.date;
+                if (nextDueAmountEl) nextDueAmountEl.textContent = `$${formatMoney(next.amount)} ${next.source === 'cash' ? 'de caja' : 'de cuenta'} • ${next.name}`;
+            } else {
+                if (nextDueEl) nextDueEl.textContent = '-';
+                if (nextDueAmountEl) nextDueAmountEl.textContent = 'Sin pagos próximos';
+            }
+            
+            // Controles
+            document.querySelectorAll('.cfp-days-btn').forEach(btn => {
+                if (parseInt(btn.dataset.days) === days) {
+                    btn.classList.add('bg-white', 'text-gray-800', 'shadow-sm');
+                    btn.classList.remove('text-gray-600', 'hover:bg-white');
+                } else {
+                    btn.classList.remove('bg-white', 'text-gray-800', 'shadow-sm');
+                    btn.classList.add('text-gray-600', 'hover:bg-white');
+                }
+            });
+            const estimatedInput = document.getElementById('cfp-estimated-income');
+            if (estimatedInput) estimatedInput.value = settings.estimatedDailyIncome === null ? '' : estimatedDailyIncome.toFixed(2);
+            const thresholdInput = document.getElementById('cfp-low-threshold');
+            if (thresholdInput) thresholdInput.value = lowThreshold.toFixed(2);
+            
+            // Proyección
+            const projection = calculateProjectedCashFlow(days, estimatedDailyIncome);
+            const tableBody = document.getElementById('cfp-projection-table');
+            if (tableBody) {
+                tableBody.innerHTML = projection.map(day => {
+                    const isAlert = day.projectedCash < lowThreshold || day.projectedBank < lowThreshold || day.projectedCash < 0 || day.projectedBank < 0;
+                    const isNegative = day.projectedCash < 0 || day.projectedBank < 0;
+                    const statusClass = isNegative ? 'bg-red-50 text-red-700' : (isAlert ? 'bg-yellow-50 text-yellow-700' : 'text-green-700');
+                    const statusIcon = isNegative ? 'fa-exclamation-circle' : (isAlert ? 'fa-exclamation-triangle' : 'fa-check-circle');
+                    const statusText = isNegative ? 'Crítico' : (isAlert ? 'Bajo' : 'OK');
+                    const rowClass = isNegative ? 'bg-red-50/50' : (isAlert ? 'bg-yellow-50/30' : '');
+                    return `
+                        <tr class="${rowClass} hover:bg-gray-50 transition">
+                            <td class="px-4 py-2 text-xs font-medium ${isNegative || isAlert ? 'font-bold' : ''}">${day.weekday} ${day.date}</td>
+                            <td class="px-4 py-2 text-right text-xs text-green-700">+$${formatMoney(day.income)}</td>
+                            <td class="px-4 py-2 text-right text-xs text-red-600">-$${formatMoney(day.expensesCash)}</td>
+                            <td class="px-4 py-2 text-right text-xs text-red-600">-$${formatMoney(day.expensesBank)}</td>
+                            <td class="px-4 py-2 text-right text-xs font-bold ${day.projectedCash < 0 ? 'text-red-700' : 'text-gray-800'}">$${formatMoney(day.projectedCash)}</td>
+                            <td class="px-4 py-2 text-right text-xs font-bold ${day.projectedBank < 0 ? 'text-red-700' : 'text-gray-800'}">$${formatMoney(day.projectedBank)}</td>
+                            <td class="px-4 py-2 text-center text-xs ${statusClass}"><i class="fas ${statusIcon}"></i> ${statusText}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+            
+            // Alertas
+            const alerts = getCashFlowAlerts(projection, lowThreshold);
+            const alertsContainer = document.getElementById('cfp-alerts-container');
+            const alertsList = document.getElementById('cfp-alerts-list');
+            if (alertsContainer && alertsList) {
+                if (alerts.length > 0) {
+                    alertsContainer.classList.remove('hidden');
+                    alertsList.innerHTML = alerts.slice(0, 10).map(a => `
+                        <div class="flex items-start gap-2">
+                            <i class="fas ${a.severity === 'critical' ? 'fa-exclamation-circle text-red-600' : 'fa-exclamation-triangle text-yellow-600'} mt-0.5"></i>
+                            <span>${a.message}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    alertsContainer.classList.add('hidden');
+                }
+            }
+        }
+        
+        function calculateHistoricalDailyIncome(days = 30) {
+            const sales = appState.sales || [];
+            if (sales.length === 0) return 0;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const start = new Date(today);
+            start.setDate(start.getDate() - days);
+            const filtered = sales.filter(s => {
+                if (!s.date) return false;
+                const d = new Date(s.date + 'T00:00:00');
+                return d >= start && d <= today;
+            });
+            if (filtered.length === 0) return 0;
+            const total = filtered.reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
+            return Math.round((total / days) * 100) / 100;
+        }
+        
+        function calculateFixedExpensesTotal(period = 'month') {
+            const recs = (appState.recurringExpenses || []).filter(r => r.active !== false);
+            let monthlyTotal = 0;
+            recs.forEach(r => {
+                const amount = parseFloat(r.amount) || 0;
+                const freq = r.frequency || 'monthly';
+                switch (freq) {
+                    case 'daily': monthlyTotal += amount * 30.44; break;
+                    case 'weekly': monthlyTotal += amount * 4.345; break;
+                    case 'biweekly': monthlyTotal += amount * 2.172; break;
+                    case 'monthly': monthlyTotal += amount; break;
+                    case 'yearly': monthlyTotal += amount / 12; break;
+                    default: monthlyTotal += amount;
+                }
+            });
+            switch (period) {
+                case 'day': return monthlyTotal / 30.44;
+                case 'week': return monthlyTotal / 4.345;
+                case 'biweekly': return monthlyTotal / 2.172;
+                case 'month': return monthlyTotal;
+                case 'year': return monthlyTotal * 12;
+                default: return monthlyTotal;
+            }
+        }
+        
+        function generateProjectedExpenses(startDateStr, days) {
+            const recs = (appState.recurringExpenses || []).filter(r => r.active !== false);
+            const occurrences = [];
+            const start = parseDateLocal(startDateStr);
+            const end = new Date(start);
+            end.setDate(end.getDate() + days);
+            
+            recs.forEach(rec => {
+                const amount = parseFloat(rec.amount) || 0;
+                const source = rec.source || 'cash';
+                const startLimit = rec.startDate ? parseDateLocal(rec.startDate) : null;
+                const endLimit = rec.endDate ? parseDateLocal(rec.endDate) : null;
+                if (startLimit && startLimit > end) return;
+                if (endLimit && endLimit < start) return;
+                
+                let current = new Date(start);
+                // Avanzar hasta la primera ocurrencia >= start
+                current = getNextOccurrenceDate(rec, current, true);
+                
+                while (current <= end) {
+                    if ((!startLimit || current >= startLimit) && (!endLimit || current <= endLimit)) {
+                        occurrences.push({
+                            date: formatDateISO(current),
+                            name: rec.name,
+                            amount: amount,
+                            source: source,
+                            id: rec.id,
+                            category: rec.category || ''
+                        });
+                    }
+                    current = getNextOccurrenceDate(rec, new Date(current));
+                }
+            });
+            
+            return occurrences.sort((a, b) => a.date.localeCompare(b.date));
+        }
+        
+        function getNextOccurrenceDate(rec, fromDate, allowSameDay = false) {
+            const freq = rec.frequency || 'monthly';
+            const dueDay = parseInt(rec.dueDay) || 1;
+            let d = new Date(fromDate);
+            if (!allowSameDay) {
+                d.setDate(d.getDate() + 1);
+            }
+            d.setHours(0, 0, 0, 0);
+            
+            switch (freq) {
+                case 'daily':
+                    return d;
+                case 'weekly': {
+                    const targetDay = Math.max(0, Math.min(6, dueDay - 1));
+                    const dayDiff = (targetDay - d.getDay() + 7) % 7;
+                    d.setDate(d.getDate() + dayDiff);
+                    return d;
+                }
+                case 'biweekly': {
+                    // Cada 14 días desde la fecha de inicio
+                    const start = rec.startDate ? parseDateLocal(rec.startDate) : new Date();
+                    start.setHours(0, 0, 0, 0);
+                    const from = new Date(d);
+                    from.setHours(0, 0, 0, 0);
+                    const msPerDay = 24 * 60 * 60 * 1000;
+                    const daysSinceStart = Math.floor((from - start) / msPerDay);
+                    const periods = Math.ceil(daysSinceStart / 14);
+                    const candidate = new Date(start);
+                    candidate.setDate(candidate.getDate() + periods * 14);
+                    return candidate >= from ? candidate : new Date(candidate.getTime() + 14 * msPerDay);
+                }
+                case 'monthly': {
+                    let targetDay = Math.max(1, Math.min(31, dueDay));
+                    let year = d.getFullYear();
+                    let month = d.getMonth();
+                    let candidate = new Date(year, month, targetDay);
+                    if (candidate < d) {
+                        month++;
+                        if (month > 11) { month = 0; year++; }
+                        candidate = new Date(year, month, targetDay);
+                    }
+                    // Si el día no existe en ese mes, usar último día
+                    if (candidate.getDate() !== targetDay) {
+                        candidate = new Date(year, month + 1, 0);
+                    }
+                    return candidate;
+                }
+                case 'yearly': {
+                    const targetMonth = Math.max(0, Math.min(11, Math.floor((dueDay - 1) / 100) - 1));
+                    const targetDayOfMonth = Math.max(1, Math.min(31, dueDay % 100 || 1));
+                    let candidate = new Date(d.getFullYear(), targetMonth, targetDayOfMonth);
+                    if (candidate < d) {
+                        candidate = new Date(d.getFullYear() + 1, targetMonth, targetDayOfMonth);
+                    }
+                    return candidate;
+                }
+                default:
+                    return d;
+            }
+        }
+        
+        function calculateIncomeDistribution() {
+            const sales = appState.sales || [];
+            const total = sales.reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
+            if (total === 0) return { cash: 1, bank: 0 };
+            const cashTotal = sales.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
+            const bankTotal = sales.filter(s => s.paymentMethod !== 'cash').reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
+            return {
+                cash: Math.min(1, Math.max(0, cashTotal / total)),
+                bank: Math.min(1, Math.max(0, bankTotal / total))
+            };
+        }
+        
+        function calculateProjectedCashFlow(days, estimatedDailyIncome) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const startStr = formatDateISO(today);
+            const projectedExpenses = generateProjectedExpenses(startStr, days);
+            const expensesByDate = {};
+            projectedExpenses.forEach(e => {
+                if (!expensesByDate[e.date]) expensesByDate[e.date] = { cash: 0, bank: 0, items: [] };
+                expensesByDate[e.date][e.source === 'bank' ? 'bank' : 'cash'] += e.amount;
+                expensesByDate[e.date].items.push(e);
+            });
+            
+            const distribution = calculateIncomeDistribution();
+            const projection = [];
+            let cash = parseFloat(appState.cash) || 0;
+            let bank = parseFloat(appState.bank) || 0;
+            
+            const weekdayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+            
+            for (let i = 0; i < days; i++) {
+                const d = new Date(today);
+                d.setDate(d.getDate() + i);
+                const dateStr = formatDateISO(d);
+                const exp = expensesByDate[dateStr] || { cash: 0, bank: 0, items: [] };
+                const income = estimatedDailyIncome;
+                const incomeCash = income * distribution.cash;
+                const incomeBank = income * distribution.bank;
+                cash = cash + incomeCash - exp.cash;
+                bank = bank + incomeBank - exp.bank;
+                projection.push({
+                    date: dateStr,
+                    weekday: weekdayNames[d.getDay()],
+                    income: income,
+                    incomeCash: Math.round(incomeCash * 100) / 100,
+                    incomeBank: Math.round(incomeBank * 100) / 100,
+                    expensesCash: exp.cash,
+                    expensesBank: exp.bank,
+                    projectedCash: Math.round(cash * 100) / 100,
+                    projectedBank: Math.round(bank * 100) / 100,
+                    items: exp.items
+                });
+            }
+            return projection;
+        }
+        
+        function getCashFlowAlerts(projection, threshold) {
+            const alerts = [];
+            projection.forEach(day => {
+                if (day.projectedCash < 0) {
+                    alerts.push({ severity: 'critical', message: `${day.date}: caja negativa proyectada ($${formatMoney(day.projectedCash)})`, date: day.date });
+                } else if (day.projectedCash < threshold && threshold > 0) {
+                    alerts.push({ severity: 'warning', message: `${day.date}: caja por debajo del umbral ($${formatMoney(day.projectedCash)})`, date: day.date });
+                }
+                if (day.projectedBank < 0) {
+                    alerts.push({ severity: 'critical', message: `${day.date}: cuenta negativa proyectada ($${formatMoney(day.projectedBank)})`, date: day.date });
+                } else if (day.projectedBank < threshold && threshold > 0) {
+                    alerts.push({ severity: 'warning', message: `${day.date}: cuenta por debajo del umbral ($${formatMoney(day.projectedBank)})`, date: day.date });
+                }
+            });
+            return alerts;
+        }
+        
+        function calculateBreakEven() {
+            const sales = appState.sales || [];
+            let avgMargin = 30;
+            if (sales.length > 0) {
+                const totalSales = sales.reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
+                const totalProfit = sales.reduce((sum, s) => sum + (parseFloat(s.profit) || 0), 0);
+                avgMargin = totalSales > 0 ? (totalProfit / totalSales) * 100 : 30;
+            }
+            avgMargin = Math.max(0.1, avgMargin);
+            const fixedMonthly = calculateFixedExpensesTotal('month');
+            const fixedWeekly = fixedMonthly / 4.345;
+            const fixedDaily = fixedMonthly / 30.44;
+            const monthly = fixedMonthly / (avgMargin / 100);
+            const weekly = fixedWeekly / (avgMargin / 100);
+            const daily = fixedDaily / (avgMargin / 100);
+            return {
+                monthly: Math.round(monthly * 100) / 100,
+                weekly: Math.round(weekly * 100) / 100,
+                daily: Math.round(daily * 100) / 100,
+                avgMargin: Math.round(avgMargin * 100) / 100
+            };
+        }
+        
+        function setCashFlowProjectionDays(days) {
+            if (!appState.cashFlowSettings) appState.cashFlowSettings = {};
+            appState.cashFlowSettings.projectionDays = days;
+            saveToLocalStorage();
+            renderCashFlowProjection();
+        }
+        
+        function saveCashFlowEstimatedIncome() {
+            const input = document.getElementById('cfp-estimated-income');
+            const value = input ? parseFloat(input.value) : null;
+            if (!appState.cashFlowSettings) appState.cashFlowSettings = {};
+            appState.cashFlowSettings.estimatedDailyIncome = isNaN(value) || value === 0 ? null : value;
+            saveToLocalStorage();
+            renderCashFlowProjection();
+        }
+        
+        function resetCashFlowEstimatedIncome() {
+            if (!appState.cashFlowSettings) appState.cashFlowSettings = {};
+            appState.cashFlowSettings.estimatedDailyIncome = null;
+            saveToLocalStorage();
+            renderCashFlowProjection();
+        }
+        
+        function saveCashFlowLowThreshold() {
+            const input = document.getElementById('cfp-low-threshold');
+            const value = input ? parseFloat(input.value) : 0;
+            if (!appState.cashFlowSettings) appState.cashFlowSettings = {};
+            appState.cashFlowSettings.lowBalanceThreshold = isNaN(value) ? 0 : value;
+            saveToLocalStorage();
+            renderCashFlowProjection();
+        }
+        
+        // ==================== GASTOS FIJOS MODAL ====================
+        
+        function openRecurringExpensesModal() {
+            resetRecurringExpenseForm();
+            renderRecurringExpensesList();
+            const modal = document.getElementById('recurring-expenses-modal');
+            if (modal) modal.classList.add('active');
+        }
+        
+        function closeRecurringExpensesModal() {
+            const modal = document.getElementById('recurring-expenses-modal');
+            if (modal) modal.classList.remove('active');
+        }
+        
+        function renderRecurringExpensesList() {
+            const listEl = document.getElementById('recurring-expenses-list');
+            if (!listEl) return;
+            const recs = appState.recurringExpenses || [];
+            if (recs.length === 0) {
+                listEl.innerHTML = '<p class="text-center text-gray-400 py-4 text-sm">Sin gastos fijos registrados</p>';
+                return;
+            }
+            const freqLabels = { daily: 'Diario', weekly: 'Semanal', biweekly: 'Quincenal', monthly: 'Mensual', yearly: 'Anual' };
+            listEl.innerHTML = recs.sort((a, b) => a.name.localeCompare(b.name)).map(r => `
+                <div class="flex justify-between items-center p-3 rounded-lg border ${r.active === false ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-white border-gray-200'}">
+                    <div>
+                        <p class="font-bold text-sm ${r.active === false ? 'text-gray-500 line-through' : 'text-gray-800'}">${escapeHtml(r.name)}</p>
+                        <p class="text-xs text-gray-500">$${formatMoney(r.amount)} • ${freqLabels[r.frequency] || 'Mensual'} • vence ${r.dueDay || 1} • ${r.source === 'bank' ? '🏦 Cuenta' : '💵 Caja'}</p>
+                    </div>
+                    <div class="flex gap-1">
+                        <button onclick="editRecurringExpense('${r.id}')" class="text-blue-500 hover:text-blue-700 p-2 hover:bg-blue-50 rounded" title="Editar"><i class="fas fa-edit"></i></button>
+                        <button onclick="deleteRecurringExpense('${r.id}')" class="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded" title="Eliminar"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function onRecExpenseFrequencyChange() {
+            const freq = document.getElementById('rec-expense-frequency')?.value || 'monthly';
+            const helpEl = document.getElementById('rec-expense-due-day-help');
+            const dueInput = document.getElementById('rec-expense-due-day');
+            if (!helpEl || !dueInput) return;
+            if (freq === 'monthly') {
+                helpEl.textContent = 'Día del mes (1-31)';
+                dueInput.max = 31;
+            } else if (freq === 'yearly') {
+                helpEl.textContent = 'Formato MMDD (ej: 1025 = 25 de octubre)';
+                dueInput.max = 1231;
+            } else if (freq === 'weekly' || freq === 'biweekly') {
+                helpEl.textContent = 'Día de la semana (1=Lunes, 7=Domingo)';
+                dueInput.max = 7;
+            } else {
+                helpEl.textContent = 'No aplica para frecuencia diaria';
+                dueInput.max = 1;
+            }
+        }
+        
+        function resetRecurringExpenseForm() {
+            document.getElementById('rec-expense-edit-id').value = '';
+            document.getElementById('rec-expense-name').value = '';
+            document.getElementById('rec-expense-amount').value = '';
+            document.getElementById('rec-expense-frequency').value = 'monthly';
+            document.getElementById('rec-expense-due-day').value = '1';
+            document.getElementById('rec-expense-source').value = 'cash';
+            document.getElementById('rec-expense-category').value = '';
+            document.getElementById('rec-expense-start-date').value = formatDateISO(new Date());
+            document.getElementById('rec-expense-end-date').value = '';
+            document.getElementById('rec-expense-active').checked = true;
+            document.getElementById('rec-expense-form-title').textContent = 'Nuevo gasto fijo';
+            onRecExpenseFrequencyChange();
+        }
+        
+        function saveRecurringExpense() {
+            const editId = document.getElementById('rec-expense-edit-id').value;
+            const name = document.getElementById('rec-expense-name').value.trim();
+            const amount = parseFloat(document.getElementById('rec-expense-amount').value);
+            const frequency = document.getElementById('rec-expense-frequency').value;
+            const dueDay = parseInt(document.getElementById('rec-expense-due-day').value) || 1;
+            const source = document.getElementById('rec-expense-source').value;
+            const category = document.getElementById('rec-expense-category').value.trim();
+            const startDate = document.getElementById('rec-expense-start-date').value;
+            const endDate = document.getElementById('rec-expense-end-date').value;
+            const active = document.getElementById('rec-expense-active').checked;
+            
+            if (!name) { showNotification('Ingrese un nombre', 'error'); return; }
+            if (isNaN(amount) || amount <= 0) { showNotification('Ingrese un monto válido', 'error'); return; }
+            if (!startDate) { showNotification('Ingrese fecha de inicio', 'error'); return; }
+            if (endDate && endDate < startDate) { showNotification('La fecha de fin no puede ser anterior a la de inicio', 'error'); return; }
+            // Validar dueDay según frecuencia
+            if (frequency === 'monthly' && (dueDay < 1 || dueDay > 31)) { showNotification('El día de vencimiento debe estar entre 1 y 31', 'error'); return; }
+            if ((frequency === 'weekly' || frequency === 'biweekly') && (dueDay < 1 || dueDay > 7)) { showNotification('El día de la semana debe estar entre 1 (Lunes) y 7 (Domingo)', 'error'); return; }
+            if (frequency === 'yearly') {
+                const month = Math.floor((dueDay - 1) / 100);
+                const dayOfMonth = dueDay % 100 || 1;
+                if (month < 1 || month > 12 || dayOfMonth < 1 || dayOfMonth > 31) { showNotification('Formato anual inválido. Use MMDD (ej: 1025 = 25 de octubre)', 'error'); return; }
+            }
+            
+            if (!Array.isArray(appState.recurringExpenses)) appState.recurringExpenses = [];
+            
+            const record = {
+                id: editId || 'REC-' + Date.now(),
+                name,
+                amount: Math.round(amount * 100) / 100,
+                frequency,
+                dueDay,
+                source,
+                category,
+                startDate,
+                endDate: endDate || null,
+                active,
+                timestamp: Date.now()
+            };
+            
+            if (editId) {
+                const idx = appState.recurringExpenses.findIndex(r => r.id === editId);
+                if (idx >= 0) appState.recurringExpenses[idx] = record;
+            } else {
+                appState.recurringExpenses.push(record);
+            }
+            
+            saveToLocalStorage();
+            resetRecurringExpenseForm();
+            renderRecurringExpensesList();
+            renderCashFlowProjection();
+            showNotification('Gasto fijo guardado', 'success');
+        }
+        
+        function editRecurringExpense(id) {
+            const r = (appState.recurringExpenses || []).find(x => x.id === id);
+            if (!r) return;
+            document.getElementById('rec-expense-edit-id').value = r.id;
+            document.getElementById('rec-expense-name').value = r.name;
+            document.getElementById('rec-expense-amount').value = r.amount;
+            document.getElementById('rec-expense-frequency').value = r.frequency || 'monthly';
+            document.getElementById('rec-expense-due-day').value = r.dueDay || 1;
+            document.getElementById('rec-expense-source').value = r.source || 'cash';
+            document.getElementById('rec-expense-category').value = r.category || '';
+            document.getElementById('rec-expense-start-date').value = r.startDate || formatDateISO(new Date());
+            document.getElementById('rec-expense-end-date').value = r.endDate || '';
+            document.getElementById('rec-expense-active').checked = r.active !== false;
+            document.getElementById('rec-expense-form-title').textContent = 'Editar gasto fijo';
+            onRecExpenseFrequencyChange();
+        }
+        
+        function deleteRecurringExpense(id) {
+            if (!confirm('¿Eliminar este gasto fijo?')) return;
+            appState.recurringExpenses = (appState.recurringExpenses || []).filter(r => r.id !== id);
+            saveToLocalStorage();
+            resetRecurringExpenseForm();
+            renderRecurringExpensesList();
+            renderCashFlowProjection();
+            showNotification('Gasto fijo eliminado', 'success');
+        }
+        
         let cashDiffPeriod = 'month';
         
         function setCashDiffPeriod(period) {
@@ -12832,6 +13538,8 @@ Total de productos a comprar: ${shoppingList.length}
                         deletedProductIds: [],
                         losses: [],
                         returns: [],
+                        recurringExpenses: [],
+                        cashFlowSettings: { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
                         cash: 0,
                         bank: 0,
                         balancesUpdatedAt: 0,
@@ -12893,6 +13601,8 @@ Total de productos a comprar: ${shoppingList.length}
                 deletedProductIds: [],
                 losses: [],
                 returns: [],
+                recurringExpenses: [],
+                cashFlowSettings: { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
                 // autoPromotionConfig eliminado - ahora es una promo normal
                 lastRoundPriceEnabled: false,
                 lastInvoiceType: 'white',
@@ -13140,6 +13850,10 @@ RESULTADOS:
             try {
                 renderCashflow();
             } catch(e) { console.error('Error en renderCashflow:', e); }
+            
+            try {
+                renderCashFlowProjection();
+            } catch(e) { console.error('Error en renderCashFlowProjection:', e); }
             
             try {
                 renderInventory();
@@ -15443,6 +16157,13 @@ RESULTADOS:
                     if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
                     if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
                     if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
+                    if (data.cashFlowSettings && typeof data.cashFlowSettings === 'object') {
+                        appState.cashFlowSettings = {
+                            projectionDays: parseInt(data.cashFlowSettings.projectionDays) || 30,
+                            estimatedDailyIncome: data.cashFlowSettings.estimatedDailyIncome === null ? null : (parseFloat(data.cashFlowSettings.estimatedDailyIncome) || null),
+                            lowBalanceThreshold: parseFloat(data.cashFlowSettings.lowBalanceThreshold) || 0
+                        };
+                    }
                     // Propagar el timestamp de saldos si el remoto es más reciente
                     if (remoteBalancesUpdatedAt > localBalancesUpdatedAt) {
                         appState.balancesUpdatedAt = remoteBalancesUpdatedAt;
@@ -15460,6 +16181,7 @@ RESULTADOS:
                 appState.cashCounts = smartMergeArrays(appState.cashCounts || [], data.cashCounts || []);
                 appState.cashDifferences = smartMergeArrays(appState.cashDifferences || [], data.cashDifferences || []);
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
+                appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
                 // Tomar deletedProductIds de Firebase (la PC es la fuente de verdad), pero si Firebase está vacío no borrar locales
                 if (!remoteLooksEmpty) {
                     appState.deletedProductIds = Array.isArray(data.deletedProductIds) ? data.deletedProductIds : [];
@@ -15488,6 +16210,7 @@ RESULTADOS:
                 appState.cashCounts = smartMergeArrays(appState.cashCounts || [], data.cashCounts || []);
                 appState.cashDifferences = smartMergeArrays(appState.cashDifferences || [], data.cashDifferences || []);
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
+                appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
                 
                 // Para valores simples, usar Firebase solo si es más reciente o no hay datos locales
                 if (isRestore || firebaseTime > localTime || !hasLocalData) {
@@ -15495,6 +16218,13 @@ RESULTADOS:
                     if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
                     if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
                     if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
+                    if (data.cashFlowSettings && typeof data.cashFlowSettings === 'object') {
+                        appState.cashFlowSettings = {
+                            projectionDays: parseInt(data.cashFlowSettings.projectionDays) || 30,
+                            estimatedDailyIncome: data.cashFlowSettings.estimatedDailyIncome === null ? null : (parseFloat(data.cashFlowSettings.estimatedDailyIncome) || null),
+                            lowBalanceThreshold: parseFloat(data.cashFlowSettings.lowBalanceThreshold) || 0
+                        };
+                    }
                 }
                 
                 // cash y bank: usar Firebase solo si el remoto tiene un ajuste de saldos más reciente
@@ -15750,6 +16480,14 @@ RESULTADOS:
                     appState.cashDifferences = Array.isArray(appState.cashDifferences) ? appState.cashDifferences : [];
                     appState.deletedProductIds = Array.isArray(appState.deletedProductIds) ? appState.deletedProductIds : [];
                     appState.losses = Array.isArray(appState.losses) ? appState.losses : [];
+                    appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
+                    if (!appState.cashFlowSettings || typeof appState.cashFlowSettings !== 'object') {
+                        appState.cashFlowSettings = { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 };
+                    } else {
+                        appState.cashFlowSettings.projectionDays = parseInt(appState.cashFlowSettings.projectionDays) || 30;
+                        appState.cashFlowSettings.estimatedDailyIncome = appState.cashFlowSettings.estimatedDailyIncome === null ? null : (parseFloat(appState.cashFlowSettings.estimatedDailyIncome) || null);
+                        appState.cashFlowSettings.lowBalanceThreshold = parseFloat(appState.cashFlowSettings.lowBalanceThreshold) || 0;
+                    }
                     
                     // === MIGRACIÓN: agregar id a arqueos antiguos que no lo tienen ===
                     if (Array.isArray(appState.cashCounts)) {
@@ -15887,7 +16625,7 @@ RESULTADOS:
             
             // Exponer funciones adicionales de venta por peso y sync
             (function exposeAdditionalFunctions() {
-                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup','changeDashboardPeriod','toggleChartMetric','renderChartMetricToggles','toggleDashboardMetric','renderDashboardMetricToggles'];
+                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup','changeDashboardPeriod','toggleChartMetric','renderChartMetricToggles','toggleDashboardMetric','renderDashboardMetricToggles','renderCashFlowProjection','setCashFlowProjectionDays','saveCashFlowEstimatedIncome','resetCashFlowEstimatedIncome','saveCashFlowLowThreshold','openRecurringExpensesModal','closeRecurringExpensesModal','saveRecurringExpense','editRecurringExpense','deleteRecurringExpense','resetRecurringExpenseForm','onRecExpenseFrequencyChange'];
                 for (const name of extraFns) {
                     try {
                         const fn = eval(name);
@@ -16043,6 +16781,81 @@ RESULTADOS:
                 <div class="flex gap-2">
                     <button onclick="closeWeightSaleModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
                     <button onclick="addWeightToCart()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg"><i class="fas fa-cart-plus"></i> Agregar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== GASTOS FIJOS MODAL ==================== -->
+    <div id="recurring-expenses-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-blue-600"><i class="fas fa-calendar-check"></i> Gastos Fijos y Recurrentes</h3>
+                <button onclick="closeRecurringExpensesModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <p class="text-sm text-gray-500 mb-4">Se usan para proyectar el flujo de caja. El pago real se carga manualmente desde Finanzas.</p>
+
+            <input type="hidden" id="rec-expense-edit-id">
+
+            <!-- Lista -->
+            <div id="recurring-expenses-list" class="space-y-2 mb-6 max-h-64 overflow-y-auto">
+                <p class="text-center text-gray-400 py-4 text-sm">Sin gastos fijos registrados</p>
+            </div>
+
+            <!-- Formulario -->
+            <div class="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                <h4 class="font-bold text-gray-700 mb-3 text-sm" id="rec-expense-form-title">Nuevo gasto fijo</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="md:col-span-2">
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Nombre</label>
+                        <input type="text" id="rec-expense-name" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Ej: Alquiler, Luz, Sueldo...">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Monto ($)</label>
+                        <input type="number" id="rec-expense-amount" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm font-bold" placeholder="0" min="0.01" step="0.01">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Frecuencia</label>
+                        <select id="rec-expense-frequency" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm" onchange="onRecExpenseFrequencyChange()">
+                            <option value="daily">Diario</option>
+                            <option value="weekly">Semanal</option>
+                            <option value="biweekly">Quincenal</option>
+                            <option value="monthly" selected>Mensual</option>
+                            <option value="yearly">Anual</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Día de vencimiento</label>
+                        <input type="number" id="rec-expense-due-day" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="1" min="1" max="31" step="1">
+                        <p class="text-[10px] text-gray-400 mt-1" id="rec-expense-due-day-help">Día del mes (1-31)</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Origen</label>
+                        <select id="rec-expense-source" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm">
+                            <option value="cash">💵 Caja</option>
+                            <option value="bank">🏦 Cuenta</option>
+                        </select>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Categoría</label>
+                        <input type="text" id="rec-expense-category" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Ej: Fijos, Impuestos, Sueldos...">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Fecha inicio</label>
+                        <input type="date" id="rec-expense-start-date" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Fecha fin (opcional)</label>
+                        <input type="date" id="rec-expense-end-date" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div class="md:col-span-2 flex items-center gap-2">
+                        <input type="checkbox" id="rec-expense-active" class="w-4 h-4" checked>
+                        <label for="rec-expense-active" class="text-sm text-gray-700">Activo (aparece en la proyección)</label>
+                    </div>
+                </div>
+                <div class="flex gap-2 mt-4">
+                    <button onclick="resetRecurringExpenseForm()" class="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-bold text-sm">Limpiar</button>
+                    <button onclick="saveRecurringExpense()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold text-sm shadow hover:bg-blue-700">Guardar</button>
                 </div>
             </div>
         </div>

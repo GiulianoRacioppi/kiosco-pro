@@ -20,7 +20,7 @@
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
         .fade-in { animation: fadeIn 0.3s ease-in; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        #notifications { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        #notifications { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
         #notifications > * { pointer-events: auto; }
         .notification { animation: slideIn 0.3s ease; }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
@@ -3283,6 +3283,13 @@
                     showNotification('📴 Firebase no disponible - Modo offline', 'info');
                 }
             }, 2000);
+            
+            // Prevenir que la rueda del mouse cambie valores en inputs number
+            document.addEventListener('wheel', function(e) {
+                if (document.activeElement && document.activeElement.type === 'number') {
+                    e.preventDefault();
+                }
+            }, { passive: false });
             
             // Inventory form handler
             const invForm = document.getElementById('add-inventory-form');
@@ -6953,6 +6960,7 @@
                     amount: totalCost,
                     source: method === 'cash' ? 'cash' : 'bank',
                     type: 'purchase',
+                    productId: product.id,
                     timestamp: Date.now()
                 });
                 
@@ -7533,7 +7541,7 @@
                 costPerGram.classList.remove('hidden');
                 weightBadge.classList.remove('hidden');
                 weightPerUnit.textContent = `• ${product.weightPerUnit}g/u`;
-                qtyInput.value = product.weightPerUnit;
+                qtyInput.value = '';
                 qtyInput.min = 1;
                 qtyInput.step = 1;
             } else {
@@ -7542,7 +7550,7 @@
                 costLabel.textContent = 'Costo unitario ($)';
                 costPerGram.classList.add('hidden');
                 weightBadge.classList.add('hidden');
-                qtyInput.value = 1;
+                qtyInput.value = '';
                 qtyInput.min = 1;
                 qtyInput.step = 1;
             }
@@ -7917,12 +7925,13 @@
             
             const isWeight = product.saleByWeight && product.weightPerUnit > 0;
             const qtyInput = document.getElementById('add-stock-qty');
-            const grams = isWeight ? (parseFloat(qtyInput.value) || 0) : 0;
-            const qty = isWeight ? grams : parseInt(qtyInput.value);
+            const qtyRaw = (qtyInput.value || '').trim();
+            const grams = isWeight ? parseFloat(qtyRaw) : 0;
+            const qty = isWeight ? grams : parseInt(qtyRaw);
             const newExpiry = document.getElementById('add-stock-expiry').value;
             
-            if (!product || qty <= 0) {
-                showNotification('Cantidad inválida', 'error');
+            if (!product || qtyRaw === '' || isNaN(qty) || qty <= 0) {
+                showNotification('Ingresá una cantidad válida', 'error');
                 return;
             }
             
@@ -8048,6 +8057,7 @@
                 amount: totalCost,
                 source: addStockPaymentMethod === 'cash' ? 'cash' : 'bank',
                 type: 'restock',
+                productId: product.id,
                 timestamp: Date.now()
             });
             
@@ -8102,15 +8112,22 @@
             }
             
             const isWeight = product.saleByWeight && product.weightPerUnit > 0;
-            container.innerHTML = product.batches.map((batch, index) => `
+            container.innerHTML = product.batches.map((batch, index) => {
+                const units = batch.stock || 0;
+                const grams = isWeight ? Math.round(units * product.weightPerUnit) : units;
+                const unitCost = batch.cost || product.cost || 0;
+                const totalCost = isWeight ? (unitCost * units) : unitCost;
+                const costPerGram = isWeight && product.weightPerUnit ? (unitCost / product.weightPerUnit) : 0;
+                return `
                 <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border batch-row" data-batch-index="${index}" data-orig-qty="${batch.stock}" ${isWeight ? `data-sale-by-weight="true" data-weight-per-unit="${product.weightPerUnit}"` : ''}>
                     <div class="flex-1">
                         <label class="text-xs text-gray-500">${isWeight ? 'Cantidad (g)' : 'Cantidad'}</label>
-                        <input type="number" class="edit-batch-qty w-full border rounded px-2 py-1 text-sm" value="${isWeight ? Math.round(batch.stock * product.weightPerUnit) : batch.stock}" min="0" step="${isWeight ? '1' : '1'}">
+                        <input type="number" class="edit-batch-qty w-full border rounded px-2 py-1 text-sm" value="${grams}" min="0" step="${isWeight ? '1' : '1'}">
                     </div>
                     <div class="flex-1">
-                        <label class="text-xs text-gray-500">Costo unitario</label>
-                        <input type="number" class="edit-batch-cost w-full border rounded px-2 py-1 text-sm" value="${(batch.cost || product.cost || 0).toFixed(2)}" min="0" step="0.01">
+                        <label class="text-xs text-gray-500">${isWeight ? 'Costo de compra' : 'Costo unitario'}</label>
+                        <input type="number" class="edit-batch-cost w-full border rounded px-2 py-1 text-sm" value="${totalCost.toFixed(2)}" min="0" step="0.01">
+                        ${isWeight ? `<p class="text-xs text-blue-600 mt-0.5">Costo: $${formatMoney(costPerGram)}/g • $${formatMoney(unitCost)} por ${product.weightPerUnit}g</p>` : ''}
                     </div>
                     <div class="flex-1">
                         <label class="text-xs text-gray-500">Vencimiento</label>
@@ -8127,7 +8144,8 @@
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
         
         function addEditProdBatchRow() {
@@ -8148,14 +8166,19 @@
                 row.dataset.saleByWeight = 'true';
                 row.dataset.weightPerUnit = product.weightPerUnit;
             }
+            const defaultUnits = isWeight ? 1 : 1;
+            const defaultGrams = isWeight ? product.weightPerUnit : 1;
+            const defaultTotalCost = isWeight ? ((product.cost || 0) * defaultUnits) : (product.cost || 0);
+            const defaultCostPerGram = isWeight && product.weightPerUnit ? ((product.cost || 0) / product.weightPerUnit) : 0;
             row.innerHTML = `
                 <div class="flex-1">
                     <label class="text-xs text-gray-500">${isWeight ? 'Cantidad (g)' : 'Cantidad'}</label>
-                    <input type="number" class="edit-batch-qty w-full border rounded px-2 py-1 text-sm" value="${isWeight ? product.weightPerUnit : '1'}" min="1">
+                    <input type="number" class="edit-batch-qty w-full border rounded px-2 py-1 text-sm" value="${isWeight ? defaultGrams : defaultUnits}" min="1">
                 </div>
                 <div class="flex-1">
-                    <label class="text-xs text-gray-500">Costo unitario</label>
-                    <input type="number" class="edit-batch-cost w-full border rounded px-2 py-1 text-sm" value="${(product.cost || 0).toFixed(2)}" min="0" step="0.01">
+                    <label class="text-xs text-gray-500">${isWeight ? 'Costo de compra' : 'Costo unitario'}</label>
+                    <input type="number" class="edit-batch-cost w-full border rounded px-2 py-1 text-sm" value="${defaultTotalCost.toFixed(2)}" min="0" step="0.01">
+                    ${isWeight ? `<p class="text-xs text-blue-600 mt-0.5">Costo: $${formatMoney(defaultCostPerGram)}/g • $${formatMoney(product.cost || 0)} por ${product.weightPerUnit}g</p>` : ''}
                 </div>
                 <div class="flex-1">
                     <label class="text-xs text-gray-500">Vencimiento</label>
@@ -8352,6 +8375,13 @@
                         qty = qty / weightPerUnit;
                     }
                     
+                    // Para productos por peso, el costo ingresado es el costo TOTAL de la compra
+                    // y se debe convertir a costo por unidad (bolsa)
+                    let unitBatchCost = batchCost;
+                    if (isWeight && batchCost > 0 && qty > 0) {
+                        unitBatchCost = batchCost / qty;
+                    }
+                    
                     if (batchIndex !== undefined) {
                         const idx = parseInt(batchIndex);
                         const orig = product.batches[idx] || {};
@@ -8367,7 +8397,7 @@
                             dateAdded: orig.dateAdded || formatDateISO(appState.activeDate),
                             invoiceType: orig.invoiceType || (document.getElementById('edit-prod-invoice-type').value || 'white'),
                             source: orig.source || domSource || 'cash',
-                            cost: batchCost > 0 ? batchCost : (orig.cost || product.cost || 0),
+                            cost: unitBatchCost > 0 ? unitBatchCost : (orig.cost || product.cost || 0),
                             updatedAt: new Date().toISOString()
                         });
                     } else {
@@ -8380,7 +8410,7 @@
                             dateAdded: formatDateISO(appState.activeDate),
                             invoiceType: document.getElementById('edit-prod-invoice-type').value || 'white',
                             source: domSource,
-                            cost: batchCost > 0 ? batchCost : (product.cost || 0),
+                            cost: unitBatchCost > 0 ? unitBatchCost : (product.cost || 0),
                             updatedAt: new Date().toISOString()
                         });
                     }
@@ -8852,6 +8882,21 @@
             const investment = appState.investments.find(i => i.id === investmentId);
             if (!investment) return;
 
+            // Si tiene productId asociado, abrir el modal de edición correspondiente
+            if (investment.productId) {
+                if (investment.type === 'restock') {
+                    openAddStockModal(investment.productId);
+                } else if (investment.type === 'purchase') {
+                    openEditProductModal(investment.productId);
+                } else {
+                    // Fallback: buscar producto por nombre para investments antiguas
+                    const product = getActiveInventory().find(p => investment.concept.includes(p.name));
+                    if (product) openEditProductModal(product.id);
+                }
+                return;
+            }
+
+            // Edición básica para investments sin productId (datos antiguos)
             const newAmountStr = prompt('Nuevo monto:', investment.amount);
             if (newAmountStr === null) return;
             const newAmount = parseFloat(newAmountStr);
@@ -11249,13 +11294,26 @@
                 
                 document.getElementById('cc-opening').textContent = '$' + formatMoney(openingCash);
                 document.getElementById('cc-sales').textContent = '$' + formatMoney(todayCashSales);
-                document.getElementById('cc-expenses').textContent = '$' + formatMoney(todayCashExpenses + todayCashInvestments);
+                document.getElementById('cc-expenses').textContent = '$' + formatMoney(todayCashExpenses);
+                document.getElementById('cc-investments').textContent = '$' + formatMoney(todayCashInvestments);
                 document.getElementById('cc-expected').textContent = '$' + formatMoney(expected.cash);
                 
                 document.getElementById('cc-opening-bank').textContent = '$' + formatMoney(openingBank);
                 document.getElementById('cc-sales-bank').textContent = '$' + formatMoney(todayBankSales);
-                document.getElementById('cc-expenses-bank').textContent = '$' + formatMoney(todayBankExpenses + todayBankInvestments);
+                document.getElementById('cc-expenses-bank').textContent = '$' + formatMoney(todayBankExpenses);
+                document.getElementById('cc-investments-bank').textContent = '$' + formatMoney(todayBankInvestments);
                 document.getElementById('cc-expected-bank').textContent = '$' + formatMoney(expected.bank);
+                
+                // Log de diagnóstico para ver el desglose exacto
+                console.log('🔍 Arqueo desglose cuenta:', {
+                    openingBank,
+                    todayBankSales,
+                    todayBankExpenses,
+                    todayBankInvestments,
+                    expectedBank: expected.bank,
+                    expenses: appState.expenses.filter(e => e.date === today && e.source === 'bank').map(e => ({ concept: e.concept, amount: e.amount })),
+                    investments: appState.investments.filter(i => i.date === today && i.source === 'bank').map(i => ({ concept: i.concept, amount: i.amount }))
+                });
                 
                 document.getElementById('cash-count-closing').value = '';
                 document.getElementById('cash-count-closing-bank').value = '';
@@ -11560,8 +11618,10 @@
             document.getElementById('loss-cost').value = '';
             document.getElementById('loss-cost-display').textContent = '$0';
             document.getElementById('loss-unit-cost-display').classList.add('hidden');
+            document.getElementById('loss-stock-hint').classList.add('hidden');
             document.getElementById('loss-notes').value = '';
             setLossReason('expired');
+            updateLossCost();
             document.getElementById('loss-modal').classList.add('active');
         }
 
@@ -11571,28 +11631,57 @@
 
         function updateLossCost() {
             const productId = document.getElementById('loss-product').value;
-            const qty = parseInt(document.getElementById('loss-quantity').value) || 0;
+            const qtyInput = document.getElementById('loss-quantity');
             const costDisplay = document.getElementById('loss-cost-display');
             const unitCostDisplay = document.getElementById('loss-unit-cost-display');
             const costInput = document.getElementById('loss-cost');
+            const label = document.getElementById('loss-quantity-label');
+            const hint = document.getElementById('loss-stock-hint');
             
             if (!productId) {
                 costDisplay.textContent = '$0';
                 costInput.value = '';
                 unitCostDisplay.classList.add('hidden');
+                hint.classList.add('hidden');
+                label.textContent = 'Cantidad';
+                qtyInput.step = '1';
+                qtyInput.placeholder = '0';
                 return;
             }
             
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
             
+            const isWeight = product.saleByWeight && product.weightPerUnit > 0;
+            const stock = getProductStock(product);
+            const stockDisplay = isWeight ? `${Math.round(stock * product.weightPerUnit)}g disponibles` : `${stock} unidades disponibles`;
+            
+            label.textContent = isWeight ? 'Cantidad (gramos)' : 'Cantidad';
+            qtyInput.step = isWeight ? '1' : '1';
+            qtyInput.placeholder = isWeight ? '0 g' : '0';
+            hint.textContent = `Stock actual: ${stockDisplay}`;
+            hint.classList.remove('hidden');
+            
+            let units = 0;
+            let grams = 0;
+            if (isWeight) {
+                grams = parseFloat(qtyInput.value) || 0;
+                units = grams / product.weightPerUnit;
+            } else {
+                units = parseInt(qtyInput.value) || 0;
+            }
+            
             const unitCost = product.cost || 0;
-            const totalCost = unitCost * qty;
+            const totalCost = unitCost * units;
             
             costDisplay.textContent = '$' + formatMoney(totalCost);
             costInput.value = totalCost;
             
-            unitCostDisplay.textContent = 'Costo unitario: $' + formatMoney(unitCost) + ' c/u';
+            if (isWeight) {
+                unitCostDisplay.textContent = 'Costo: $' + formatMoney(unitCost / product.weightPerUnit) + '/g • $' + formatMoney(unitCost) + ' por unidad de ' + product.weightPerUnit + 'g';
+            } else {
+                unitCostDisplay.textContent = 'Costo unitario: $' + formatMoney(unitCost) + ' c/u';
+            }
             unitCostDisplay.classList.remove('hidden');
         }
         
@@ -11618,33 +11707,55 @@
 
         function saveLoss() {
             const productId = document.getElementById('loss-product').value;
-            const qty = parseInt(document.getElementById('loss-quantity').value);
-            let cost = parseFloat(document.getElementById('loss-cost').value) || 0;
-            if (cost <= 0) {
-                // Recalcular por si acaso
-                const product = appState.inventory.find(p => p.id === productId);
-                if (product) {
-                    cost = (product.cost || 0) * qty;
-                }
-            }
+            const qtyInput = document.getElementById('loss-quantity');
             const notes = document.getElementById('loss-notes').value || '';
             
-            if (!productId || !qty || qty <= 0) {
-                showNotification('Seleccione producto y cantidad válida', 'error');
+            if (!productId) {
+                showNotification('Seleccione un producto', 'error');
                 return;
             }
             
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
             
+            const isWeight = product.saleByWeight && product.weightPerUnit > 0;
+            let units = 0;
+            let grams = 0;
+            let qtyDisplay = '';
+            
+            if (isWeight) {
+                grams = parseFloat(qtyInput.value) || 0;
+                if (grams <= 0) {
+                    showNotification('Ingrese una cantidad válida en gramos', 'error');
+                    return;
+                }
+                units = grams / product.weightPerUnit;
+                qtyDisplay = `${Math.round(grams)}g`;
+            } else {
+                units = parseInt(qtyInput.value) || 0;
+                if (units <= 0) {
+                    showNotification('Ingrese una cantidad válida', 'error');
+                    return;
+                }
+                qtyDisplay = `${units} unidades`;
+            }
+            
             const stock = getProductStock(product);
-            if (qty > stock) {
+            const stockGrams = isWeight ? stock * product.weightPerUnit : stock;
+            const requested = isWeight ? grams : units;
+            
+            if (requested > stockGrams) {
                 showNotification('No hay suficiente stock para registrar la merma', 'error');
                 return;
             }
             
+            let cost = parseFloat(document.getElementById('loss-cost').value) || 0;
+            if (cost <= 0) {
+                cost = (product.cost || 0) * units;
+            }
+            
             // Restar del lote que vence primero (FEFO)
-            let remaining = qty;
+            let remaining = units;
             if (product.batches && product.batches.length > 0) {
                 product.batches.sort((a, b) => {
                     if (!a.expiry) return 1;
@@ -11658,7 +11769,7 @@
                 }
                 product.batches = product.batches.filter(b => b.stock > 0);
             } else if (product.stock) {
-                product.stock -= qty;
+                product.stock -= units;
             }
             
             if (!appState.losses) appState.losses = [];
@@ -11667,7 +11778,8 @@
                 date: formatDateISO(appState.activeDate || new Date()),
                 productId: productId,
                 productName: product.name,
-                quantity: qty,
+                quantity: units,
+                grams: isWeight ? grams : null,
                 reason: lossReason,
                 cost: cost,
                 notes: notes,
@@ -11677,7 +11789,7 @@
             saveToLocalStorage();
             renderAll();
             closeLossModal();
-            showNotification(`Merma registrada: ${qty} x ${product.name}`, 'success');
+            showNotification(`Merma registrada: ${qtyDisplay} de ${product.name}`, 'success');
         }
 
         // ==================== DEVOLUCIONES ====================
@@ -12455,7 +12567,7 @@
                     <tr>
                         <td class="px-4 py-3 text-sm text-gray-600">${loss.date || '-'}</td>
                         <td class="px-4 py-3 font-medium text-gray-900">${escapeHtml(loss.productName || '-')}</td>
-                        <td class="px-4 py-3 text-center font-bold text-gray-700">${loss.quantity || 0}</td>
+                        <td class="px-4 py-3 text-center font-bold text-gray-700">${loss.grams ? Math.round(loss.grams) + 'g' : (loss.quantity || 0)}</td>
                         <td class="px-4 py-3">
                             <span class="px-2 py-1 rounded-full text-xs font-bold ${reasonClasses[reason] || reasonClasses.other}">${reasonLabels[reason] || 'Otro'}</span>
                         </td>
@@ -12500,21 +12612,24 @@
             
             // Devolver stock al producto
             if (product) {
+                const isWeight = product.saleByWeight && product.weightPerUnit > 0;
+                const restoreUnits = (isWeight && loss.grams) ? (loss.grams / product.weightPerUnit) : loss.quantity;
+                
                 if (product.batches && product.batches.length > 0) {
                     // Agregar al primer lote existente o crear uno nuevo
                     const firstBatch = product.batches[0];
                     if (firstBatch) {
-                        firstBatch.stock += loss.quantity;
+                        firstBatch.stock += restoreUnits;
                     } else {
                         product.batches.push({
-                            stock: loss.quantity,
+                            stock: restoreUnits,
                             cost: product.cost || 0,
                             date: formatDateISO(new Date()),
                             source: 'cash'
                         });
                     }
                 } else {
-                    product.stock = (product.stock || 0) + loss.quantity;
+                    product.stock = (product.stock || 0) + restoreUnits;
                 }
             }
             
@@ -16662,14 +16777,16 @@ RESULTADOS:
                     <p class="font-bold text-gray-700 mb-1">💵 Caja (efectivo)</p>
                     <div class="flex justify-between"><span>Apertura:</span><span class="font-bold" id="cc-opening">$0</span></div>
                     <div class="flex justify-between"><span>Ventas efectivo:</span><span class="font-bold text-green-600" id="cc-sales">$0</span></div>
-                    <div class="flex justify-between"><span>Gastos/Retiros efectivo:</span><span class="font-bold text-red-600" id="cc-expenses">$0</span></div>
+                    <div class="flex justify-between"><span>Gastos efectivo:</span><span class="font-bold text-red-600" id="cc-expenses">$0</span></div>
+                    <div class="flex justify-between"><span>Compras efectivo:</span><span class="font-bold text-orange-600" id="cc-investments">$0</span></div>
                     <div class="flex justify-between"><span>Esperado caja:</span><span class="font-bold text-blue-600" id="cc-expected">$0</span></div>
                 </div>
                 <div class="bg-blue-50 rounded-lg p-3 space-y-2 text-sm">
                     <p class="font-bold text-gray-700 mb-1">🏦 Cuenta (banco)</p>
                     <div class="flex justify-between"><span>Apertura:</span><span class="font-bold" id="cc-opening-bank">$0</span></div>
                     <div class="flex justify-between"><span>Ventas débito:</span><span class="font-bold text-green-600" id="cc-sales-bank">$0</span></div>
-                    <div class="flex justify-between"><span>Gastos/Retiros débito:</span><span class="font-bold text-red-600" id="cc-expenses-bank">$0</span></div>
+                    <div class="flex justify-between"><span>Gastos débito:</span><span class="font-bold text-red-600" id="cc-expenses-bank">$0</span></div>
+                    <div class="flex justify-between"><span>Compras débito:</span><span class="font-bold text-orange-600" id="cc-investments-bank">$0</span></div>
                     <div class="flex justify-between"><span>Esperado cuenta:</span><span class="font-bold text-blue-600" id="cc-expected-bank">$0</span></div>
                 </div>
                 
@@ -16907,8 +17024,9 @@ RESULTADOS:
                     <p id="loss-unit-cost-display" class="text-xs text-gray-500 mt-1 hidden"></p>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Cantidad</label>
-                    <input type="number" id="loss-quantity" class="w-full border-2 border-red-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="1" step="1" oninput="updateLossCost()">
+                    <label id="loss-quantity-label" class="block text-sm font-medium text-gray-700 mb-2">Cantidad</label>
+                    <input type="number" id="loss-quantity" class="w-full border-2 border-red-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0.001" step="1" oninput="updateLossCost()">
+                    <p id="loss-stock-hint" class="text-xs text-gray-500 mt-1 hidden"></p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Motivo</label>

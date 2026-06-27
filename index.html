@@ -634,7 +634,10 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Proveedor</label>
-                    <input type="text" id="edit-prod-supplier" class="w-full border rounded-lg px-3 py-2" placeholder="Nombre del proveedor">
+                    <select id="edit-prod-supplier" class="w-full border rounded-lg px-3 py-2" onchange="onEditSupplierChange()">
+                        <option value="">Sin proveedor</option>
+                    </select>
+                    <input type="hidden" id="edit-prod-supplier-phone">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">📅 Días de Compra del Proveedor</label>
@@ -1405,7 +1408,7 @@
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Categoría</label>
-                        <select id="inv-category" class="w-full border rounded-lg px-3 py-2 text-sm" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-cost').focus();}">
+                        <select id="inv-category" class="w-full border rounded-lg px-3 py-2 text-sm" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-supplier').focus();}">
                             <option value="bebidas">Bebidas</option>
                             <option value="cervezas">Cervezas</option>
                             <option value="snacks">Snacks</option>
@@ -1418,6 +1421,25 @@
                             <option value="comidas">Comidas</option>
                             <option value="caramelos">Caramelos</option>
                         </select>
+                    </div>
+                    <div class="lg:col-span-2">
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Proveedor</label>
+                        <select id="inv-supplier" class="w-full border rounded-lg px-3 py-2 text-sm" onchange="onInvSupplierChange()" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-cost').focus();}">
+                            <option value="">Sin proveedor</option>
+                        </select>
+                        <input type="hidden" id="inv-supplier-phone">
+                    </div>
+                    <div class="lg:col-span-2">
+                        <label class="block text-xs font-medium text-gray-600 mb-1">📅 Días de compra del proveedor</label>
+                        <div class="flex gap-1 flex-wrap" id="inv-buy-days">
+                            <button type="button" onclick="toggleBuyDay('inv', 1)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="1">Lun</button>
+                            <button type="button" onclick="toggleBuyDay('inv', 2)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="2">Mar</button>
+                            <button type="button" onclick="toggleBuyDay('inv', 3)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="3">Mié</button>
+                            <button type="button" onclick="toggleBuyDay('inv', 4)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="4">Jue</button>
+                            <button type="button" onclick="toggleBuyDay('inv', 5)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="5">Vie</button>
+                            <button type="button" onclick="toggleBuyDay('inv', 6)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="6">Sáb</button>
+                            <button type="button" onclick="toggleBuyDay('inv', 0)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="0">Dom</button>
+                        </div>
                     </div>
                     <div>
                         <label id="inv-cost-label" class="block text-xs font-medium text-gray-600 mb-1">Costo ($)</label>
@@ -1535,7 +1557,8 @@
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Stock Actual</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Stock Mínimo</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Comprar</th>
-                                        <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Demanda/Sem</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Prom/Día</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Días Stock</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Prioridad</th>
                                     </tr>
                                 </thead>
@@ -2467,6 +2490,71 @@
                     </div>
                 </div>
 
+                <!-- Proveedores -->
+                <div class="bg-white rounded-2xl p-6 shadow-lg lg:col-span-2">
+                    <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-teal-600">
+                        <i class="fas fa-truck"></i> Proveedores
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Nuevo proveedor</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="new-supplier-name" class="flex-1 border-2 border-teal-200 rounded-xl px-4 py-2" placeholder="Nombre del proveedor" onkeydown="if(event.key==='Enter'){event.preventDefault();addSupplier();}">
+                                <input type="text" id="new-supplier-phone" class="w-40 border-2 border-teal-200 rounded-xl px-4 py-2" placeholder="WhatsApp (opcional)" onkeydown="if(event.key==='Enter'){event.preventDefault();addSupplier();}">
+                                <button onclick="addSupplier()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl font-bold">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Categorías que vende cada proveedor</label>
+                            <div class="flex gap-2">
+                                <select id="supplier-select-for-categories" class="flex-1 border-2 border-teal-200 rounded-xl px-4 py-2" onchange="renderSupplierCategories()">
+                                    <option value="">Seleccionar proveedor...</option>
+                                </select>
+                                <select id="supplier-category-to-add" class="flex-1 border-2 border-teal-200 rounded-xl px-4 py-2">
+                                    <option value="">Categoría...</option>
+                                    <option value="snacks">Snacks</option>
+                                    <option value="subproductos">Subproductos</option>
+                                    <option value="bebidas">Bebidas</option>
+                                    <option value="cervezas">Cervezas</option>
+                                    <option value="golosinas">Golosinas</option>
+                                    <option value="galletitas">Galletitas</option>
+                                    <option value="alfajores">Alfajores</option>
+                                    <option value="despensa">Despensa</option>
+                                    <option value="lacteos">Lácteos</option>
+                                    <option value="comidas">Comidas</option>
+                                    <option value="caramelos">Caramelos</option>
+                                    <option value="basicos">Básicos</option>
+                                    <option value="limpieza">Limpieza</option>
+                                    <option value="combos">Combos</option>
+                                </select>
+                                <button onclick="addCategoryToSupplier()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl font-bold">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                            <div id="supplier-categories-list" class="flex flex-wrap gap-2 mt-2"></div>
+                        </div>
+                    </div>
+                    <div id="suppliers-list" class="space-y-2 max-h-64 overflow-y-auto">
+                        <p class="text-gray-400 text-center py-4">No hay proveedores registrados</p>
+                    </div>
+                </div>
+
+                <!-- Días y Horarios de Apertura -->
+                <div class="bg-white rounded-2xl p-6 shadow-lg lg:col-span-2">
+                    <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-indigo-600">
+                        <i class="fas fa-clock"></i> Días y Horarios de Apertura
+                    </h3>
+                    <p class="text-sm text-gray-600 mb-4">Marcá los días que abrís y los horarios. Esto afecta el cálculo de promedios de venta y las predicciones.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" id="business-hours-grid">
+                        <!-- Generated by JS -->
+                    </div>
+                    <button onclick="saveBusinessHours()" class="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg">
+                        <i class="fas fa-save"></i> Guardar Horarios
+                    </button>
+                </div>
+
                 <!-- Sincronización -->
                 <div class="bg-white rounded-2xl p-6 shadow-lg">
                     <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-indigo-600">
@@ -3235,6 +3323,18 @@
             mercadoCreditoFee: 5,
             // Configuración de stock
             stockTargetDays: 7,
+            // Proveedores
+            suppliers: [],
+            // Días y horarios de apertura (todos abiertos por defecto)
+            businessHours: [
+                { day: 0, open: true, openTime: '08:00', closeTime: '22:00' },
+                { day: 1, open: true, openTime: '08:00', closeTime: '22:00' },
+                { day: 2, open: true, openTime: '08:00', closeTime: '22:00' },
+                { day: 3, open: true, openTime: '08:00', closeTime: '22:00' },
+                { day: 4, open: true, openTime: '08:00', closeTime: '22:00' },
+                { day: 5, open: true, openTime: '08:00', closeTime: '22:00' },
+                { day: 6, open: true, openTime: '08:00', closeTime: '22:00' }
+            ],
             // autoPromotionConfig eliminado - ahora es una promo de tipo threshold normal
             // Tracking de facturación blanco/negro
             lastRoundPriceEnabled: false,
@@ -3609,6 +3709,7 @@
                 }
             }
             if (sectionId === 'inventory') {
+                populateSupplierSelects();
                 renderInventory();
                 updateStockKPIs();
                 restoreInventoryFormState();
@@ -7418,16 +7519,16 @@
             }
         }
 
-        // Calcular días hasta la próxima compra posible según buyDays del proveedor
+        // Calcular días hasta la próxima compra posible según buyDays del proveedor (solo días abiertos)
         function getDaysUntilNextBuy(product) {
             if (!product.buyDays || product.buyDays.length === 0) return null;
             
             const today = new Date();
             const todayDayOfWeek = today.getDay();
             
-            for (let i = 0; i <= 7; i++) {
+            for (let i = 0; i <= 14; i++) {
                 const checkDay = (todayDayOfWeek + i) % 7;
-                if (product.buyDays.includes(checkDay)) {
+                if (isOpenDay(checkDay) && product.buyDays.includes(checkDay)) {
                     return i; // 0 = hoy, 1 = mañana, etc.
                 }
             }
@@ -8380,8 +8481,9 @@
             renderEditProdBatches(product);
             
             document.getElementById('edit-prod-min').value = product.min || 10;
+            populateSupplierSelects();
             document.getElementById('edit-prod-supplier').value = product.supplier || '';
-            document.getElementById('edit-prod-supplier-phone').value = product.supplierPhone || '';
+            onEditSupplierChange();
             
             // Cargar días de compra
             setBuyDays('edit', product.buyDays || []);
@@ -12614,6 +12716,59 @@
         // ==================== PREDICTIONS ====================
         // Cache para estadísticas de productos
         const statsCache = new Map();
+
+        // ===== Helpers de días/horarios de apertura =====
+        function getBusinessHoursConfig(dayIndex) {
+            const hours = Array.isArray(appState.businessHours) ? appState.businessHours : [];
+            return hours.find(bh => bh.day === dayIndex) || { day: dayIndex, open: true, openTime: '08:00', closeTime: '22:00' };
+        }
+
+        function isOpenDay(dayIndex) {
+            return !!getBusinessHoursConfig(dayIndex).open;
+        }
+
+        function countOpenDaysBetween(startDate, endDate) {
+            let count = 0;
+            const d = new Date(startDate);
+            const end = new Date(endDate);
+            d.setHours(0, 0, 0, 0);
+            end.setHours(0, 0, 0, 0);
+            while (d <= end) {
+                if (isOpenDay(d.getDay())) count++;
+                d.setDate(d.getDate() + 1);
+            }
+            return count;
+        }
+
+        function countOpenDaysForward(fromDate, daysAhead) {
+            // Cuenta cuántos días calendario hacen falta para obtener `daysAhead` días abiertos
+            let calendarDays = 0;
+            let openDays = 0;
+            const d = new Date(fromDate);
+            d.setHours(0, 0, 0, 0);
+            while (openDays < daysAhead) {
+                d.setDate(d.getDate() + 1);
+                calendarDays++;
+                if (isOpenDay(d.getDay())) openDays++;
+                // Seguridad: no iterar más de 2 años
+                if (calendarDays > 730) break;
+            }
+            return { calendarDays, openDays };
+        }
+
+        function getNextOpenDates(fromDate, count) {
+            const dates = [];
+            const d = new Date(fromDate);
+            d.setHours(0, 0, 0, 0);
+            while (dates.length < count) {
+                d.setDate(d.getDate() + 1);
+                if (isOpenDay(d.getDay())) {
+                    dates.push(new Date(d));
+                }
+                if (dates.length > count + 365) break; // seguridad
+            }
+            return dates;
+        }
         
         function calculateProductStats(productId) {
             // Verificar cache
@@ -12646,27 +12801,34 @@
                 return sum + (item ? item.quantity : 0);
             }, 0);
 
-            const uniqueDays = new Set(productSales.map(s => s.date)).size;
-            const avgDaily = uniqueDays > 0 ? totalQty / uniqueDays : 0;
+            const saleDates = [...new Set(productSales.map(s => s.date))].sort();
+            // Promedio diario sobre días abiertos transcurridos (primer venta -> hoy)
+            const firstSaleDateStr = saleDates[0];
+            const todayStr = formatDateISO(new Date());
+            const endDateForAvgStr = saleDates[saleDates.length - 1] > todayStr ? saleDates[saleDates.length - 1] : todayStr;
+            const firstSaleDate = new Date(firstSaleDateStr + 'T00:00:00');
+            const endDateForAvg = new Date(endDateForAvgStr + 'T00:00:00');
+            const openDaysBetween = countOpenDaysBetween(firstSaleDate, endDateForAvg);
+            const avgDaily = openDaysBetween > 0 ? totalQty / openDaysBetween : 0;
             
-            // Análisis por día de la semana (0=Domingo, 6=Sábado)
+            // Análisis por día de la semana (0=Domingo, 6=Sábado) - solo días abiertos con ventas
             const dayOfWeekStats = [0, 0, 0, 0, 0, 0, 0];
-            const dayOfWeekCounts = [0, 0, 0, 0, 0, 0, 0];
+            const dayOfWeekOpenCounts = [0, 0, 0, 0, 0, 0, 0]; // días abiertos de ese día de semana con venta
             
             productSales.forEach(sale => {
                 if (!sale.date) return;
                 const date = new Date(sale.date + 'T00:00:00'); // Forzar hora local
                 const dayOfWeek = date.getDay();
                 const item = sale.items.find(i => i.productId === productId);
-                if (item) {
+                if (item && isOpenDay(dayOfWeek)) {
                     dayOfWeekStats[dayOfWeek] += item.quantity;
-                    dayOfWeekCounts[dayOfWeek]++;
+                    dayOfWeekOpenCounts[dayOfWeek]++;
                 }
             });
             
-            // Promedio por día de la semana
+            // Promedio por día de la semana: unidades / días abiertos de ese día con ventas
             const avgByDayOfWeek = dayOfWeekStats.map((total, idx) => 
-                dayOfWeekCounts[idx] > 0 ? total / dayOfWeekCounts[idx] : avgDaily * 0.8
+                dayOfWeekOpenCounts[idx] > 0 ? total / dayOfWeekOpenCounts[idx] : avgDaily * 0.8
             );
             
             // Detectar tendencia (últimos 7 días vs días anteriores)
@@ -12693,7 +12855,8 @@
             
             const result = {
                 totalSold: totalQty,
-                uniqueDays: uniqueDays,
+                uniqueDays: saleDates.length,
+                openDaysBetween: openDaysBetween,
                 avgDaily: avgDaily,
                 avgByDayOfWeek: avgByDayOfWeek,
                 recentAvg: recentAvg,
@@ -12731,16 +12894,33 @@
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             
-            const totalDays = Math.max(1, Math.floor((today - firstSaleDate) / (1000 * 60 * 60 * 24)) + 1);
-            const numPeriods = Math.max(1, Math.ceil(totalDays / periodDays));
+            // Usar días abiertos como denominador de períodos
+            const totalOpenDays = Math.max(1, countOpenDaysBetween(firstSaleDate, today));
+            const numPeriods = Math.max(1, Math.ceil(totalOpenDays / periodDays));
             const periodTotals = new Array(numPeriods).fill(0);
+            
+            function getOpenDayIndex(saleDate, baseDate) {
+                // Cuenta cuántos días abiertos han pasado desde baseDate (exclusive) hasta saleDate (inclusive)
+                let count = 0;
+                const d = new Date(baseDate);
+                d.setHours(0, 0, 0, 0);
+                const end = new Date(saleDate);
+                end.setHours(0, 0, 0, 0);
+                while (d < end) {
+                    d.setDate(d.getDate() + 1);
+                    if (isOpenDay(d.getDay())) count++;
+                    if (count > 10000) break;
+                }
+                return count;
+            }
             
             sortedSales.forEach(sale => {
                 if (!sale.date) return;
                 const saleDate = new Date(sale.date + 'T00:00:00');
                 saleDate.setHours(0, 0, 0, 0);
-                const daysDiff = Math.floor((saleDate - firstSaleDate) / (1000 * 60 * 60 * 24));
-                const periodIndex = Math.floor(daysDiff / periodDays);
+                if (!isOpenDay(saleDate.getDay())) return; // Ignorar ventas en días cerrados
+                const openDayIndex = getOpenDayIndex(saleDate, firstSaleDate);
+                const periodIndex = Math.floor(openDayIndex / periodDays);
                 if (periodIndex >= 0 && periodIndex < numPeriods) {
                     const item = sale.items.find(i => i.productId === productId);
                     if (item) {
@@ -12764,9 +12944,10 @@
             const predictions = [];
             let totalDemand = 0;
             
-            for (let i = 1; i <= daysAhead; i++) {
-                const futureDate = new Date(today);
-                futureDate.setDate(today.getDate() + i);
+            // Predecir sobre los próximos `daysAhead` días ABIERTOS
+            const futureOpenDates = getNextOpenDates(today, daysAhead);
+            
+            futureOpenDates.forEach(futureDate => {
                 const dayOfWeek = futureDate.getDay();
                 
                 // Base: promedio del día de la semana correspondiente
@@ -12793,7 +12974,7 @@
                     demand: demand,
                     confidence: Math.min(95, Math.max(50, 100 - Math.abs(stats.trend)))
                 });
-            }
+            });
             
             return {
                 product: product,
@@ -12845,9 +13026,9 @@
                 const prediction = predictDemand(product.id, targetDays);
                 if (!prediction || !prediction.stats) return;
                 
-                // Demanda promedio por período (ej. semana si targetDays = 7)
+                // Demanda promedio por período (sobre días abiertos)
                 const avgPeriodDemand = prediction.stats.avgPeriodDemand || 0;
-                // Demanda diaria real para calcular días hasta agotarse
+                // Demanda diaria real (por día abierto) para calcular días hasta agotarse
                 const avgDaily = targetDays > 0 ? (avgPeriodDemand / targetDays) : (prediction.stats.avgDaily || 0);
                 const currentStock = getProductStock(product);
                 const minStock = parseInt(product.min) || 5;
@@ -12869,15 +13050,15 @@
                 const daysUntilStockout = avgDaily > 0 ? 
                     Math.floor(currentStock / avgDaily) : 999;
                 
-                // Calcular próximo día de compra
+                // Calcular próximo día de compra (solo días abiertos)
                 let nextBuyDay = null;
                 let daysUntilBuy = null;
                 
                 if (product.buyDays && product.buyDays.length > 0) {
-                    // Encontrar el próximo día de compra
+                    // Encontrar el próximo día de compra abierto
                     for (let i = 0; i <= 14; i++) {
                         const checkDay = (todayDayOfWeek + i) % 7;
-                        if (product.buyDays.includes(checkDay)) {
+                        if (isOpenDay(checkDay) && product.buyDays.includes(checkDay)) {
                             nextBuyDay = checkDay;
                             daysUntilBuy = i;
                             break;
@@ -12886,8 +13067,6 @@
                 }
                 
                 // Calcular vencimiento óptimo
-                // Si se vende X por día, y compro Y unidades, me debe durar Y/X días
-                // Agregamos 30% de margen de seguridad
                 const daysOfStock = suggestedQty / Math.max(avgDaily, 0.1); // Evitar división por cero
                 const optimalExpiryDays = Math.ceil(daysOfStock * 1.3);
                 const optimalExpiryDate = new Date(today);
@@ -12906,6 +13085,9 @@
                     priority = 'CRÍTICO';
                 }
                 
+                const supplierName = getSupplierName(product);
+                const supplierObj = getSupplierByName(product.supplier);
+                
                 list.push({
                     product: product,
                     currentStock: currentStock,
@@ -12920,18 +13102,24 @@
                     priority: priority,
                     trend: prediction.stats.trend || 0,
                     avgDaily: avgDaily,
-                    supplier: product.supplier || 'Sin proveedor'
+                    supplier: supplierName,
+                    supplierObj: supplierObj
                 });
             });
             
+            // Ordenar por prioridad (críticos primero), luego por menor stock, luego por rotación
+            const priorityOrder = { 'CRÍTICO': 0, 'ALTA': 1, 'MEDIA': 2, 'BAJA': 3 };
             return list.sort((a, b) => {
-                // Ordenar por stock actual ascendente (del que menos stock tiene al que más)
+                if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+                    return priorityOrder[a.priority] - priorityOrder[b.priority];
+                }
+                if (a.daysUntilStockout !== b.daysUntilStockout) {
+                    return a.daysUntilStockout - b.daysUntilStockout;
+                }
                 if (a.currentStock !== b.currentStock) {
                     return a.currentStock - b.currentStock;
                 }
-                // Desempate por prioridad
-                const priorityOrder = { 'CRÍTICO': 0, 'ALTA': 1, 'MEDIA': 2, 'BAJA': 3 };
-                return priorityOrder[a.priority] - priorityOrder[b.priority];
+                return b.avgDaily - a.avgDaily;
             });
         }
         
@@ -13314,38 +13502,57 @@
                 `;
             }
             
-            // Generar y renderizar lista de compras (ordenada por stock ascendente)
+            // Generar y renderizar lista de compras (agrupada por proveedor)
             const shoppingList = generateShoppingList();
-            
-            // Ordenar por stock actual ascendente (menor stock primero)
-            shoppingList.sort((a, b) => a.currentStock - b.currentStock);
-            
             const shoppingContainer = document.getElementById('auto-shopping-list');
             if (shoppingContainer) {
                 if (shoppingList.length === 0) {
-                    shoppingContainer.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-400"><i class="fas fa-check-circle text-4xl mb-2"></i><br>No hay productos que requieran reposición</td></tr>';
+                    shoppingContainer.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400"><i class="fas fa-check-circle text-4xl mb-2"></i><br>No hay productos que requieran reposición</td></tr>';
                 } else {
-                    shoppingContainer.innerHTML = shoppingList.map(item => {
+                    const criticalItems = shoppingList.filter(i => i.priority === 'CRÍTICO' || i.priority === 'ALTA');
+                    const normalItems = shoppingList.filter(i => i.priority === 'MEDIA' || i.priority === 'BAJA');
+                    
+                    function groupBySupplier(items) {
+                        const groups = {};
+                        items.forEach(item => {
+                            const key = item.supplier || 'Sin proveedor';
+                            if (!groups[key]) groups[key] = { supplier: item.supplierObj, items: [] };
+                            groups[key].items.push(item);
+                        });
+                        // Ordenar proveedores: primero los que tengan críticos, luego alfabético
+                        return Object.entries(groups).sort((a, b) => {
+                            const aHasCritical = a[1].items.some(i => i.priority === 'CRÍTICO');
+                            const bHasCritical = b[1].items.some(i => i.priority === 'CRÍTICO');
+                            if (aHasCritical !== bHasCritical) return bHasCritical - aHasCritical;
+                            return a[0].localeCompare(b[0]);
+                        });
+                    }
+                    
+                    function renderItemRow(item) {
                         const minStock = parseInt(item.product.min) || 5;
-                        const avgWeekly = item.weeklyDemand;
+                        const avgDailyDisplay = item.avgDaily > 0 ? fmtNumber(item.avgDaily, 2) : '-';
+                        const stockDisplay = item.product.saleByWeight && item.product.weightPerUnit ? Math.round(item.currentStock * item.product.weightPerUnit) + 'g' : item.currentStock;
+                        const buyDisplay = item.product.saleByWeight && item.product.weightPerUnit ? Math.round(item.suggestedQty * item.product.weightPerUnit) + 'g' : item.suggestedQty + ' u.';
                         return `
                         <tr class="hover:bg-gray-50 border-l-4 ${item.priority === 'CRÍTICO' ? 'border-red-500' : item.priority === 'ALTA' ? 'border-orange-500' : item.priority === 'MEDIA' ? 'border-yellow-500' : 'border-green-500'}">
                             <td class="px-4 py-3">
                                 <div class="font-medium text-gray-900">${item.product.name}</div>
-                                <div class="text-xs text-gray-500">${item.supplier}${item.nextBuyDay !== null ? ' • Próx.compra: ' + item.buyDayName : ''}</div>
+                                ${item.nextBuyDay !== null ? `<div class="text-xs text-gray-500">Próx.compra: ${item.buyDayName}</div>` : ''}
                             </td>
                             <td class="px-4 py-3 text-center">
-                                <span class="${item.currentStock === 0 ? 'text-red-600 font-bold' : 'text-gray-600'}">${item.product.saleByWeight && item.product.weightPerUnit ? Math.round(item.currentStock * item.product.weightPerUnit) + 'g' : item.currentStock}</span>
+                                <span class="${item.currentStock === 0 ? 'text-red-600 font-bold' : 'text-gray-600'}">${stockDisplay}</span>
                             </td>
                             <td class="px-4 py-3 text-center">
                                 <span class="text-gray-500">${minStock}</span>
                             </td>
                             <td class="px-4 py-3 text-center">
-                                <span class="font-bold text-blue-600">${item.suggestedQty} u.</span>
+                                <span class="font-bold text-blue-600">${buyDisplay}</span>
                             </td>
                             <td class="px-4 py-3 text-center">
-                                <div class="text-sm text-gray-600">${fmtNumber(avgWeekly, 1)}/sem</div>
-                                <div class="text-xs ${item.daysUntilStockout <= 3 ? 'text-red-500 font-bold' : 'text-gray-400'}">Agota en ${item.daysUntilStockout}d</div>
+                                <span class="text-sm text-gray-600">${avgDailyDisplay}</span>
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="text-xs ${item.daysUntilStockout <= 3 ? 'text-red-500 font-bold' : 'text-gray-400'}">${item.daysUntilStockout} días</span>
                             </td>
                             <td class="px-4 py-3 text-center">
                                 <span class="px-2 py-1 rounded-full text-xs font-bold ${item.priority === 'CRÍTICO' ? 'bg-red-100 text-red-700' : item.priority === 'ALTA' ? 'bg-orange-100 text-orange-700' : item.priority === 'MEDIA' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}">
@@ -13353,8 +13560,27 @@
                                 </span>
                             </td>
                         </tr>
-                    `;
-                    }).join('');
+                        `;
+                    }
+                    
+                    let html = '';
+                    if (criticalItems.length > 0) {
+                        html += `<tr class="bg-red-50"><td colspan="7" class="px-4 py-2 font-bold text-red-700 uppercase text-xs">🔴 Críticos / Alta prioridad (${criticalItems.length})</td></tr>`;
+                        groupBySupplier(criticalItems).forEach(([supplierName, group]) => {
+                            const phone = group.supplier ? (group.supplier.phone || '') : '';
+                            html += `<tr class="bg-teal-50"><td colspan="7" class="px-4 py-2 font-bold text-teal-700 text-sm">🚛 ${escapeHtml(supplierName)} ${phone ? `<span class="text-xs font-normal text-gray-500">(${escapeHtml(phone)})</span>` : ''}</td></tr>`;
+                            html += group.items.map(renderItemRow).join('');
+                        });
+                    }
+                    if (normalItems.length > 0) {
+                        html += `<tr class="bg-yellow-50"><td colspan="7" class="px-4 py-2 font-bold text-yellow-700 uppercase text-xs">🟡 No críticos (${normalItems.length})</td></tr>`;
+                        groupBySupplier(normalItems).forEach(([supplierName, group]) => {
+                            const phone = group.supplier ? (group.supplier.phone || '') : '';
+                            html += `<tr class="bg-teal-50"><td colspan="7" class="px-4 py-2 font-bold text-teal-700 text-sm">🚛 ${escapeHtml(supplierName)} ${phone ? `<span class="text-xs font-normal text-gray-500">(${escapeHtml(phone)})</span>` : ''}</td></tr>`;
+                            html += group.items.map(renderItemRow).join('');
+                        });
+                    }
+                    shoppingContainer.innerHTML = html;
                 }
             }
             
@@ -13596,23 +13822,21 @@
             const today = new Date();
             const dateStr = today.toLocaleDateString('es-ES');
             
-            // Agrupar por día de compra
-            const groupedByDay = {};
-            const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+            // Agrupar por proveedor
+            const groupedBySupplier = {};
             
             shoppingList.forEach(item => {
-                const dayName = item.buyDayName || 'Sin definir';
-                if (!groupedByDay[dayName]) groupedByDay[dayName] = [];
-                groupedByDay[dayName].push(item);
+                const supplierName = item.supplier || 'Sin proveedor';
+                if (!groupedBySupplier[supplierName]) groupedBySupplier[supplierName] = { supplier: item.supplierObj, items: [] };
+                groupedBySupplier[supplierName].items.push(item);
             });
             
-            // Ordenar días
-            const sortedDays = Object.keys(groupedByDay).sort((a, b) => {
-                const aIndex = dayNames.indexOf(a);
-                const bIndex = dayNames.indexOf(b);
-                if (a === 'Sin definir') return 1;
-                if (b === 'Sin definir') return -1;
-                return aIndex - bIndex;
+            // Ordenar proveedores: primero con items críticos, luego alfabético
+            const sortedSuppliers = Object.entries(groupedBySupplier).sort((a, b) => {
+                const aHasCritical = a[1].items.some(i => i.priority === 'CRÍTICO');
+                const bHasCritical = b[1].items.some(i => i.priority === 'CRÍTICO');
+                if (aHasCritical !== bHasCritical) return bHasCritical - aHasCritical;
+                return a[0].localeCompare(b[0]);
             });
             
             // Generar texto
@@ -13623,31 +13847,34 @@ Total de productos a comprar: ${shoppingList.length}
 
 `;
             
-            sortedDays.forEach(dayName => {
-                const items = groupedByDay[dayName];
+            sortedSuppliers.forEach(([supplierName, group]) => {
+                const items = group.items;
                 const totalItems = items.reduce((sum, i) => sum + i.suggestedQty, 0);
+                const phone = group.supplier ? (group.supplier.phone || '') : '';
                 
-                text += `📅 ${dayName.toUpperCase()}\n`;
+                text += `🚛 ${supplierName.toUpperCase()} ${phone ? `• WhatsApp: ${phone}` : ''}\n`;
                 text += `────────────────────────────────────────────────────────────────────────\n`;
                 text += `Total de unidades: ${totalItems}\n\n`;
                 
                 items.forEach((item, idx) => {
                     const product = item.product;
+                    const stockDisplay = product.saleByWeight && product.weightPerUnit ? Math.round(item.currentStock * product.weightPerUnit) + 'g' : item.currentStock + 'u';
+                    const buyDisplay = product.saleByWeight && product.weightPerUnit ? Math.round(item.suggestedQty * product.weightPerUnit) + 'g' : item.suggestedQty + 'u';
                     text += `${idx + 1}. ${product.name.toUpperCase()}\n`;
-                    text += `   ├── Proveedor: ${item.supplier}\n`;
-                    text += `   ├── Stock actual: ${item.currentStock} unidades\n`;
-                    text += `   ├── COMPRAR: ${item.suggestedQty} unidades\n`;
+                    text += `   ├── Stock actual: ${stockDisplay}\n`;
+                    text += `   ├── COMPRAR: ${buyDisplay}\n`;
                     text += `   ├── Prioridad: ${item.priority}\n`;
-                    text += `   ├── Demanda: ${fmtNumber(item.weeklyDemand, 1)} unidades/semana\n`;
-                    text += `   ├── Se agota en: ${item.daysUntilStockout} días\n`;
+                    text += `   ├── Promedio diario: ${fmtNumber(item.avgDaily, 2)} unidades/día\n`;
+                    text += `   ├── Días de stock restantes: ${item.daysUntilStockout}\n`;
+                    text += `   ├── Demanda/semana: ${fmtNumber(item.weeklyDemand, 1)}\n`;
                     text += `   ├── Vencimiento ideal: ${item.optimalExpiryDays} días (${item.optimalExpiryDate})\n`;
                     text += `   └── Precio costo: $${formatMoney(product.cost)} c/u = $${formatMoney((product.cost * item.suggestedQty))}\n`;
                     text += `\n`;
                 });
                 
-                // Totales por día
+                // Totales por proveedor
                 const totalCost = items.reduce((sum, i) => sum + (i.product.cost * i.suggestedQty), 0);
-                text += `   TOTAL DÍA (${dayName}): $${formatMoney(totalCost)}\n\n`;
+                text += `   TOTAL PROVEEDOR (${supplierName}): $${formatMoney(totalCost)}\n\n`;
             });
             
             // Totales generales
@@ -13661,8 +13888,8 @@ Total de productos a comprar: ${shoppingList.length}
             text += `   Costo total estimado: $${formatMoney(grandTotal)}\n\n`;
             
             text += `📋 NOTAS:\n`;
-            text += `- Comprar según el día indicado para cada proveedor\n`;
-            text += `- El vencimiento ideal se calcula según la demanda histórica\n`;
+            text += `- Lista agrupada por proveedor\n`;
+            text += `- El promedio diario y días de stock se calculan sobre días de apertura configurados\n`;
             text += `- Prioridad CRÍTICA: comprar urgente\n`;
             text += `- Prioridad ALTA: comprar esta semana\n`;
             
@@ -13808,6 +14035,12 @@ Total de productos a comprar: ${shoppingList.length}
             if (masterCheckbox) {
                 masterCheckbox.checked = isMasterDevice();
             }
+            
+            // Renderizar proveedores y horarios
+            populateSupplierSelects();
+            renderSuppliersList();
+            renderSupplierCategories();
+            renderBusinessHours();
             
             // Mostrar/ocultar info de backup automático
             const backupInfoEl = document.getElementById('auto-backup-info');
@@ -14190,6 +14423,16 @@ Total de productos a comprar: ${shoppingList.length}
                         currentDate: new Date().toISOString(),
                         activeDate: new Date().toISOString(),
                         calendarMonth: new Date().toISOString(),
+                        suppliers: [],
+                        businessHours: [
+                            { day: 0, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 1, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 2, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 3, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 4, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 5, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 6, open: true, openTime: '08:00', closeTime: '22:00' }
+                        ],
                         lastSync: new Date().toISOString(),
                         clearedAt: new Date().toISOString(), // Flag CRÍTICO: indica borrado intencional
                         deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId()
@@ -14238,6 +14481,16 @@ Total de productos a comprar: ${shoppingList.length}
                 returns: [],
                 recurringExpenses: [],
                 cashFlowSettings: { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
+                suppliers: [],
+                businessHours: [
+                    { day: 0, open: true, openTime: '08:00', closeTime: '22:00' },
+                    { day: 1, open: true, openTime: '08:00', closeTime: '22:00' },
+                    { day: 2, open: true, openTime: '08:00', closeTime: '22:00' },
+                    { day: 3, open: true, openTime: '08:00', closeTime: '22:00' },
+                    { day: 4, open: true, openTime: '08:00', closeTime: '22:00' },
+                    { day: 5, open: true, openTime: '08:00', closeTime: '22:00' },
+                    { day: 6, open: true, openTime: '08:00', closeTime: '22:00' }
+                ],
                 // autoPromotionConfig eliminado - ahora es una promo normal
                 lastRoundPriceEnabled: false,
                 lastInvoiceType: 'white',
@@ -14274,6 +14527,231 @@ Total de productos a comprar: ${shoppingList.length}
         function exportBackupBeforeReset() {
             backupData();
             showNotification('💾 Backup descargado. Ahora puedes reiniciar con seguridad.', 'success');
+        }
+
+        // ==================== PROVEEDORES Y HORARIOS ====================
+        function getSupplierByName(name) {
+            if (!name) return null;
+            const suppliers = appState.suppliers || [];
+            return suppliers.find(s => s.name && s.name.toLowerCase().trim() === name.toLowerCase().trim()) || null;
+        }
+
+        function getSupplierName(product) {
+            if (!product) return 'Sin proveedor';
+            const supplier = getSupplierByName(product.supplier);
+            return supplier ? supplier.name : (product.supplier || 'Sin proveedor');
+        }
+
+        function getSupplierPhone(product) {
+            if (!product) return '';
+            const supplier = getSupplierByName(product.supplier);
+            return supplier ? (supplier.phone || '') : (product.supplierPhone || '');
+        }
+
+        function populateSupplierSelects() {
+            const selects = [
+                document.getElementById('inv-supplier'),
+                document.getElementById('edit-prod-supplier'),
+                document.getElementById('supplier-select-for-categories')
+            ];
+            const suppliers = (appState.suppliers || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            selects.forEach(select => {
+                if (!select) return;
+                const currentValue = select.value;
+                const isCategorySelect = select.id === 'supplier-select-for-categories';
+                select.innerHTML = isCategorySelect ? '<option value="">Seleccionar proveedor...</option>' : '<option value="">Sin proveedor</option>';
+                suppliers.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.name;
+                    opt.textContent = s.name + (s.phone ? ` (${s.phone})` : '');
+                    select.appendChild(opt);
+                });
+                select.value = currentValue;
+            });
+        }
+
+        function onInvSupplierChange() {
+            const select = document.getElementById('inv-supplier');
+            const phoneInput = document.getElementById('inv-supplier-phone');
+            if (!select || !phoneInput) return;
+            const supplier = getSupplierByName(select.value);
+            phoneInput.value = supplier ? (supplier.phone || '') : '';
+            // Pre-cargar días de compra si el proveedor tiene categorías que sugieren días (no implementado por ahora)
+        }
+
+        function onEditSupplierChange() {
+            const select = document.getElementById('edit-prod-supplier');
+            const phoneInput = document.getElementById('edit-prod-supplier-phone');
+            if (!select || !phoneInput) return;
+            const supplier = getSupplierByName(select.value);
+            phoneInput.value = supplier ? (supplier.phone || '') : '';
+        }
+
+        function addSupplier() {
+            const nameInput = document.getElementById('new-supplier-name');
+            const phoneInput = document.getElementById('new-supplier-phone');
+            const name = (nameInput?.value || '').trim();
+            const phone = (phoneInput?.value || '').trim();
+            if (!name) {
+                showNotification('Ingresá el nombre del proveedor', 'error');
+                return;
+            }
+            const exists = (appState.suppliers || []).some(s => s.name.toLowerCase() === name.toLowerCase());
+            if (exists) {
+                showNotification('Ya existe un proveedor con ese nombre', 'error');
+                return;
+            }
+            appState.suppliers = appState.suppliers || [];
+            appState.suppliers.push({
+                id: 'SUP-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+                name: name,
+                phone: phone,
+                categories: []
+            });
+            if (nameInput) nameInput.value = '';
+            if (phoneInput) phoneInput.value = '';
+            saveToLocalStorage();
+            renderSuppliersList();
+            populateSupplierSelects();
+            showNotification('Proveedor agregado', 'success');
+        }
+
+        function deleteSupplier(supplierId) {
+            if (!confirm('¿Eliminar este proveedor? Los productos asociados mantendrán el nombre pero no se vincularán más.')) return;
+            appState.suppliers = (appState.suppliers || []).filter(s => s.id !== supplierId);
+            saveToLocalStorage();
+            renderSuppliersList();
+            populateSupplierSelects();
+            showNotification('Proveedor eliminado', 'success');
+        }
+
+        function renderSuppliersList() {
+            const listEl = document.getElementById('suppliers-list');
+            if (!listEl) return;
+            const suppliers = (appState.suppliers || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            if (suppliers.length === 0) {
+                listEl.innerHTML = '<p class="text-gray-400 text-center py-4">No hay proveedores registrados</p>';
+                return;
+            }
+            listEl.innerHTML = suppliers.map(s => `
+                <div class="flex justify-between items-center p-3 rounded-lg border border-teal-100 bg-teal-50/30">
+                    <div>
+                        <p class="font-bold text-gray-800">${escapeHtml(s.name)}</p>
+                        ${s.phone ? `<p class="text-xs text-gray-500"><i class="fab fa-whatsapp text-green-600"></i> ${escapeHtml(s.phone)}</p>` : ''}
+                        ${s.categories && s.categories.length > 0 ? `<p class="text-xs text-gray-500">Categorías: ${s.categories.map(c => `<span class="inline-block bg-white rounded px-1.5 py-0.5 border border-gray-200 ml-1">${escapeHtml(c)}</span>`).join('')}</p>` : ''}
+                    </div>
+                    <button onclick="deleteSupplier('${s.id}')" class="text-red-500 hover:text-red-700 p-2 hover:bg-red-100 rounded-lg" title="Eliminar proveedor">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function addCategoryToSupplier() {
+            const supplierSelect = document.getElementById('supplier-select-for-categories');
+            const categorySelect = document.getElementById('supplier-category-to-add');
+            const supplierName = supplierSelect?.value;
+            const category = categorySelect?.value;
+            if (!supplierName || !category) {
+                showNotification('Seleccioná proveedor y categoría', 'error');
+                return;
+            }
+            const supplier = getSupplierByName(supplierName);
+            if (!supplier) return;
+            if (!supplier.categories) supplier.categories = [];
+            if (!supplier.categories.includes(category)) {
+                supplier.categories.push(category);
+                saveToLocalStorage();
+                renderSupplierCategories();
+                renderSuppliersList();
+                showNotification('Categoría asignada al proveedor', 'success');
+            } else {
+                showNotification('El proveedor ya tiene esa categoría', 'info');
+            }
+        }
+
+        function removeCategoryFromSupplier(supplierId, category) {
+            const supplier = (appState.suppliers || []).find(s => s.id === supplierId);
+            if (!supplier || !supplier.categories) return;
+            supplier.categories = supplier.categories.filter(c => c !== category);
+            saveToLocalStorage();
+            renderSupplierCategories();
+            renderSuppliersList();
+        }
+
+        function renderSupplierCategories() {
+            const container = document.getElementById('supplier-categories-list');
+            if (!container) return;
+            const supplierSelect = document.getElementById('supplier-select-for-categories');
+            const supplierName = supplierSelect?.value;
+            if (!supplierName) {
+                container.innerHTML = '<span class="text-xs text-gray-400">Seleccioná un proveedor para ver sus categorías</span>';
+                return;
+            }
+            const supplier = getSupplierByName(supplierName);
+            const categories = supplier ? (supplier.categories || []) : [];
+            if (categories.length === 0) {
+                container.innerHTML = '<span class="text-xs text-gray-400">Sin categorías asignadas</span>';
+                return;
+            }
+            container.innerHTML = categories.map(c => `
+                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-teal-100 text-teal-700">
+                    ${escapeHtml(c)}
+                    <button onclick="removeCategoryFromSupplier('${supplier.id}', '${c}')" class="hover:text-red-600" title="Quitar"><i class="fas fa-times"></i></button>
+                </span>
+            `).join('');
+        }
+
+        function renderBusinessHours() {
+            const grid = document.getElementById('business-hours-grid');
+            if (!grid) return;
+            const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+            grid.innerHTML = dayNames.map((name, idx) => {
+                const bh = getBusinessHoursConfig(idx);
+                return `
+                    <div class="border rounded-xl p-3 ${bh.open ? 'bg-indigo-50 border-indigo-200' : 'bg-gray-50 border-gray-200 opacity-70'}">
+                        <label class="flex items-center gap-2 mb-2 cursor-pointer">
+                            <input type="checkbox" id="bh-open-${idx}" ${bh.open ? 'checked' : ''} onchange="toggleBusinessDay(${idx})">
+                            <span class="font-bold text-sm ${bh.open ? 'text-indigo-700' : 'text-gray-500'}">${name}</span>
+                        </label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-xs text-gray-500">Apertura</label>
+                                <input type="time" id="bh-open-time-${idx}" value="${bh.openTime}" class="w-full border rounded px-2 py-1 text-sm" ${bh.open ? '' : 'disabled'}>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500">Cierre</label>
+                                <input type="time" id="bh-close-time-${idx}" value="${bh.closeTime}" class="w-full border rounded px-2 py-1 text-sm" ${bh.open ? '' : 'disabled'}>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleBusinessDay(day) {
+            const checkbox = document.getElementById(`bh-open-${day}`);
+            const openTime = document.getElementById(`bh-open-time-${day}`);
+            const closeTime = document.getElementById(`bh-close-time-${day}`);
+            const isOpen = checkbox?.checked || false;
+            if (openTime) openTime.disabled = !isOpen;
+            if (closeTime) closeTime.disabled = !isOpen;
+        }
+
+        function saveBusinessHours() {
+            const hours = [];
+            for (let day = 0; day < 7; day++) {
+                const open = document.getElementById(`bh-open-${day}`)?.checked || false;
+                const openTime = document.getElementById(`bh-open-time-${day}`)?.value || '08:00';
+                const closeTime = document.getElementById(`bh-close-time-${day}`)?.value || '22:00';
+                hours.push({ day, open, openTime, closeTime });
+            }
+            appState.businessHours = hours;
+            statsCache.clear();
+            saveToLocalStorage();
+            renderBusinessHours();
+            renderAll();
+            showNotification('Horarios de apertura guardados', 'success');
         }
 
         // ==================== REPORTS ====================
@@ -14718,6 +15196,16 @@ RESULTADOS:
                         pendingPurchase: null,
                         pendingPurchasePayment: backupData.pendingPurchasePayment || 'cash',
                         pendingPurchaseInvoiceType: backupData.pendingPurchaseInvoiceType || 'white',
+                        suppliers: Array.isArray(backupData.suppliers) ? backupData.suppliers : [],
+                        businessHours: Array.isArray(backupData.businessHours) ? backupData.businessHours : [
+                            { day: 0, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 1, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 2, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 3, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 4, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 5, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 6, open: true, openTime: '08:00', closeTime: '22:00' }
+                        ],
                         
                         // Usuario (no restaurar sesión por seguridad)
                         currentUser: null
@@ -16801,6 +17289,17 @@ RESULTADOS:
                             lowBalanceThreshold: parseFloat(data.cashFlowSettings.lowBalanceThreshold) || 0
                         };
                     }
+                    if (Array.isArray(data.suppliers)) {
+                        appState.suppliers = JSON.parse(JSON.stringify(data.suppliers));
+                    }
+                    if (Array.isArray(data.businessHours)) {
+                        appState.businessHours = data.businessHours.map(bh => ({
+                            day: parseInt(bh.day),
+                            open: !!bh.open,
+                            openTime: bh.openTime || '08:00',
+                            closeTime: bh.closeTime || '22:00'
+                        }));
+                    }
                     // Propagar el timestamp de saldos si el remoto es más reciente
                     if (remoteBalancesUpdatedAt > localBalancesUpdatedAt) {
                         appState.balancesUpdatedAt = remoteBalancesUpdatedAt;
@@ -16863,6 +17362,17 @@ RESULTADOS:
                             estimatedDailyIncome: data.cashFlowSettings.estimatedDailyIncome === null ? null : (parseFloat(data.cashFlowSettings.estimatedDailyIncome) || null),
                             lowBalanceThreshold: parseFloat(data.cashFlowSettings.lowBalanceThreshold) || 0
                         };
+                    }
+                    if (Array.isArray(data.suppliers)) {
+                        appState.suppliers = JSON.parse(JSON.stringify(data.suppliers));
+                    }
+                    if (Array.isArray(data.businessHours)) {
+                        appState.businessHours = data.businessHours.map(bh => ({
+                            day: parseInt(bh.day),
+                            open: !!bh.open,
+                            openTime: bh.openTime || '08:00',
+                            closeTime: bh.closeTime || '22:00'
+                        }));
                     }
                 }
                 
@@ -17090,6 +17600,27 @@ RESULTADOS:
                     appState.stockTargetDays = parseInt(appState.stockTargetDays);
                     appState.stockTargetDays = isNaN(appState.stockTargetDays) ? 7 : appState.stockTargetDays;
                     
+                    // Asegurar proveedores y horarios
+                    if (!Array.isArray(appState.suppliers)) appState.suppliers = [];
+                    if (!Array.isArray(appState.businessHours) || appState.businessHours.length !== 7) {
+                        appState.businessHours = [
+                            { day: 0, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 1, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 2, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 3, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 4, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 5, open: true, openTime: '08:00', closeTime: '22:00' },
+                            { day: 6, open: true, openTime: '08:00', closeTime: '22:00' }
+                        ];
+                    } else {
+                        appState.businessHours = appState.businessHours.map(bh => ({
+                            day: parseInt(bh.day) >= 0 ? parseInt(bh.day) : 0,
+                            open: !!bh.open,
+                            openTime: bh.openTime || '08:00',
+                            closeTime: bh.closeTime || '22:00'
+                        }));
+                    }
+                    
                     // Restaurar fechas
                     appState.currentDate = new Date();
                     try {
@@ -17264,7 +17795,7 @@ RESULTADOS:
             
             // Exponer funciones adicionales de venta por peso y sync
             (function exposeAdditionalFunctions() {
-                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup','changeDashboardPeriod','toggleChartMetric','renderChartMetricToggles','toggleDashboardMetric','renderDashboardMetricToggles','renderCashFlowProjection','setCashFlowProjectionDays','saveCashFlowEstimatedIncome','resetCashFlowEstimatedIncome','saveCashFlowLowThreshold','openRecurringExpensesModal','closeRecurringExpensesModal','saveRecurringExpense','editRecurringExpense','deleteRecurringExpense','resetRecurringExpenseForm','onRecExpenseFrequencyChange'];
+                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup','changeDashboardPeriod','toggleChartMetric','renderChartMetricToggles','toggleDashboardMetric','renderDashboardMetricToggles','renderCashFlowProjection','setCashFlowProjectionDays','saveCashFlowEstimatedIncome','resetCashFlowEstimatedIncome','saveCashFlowLowThreshold','openRecurringExpensesModal','closeRecurringExpensesModal','saveRecurringExpense','editRecurringExpense','deleteRecurringExpense','resetRecurringExpenseForm','onRecExpenseFrequencyChange','addSupplier','deleteSupplier','renderSuppliersList','addCategoryToSupplier','removeCategoryFromSupplier','renderSupplierCategories','saveBusinessHours','toggleBusinessDay','onInvSupplierChange','onEditSupplierChange','populateSupplierSelects','getSupplierByName','getSupplierName','getSupplierPhone'];
                 for (const name of extraFns) {
                     try {
                         const fn = eval(name);

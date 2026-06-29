@@ -3306,6 +3306,8 @@
             cashDifferences: [],
             // Productos eliminados (para evitar que vuelvan por sync)
             deletedProductIds: [],
+            // Inversiones/compras eliminadas (para evitar que vuelvan por sync)
+            deletedInvestmentIds: [],
             // Stock gratis / encontrado / regalado
             foundStock: [],
             // Mermas y pérdidas
@@ -7149,7 +7151,9 @@
                 product.batches = [];
             } else {
                 // Sistema de lotes (batches) - cada compra es un lote
+                const batchId = 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
                 product.batches = [{
+                    id: batchId,
                     stock: appState.pendingPurchase.stock,
                     initialStock: appState.pendingPurchase.stock,
                     expiry: appState.pendingPurchase.expiry,
@@ -7159,6 +7163,7 @@
                     cost: appState.pendingPurchase.cost,
                     updatedAt: new Date().toISOString()
                 }];
+                product.purchaseBatchId = batchId; // Referencia para poder deshacer la compra
             }
             
             console.log('Producto creado:', product);
@@ -7184,6 +7189,7 @@
                     source: method === 'cash' ? 'cash' : 'bank',
                     type: 'purchase',
                     productId: product.id,
+                    batchId: product.purchaseBatchId || null,
                     timestamp: Date.now()
                 });
                 
@@ -8271,7 +8277,9 @@
             // invoiceType ya validado arriba
             
             // Agregar nuevo lote
+            const batchId = 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
             product.batches.push({
+                id: batchId,
                 stock: qtyBags,
                 initialStock: qtyBags,
                 expiry: newExpiry || '',
@@ -8311,6 +8319,7 @@
                 source: addStockPaymentMethod === 'cash' ? 'cash' : 'bank',
                 type: 'restock',
                 productId: product.id,
+                batchId: batchId,
                 timestamp: Date.now()
             });
             
@@ -9207,7 +9216,7 @@
         }
 
         function deleteInvestment(investmentId, dateStr) {
-            if (!confirm('¿Estás seguro de que deseas eliminar esta inversión? Se devolverá el dinero y se reducirá el stock del producto.')) return;
+            if (!confirm('¿Estás seguro de que deseas eliminar esta inversión? Se devolverá el dinero y se ajustará el stock del producto.')) return;
 
             const investmentIndex = appState.investments.findIndex(i => i.id === investmentId);
             if (investmentIndex === -1) return;
@@ -9221,20 +9230,80 @@
                 appState.bank += investment.amount;
             }
 
-            // Buscar el producto y reducir el stock
-            const activeInv = getActiveInventory();
-            const product = activeInv.find(p => investment.concept.includes(p.name));
-            if (product && product.batches && product.batches.length > 0) {
-                // Eliminar el último lote (el más reciente)
-                product.batches.pop();
-                // Actualizar stock del producto (no eliminarlo, solo dejar stock 0)
-                product.stock = getProductStock(product);
+            // Ajustar tracking de facturación
+            if (appState.invoiceTracking && investment.amount) {
+                // Intentar deducir el tipo de factura del lote asociado
+                let invoiceType = 'black';
+                const product = appState.inventory.find(p => p.id === investment.productId);
+                if (investment.batchId && product && product.batches) {
+                    const batch = product.batches.find(b => b.id === investment.batchId);
+                    if (batch && batch.invoiceType) invoiceType = batch.invoiceType;
+                }
+                if (invoiceType === 'white') {
+                    appState.invoiceTracking.purchasedWhite = Math.max(0, (appState.invoiceTracking.purchasedWhite || 0) - investment.amount);
+                } else {
+                    appState.invoiceTracking.purchasedBlack = Math.max(0, (appState.invoiceTracking.purchasedBlack || 0) - investment.amount);
+                }
+            }
+
+            // Buscar el producto y reducir el stock del lote correspondiente
+            let productRemoved = false;
+            if (investment.productId) {
+                const productIndex = appState.inventory.findIndex(p => p.id === investment.productId);
+                if (productIndex !== -1) {
+                    const product = appState.inventory[productIndex];
+                    const hadBatches = product.batches && product.batches.length > 0;
+
+                    if (investment.batchId && hadBatches) {
+                        // Eliminar el lote específico asociado a esta inversión
+                        const batchIndex = product.batches.findIndex(b => b.id === investment.batchId);
+                        if (batchIndex !== -1) {
+                            product.batches.splice(batchIndex, 1);
+                        }
+                    } else if (hadBatches) {
+                        // Fallback para inversiones antiguas sin batchId: intentar coincidir por fecha o eliminar el último lote
+                        const fallbackIndex = product.batches.findIndex(b => b.dateAdded === investment.date);
+                        if (fallbackIndex !== -1) {
+                            product.batches.splice(fallbackIndex, 1);
+                        } else {
+                            product.batches.pop();
+                        }
+                    }
+
+                    // Actualizar stock del producto según los lotes remanentes
+                    if (hadBatches) {
+                        product.stock = product.batches && product.batches.length > 0
+                            ? product.batches.reduce((sum, b) => sum + (b.stock || 0), 0)
+                            : 0;
+                    }
+                    product.updatedAt = new Date().toISOString();
+                    
+                    // Si es una compra inicial (purchase) y el producto no tiene ventas ni stock, eliminarlo
+                    if (investment.type === 'purchase' && product.stock <= 0) {
+                        const hasSales = appState.sales.some(s => s.items && s.items.some(i => i.productId === product.id));
+                        if (!hasSales) {
+                            appState.inventory.splice(productIndex, 1);
+                            productRemoved = true;
+                            // Registrar en deletedProductIds para evitar que vuelva por sync
+                            if (!appState.deletedProductIds) appState.deletedProductIds = [];
+                            appState.deletedProductIds.push({ id: product.id, deletedAt: Date.now() });
+                        }
+                    }
+                }
+            }
+
+            // Registrar el ID de inversión eliminada para evitar que vuelva por sync
+            if (!appState.deletedInvestmentIds) appState.deletedInvestmentIds = [];
+            appState.deletedInvestmentIds.push({ id: investment.id, deletedAt: Date.now() });
+            if (appState.deletedInvestmentIds.length > 500) {
+                appState.deletedInvestmentIds = appState.deletedInvestmentIds.slice(-500);
             }
 
             // Eliminar la inversión
             appState.investments.splice(investmentIndex, 1);
 
             saveToLocalStorage();
+            syncToFirebase(true);
             renderAll();
             renderCalendar();
             
@@ -9246,7 +9315,7 @@
                 showDayTab('investments');
             }
             
-            showNotification('Inversión eliminada correctamente', 'success');
+            showNotification(productRemoved ? 'Compra eliminada: producto y dinero revertidos' : 'Inversión eliminada correctamente', 'success');
         }
 
         function editSale(saleId) {
@@ -13010,6 +13079,43 @@
             }
         }
 
+        function cleanupDeletedInvestments() {
+            if (!Array.isArray(appState.investments)) return;
+            const deletedIds = new Set();
+            if (Array.isArray(appState.deletedInvestmentIds)) {
+                for (const d of appState.deletedInvestmentIds) {
+                    if (d && d.id) deletedIds.add(d.id);
+                }
+            }
+            const before = appState.investments.length;
+            appState.investments = appState.investments.filter(i => i && i.id && !deletedIds.has(i.id));
+            const removed = before - appState.investments.length;
+            if (removed > 0) {
+                console.log('cleanupDeletedInvestments: eliminados ' + removed + ' inversiones marcadas como borradas');
+            }
+        }
+
+        // Reconstruir cashDifferences a partir de los arqueos guardados en cashCounts.
+        // Útil cuando cashDifferences no se guardó en un backup o se perdió por sync.
+        function rebuildCashDifferences() {
+            if (!Array.isArray(appState.cashCounts)) return;
+            appState.cashDifferences = [];
+            for (const record of appState.cashCounts) {
+                if (record && record.difference && Math.abs(record.difference) > 0.001) {
+                    appState.cashDifferences.push({
+                        id: record.id ? 'CASHDIFF-' + record.id : 'CASHDIFF-' + (record.timestamp || Date.now()),
+                        date: record.date,
+                        amount: record.difference,
+                        type: record.difference > 0 ? 'surplus' : 'shortage',
+                        cashAmount: record.differenceCash || 0,
+                        bankAmount: record.differenceBank || 0,
+                        notes: record.notes || '',
+                        timestamp: record.timestamp || Date.now()
+                    });
+                }
+            }
+        }
+
         function generateShoppingList() {
             const list = [];
             const today = new Date();
@@ -14403,6 +14509,7 @@ Total de productos a comprar: ${shoppingList.length}
                         cashCounts: [],
                         cashDifferences: [],
                         deletedProductIds: [],
+                        deletedInvestmentIds: [],
                         foundStock: [],
                         losses: [],
                         returns: [],
@@ -14477,6 +14584,7 @@ Total de productos a comprar: ${shoppingList.length}
                 cashCounts: [],
                 cashDifferences: [],
                 deletedProductIds: [],
+                deletedInvestmentIds: [],
                 losses: [],
                 returns: [],
                 recurringExpenses: [],
@@ -14951,6 +15059,7 @@ RESULTADOS:
         function renderAll() {
             // Asegurar que productos eliminados no estén en el inventario
             cleanupDeletedProducts();
+            cleanupDeletedInvestments();
             
             try {
                 renderDashboard();
@@ -15179,6 +15288,8 @@ RESULTADOS:
                         cashCounts: Array.isArray(backupData.cashCounts) ? backupData.cashCounts : [],
                         alerts: Array.isArray(backupData.alerts) ? backupData.alerts : [],
                         guestLogs: Array.isArray(backupData.guestLogs) ? backupData.guestLogs : [],
+                        deletedProductIds: Array.isArray(backupData.deletedProductIds) ? backupData.deletedProductIds : [],
+                        deletedInvestmentIds: Array.isArray(backupData.deletedInvestmentIds) ? backupData.deletedInvestmentIds : [],
                         invoiceTracking: backupData.invoiceTracking || {
                             purchasedWhite: 0,
                             purchasedBlack: 0,
@@ -15210,6 +15321,9 @@ RESULTADOS:
                         // Usuario (no restaurar sesión por seguridad)
                         currentUser: null
                     };
+                    
+                    // Reconstruir sobrantes/faltantes desde los arqueos por si el backup no los traía
+                    rebuildCashDifferences();
                     
                     // Guardar en localStorage
                     saveToLocalStorage(false); // No disparar sync automático todavía
@@ -17317,12 +17431,21 @@ RESULTADOS:
                 appState.cashCounts = smartMergeArrays(appState.cashCounts || [], data.cashCounts || []);
                 appState.cashDifferences = smartMergeArrays(appState.cashDifferences || [], data.cashDifferences || []);
                 appState.foundStock = smartMergeArrays(appState.foundStock || [], data.foundStock || []);
+                
+                // Filtrar inversiones eliminadas
+                const deletedInvIdsMaster = new Set((appState.deletedInvestmentIds || []).map(d => d.id).filter(Boolean));
+                appState.investments = appState.investments.filter(i => !deletedInvIdsMaster.has(i.id));
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
-                // Tomar deletedProductIds de Firebase (la PC es la fuente de verdad), pero si Firebase está vacío no borrar locales
+                // Tomar deletedProductIds y deletedInvestmentIds de Firebase (la PC es la fuente de verdad), pero si Firebase está vacío no borrar locales
                 if (!remoteLooksEmpty) {
                     appState.deletedProductIds = Array.isArray(data.deletedProductIds) ? data.deletedProductIds : [];
+                    appState.deletedInvestmentIds = Array.isArray(data.deletedInvestmentIds) ? data.deletedInvestmentIds : [];
                 }
+                
+                // Filtrar inversiones eliminadas
+                const deletedInvIdsSec = new Set((appState.deletedInvestmentIds || []).map(d => d.id).filter(Boolean));
+                appState.investments = appState.investments.filter(i => !deletedInvIdsSec.has(i.id));
                 
                 console.log('📱 Modo secundario: datos procesados desde Firebase (protección anti-borrado activa)');
             } else {
@@ -17335,10 +17458,21 @@ RESULTADOS:
                 for (const d of remoteDeleted) { if (d && d.id && !deletedMap.has(d.id)) deletedMap.set(d.id, d); }
                 appState.deletedProductIds = Array.from(deletedMap.values()).slice(-200);
                 
+                // Fusionar lista de inversiones eliminadas
+                const remoteDeletedInv = Array.isArray(data.deletedInvestmentIds) ? data.deletedInvestmentIds : [];
+                const localDeletedInv = Array.isArray(appState.deletedInvestmentIds) ? appState.deletedInvestmentIds : [];
+                const deletedInvMap = new Map();
+                for (const d of localDeletedInv) { if (d && d.id) deletedInvMap.set(d.id, d); }
+                for (const d of remoteDeletedInv) { if (d && d.id && !deletedInvMap.has(d.id)) deletedInvMap.set(d.id, d); }
+                appState.deletedInvestmentIds = Array.from(deletedInvMap.values()).slice(-500);
+                
                 appState.inventory = mergeInventory(appState.inventory, data.inventory);
                 appState.sales = smartMergeArrays(appState.sales, data.sales);
                 appState.expenses = smartMergeArrays(appState.expenses, data.expenses);
                 appState.investments = smartMergeArrays(appState.investments, data.investments);
+                // Filtrar inversiones que fueron eliminadas localmente para evitar que revivan desde otro dispositivo
+                const deletedInvIdsMaster = new Set((appState.deletedInvestmentIds || []).map(d => d.id).filter(Boolean));
+                appState.investments = appState.investments.filter(i => !deletedInvIdsMaster.has(i.id));
                 appState.capitalAdjustments = smartMergeArrays(appState.capitalAdjustments, data.capitalAdjustments);
                 appState.returns = smartMergeArrays(appState.returns, data.returns);
                 appState.promotions = smartMergeArrays(appState.promotions, data.promotions);
@@ -17401,6 +17535,9 @@ RESULTADOS:
             
             // Restaurar carrito local
             appState.cart = localCart;
+            
+            // Reconstruir sobrantes/faltantes desde los arqueos por si cashDifferences quedó vacío en sync
+            rebuildCashDifferences();
             
             // Limpiar productos eliminados después de cualquier merge
             cleanupDeletedProducts();
@@ -17649,6 +17786,10 @@ RESULTADOS:
                     appState.cashCounts = Array.isArray(appState.cashCounts) ? appState.cashCounts : [];
                     appState.cashDifferences = Array.isArray(appState.cashDifferences) ? appState.cashDifferences : [];
                     appState.deletedProductIds = Array.isArray(appState.deletedProductIds) ? appState.deletedProductIds : [];
+                    
+                    // Reconstruir sobrantes/faltantes desde los arqueos por si cashDifferences se perdió
+                    rebuildCashDifferences();
+                    appState.deletedInvestmentIds = Array.isArray(appState.deletedInvestmentIds) ? appState.deletedInvestmentIds : [];
                     appState.losses = Array.isArray(appState.losses) ? appState.losses : [];
                     appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
                     if (!appState.cashFlowSettings || typeof appState.cashFlowSettings !== 'object') {

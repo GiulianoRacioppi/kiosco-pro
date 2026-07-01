@@ -3529,6 +3529,26 @@
             checkCashCountAlert();
         }
 
+        // Detectar si pasó el día mientras la app estaba cerrada u operando, y volver a hoy
+        let dateRolloverInterval = null;
+        function checkDateRollover() {
+            if (!appState.activeDate) return;
+            const activeStr = formatDateISO(new Date(appState.activeDate));
+            const todayStr = formatDateISO(new Date());
+            if (activeStr !== todayStr) {
+                console.log('📅 Fecha activa distinta a hoy (' + activeStr + ' vs ' + todayStr + '). Volviendo a hoy.');
+                appState.activeDate = new Date();
+                updateDateDisplay();
+                renderAll();
+                saveToLocalStorage();
+                showNotification('📅 Cambió el día. Se actualizó la fecha a hoy.', 'info');
+            }
+        }
+        function startDateRolloverCheck() {
+            if (dateRolloverInterval) return;
+            dateRolloverInterval = setInterval(checkDateRollover, 60000);
+        }
+
         function updateDateDisplay() {
             const today = new Date();
             const isToday = appState.activeDate.toDateString() === today.toDateString();
@@ -4743,9 +4763,11 @@
             showNotification(`${currentWeightProduct.name} ${formatMoney(grams)}g agregado`, 'success');
         }
 
-        function addToCartFromSearch(productId) {
+        function addToCartFromSearch(productId, qty = 1) {
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
+            
+            qty = Math.max(1, parseInt(qty) || 1);
             
             const availableStock = getProductStock(product);
             if (availableStock <= 0) {
@@ -4753,7 +4775,7 @@
                 return;
             }
             
-            // Si es venta por peso, abrir modal especial
+            // Si es venta por peso, abrir modal especial (solo permite 1 unidad)
             if (product.saleByWeight && product.weightPerUnit > 0) {
                 openWeightSaleModal(product);
                 document.getElementById('sell-search-input').value = '';
@@ -4764,19 +4786,21 @@
             // Verificar si ya está en el carrito
             const existingItem = appState.cart.find(item => item.productId === productId);
             if (existingItem) {
-                if (existingItem.quantity < availableStock) {
-                    existingItem.quantity++;
+                const newQty = existingItem.quantity + qty;
+                if (newQty <= availableStock) {
+                    existingItem.quantity = newQty;
                 } else {
                     showNotification('Stock máximo alcanzado', 'warning');
                     return;
                 }
             } else {
+                const finalQty = Math.min(qty, availableStock);
                 appState.cart.push({
                     productId: product.id,
                     name: product.name,
                     price: product.salePrice,
                     cost: product.isComposite ? calculateCompositeCost(product) : product.cost,
-                    quantity: 1
+                    quantity: finalQty
                 });
             }
             
@@ -4789,7 +4813,7 @@
             // Mostrar confirmación con stock restante
             document.getElementById('last-added').classList.remove('hidden');
             const remainingStock = getProductStock(product);
-            document.getElementById('last-added-text').textContent = `${product.name} x1 (quedan ${remainingStock})`;
+            document.getElementById('last-added-text').textContent = `${product.name} x${qty} (quedan ${remainingStock})`;
             setTimeout(() => {
                 document.getElementById('last-added').classList.add('hidden');
             }, 2000);
@@ -5057,6 +5081,18 @@
             }
         }
 
+        // Devuelve los ítems requeridos por una promo con sus cantidades.
+        // Para bundles usa bundleItems; para el resto asume 1 unidad de cada productId.
+        function getPromoRequiredItems(promo) {
+            if (promo.type === 'bundle' && promo.bundleItems && promo.bundleItems.length > 0) {
+                return promo.bundleItems.map(bi => ({
+                    productIds: bi.productIds || [bi.productId],
+                    qty: bi.qty || 1
+                }));
+            }
+            return (promo.productIds || []).map(id => ({ productIds: [id], qty: 1 }));
+        }
+
         function renderComboSuggestions() {
             const container = document.getElementById('combo-suggestions');
             if (!container) return;
@@ -5075,23 +5111,47 @@
             );
             
             for (const promo of activePromos) {
-                // --- Caso A: combos multi-producto (faltan productos distintos) ---
-                if (promo.productIds.length >= 2) {
-                    const hasAny = promo.productIds.some(pid => cartProductIds.includes(pid));
-                    const hasAll = promo.productIds.every(pid => cartProductIds.includes(pid));
+                const requiredItems = getPromoRequiredItems(promo);
+                if (requiredItems.length === 0) continue;
+                
+                // --- Caso A: combos multi-producto o que requieren más de 1 unidad de un ítem ---
+                const isSingleUnitPromo = requiredItems.length === 1 && requiredItems[0].qty === 1;
+                
+                if (!isSingleUnitPromo) {
+                    const hasAny = requiredItems.some(slot => slot.productIds.some(pid => cartProductIds.includes(pid)));
+                    const hasAll = requiredItems.every(slot => {
+                        const currentQty = appState.cart
+                            .filter(item => slot.productIds.includes(item.productId))
+                            .reduce((sum, item) => sum + item.quantity, 0);
+                        return currentQty >= slot.qty;
+                    });
                     
                     if (hasAny && !hasAll) {
-                        for (const missingPid of promo.productIds) {
-                            if (cartProductIds.includes(missingPid)) continue;
+                        const allRequiredProductIds = requiredItems.flatMap(r => r.productIds);
+                        
+                        for (const slot of requiredItems) {
+                            const currentQty = appState.cart
+                                .filter(item => slot.productIds.includes(item.productId))
+                                .reduce((sum, item) => sum + item.quantity, 0);
+                            const missingQty = slot.qty - currentQty;
+                            if (missingQty <= 0) continue;
                             
-                            const missingProduct = appState.inventory.find(p => p.id === missingPid);
-                            if (!missingProduct || getProductStock(missingProduct) <= 0) continue;
+                            // Elegir el primer producto del slot que tenga stock
+                            let missingProduct = null;
+                            for (const pid of slot.productIds) {
+                                const prod = appState.inventory.find(p => p.id === pid);
+                                if (prod && getProductStock(prod) > 0) {
+                                    missingProduct = prod;
+                                    break;
+                                }
+                            }
+                            if (!missingProduct) continue;
                             
                             const currentSubtotal = appState.cart
-                                .filter(item => promo.productIds.includes(item.productId))
+                                .filter(item => allRequiredProductIds.includes(item.productId))
                                 .reduce((sum, item) => sum + (item.price * item.quantity), 0);
                             
-                            const futureQty = 1;
+                            const futureQty = missingQty;
                             const futureSubtotal = currentSubtotal + (missingProduct.salePrice * futureQty);
                             
                             let futureDiscount = 0;
@@ -5099,10 +5159,9 @@
                                 case 'bundle': {
                                     const bundlePrice = promo.bundlePrice || promo.discount || 0;
                                     if (bundlePrice > 0) {
-                                        const bundleItems = promo.bundleItems || (promo.productIds || []).map(id => ({ productId: id, qty: 1 }));
                                         let bundleNormalPrice = 0;
-                                        for (const bi of bundleItems) {
-                                            const ids = bi.productIds || [bi.productId];
+                                        for (const bi of requiredItems) {
+                                            const ids = bi.productIds;
                                             const qty = bi.qty || 1;
                                             let maxPrice = 0;
                                             for (const pid of ids) {
@@ -5129,10 +5188,10 @@
                                     break;
                                 case '2x1': {
                                     const totalQty = appState.cart
-                                        .filter(item => promo.productIds.includes(item.productId))
+                                        .filter(item => allRequiredProductIds.includes(item.productId))
                                         .reduce((sum, item) => sum + item.quantity, 0) + futureQty;
                                     const freeQty = Math.floor(totalQty / 2);
-                                    const sorted = [...appState.cart.filter(item => promo.productIds.includes(item.productId)), 
+                                    const sorted = [...appState.cart.filter(item => allRequiredProductIds.includes(item.productId)), 
                                         { price: missingProduct.salePrice, quantity: futureQty }]
                                         .sort((a, b) => a.price - b.price);
                                     let remaining = freeQty;
@@ -5148,12 +5207,12 @@
                                     const buy = promo.bogoBuy || 2;
                                     const pay = promo.bogoPay || 1;
                                     const totalQty = appState.cart
-                                        .filter(item => promo.productIds.includes(item.productId))
+                                        .filter(item => allRequiredProductIds.includes(item.productId))
                                         .reduce((sum, item) => sum + item.quantity, 0) + futureQty;
                                     if (totalQty >= buy) {
                                         const sets = Math.floor(totalQty / buy);
                                         const freePerSet = buy - pay;
-                                        const sorted = [...appState.cart.filter(item => promo.productIds.includes(item.productId)), 
+                                        const sorted = [...appState.cart.filter(item => allRequiredProductIds.includes(item.productId)), 
                                             { price: missingProduct.salePrice, quantity: futureQty }]
                                             .sort((a, b) => a.price - b.price);
                                         let remaining = sets * freePerSet;
@@ -5176,6 +5235,7 @@
                                 suggestions.push({
                                     promo: promo,
                                     missingProduct: missingProduct,
+                                    missingQty: missingQty,
                                     savings: savings,
                                     promoTotal: promoTotal,
                                     normalTotal: normalTotal,
@@ -5250,9 +5310,12 @@
             if (!window.comboNotified) {
                 window.comboNotified = true;
                 const top = suggestions.sort((a, b) => b.savings - a.savings)[0];
+                const qtyText = top.missingQty > 1
+                    ? `${top.missingQty} ${top.missingProduct.name}`
+                    : (top.isQtySuggestion ? `1 ${top.missingProduct.name} más` : top.missingProduct.name);
                 const msg = top.isQtySuggestion 
-                    ? `💡 Promoción disponible: agregá 1 ${top.missingProduct.name} más y ahorrá $${formatMoney(top.savings)}`
-                    : `💡 Combo disponible: agregá ${top.missingProduct.name} y ahorrá $${formatMoney(top.savings)}`;
+                    ? `💡 Promoción disponible: agregá ${qtyText} y ahorrá $${formatMoney(top.savings)}`
+                    : `💡 Combo disponible: agregá ${qtyText} y ahorrá $${formatMoney(top.savings)}`;
                 showNotification(msg, 'info', 5000);
             }
             
@@ -5268,9 +5331,13 @@
                     <div class="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-3 border border-purple-200">
                         <div class="flex items-center justify-between mb-2">
                             <p class="text-sm font-bold text-gray-800 truncate">
-                                ${s.isQtySuggestion ? `Agregá 1 ${escapeHtml(s.missingProduct.name)} más` : escapeHtml(s.missingProduct.name)}
+                                ${s.isQtySuggestion
+                                    ? `Agregá 1 ${escapeHtml(s.missingProduct.name)} más`
+                                    : (s.missingQty > 1
+                                        ? `Agregá ${s.missingQty} ${escapeHtml(s.missingProduct.name)}`
+                                        : escapeHtml(s.missingProduct.name))}
                             </p>
-                            <button onclick="addToCartFromSearch('${s.missingProduct.id}')" 
+                            <button onclick="addToCartFromSearch('${s.missingProduct.id}', ${s.missingQty || 1})" 
                                 class="flex-shrink-0 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow">
                                 <i class="fas fa-plus"></i> Agregar
                             </button>
@@ -6041,6 +6108,58 @@
             console.warn('↩️ Stock restaurado por rollback:', snapshot.length, 'productos');
         }
         
+        // Verifica después de 5 segundos que el stock refleje el cambio esperado.
+        // Si no coincide, reintenta hasta maxRetries veces ajustando con lotes de corrección.
+        function verifyAndRetryStockChange(description, productId, expectedStockFn, maxRetries = 2) {
+            let retries = 0;
+            const check = () => {
+                const product = appState.inventory.find(p => p.id === productId);
+                if (!product) return;
+                const expected = expectedStockFn();
+                const actual = getProductStock(product);
+                if (Math.abs(actual - expected) < 0.001) {
+                    console.log('✅ Stock verificado:', description, '→', actual);
+                    return;
+                }
+                console.warn('⚠️ Stock no coincide:', description, 'esperado', expected, 'actual', actual);
+                if (retries < maxRetries) {
+                    retries++;
+                    const diff = expected - actual;
+                    console.log('🔄 Reintentando ajuste de stock:', diff);
+                    if (!product.batches) product.batches = [];
+                    if (diff > 0) {
+                        product.batches.push({
+                            id: 'CORRECTION-' + Date.now() + '-' + retries,
+                            stock: diff,
+                            initialStock: diff,
+                            expiry: '',
+                            dateAdded: formatDateISO(appState.activeDate || new Date()),
+                            invoiceType: 'black',
+                            source: 'cash',
+                            cost: product.cost || 0,
+                            updatedAt: new Date().toISOString()
+                        });
+                    } else if (diff < 0) {
+                        let remaining = -diff;
+                        for (const batch of product.batches) {
+                            if (remaining <= 0) break;
+                            const deduct = Math.min(remaining, batch.stock || 0);
+                            batch.stock -= deduct;
+                            remaining -= deduct;
+                        }
+                    }
+                    product.stock = getProductStock(product);
+                    product.updatedAt = new Date().toISOString();
+                    saveToLocalStorage();
+                    renderAll();
+                    setTimeout(check, 5000);
+                } else {
+                    showNotification('⚠️ ' + description + ' no se confirmó en el stock después de reintentar. Revisá manualmente.', 'error', 10000);
+                }
+            };
+            setTimeout(check, 5000);
+        }
+        
         function completeSale() {
             if (appState.cart.length === 0) return;
 
@@ -6063,6 +6182,24 @@
             }
 
             const subtotal = appState.cartSubtotal || appState.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            
+            // Calcular stock esperado después de la venta para verificación asíncrona
+            const expectedAfterSale = {};
+            for (const item of appState.cart) {
+                if (!item.productId || item.isManual) continue;
+                const product = appState.inventory.find(p => p.id === item.productId);
+                if (!product) continue;
+                if (product.isComposite && product.components) {
+                    for (const comp of product.components) {
+                        const compProduct = appState.inventory.find(p => p.id === comp.productId);
+                        if (!compProduct) continue;
+                        const qty = item.quantity * (comp.quantity || 1);
+                        expectedAfterSale[compProduct.id] = (expectedAfterSale[compProduct.id] !== undefined ? expectedAfterSale[compProduct.id] : getProductStock(compProduct)) - qty;
+                    }
+                } else {
+                    expectedAfterSale[product.id] = (expectedAfterSale[product.id] !== undefined ? expectedAfterSale[product.id] : getProductStock(product)) - item.quantity;
+                }
+            }
             
             // Calcular costo FIFO para cada ítem ANTES de descontar stock
             for (const item of appState.cart) {
@@ -6246,6 +6383,14 @@
                 const dayDetail = document.getElementById('day-detail');
                 if (dayDetail && !dayDetail.classList.contains('hidden') && selectedCalendarDate === sale.date) {
                     showDayDetail(sale.date);
+                }
+                
+                // Abrir arqueo automáticamente la primera venta del día si aún no se hizo
+                promptCashCountIfNeeded();
+                
+                // Verificar asíncronamente que el stock se haya reflejado correctamente
+                for (const [productId, expected] of Object.entries(expectedAfterSale)) {
+                    verifyAndRetryStockChange('Venta ' + productId, productId, () => expected);
                 }
                 
                 // Resetear método de pago a efectivo y actualizar la UI
@@ -7235,6 +7380,11 @@
             console.log('Llamando renderAll...');
             renderAll();
             console.log('renderAll completado');
+            
+            // Verificar asíncronamente que el stock del producto nuevo se reflejó
+            if (!isComposite) {
+                verifyAndRetryStockChange('Compra ' + product.name, product.id, () => product.stock);
+            }
             
             console.log('Mostrando notificación...');
             showNotification(isComposite 
@@ -8276,6 +8426,9 @@
             
             // invoiceType ya validado arriba
             
+            // Stock esperado después de agregar el lote (para verificación asíncrona)
+            const expectedStockAfter = (getProductStock(product) || 0) + qtyBags;
+            
             // Agregar nuevo lote
             const batchId = 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
             product.batches.push({
@@ -8338,6 +8491,9 @@
             saveToLocalStorage();
             renderAll();
             closeAddStockModal();
+            
+            // Verificar asíncronamente que el stock se reflejó correctamente
+            verifyAndRetryStockChange('Reposición ' + product.name, product.id, () => expectedStockAfter);
             
             // Construir mensaje de notificación
             let message = `Nuevo lote agregado: ${product.name} (+${qty}). Total lotes: ${product.batches.length}. Pagado con ${addStockPaymentMethod === 'cash' ? 'Caja' : 'Cuenta'}`;
@@ -11587,8 +11743,21 @@
             return { cash: expectedCash, bank: expectedBank, total: expectedCash + expectedBank };
         }
 
+        // Abre el arqueo automáticamente una sola vez por día si aún no se hizo
+        function promptCashCountIfNeeded() {
+            const today = formatDateISO(appState.activeDate || new Date());
+            const lastPrompt = localStorage.getItem('kioscopro-last-cashcount-prompt');
+            const existing = appState.cashCounts ? appState.cashCounts.find(c => c.date === today) : null;
+            if (!existing && lastPrompt !== today) {
+                localStorage.setItem('kioscopro-last-cashcount-prompt', today);
+                setTimeout(() => openCashCountModal(), 500);
+            }
+        }
+
         function openCashCountModal() {
             const today = formatDateISO(appState.activeDate || new Date());
+            // Registrar que ya se mostró el arqueo hoy para no repetirlo automáticamente
+            localStorage.setItem('kioscopro-last-cashcount-prompt', today);
             const existing = appState.cashCounts ? appState.cashCounts.find(c => c.date === today) : null;
             
             // Fijar la fecha en el modal para evitar cambios si la fecha activa cambia mientras está abierto
@@ -11668,8 +11837,8 @@
                 
                 const closingCashInput = document.getElementById('cash-count-closing');
                 const closingBankInput = document.getElementById('cash-count-closing-bank');
-                closingCashInput.value = formatMoney(expected.cash, 2);
-                closingBankInput.value = formatMoney(expected.bank, 2);
+                closingCashInput.value = formatMoney(parseFloat(appState.cash) || 0, 2);
+                closingBankInput.value = formatMoney(parseFloat(appState.bank) || 0, 2);
                 document.getElementById('cash-count-notes').value = existing.notes || '';
                 document.getElementById('cash-count-diff-box').classList.add('hidden');
                 setTimeout(() => {
@@ -12014,25 +12183,103 @@
         let foundStockReason = 'found';
 
         function openFoundStockModal() {
-            const select = document.getElementById('found-stock-product');
-            const activeInv = getActiveInventory();
-            select.innerHTML = '<option value="">Seleccionar producto...</option>' +
-                activeInv.filter(p => !p.isComposite)
-                .map(p => {
-                    const stock = getProductStock(p);
-                    const stockDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
-                    return `<option value="${p.id}">${escapeHtml(p.name)} (Stock: ${stockDisplay})</option>`;
-                }).join('');
+            document.getElementById('found-stock-product-search').value = '';
+            document.getElementById('found-stock-product').value = '';
+            document.getElementById('found-stock-search-results').classList.add('hidden');
             document.getElementById('found-stock-quantity').value = '';
             document.getElementById('found-stock-cost').value = '';
             document.getElementById('found-stock-notes').value = '';
             setFoundStockReason('found');
             updateFoundStockCost();
             document.getElementById('found-stock-modal').classList.add('active');
+            setTimeout(() => document.getElementById('found-stock-product-search').focus(), 100);
         }
 
         function closeFoundStockModal() {
             document.getElementById('found-stock-modal').classList.remove('active');
+        }
+
+        // Buscador de productos para Stock Gratis
+        let foundStockSearchResults = [];
+        let foundStockSearchSelectedIndex = -1;
+
+        function handleFoundStockSearch() {
+            const input = document.getElementById('found-stock-product-search');
+            const resultsContainer = document.getElementById('found-stock-search-results');
+            const query = input.value.trim();
+
+            if (!query) {
+                resultsContainer.classList.add('hidden');
+                foundStockSearchResults = [];
+                foundStockSearchSelectedIndex = -1;
+                return;
+            }
+
+            const activeInv = getActiveInventory().filter(p => !p.isComposite);
+            foundStockSearchResults = fuzzySearchProducts(query, activeInv, 10);
+            foundStockSearchSelectedIndex = foundStockSearchResults.length > 0 ? 0 : -1;
+            renderFoundStockSearchResults();
+        }
+
+        function renderFoundStockSearchResults() {
+            const container = document.getElementById('found-stock-search-results');
+            if (foundStockSearchResults.length === 0) {
+                container.innerHTML = '<p class="text-gray-400 text-center py-3 text-sm">No se encontraron productos</p>';
+                container.classList.remove('hidden');
+                return;
+            }
+
+            container.innerHTML = foundStockSearchResults.map((p, idx) => {
+                const stock = getProductStock(p);
+                const isWeight = p.saleByWeight && p.weightPerUnit > 0;
+                const stockDisplay = isWeight ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
+                const isSelected = idx === foundStockSearchSelectedIndex;
+                return `
+                <div class="flex justify-between items-center p-3 cursor-pointer ${isSelected ? 'bg-green-100' : 'hover:bg-green-50'}"
+                     onclick="selectFoundStockProduct('${p.id}')">
+                    <div>
+                        <p class="font-bold text-sm text-gray-800">${escapeHtml(p.name)}</p>
+                        <p class="text-xs text-gray-500">Stock: ${stockDisplay}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-xs font-bold text-green-600">$${formatMoney(p.salePrice)}</p>
+                    </div>
+                </div>`;
+            }).join('');
+            container.classList.remove('hidden');
+        }
+
+        function handleFoundStockSearchKeydown(e) {
+            const results = foundStockSearchResults;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (results.length > 0) {
+                    foundStockSearchSelectedIndex = (foundStockSearchSelectedIndex + 1) % results.length;
+                    renderFoundStockSearchResults();
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (results.length > 0) {
+                    foundStockSearchSelectedIndex = foundStockSearchSelectedIndex <= 0 ? results.length - 1 : foundStockSearchSelectedIndex - 1;
+                    renderFoundStockSearchResults();
+                }
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (foundStockSearchSelectedIndex >= 0 && results[foundStockSearchSelectedIndex]) {
+                    selectFoundStockProduct(results[foundStockSearchSelectedIndex].id);
+                }
+            }
+        }
+
+        function selectFoundStockProduct(productId) {
+            const product = appState.inventory.find(p => p.id === productId);
+            if (!product) return;
+            document.getElementById('found-stock-product').value = productId;
+            document.getElementById('found-stock-product-search').value = product.name;
+            document.getElementById('found-stock-search-results').classList.add('hidden');
+            foundStockSearchResults = [];
+            foundStockSearchSelectedIndex = -1;
+            updateFoundStockCost();
         }
 
         function updateFoundStockCost() {
@@ -12292,15 +12539,9 @@
         let lossReason = 'expired';
 
         function openLossModal() {
-            const select = document.getElementById('loss-product');
-            const activeInv = getActiveInventory();
-            select.innerHTML = '<option value="">Seleccionar producto...</option>' +
-                activeInv.filter(p => !p.isComposite)
-                .map(p => {
-                    const stock = getProductStock(p);
-                    const stockDisplay = p.saleByWeight && p.weightPerUnit > 0 ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
-                    return `<option value="${p.id}">${escapeHtml(p.name)} (Stock: ${stockDisplay})</option>`;
-                }).join('');
+            document.getElementById('loss-product-search').value = '';
+            document.getElementById('loss-product').value = '';
+            document.getElementById('loss-search-results').classList.add('hidden');
             document.getElementById('loss-quantity').value = '';
             document.getElementById('loss-cost').value = '';
             document.getElementById('loss-cost-display').textContent = '$0';
@@ -12310,10 +12551,94 @@
             setLossReason('expired');
             updateLossCost();
             document.getElementById('loss-modal').classList.add('active');
+            setTimeout(() => document.getElementById('loss-product-search').focus(), 100);
         }
 
         function closeLossModal() {
             document.getElementById('loss-modal').classList.remove('active');
+        }
+
+        // Buscador de productos para Mermas
+        let lossSearchResults = [];
+        let lossSearchSelectedIndex = -1;
+
+        function handleLossSearch() {
+            const input = document.getElementById('loss-product-search');
+            const resultsContainer = document.getElementById('loss-search-results');
+            const query = input.value.trim();
+
+            if (!query) {
+                resultsContainer.classList.add('hidden');
+                lossSearchResults = [];
+                lossSearchSelectedIndex = -1;
+                return;
+            }
+
+            const activeInv = getActiveInventory().filter(p => !p.isComposite);
+            lossSearchResults = fuzzySearchProducts(query, activeInv, 10);
+            lossSearchSelectedIndex = lossSearchResults.length > 0 ? 0 : -1;
+            renderLossSearchResults();
+        }
+
+        function renderLossSearchResults() {
+            const container = document.getElementById('loss-search-results');
+            if (lossSearchResults.length === 0) {
+                container.innerHTML = '<p class="text-gray-400 text-center py-3 text-sm">No se encontraron productos</p>';
+                container.classList.remove('hidden');
+                return;
+            }
+
+            container.innerHTML = lossSearchResults.map((p, idx) => {
+                const stock = getProductStock(p);
+                const isWeight = p.saleByWeight && p.weightPerUnit > 0;
+                const stockDisplay = isWeight ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
+                const isSelected = idx === lossSearchSelectedIndex;
+                return `
+                <div class="flex justify-between items-center p-3 cursor-pointer ${isSelected ? 'bg-red-100' : 'hover:bg-red-50'}"
+                     onclick="selectLossProduct('${p.id}')">
+                    <div>
+                        <p class="font-bold text-sm text-gray-800">${escapeHtml(p.name)}</p>
+                        <p class="text-xs text-gray-500">Stock: ${stockDisplay}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-xs font-bold text-green-600">$${formatMoney(p.salePrice)}</p>
+                    </div>
+                </div>`;
+            }).join('');
+            container.classList.remove('hidden');
+        }
+
+        function handleLossSearchKeydown(e) {
+            const results = lossSearchResults;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (results.length > 0) {
+                    lossSearchSelectedIndex = (lossSearchSelectedIndex + 1) % results.length;
+                    renderLossSearchResults();
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (results.length > 0) {
+                    lossSearchSelectedIndex = lossSearchSelectedIndex <= 0 ? results.length - 1 : lossSearchSelectedIndex - 1;
+                    renderLossSearchResults();
+                }
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (lossSearchSelectedIndex >= 0 && results[lossSearchSelectedIndex]) {
+                    selectLossProduct(results[lossSearchSelectedIndex].id);
+                }
+            }
+        }
+
+        function selectLossProduct(productId) {
+            const product = appState.inventory.find(p => p.id === productId);
+            if (!product) return;
+            document.getElementById('loss-product').value = productId;
+            document.getElementById('loss-product-search').value = product.name;
+            document.getElementById('loss-search-results').classList.add('hidden');
+            lossSearchResults = [];
+            lossSearchSelectedIndex = -1;
+            updateLossCost();
         }
 
         function updateLossCost() {
@@ -12428,6 +12753,7 @@
             }
             
             const stock = getProductStock(product);
+            const expectedStockAfter = stock - units;
             const stockGrams = isWeight ? stock * product.weightPerUnit : stock;
             const requested = isWeight ? grams : units;
             
@@ -12476,6 +12802,10 @@
             saveToLocalStorage();
             renderAll();
             closeLossModal();
+            
+            // Verificar asíncronamente que el stock se reflejó correctamente
+            verifyAndRetryStockChange('Merma ' + product.name, product.id, () => expectedStockAfter);
+            
             showNotification(`Merma registrada: ${qtyDisplay} de ${product.name}`, 'success');
         }
 
@@ -15259,68 +15589,62 @@ RESULTADOS:
                         return;
                     }
                     
-                    // Limpiar todo el estado actual
+                    // Limpiar todo el estado actual: empezar del estado inicial y sobrescribir con el backup
+                    const baseState = { ...appState };
                     appState = {
-                        // Fechas
-                        currentDate: new Date(backupData.currentDate || new Date()),
-                        activeDate: new Date(backupData.activeDate || new Date()),
-                        calendarMonth: new Date(backupData.calendarMonth || new Date()),
-                        
-                        // Configuración
-                        defaultMargin: backupData.defaultMargin || 30,
-                        initialCapital: backupData.initialCapital || 0,
-                        
-                        // Saldos
-                        cash: backupData.cash || 0,
-                        bank: backupData.bank || 0,
-                        balancesUpdatedAt: backupData.balancesUpdatedAt || 0,
-                        
-                        // Arrays de datos (lo más importante)
-                        inventory: Array.isArray(backupData.inventory) ? backupData.inventory : [],
-                        sales: Array.isArray(backupData.sales) ? backupData.sales : [],
-                        expenses: Array.isArray(backupData.expenses) ? backupData.expenses : [],
-                        investments: Array.isArray(backupData.investments) ? backupData.investments : [],
-                        cashMovements: Array.isArray(backupData.cashMovements) ? backupData.cashMovements : [],
-                        capitalAdjustments: Array.isArray(backupData.capitalAdjustments) ? backupData.capitalAdjustments : [],
-                        returns: Array.isArray(backupData.returns) ? backupData.returns : [],
-                        foundStock: Array.isArray(backupData.foundStock) ? backupData.foundStock : [],
-                        losses: Array.isArray(backupData.losses) ? backupData.losses : [],
-                        cashCounts: Array.isArray(backupData.cashCounts) ? backupData.cashCounts : [],
-                        alerts: Array.isArray(backupData.alerts) ? backupData.alerts : [],
-                        guestLogs: Array.isArray(backupData.guestLogs) ? backupData.guestLogs : [],
-                        deletedProductIds: Array.isArray(backupData.deletedProductIds) ? backupData.deletedProductIds : [],
-                        deletedInvestmentIds: Array.isArray(backupData.deletedInvestmentIds) ? backupData.deletedInvestmentIds : [],
-                        invoiceTracking: backupData.invoiceTracking || {
-                            purchasedWhite: 0,
-                            purchasedBlack: 0,
-                            soldWhite: 0,
-                            soldBlack: 0,
-                            soldDebit: 0
-                        },
-                        billedDays: Array.isArray(backupData.billedDays) ? backupData.billedDays : [],
-                        chartVisibleMetrics: backupData.chartVisibleMetrics || { sales: true, profit: true, expenses: true },
-                        dashboardVisibleMetrics: backupData.dashboardVisibleMetrics || { sales: true, profit: true, expenses: true, investment: true },
-                        
-                        // Estado temporal
+                        ...baseState,
+                        ...backupData,
+                        // Campos temporales que no se restauran por seguridad
                         cart: [],
-                        paymentMethod: 'cash',
-                        pendingPurchase: null,
-                        pendingPurchasePayment: backupData.pendingPurchasePayment || 'cash',
-                        pendingPurchaseInvoiceType: backupData.pendingPurchaseInvoiceType || 'white',
-                        suppliers: Array.isArray(backupData.suppliers) ? backupData.suppliers : [],
-                        businessHours: Array.isArray(backupData.businessHours) ? backupData.businessHours : [
-                            { day: 0, open: true, openTime: '08:00', closeTime: '22:00' },
-                            { day: 1, open: true, openTime: '08:00', closeTime: '22:00' },
-                            { day: 2, open: true, openTime: '08:00', closeTime: '22:00' },
-                            { day: 3, open: true, openTime: '08:00', closeTime: '22:00' },
-                            { day: 4, open: true, openTime: '08:00', closeTime: '22:00' },
-                            { day: 5, open: true, openTime: '08:00', closeTime: '22:00' },
-                            { day: 6, open: true, openTime: '08:00', closeTime: '22:00' }
-                        ],
-                        
-                        // Usuario (no restaurar sesión por seguridad)
-                        currentUser: null
+                        currentUser: null,
+                        currentDate: new Date(),
+                        activeDate: new Date(backupData.activeDate || new Date()),
+                        calendarMonth: new Date(backupData.calendarMonth || new Date())
                     };
+                    
+                    // Asegurar arrays principales
+                    appState.inventory = Array.isArray(appState.inventory) ? appState.inventory : [];
+                    appState.sales = Array.isArray(appState.sales) ? appState.sales : [];
+                    appState.expenses = Array.isArray(appState.expenses) ? appState.expenses : [];
+                    appState.investments = Array.isArray(appState.investments) ? appState.investments : [];
+                    appState.cashMovements = Array.isArray(appState.cashMovements) ? appState.cashMovements : [];
+                    appState.capitalAdjustments = Array.isArray(appState.capitalAdjustments) ? appState.capitalAdjustments : [];
+                    appState.returns = Array.isArray(appState.returns) ? appState.returns : [];
+                    appState.foundStock = Array.isArray(appState.foundStock) ? appState.foundStock : [];
+                    appState.losses = Array.isArray(appState.losses) ? appState.losses : [];
+                    appState.cashCounts = Array.isArray(appState.cashCounts) ? appState.cashCounts : [];
+                    appState.cashDifferences = Array.isArray(appState.cashDifferences) ? appState.cashDifferences : [];
+                    appState.alerts = Array.isArray(appState.alerts) ? appState.alerts : [];
+                    appState.guestLogs = Array.isArray(appState.guestLogs) ? appState.guestLogs : [];
+                    appState.deletedProductIds = Array.isArray(appState.deletedProductIds) ? appState.deletedProductIds : [];
+                    appState.deletedInvestmentIds = Array.isArray(appState.deletedInvestmentIds) ? appState.deletedInvestmentIds : [];
+                    appState.billedDays = Array.isArray(appState.billedDays) ? appState.billedDays : [];
+                    appState.promotions = Array.isArray(appState.promotions) ? appState.promotions : [];
+                    appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
+                    appState.ticketRules = Array.isArray(appState.ticketRules) ? appState.ticketRules : [];
+                    appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
+                    appState.suppliers = Array.isArray(appState.suppliers) ? appState.suppliers : [];
+                    appState.businessHours = Array.isArray(appState.businessHours) && appState.businessHours.length === 7
+                        ? appState.businessHours
+                        : [...baseState.businessHours];
+                    
+                    // Asegurar objetos de configuración
+                    appState.cashFlowSettings = appState.cashFlowSettings || { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 };
+                    appState.invoiceTracking = appState.invoiceTracking || { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 };
+                    appState.chartVisibleMetrics = appState.chartVisibleMetrics || { sales: true, profit: true, expenses: true };
+                    appState.dashboardVisibleMetrics = appState.dashboardVisibleMetrics || { sales: true, profit: true, expenses: true, investment: true };
+                    
+                    // Asegurar valores numéricos
+                    appState.cash = parseFloat(appState.cash) || 0;
+                    appState.bank = parseFloat(appState.bank) || 0;
+                    appState.balancesUpdatedAt = parseInt(appState.balancesUpdatedAt) || 0;
+                    appState.defaultMargin = parseFloat(appState.defaultMargin) || 30;
+                    appState.initialCapital = parseFloat(appState.initialCapital) || 0;
+                    appState.mercadoCreditoFee = parseFloat(appState.mercadoCreditoFee) || 5;
+                    appState.stockTargetDays = parseInt(appState.stockTargetDays) || 7;
+                    appState.cashFlowSettings.projectionDays = parseInt(appState.cashFlowSettings.projectionDays) || 30;
+                    appState.cashFlowSettings.estimatedDailyIncome = appState.cashFlowSettings.estimatedDailyIncome === null ? null : (parseFloat(appState.cashFlowSettings.estimatedDailyIncome) || null);
+                    appState.cashFlowSettings.lowBalanceThreshold = parseFloat(appState.cashFlowSettings.lowBalanceThreshold) || 0;
                     
                     // Reconstruir sobrantes/faltantes desde los arqueos por si el backup no los traía
                     rebuildCashDifferences();
@@ -16503,7 +16827,7 @@ RESULTADOS:
                 if (document.getElementById('promo-day-' + i).checked) days.push(i);
             }
             
-            const productIds = promoModalSelected.map(s => s.productId);
+            const productIds = promoModalSelected.flatMap(s => s.productIds || []);
             
             const promo = {
                 id: id || 'PROMO-' + Date.now(),
@@ -17907,6 +18231,9 @@ RESULTADOS:
                     
                     console.log('Datos cargados - Caja:', appState.cash, 'Cuenta:', appState.bank);
                     
+                    // Si pasó el día mientras estaba cerrada, volver a hoy
+                    checkDateRollover();
+                    
                 } catch (e) {
                     console.error('Error cargando datos:', e);
                     showNotification('Error al cargar datos guardados', 'error');
@@ -17915,6 +18242,9 @@ RESULTADOS:
             
             // Limpiar productos eliminados del inventario
             cleanupDeletedProducts();
+            
+            // Revisar periódicamente si pasó el día para volver a hoy
+            startDateRolloverCheck();
             
             // Iniciar listener de Firebase después de cargar datos locales
             setTimeout(() => {
@@ -18214,9 +18544,9 @@ RESULTADOS:
             <div class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Producto</label>
-                    <select id="found-stock-product" class="w-full border-2 border-green-200 rounded-xl px-4 py-3" onchange="updateFoundStockCost()">
-                        <option value="">Seleccionar producto...</option>
-                    </select>
+                    <input type="text" id="found-stock-product-search" class="w-full border-2 border-green-200 rounded-xl px-4 py-3" placeholder="Escribí para buscar producto..." oninput="handleFoundStockSearch()" onkeydown="handleFoundStockSearchKeydown(event)">
+                    <input type="hidden" id="found-stock-product">
+                    <div id="found-stock-search-results" class="hidden bg-white border border-green-200 rounded-xl max-h-48 overflow-y-auto mt-1"></div>
                     <p id="found-stock-unit-cost-display" class="text-xs text-gray-500 mt-1 hidden"></p>
                 </div>
                 <div>
@@ -18257,9 +18587,9 @@ RESULTADOS:
             <div class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Producto</label>
-                    <select id="loss-product" class="w-full border-2 border-red-200 rounded-xl px-4 py-3" onchange="updateLossCost()">
-                        <option value="">Seleccionar producto...</option>
-                    </select>
+                    <input type="text" id="loss-product-search" class="w-full border-2 border-red-200 rounded-xl px-4 py-3" placeholder="Escribí para buscar producto..." oninput="handleLossSearch()" onkeydown="handleLossSearchKeydown(event)">
+                    <input type="hidden" id="loss-product">
+                    <div id="loss-search-results" class="hidden bg-white border border-red-200 rounded-xl max-h-48 overflow-y-auto mt-1"></div>
                     <p id="loss-unit-cost-display" class="text-xs text-gray-500 mt-1 hidden"></p>
                 </div>
                 <div>

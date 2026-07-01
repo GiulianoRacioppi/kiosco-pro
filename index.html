@@ -1263,10 +1263,12 @@
                         <div class="bg-green-50 rounded-xl p-3 text-center">
                             <p class="text-xs text-green-600 font-bold uppercase">Ganancia</p>
                             <p class="text-xl font-bold text-green-800" id="calendar-month-profit">$0</p>
+                            <p class="text-[10px] text-green-600 mt-1" id="calendar-month-profit-extra"></p>
                         </div>
                         <div class="bg-red-50 rounded-xl p-3 text-center">
                             <p class="text-xs text-red-600 font-bold uppercase">Gastos</p>
                             <p class="text-xl font-bold text-red-800" id="calendar-month-expenses">$0</p>
+                            <p class="text-[10px] text-red-600 mt-1" id="calendar-month-expenses-extra"></p>
                         </div>
                         <div class="bg-blue-50 rounded-xl p-3 text-center">
                             <p class="text-xs text-blue-600 font-bold uppercase">Inversión</p>
@@ -3546,7 +3548,17 @@
         }
         function startDateRolloverCheck() {
             if (dateRolloverInterval) return;
-            dateRolloverInterval = setInterval(checkDateRollover, 60000);
+            // Programar el primer chequeo exactamente a la medianoche siguiente
+            const now = new Date();
+            const tomorrow = new Date(now);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(0, 0, 0, 0);
+            const msUntilMidnight = tomorrow - now;
+            setTimeout(() => {
+                checkDateRollover();
+                // A partir de ahí, una vez por día
+                dateRolloverInterval = setInterval(checkDateRollover, 24 * 60 * 60 * 1000);
+            }, msUntilMidnight);
         }
 
         function updateDateDisplay() {
@@ -9023,16 +9035,42 @@
             const monthExpensesTotal = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
             const monthInvestmentsTotal = monthInvestments.reduce((sum, i) => sum + i.amount, 0);
             
+            // Balance del mes: sobrantes de caja + stock gratis - pérdidas por mermas
+            const monthSurplus = (appState.cashDifferences || [])
+                .filter(d => d.date && d.date.startsWith(monthPrefix) && d.type === 'surplus')
+                .reduce((sum, d) => sum + d.amount, 0);
+            const monthFoundStock = (appState.foundStock || [])
+                .filter(f => f.date && f.date.startsWith(monthPrefix))
+                .reduce((sum, f) => sum + (f.cost || 0), 0);
+            const monthLosses = (appState.losses || [])
+                .filter(l => l.date && l.date.startsWith(monthPrefix))
+                .reduce((sum, l) => sum + (l.cost || 0), 0);
+            const monthBalance = monthSurplus + monthFoundStock - monthLosses;
+            
             const monthSalesEl = document.getElementById('calendar-month-sales');
             const monthSalesCountEl = document.getElementById('calendar-month-sales-count');
             const monthProfitEl = document.getElementById('calendar-month-profit');
+            const monthProfitExtraEl = document.getElementById('calendar-month-profit-extra');
             const monthExpensesEl = document.getElementById('calendar-month-expenses');
+            const monthExpensesExtraEl = document.getElementById('calendar-month-expenses-extra');
             const monthInvestmentsEl = document.getElementById('calendar-month-investments');
             
             if (monthSalesEl) monthSalesEl.textContent = '$' + formatMoney(monthSalesTotal);
             if (monthSalesCountEl) monthSalesCountEl.textContent = monthSales.length + ' ventas';
-            if (monthProfitEl) monthProfitEl.textContent = '$' + formatMoney(monthProfitTotal);
-            if (monthExpensesEl) monthExpensesEl.textContent = '$' + formatMoney(monthExpensesTotal);
+            
+            if (monthBalance >= 0) {
+                if (monthProfitEl) monthProfitEl.textContent = '$' + formatMoney(monthProfitTotal + monthBalance);
+                if (monthProfitExtraEl) monthProfitExtraEl.textContent = `+$${formatMoney(monthBalance)} de sobrantes`;
+                if (monthExpensesEl) monthExpensesEl.textContent = '$' + formatMoney(monthExpensesTotal);
+                if (monthExpensesExtraEl) monthExpensesExtraEl.textContent = '';
+            } else {
+                const lossAmount = -monthBalance;
+                if (monthProfitEl) monthProfitEl.textContent = '$' + formatMoney(monthProfitTotal);
+                if (monthProfitExtraEl) monthProfitExtraEl.textContent = '';
+                if (monthExpensesEl) monthExpensesEl.textContent = '$' + formatMoney(monthExpensesTotal + lossAmount);
+                if (monthExpensesExtraEl) monthExpensesExtraEl.textContent = `+$${formatMoney(lossAmount)} de pérdidas`;
+            }
+            
             if (monthInvestmentsEl) monthInvestmentsEl.textContent = '$' + formatMoney(monthInvestmentsTotal);
         }
 

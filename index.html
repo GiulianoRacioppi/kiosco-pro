@@ -1254,7 +1254,7 @@
                 <!-- Métricas del mes -->
                 <div class="mt-6 pt-4 border-t border-gray-200">
                     <h4 class="text-sm font-bold text-gray-600 mb-3 uppercase">Resumen del mes</h4>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
                         <div class="bg-purple-50 rounded-xl p-3 text-center">
                             <p class="text-xs text-purple-600 font-bold uppercase">Ventas</p>
                             <p class="text-xl font-bold text-purple-800" id="calendar-month-sales">$0</p>
@@ -1269,6 +1269,11 @@
                             <p class="text-xs text-red-600 font-bold uppercase">Gastos</p>
                             <p class="text-xl font-bold text-red-800" id="calendar-month-expenses">$0</p>
                             <p class="text-[10px] text-red-600 mt-1" id="calendar-month-expenses-extra"></p>
+                        </div>
+                        <div class="bg-teal-50 rounded-xl p-3 text-center">
+                            <p class="text-xs text-teal-600 font-bold uppercase">Balance</p>
+                            <p class="text-xl font-bold text-teal-800" id="calendar-month-balance">$0</p>
+                            <p class="text-[10px] text-teal-600 mt-1" id="calendar-month-balance-extra">Ganancia neta</p>
                         </div>
                         <div class="bg-blue-50 rounded-xl p-3 text-center">
                             <p class="text-xs text-blue-600 font-bold uppercase">Inversión</p>
@@ -9053,23 +9058,40 @@
             const monthProfitExtraEl = document.getElementById('calendar-month-profit-extra');
             const monthExpensesEl = document.getElementById('calendar-month-expenses');
             const monthExpensesExtraEl = document.getElementById('calendar-month-expenses-extra');
+            const monthBalanceEl = document.getElementById('calendar-month-balance');
             const monthInvestmentsEl = document.getElementById('calendar-month-investments');
             
             if (monthSalesEl) monthSalesEl.textContent = '$' + formatMoney(monthSalesTotal);
             if (monthSalesCountEl) monthSalesCountEl.textContent = monthSales.length + ' ventas';
             
+            let displayedProfit = monthProfitTotal;
+            let displayedExpenses = monthExpensesTotal;
+            
             if (monthBalance >= 0) {
-                if (monthProfitEl) monthProfitEl.textContent = '$' + formatMoney(monthProfitTotal + monthBalance);
-                if (monthProfitExtraEl) monthProfitExtraEl.textContent = `+$${formatMoney(monthBalance)} de sobrantes`;
-                if (monthExpensesEl) monthExpensesEl.textContent = '$' + formatMoney(monthExpensesTotal);
+                displayedProfit += monthBalance;
+                if (monthProfitEl) monthProfitEl.textContent = '$' + formatMoney(displayedProfit);
+                if (monthProfitExtraEl) {
+                    if (monthSurplus > 0 && monthFoundStock > 0) {
+                        monthProfitExtraEl.textContent = `+$${formatMoney(monthSurplus)} sobrantes + $${formatMoney(monthFoundStock)} stock gratis = $${formatMoney(monthBalance)}`;
+                    } else if (monthFoundStock > 0) {
+                        monthProfitExtraEl.textContent = `+$${formatMoney(monthBalance)} de stock gratis`;
+                    } else {
+                        monthProfitExtraEl.textContent = `+$${formatMoney(monthBalance)} de sobrantes`;
+                    }
+                }
+                if (monthExpensesEl) monthExpensesEl.textContent = '$' + formatMoney(displayedExpenses);
                 if (monthExpensesExtraEl) monthExpensesExtraEl.textContent = '';
             } else {
                 const lossAmount = -monthBalance;
-                if (monthProfitEl) monthProfitEl.textContent = '$' + formatMoney(monthProfitTotal);
+                displayedExpenses += lossAmount;
+                if (monthProfitEl) monthProfitEl.textContent = '$' + formatMoney(displayedProfit);
                 if (monthProfitExtraEl) monthProfitExtraEl.textContent = '';
-                if (monthExpensesEl) monthExpensesEl.textContent = '$' + formatMoney(monthExpensesTotal + lossAmount);
+                if (monthExpensesEl) monthExpensesEl.textContent = '$' + formatMoney(displayedExpenses);
                 if (monthExpensesExtraEl) monthExpensesExtraEl.textContent = `+$${formatMoney(lossAmount)} de pérdidas`;
             }
+            
+            const netBalance = displayedProfit - displayedExpenses;
+            if (monthBalanceEl) monthBalanceEl.textContent = '$' + formatMoney(netBalance);
             
             if (monthInvestmentsEl) monthInvestmentsEl.textContent = '$' + formatMoney(monthInvestmentsTotal);
         }
@@ -17248,17 +17270,18 @@ RESULTADOS:
                     appState.bank = parseFloat(appState.bank) || 0;
                     if (!appState.balancesUpdatedAt) appState.balancesUpdatedAt = 0;
                     
-                    // Preparar datos para Firebase (sin cart que es temporal)
+                    // Preparar datos para Firebase (sin cart que es temporal, ni fechas locales)
                     const dataToSync = {
                         ...appState,
                         cart: [], // No sincronizar carrito temporal
                         currentDate: new Date().toISOString(),
-                        activeDate: appState.activeDate.toISOString(),
-                        calendarMonth: appState.calendarMonth.toISOString(),
                         lastSync: new Date().toISOString(),
                         balancesUpdatedAt: appState.balancesUpdatedAt,
                         deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId()
                     };
+                    // No sincronizar la fecha activa ni el mes del calendario: son locales de cada dispositivo
+                    delete dataToSync.activeDate;
+                    delete dataToSync.calendarMonth;
                     
                     await setDoc(doc(window.db, "kioscos", "main"), dataToSync);
                     lastSyncTime = Date.now();
@@ -17887,13 +17910,9 @@ RESULTADOS:
                 }
             }
             
-            // Restaurar fechas en ambos modos
-            try {
-                if (data.activeDate) appState.activeDate = parseDateLocal(data.activeDate);
-                if (data.calendarMonth) appState.calendarMonth = parseDateLocal(data.calendarMonth);
-            } catch(e) {
-                console.error('Error parseando fechas:', e);
-            }
+            // NOTA: activeDate y calendarMonth NO se restauran desde Firebase.
+            // Cada dispositivo maneja su propia fecha activa para evitar que
+            // la nube pise la fecha local (por ejemplo, quedarse en "ayer").
             
             // Restaurar carrito local
             appState.cart = localCart;

@@ -3315,6 +3315,8 @@
             deletedProductIds: [],
             // Inversiones/compras eliminadas (para evitar que vuelvan por sync)
             deletedInvestmentIds: [],
+            // Promociones eliminadas (para evitar que vuelvan por sync)
+            deletedPromotionIds: [],
             // Stock gratis / encontrado / regalado
             foundStock: [],
             // Mermas y pérdidas
@@ -14911,6 +14913,7 @@ Total de productos a comprar: ${shoppingList.length}
                         cashDifferences: [],
                         deletedProductIds: [],
                         deletedInvestmentIds: [],
+                        deletedPromotionIds: [],
                         foundStock: [],
                         losses: [],
                         returns: [],
@@ -14986,6 +14989,7 @@ Total de productos a comprar: ${shoppingList.length}
                 cashDifferences: [],
                 deletedProductIds: [],
                 deletedInvestmentIds: [],
+                deletedPromotionIds: [],
                 losses: [],
                 returns: [],
                 recurringExpenses: [],
@@ -15729,6 +15733,7 @@ RESULTADOS:
                     appState.guestLogs = Array.isArray(appState.guestLogs) ? appState.guestLogs : [];
                     appState.deletedProductIds = Array.isArray(appState.deletedProductIds) ? appState.deletedProductIds : [];
                     appState.deletedInvestmentIds = Array.isArray(appState.deletedInvestmentIds) ? appState.deletedInvestmentIds : [];
+                    appState.deletedPromotionIds = Array.isArray(appState.deletedPromotionIds) ? appState.deletedPromotionIds : [];
                     appState.billedDays = Array.isArray(appState.billedDays) ? appState.billedDays : [];
                     appState.promotions = Array.isArray(appState.promotions) ? appState.promotions : [];
                     appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
@@ -17011,6 +17016,15 @@ RESULTADOS:
         function deletePromotion(id) {
             if (!confirm('¿Eliminar esta promoción?')) return;
             appState.promotions = appState.promotions.filter(p => p.id !== id);
+            // Registrar ID eliminado para evitar que vuelva por sync
+            if (!appState.deletedPromotionIds) appState.deletedPromotionIds = [];
+            appState.deletedPromotionIds.push({
+                id: id,
+                deletedAt: Date.now()
+            });
+            if (appState.deletedPromotionIds.length > 200) {
+                appState.deletedPromotionIds = appState.deletedPromotionIds.slice(-200);
+            }
             saveToLocalStorage();
             renderPromotions();
             showNotification('Promoción eliminada', 'info');
@@ -17745,6 +17759,17 @@ RESULTADOS:
             const deviceId = localStorage.getItem('kioscopro-device-id') || generateDeviceId();
             const isSameDevice = data.deviceId === deviceId;
             
+            // Conteos antes del merge para detectar si realmente hubo cambios
+            const beforeCounts = {
+                inventory: (appState.inventory || []).length,
+                sales: (appState.sales || []).length,
+                expenses: (appState.expenses || []).length,
+                investments: (appState.investments || []).length,
+                promotions: (appState.promotions || []).length,
+                foundStock: (appState.foundStock || []).length,
+                losses: (appState.losses || []).length
+            };
+            
             // Detectar nuevo dispositivo conectado
             if (lastKnownDeviceId && lastKnownDeviceId !== data.deviceId && !isInitialSync) {
                 showNotification('📱 Nuevo dispositivo conectado: ' + (data.deviceId || 'Desconocido').substring(0, 20), 'info');
@@ -17853,6 +17878,14 @@ RESULTADOS:
                 } else {
                     appState.promotions = JSON.parse(JSON.stringify(remotePromos));
                 }
+                
+                // Tomar promociones eliminadas desde Firebase (PC es fuente de verdad)
+                if (!remoteLooksEmpty) {
+                    appState.deletedPromotionIds = Array.isArray(data.deletedPromotionIds) ? data.deletedPromotionIds : [];
+                }
+                // Filtrar promociones eliminadas para que no revivan
+                const deletedPromoIdsSec = new Set((appState.deletedPromotionIds || []).map(d => d.id).filter(Boolean));
+                appState.promotions = appState.promotions.filter(p => !deletedPromoIdsSec.has(p.id));
                 
                 const remoteTickets = Array.isArray(data.discountTickets) ? data.discountTickets : [];
                 const localTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
@@ -17964,7 +17997,19 @@ RESULTADOS:
                 appState.investments = appState.investments.filter(i => !deletedInvIdsMaster.has(i.id));
                 appState.capitalAdjustments = smartMergeArrays(appState.capitalAdjustments, data.capitalAdjustments);
                 appState.returns = smartMergeArrays(appState.returns, data.returns);
+                
+                // Fusionar lista de promociones eliminadas y filtrar para que no revivan
+                const remoteDeletedPromos = Array.isArray(data.deletedPromotionIds) ? data.deletedPromotionIds : [];
+                const localDeletedPromos = Array.isArray(appState.deletedPromotionIds) ? appState.deletedPromotionIds : [];
+                const deletedPromoMap = new Map();
+                for (const d of localDeletedPromos) { if (d && d.id) deletedPromoMap.set(d.id, d); }
+                for (const d of remoteDeletedPromos) { if (d && d.id && !deletedPromoMap.has(d.id)) deletedPromoMap.set(d.id, d); }
+                appState.deletedPromotionIds = Array.from(deletedPromoMap.values()).slice(-200);
+                
                 appState.promotions = smartMergeArrays(appState.promotions, data.promotions);
+                const deletedPromoIdsMaster = new Set((appState.deletedPromotionIds || []).map(d => d.id).filter(Boolean));
+                appState.promotions = appState.promotions.filter(p => !deletedPromoIdsMaster.has(p.id));
+                
                 appState.discountTickets = smartMergeArrays(appState.discountTickets, data.discountTickets);
                 appState.ticketRules = smartMergeArrays(appState.ticketRules, data.ticketRules);
                 appState.cashCounts = smartMergeArrays(appState.cashCounts || [], data.cashCounts || []);
@@ -18035,8 +18080,20 @@ RESULTADOS:
             
             // Solo mostrar notificación si:
             // - NO es la carga inicial
-            // - Y NO es el mismo dispositivo (datos de otro dispositivo)
-            if (!isInitialSync && !isSameDevice) {
+            // - NO es el mismo dispositivo
+            // - Y realmente hubo cambios en los datos
+            const afterCounts = {
+                inventory: (appState.inventory || []).length,
+                sales: (appState.sales || []).length,
+                expenses: (appState.expenses || []).length,
+                investments: (appState.investments || []).length,
+                promotions: (appState.promotions || []).length,
+                foundStock: (appState.foundStock || []).length,
+                losses: (appState.losses || []).length
+            };
+            const hasRealChanges = Object.keys(beforeCounts).some(key => beforeCounts[key] !== afterCounts[key]);
+            
+            if (!isInitialSync && !isSameDevice && hasRealChanges) {
                 showNotification('📲 Datos sincronizados desde otro dispositivo', 'success');
             } else if (isInitialSync) {
                 console.log('📥 Datos cargados desde Firebase (inicial)');

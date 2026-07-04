@@ -17352,6 +17352,14 @@ RESULTADOS:
                 return;
             }
             
+            // Modo secundario: solo lee datos del principal. No sube nada para evitar
+            // que dispositivos con datos viejos (ej: celu) pisen los datos de la PC.
+            if (!isMasterDevice()) {
+                console.log('📱 Modo secundario: no se suben datos a Firebase. Esperando datos del principal...');
+                updateSyncStatus('synced');
+                return;
+            }
+            
             // Debounce: esperar 1 segundo después del último cambio (o inmediato si se pide)
             clearTimeout(syncTimeout);
             const delay = immediate ? 0 : 1000;
@@ -17770,9 +17778,9 @@ RESULTADOS:
                 losses: (appState.losses || []).length
             };
             
-            // Detectar nuevo dispositivo conectado
+            // Detectar nuevo dispositivo conectado (solo log, sin notificación para no molestar)
             if (lastKnownDeviceId && lastKnownDeviceId !== data.deviceId && !isInitialSync) {
-                showNotification('📱 Nuevo dispositivo conectado: ' + (data.deviceId || 'Desconocido').substring(0, 20), 'info');
+                console.log('📱 Nuevo dispositivo conectado:', data.deviceId);
             }
             lastKnownDeviceId = data.deviceId;
             

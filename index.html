@@ -6396,6 +6396,9 @@
                 saveToLocalStorage();
                 renderAll();
                 renderCalendar();
+                
+                // Backup automático en Firebase por cada venta
+                saveFirebaseBackup(sale);
                 // Refrescar detalle del día si está visible y es la fecha de la venta
                 const dayDetail = document.getElementById('day-detail');
                 if (dayDetail && !dayDetail.classList.contains('hidden') && selectedCalendarDate === sale.date) {
@@ -12380,13 +12383,17 @@
                 units = parseInt(qtyInput.value) || 0;
             }
             
-            const estimatedCost = parseFloat(costInput.value) || 0;
+            const enteredCost = parseFloat(costInput.value) || 0;
             const unitCost = product.cost || 0;
+            const autoCost = Math.round(unitCost * units * 100) / 100;
+            
+            // Mostrar costo estimado automático en el placeholder si no se ingresó uno
+            costInput.placeholder = autoCost > 0 ? `$${formatMoney(autoCost)} (automático)` : '0';
             
             if (isWeight) {
-                unitCostDisplay.textContent = 'Costo: $' + formatMoney(unitCost / product.weightPerUnit) + '/g • $' + formatMoney(unitCost) + ' por unidad de ' + product.weightPerUnit + 'g';
+                unitCostDisplay.textContent = 'Costo: $' + formatMoney(unitCost / product.weightPerUnit) + '/g • $' + formatMoney(unitCost) + ' por unidad de ' + product.weightPerUnit + 'g' + (autoCost > 0 ? ' • Total estimado: $' + formatMoney(autoCost) : '');
             } else {
-                unitCostDisplay.textContent = 'Costo unitario: $' + formatMoney(unitCost) + ' c/u';
+                unitCostDisplay.textContent = 'Costo unitario: $' + formatMoney(unitCost) + ' c/u' + (autoCost > 0 ? ' • Total estimado: $' + formatMoney(autoCost) : '');
             }
             unitCostDisplay.classList.remove('hidden');
         }
@@ -12446,7 +12453,11 @@
                 qtyDisplay = `${units} unidades`;
             }
             
-            const estimatedCost = parseFloat(costInput.value) || 0;
+            let estimatedCost = parseFloat(costInput.value) || 0;
+            // Si no se ingresó costo, calcular automáticamente según el costo del producto
+            if (estimatedCost <= 0) {
+                estimatedCost = Math.round((product.cost || 0) * units * 100) / 100;
+            }
             
             // Agregar stock al producto (al primer lote o stock directo)
             if (product.batches && product.batches.length > 0) {
@@ -15446,6 +15457,42 @@ RESULTADOS:
         }
 
         // ==================== UTILITIES ====================
+        function refreshOpenStockDisplays() {
+            try {
+                // Buscador de ventas
+                const sellResults = document.getElementById('sell-search-results');
+                if (sellResults && !sellResults.classList.contains('hidden') && sellSearchCurrentResults && sellSearchCurrentResults.length > 0) {
+                    renderSellSearchResults();
+                }
+                
+                // Modal de mermas
+                const lossModal = document.getElementById('loss-modal');
+                if (lossModal && lossModal.classList.contains('active')) {
+                    const lossResults = document.getElementById('loss-search-results');
+                    if (lossResults && !lossResults.classList.contains('hidden') && lossSearchResults && lossSearchResults.length > 0) {
+                        renderLossSearchResults();
+                    }
+                    if (document.getElementById('loss-product').value) {
+                        updateLossCost();
+                    }
+                }
+                
+                // Modal de stock gratis
+                const foundModal = document.getElementById('found-stock-modal');
+                if (foundModal && foundModal.classList.contains('active')) {
+                    const foundResults = document.getElementById('found-stock-search-results');
+                    if (foundResults && !foundResults.classList.contains('hidden') && foundStockSearchResults && foundStockSearchResults.length > 0) {
+                        renderFoundStockSearchResults();
+                    }
+                    if (document.getElementById('found-stock-product').value) {
+                        updateFoundStockCost();
+                    }
+                }
+            } catch (e) {
+                console.error('Error refrescando buscadores de stock:', e);
+            }
+        }
+
         function renderAll() {
             // Asegurar que productos eliminados no estén en el inventario
             cleanupDeletedProducts();
@@ -15514,6 +15561,10 @@ RESULTADOS:
             try {
                 renderPredictions();
             } catch(e) { console.error('Error en renderPredictions:', e); }
+            
+            // Refrescar buscadores abiertos para que el stock mostrado coincida
+            // con el inventario tras ventas, mermas, stock gratis, reposiciones, etc.
+            refreshOpenStockDisplays();
         }
 
         function updateSidebar() {
@@ -17235,6 +17286,50 @@ RESULTADOS:
             }
         });
         
+        // Guardar un backup automático en Firebase tras una venta (subcolección backups)
+        async function saveFirebaseBackup(sale) {
+            if (!window.db) return;
+            try {
+                const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                const deviceId = localStorage.getItem('kioscopro-device-id') || generateDeviceId();
+                const backup = {
+                    type: 'post-sale',
+                    timestamp: Date.now(),
+                    deviceId: deviceId,
+                    isMaster: isMasterDevice(),
+                    sale: {
+                        id: sale.id,
+                        date: sale.date,
+                        total: sale.total,
+                        profit: sale.profit,
+                        paymentMethod: sale.paymentMethod,
+                        itemCount: sale.items ? sale.items.length : 0,
+                        items: (sale.items || []).map(i => ({
+                            productId: i.productId,
+                            name: i.name,
+                            quantity: i.quantity,
+                            price: i.price,
+                            cost: i.cost
+                        }))
+                    },
+                    snapshot: {
+                        cash: appState.cash,
+                        bank: appState.bank,
+                        inventoryCount: appState.inventory ? appState.inventory.length : 0,
+                        salesCount: appState.sales ? appState.sales.length : 0,
+                        expensesCount: appState.expenses ? appState.expenses.length : 0,
+                        investmentsCount: appState.investments ? appState.investments.length : 0,
+                        foundStockCount: appState.foundStock ? appState.foundStock.length : 0,
+                        lossesCount: appState.losses ? appState.losses.length : 0
+                    }
+                };
+                await addDoc(collection(window.db, 'kioscos', 'main', 'backups'), backup);
+                console.log('💾 Backup post-venta guardado en Firebase:', sale.id);
+            } catch (err) {
+                console.error('Error guardando backup post-venta en Firebase:', err);
+            }
+        }
+
         // Función para guardar en Firebase (con debounce)
         let syncTimeout = null;
         function syncToFirebase(immediate = false) {
@@ -17337,6 +17432,15 @@ RESULTADOS:
                 firebaseSyncEnabled = true;
                 updateSyncStatus(isOnline ? 'synced' : 'offline');
                 console.log('👂 Escuchando cambios de Firebase...');
+                
+                // Si es dispositivo secundario, forzar una descarga inicial al abrir la app
+                // para no depender de que el master haga un cambio mientras está cerrada.
+                if (!isMasterDevice()) {
+                    setTimeout(() => {
+                        console.log('📱 Modo secundario: forzando descarga inicial desde Firebase');
+                        forceSync();
+                    }, 1500);
+                }
             } catch (err) {
                 console.error('Error iniciando listener:', err);
                 updateSyncStatus('offline');
@@ -18051,9 +18155,9 @@ RESULTADOS:
         function saveToLocalStorage(triggerSync = true) {
             localStorage.setItem('kioscopro-data', JSON.stringify(appState));
             
-            // Sincronizar con Firebase
+            // Sincronizar con Firebase inmediatamente para que todos los dispositivos vean los cambios
             if (triggerSync) {
-                syncToFirebase();
+                syncToFirebase(true);
             }
         }
 

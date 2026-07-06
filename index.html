@@ -15813,9 +15813,7 @@ RESULTADOS:
                                 delete dataToSync.activeDate;
                                 delete dataToSync.calendarMonth;
                                 
-                                // Sanitizar para Firebase (quitar undefined, funciones, etc.)
-                                const cleanDataToSync = JSON.parse(JSON.stringify(dataToSync));
-                                await setDoc(doc(window.db, "kioscos", "main"), cleanDataToSync);
+                                await setDoc(doc(window.db, "kioscos", "main"), dataToSync);
                                 lastSyncTime = Date.now();
                                 localStorage.setItem('kioscopro-last-sync', lastSyncTime);
                                 updateSyncStatus('synced');
@@ -15823,7 +15821,7 @@ RESULTADOS:
                                 console.log('✅ Backup restaurado y sincronizado con Firebase');
                             } catch (err) {
                                 console.error('Error sincronizando restore:', err);
-                                showNotification('⚠️ Backup restaurado localmente. Error al subir a la nube: ' + (err.message || err), 'warning', 10000);
+                                showNotification('⚠️ Backup restaurado localmente. Error al subir a la nube.', 'warning');
                             }
                         })();
                     } else {
@@ -17426,9 +17424,7 @@ RESULTADOS:
                     delete dataToSync.activeDate;
                     delete dataToSync.calendarMonth;
                     
-                    // Sanitizar para Firebase (quitar undefined, funciones, referencias circulares)
-                    const cleanDataToSync = JSON.parse(JSON.stringify(dataToSync));
-                    await setDoc(doc(window.db, "kioscos", "main"), cleanDataToSync);
+                    await setDoc(doc(window.db, "kioscos", "main"), dataToSync);
                     lastSyncTime = Date.now();
                     localStorage.setItem('kioscopro-last-sync', lastSyncTime);
                     updateSyncStatus('synced');

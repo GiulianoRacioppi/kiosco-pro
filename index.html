@@ -820,6 +820,7 @@
             <div id="user-badge" class="mt-2 inline-flex items-center gap-1 px-2 py-1 bg-white/20 rounded text-xs">
                 <i class="fas fa-user"></i> <span id="user-name">Cargando...</span>
             </div>
+            <div id="sync-role-badge" class="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-white/20"></div>
         </div>
         
         <div class="px-3 py-2 bg-indigo-50 border-b border-indigo-100 flex-shrink-0">
@@ -15624,6 +15625,18 @@ RESULTADOS:
                     }
                 }
                 
+                // Mostrar rol de sincronización (principal/secundario)
+                const syncRoleBadge = document.getElementById('sync-role-badge');
+                if (syncRoleBadge) {
+                    if (isMasterDevice()) {
+                        syncRoleBadge.className = 'mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-green-500 text-white';
+                        syncRoleBadge.innerHTML = '<i class="fas fa-server"></i> <span>Principal (escribe)</span>';
+                    } else {
+                        syncRoleBadge.className = 'mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500 text-white';
+                        syncRoleBadge.innerHTML = '<i class="fas fa-mobile-alt"></i> <span>Secundario (lee)</span>';
+                    }
+                }
+                
                 // Mostrar/ocultar opciones de admin en el sidebar y botones superiores
                 const isAdmin = appState.currentUser && appState.currentUser.role === 'admin';
                 
@@ -17393,6 +17406,7 @@ RESULTADOS:
                         cart: [], // No sincronizar carrito temporal
                         currentDate: new Date().toISOString(),
                         lastSync: new Date().toISOString(),
+                        lastMasterSync: new Date().toISOString(),
                         balancesUpdatedAt: appState.balancesUpdatedAt,
                         deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId()
                     };
@@ -18102,7 +18116,11 @@ RESULTADOS:
             const hasRealChanges = Object.keys(beforeCounts).some(key => beforeCounts[key] !== afterCounts[key]);
             
             if (!isInitialSync && !isSameDevice && hasRealChanges) {
-                showNotification('📲 Datos sincronizados desde otro dispositivo', 'success');
+                const changes = Object.keys(beforeCounts)
+                    .filter(key => beforeCounts[key] !== afterCounts[key])
+                    .map(key => `${key}: ${beforeCounts[key]}→${afterCounts[key]}`)
+                    .join(', ');
+                showNotification('📲 Datos sincronizados (' + changes + ')', 'success', 4000);
             } else if (isInitialSync) {
                 console.log('📥 Datos cargados desde Firebase (inicial)');
             }

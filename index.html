@@ -15706,6 +15706,15 @@ RESULTADOS:
             const file = input.files[0];
             if (!file) return;
             
+            // Solo el dispositivo principal debe restaurar backups, para que el backup
+            // se propague correctamente a los secundarios. Si se restaura en un secundario,
+            // sus datos locales se pisarán inmediatamente con los del principal.
+            if (!isMasterDevice()) {
+                showNotification('⚠️ Restaurar backup solo desde el dispositivo PRINCIPAL. En este dispositivo los datos se pisarían con los de la PC.', 'warning', 8000);
+                input.value = '';
+                return;
+            }
+            
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
@@ -15795,13 +15804,14 @@ RESULTADOS:
                                     ...appState,
                                     cart: [],
                                     currentDate: new Date().toISOString(),
-                                    activeDate: appState.activeDate.toISOString(),
-                                    calendarMonth: appState.calendarMonth.toISOString(),
                                     lastSync: new Date().toISOString(),
                                     deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId(),
                                     restoredFromBackup: true,
                                     restoredAt: new Date().toISOString()
                                 };
+                                // No pisar fechas activas de otros dispositivos
+                                delete dataToSync.activeDate;
+                                delete dataToSync.calendarMonth;
                                 
                                 await setDoc(doc(window.db, "kioscos", "main"), dataToSync);
                                 lastSyncTime = Date.now();

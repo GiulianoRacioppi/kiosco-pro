@@ -2590,8 +2590,14 @@
                         <button onclick="forceSync()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg">
                             <i class="fas fa-sync"></i> Sincronizar Ahora
                         </button>
+                        <button onclick="pushAllToFirebase()" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg">
+                            <i class="fas fa-cloud-upload-alt"></i> Subir todo a Firebase
+                        </button>
                         <button onclick="downloadFromCloud()" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-xl font-bold text-sm">
                             <i class="fas fa-cloud-download-alt"></i> Descargar todo desde la nube
+                        </button>
+                        <button onclick="openCloudBackupsModal()" class="w-full bg-indigo-100 hover:bg-indigo-200 text-indigo-700 py-2 rounded-xl font-bold text-sm">
+                            <i class="fas fa-folder-open"></i> Ver backups de archivos en la nube
                         </button>
                         <p class="text-xs text-gray-500">Forzar la sincronización con la nube. Usá esto si los datos no se ven igual en otro dispositivo.</p>
                         
@@ -14897,70 +14903,67 @@ Total de productos a comprar: ${shoppingList.length}
             
             // 1. Primero borrar en Firebase DIRECTAMENTE (antes de tocar nada local)
             if (window.db && navigator.onLine) {
-                try {
-                    const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
-                    
-                    const emptyData = {
-                        inventory: [],
-                        sales: [],
-                        expenses: [],
-                        investments: [],
-                        cashMovements: [],
-                        capitalAdjustments: [],
-                        promotions: [],
-                        discountTickets: [],
-                        ticketRules: [],
-                        cashCounts: [],
-                        cashDifferences: [],
-                        deletedProductIds: [],
-                        deletedInvestmentIds: [],
-                        deletedPromotionIds: [],
-                        foundStock: [],
-                        losses: [],
-                        returns: [],
-                        recurringExpenses: [],
-                        cashFlowSettings: { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
-                        cash: 0,
-                        bank: 0,
-                        balancesUpdatedAt: 0,
-                        defaultMargin: 30,
-                        initialCapital: 0,
-                        pendingPurchase: null,
-                        pendingPurchasePayment: 'cash',
-                        pendingPurchaseInvoiceType: 'white',
-                        // autoPromotionConfig eliminado - ahora es una promo normal,
-                        chartVisibleMetrics: { sales: true, profit: true, expenses: true },
-                        dashboardVisibleMetrics: { sales: true, profit: true, expenses: true, investment: true },
-                        cart: [],
-                        currentDate: new Date().toISOString(),
-                        activeDate: new Date().toISOString(),
-                        calendarMonth: new Date().toISOString(),
-                        suppliers: [],
-                        businessHours: [
-                            { day: 0, open: true, openTime: '08:00', closeTime: '22:00' },
-                            { day: 1, open: true, openTime: '08:00', closeTime: '22:00' },
-                            { day: 2, open: true, openTime: '08:00', closeTime: '22:00' },
-                            { day: 3, open: true, openTime: '08:00', closeTime: '22:00' },
-                            { day: 4, open: true, openTime: '08:00', closeTime: '22:00' },
-                            { day: 5, open: true, openTime: '08:00', closeTime: '22:00' },
-                            { day: 6, open: true, openTime: '08:00', closeTime: '22:00' }
-                        ],
-                        lastSync: new Date().toISOString(),
-                        clearedAt: new Date().toISOString(), // Flag CRÍTICO: indica borrado intencional
-                        deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId()
-                    };
-                    
-                    await setDoc(doc(window.db, "kioscos", "main"), emptyData);
-                    console.log('✅ Firebase borrado permanentemente');
-                    showNotification('✅ Base de datos en la nube borrada', 'success');
-                } catch (err) {
-                    console.error('Error borrando Firebase:', err);
-                    showNotification('⚠️ Error al borrar Firebase: ' + err.message, 'warning');
-                    // Continuar igual para borrar al menos lo local
-                }
+                showNotification('🗑️ Borrando base de datos en la nube...', 'info');
+                (async () => {
+                    try {
+                        const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                        const now = new Date().toISOString();
+                        const deviceId = localStorage.getItem('kioscopro-device-id') || generateDeviceId();
+                        
+                        const emptyPayload = {};
+                        emptyPayload.main = {
+                            cash: 0,
+                            bank: 0,
+                            initialCapital: 0,
+                            defaultMargin: 30,
+                            mercadoCreditoFee: 5,
+                            stockTargetDays: 7,
+                            balancesUpdatedAt: 0,
+                            cashFlowSettings: { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
+                            invoiceTracking: { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 },
+                            chartVisibleMetrics: { sales: true, profit: true, expenses: true },
+                            dashboardVisibleMetrics: { sales: true, profit: true, expenses: true, investment: true },
+                            suppliers: [],
+                            businessHours: [
+                                { day: 0, open: true, openTime: '08:00', closeTime: '22:00' },
+                                { day: 1, open: true, openTime: '08:00', closeTime: '22:00' },
+                                { day: 2, open: true, openTime: '08:00', closeTime: '22:00' },
+                                { day: 3, open: true, openTime: '08:00', closeTime: '22:00' },
+                                { day: 4, open: true, openTime: '08:00', closeTime: '22:00' },
+                                { day: 5, open: true, openTime: '08:00', closeTime: '22:00' },
+                                { day: 6, open: true, openTime: '08:00', closeTime: '22:00' }
+                            ],
+                            deletedProductIds: [],
+                            deletedInvestmentIds: [],
+                            deletedPromotionIds: [],
+                            currentDate: now,
+                            lastSync: now,
+                            clearedAt: now, // Flag CRÍTICO: indica borrado intencional
+                            deviceId: deviceId
+                        };
+                        
+                        const map = getFirebaseSyncDocMap();
+                        for (const [docName, field] of Object.entries(map)) {
+                            emptyPayload[docName] = { [field]: [] };
+                        }
+                        
+                        const cleanPayload = JSON.parse(JSON.stringify(emptyPayload));
+                        await Promise.all(Object.entries(cleanPayload).map(([docName, data]) =>
+                            setDoc(doc(window.db, 'kioscos', docName), data)
+                        ));
+                        
+                        console.log('✅ Firebase borrado permanentemente');
+                        showNotification('✅ Base de datos en la nube borrada', 'success');
+                    } catch (err) {
+                        console.error('Error borrando Firebase:', err);
+                        showNotification('⚠️ Error al borrar Firebase: ' + err.message, 'warning');
+                        // Continuar igual para borrar al menos lo local
+                    }
+                })();
             } else {
                 showNotification('📴 Sin conexión: solo se borraron datos locales', 'warning');
             }
+
             
             // 2. Limpiar estado local
             appState = {
@@ -15702,10 +15705,98 @@ RESULTADOS:
             downloadFile(data, `kioscopro_backup_${formatDateISO(new Date())}.json`, 'application/json');
         }
 
+        function applyBackupData(backupData, sourceName) {
+            // CONFIRMAR antes de borrar todo
+            if (!confirm('⚠️ ¿Estás seguro? Esto reemplazará TODOS los datos actuales por los del backup.\n\nSe restaurarán:\n• ' + (backupData.inventory?.length || 0) + ' productos\n• ' + (backupData.sales?.length || 0) + ' ventas\n• ' + (backupData.expenses?.length || 0) + ' gastos\n• $' + formatMoney((backupData.cash || 0)) + ' en caja\n\nLos datos actuales se perderán.')) {
+                return false;
+            }
+
+            // Limpiar todo el estado actual: empezar del estado inicial y sobrescribir con el backup
+            const baseState = { ...appState };
+            appState = {
+                ...baseState,
+                ...backupData,
+                // Campos temporales que no se restauran por seguridad
+                cart: [],
+                currentUser: null,
+                currentDate: new Date(),
+                activeDate: new Date(backupData.activeDate || new Date()),
+                calendarMonth: new Date(backupData.calendarMonth || new Date())
+            };
+
+            // Asegurar arrays principales
+            appState.inventory = Array.isArray(appState.inventory) ? appState.inventory : [];
+            appState.sales = Array.isArray(appState.sales) ? appState.sales : [];
+            appState.expenses = Array.isArray(appState.expenses) ? appState.expenses : [];
+            appState.investments = Array.isArray(appState.investments) ? appState.investments : [];
+            appState.cashMovements = Array.isArray(appState.cashMovements) ? appState.cashMovements : [];
+            appState.capitalAdjustments = Array.isArray(appState.capitalAdjustments) ? appState.capitalAdjustments : [];
+            appState.returns = Array.isArray(appState.returns) ? appState.returns : [];
+            appState.foundStock = Array.isArray(appState.foundStock) ? appState.foundStock : [];
+            appState.losses = Array.isArray(appState.losses) ? appState.losses : [];
+            appState.cashCounts = Array.isArray(appState.cashCounts) ? appState.cashCounts : [];
+            appState.cashDifferences = Array.isArray(appState.cashDifferences) ? appState.cashDifferences : [];
+            appState.alerts = Array.isArray(appState.alerts) ? appState.alerts : [];
+            appState.guestLogs = Array.isArray(appState.guestLogs) ? appState.guestLogs : [];
+            appState.deletedProductIds = Array.isArray(appState.deletedProductIds) ? appState.deletedProductIds : [];
+            appState.deletedInvestmentIds = Array.isArray(appState.deletedInvestmentIds) ? appState.deletedInvestmentIds : [];
+            appState.deletedPromotionIds = Array.isArray(appState.deletedPromotionIds) ? appState.deletedPromotionIds : [];
+            appState.billedDays = Array.isArray(appState.billedDays) ? appState.billedDays : [];
+            appState.promotions = Array.isArray(appState.promotions) ? appState.promotions : [];
+            appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
+            appState.ticketRules = Array.isArray(appState.ticketRules) ? appState.ticketRules : [];
+            appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
+            appState.suppliers = Array.isArray(appState.suppliers) ? appState.suppliers : [];
+            appState.businessHours = Array.isArray(appState.businessHours) && appState.businessHours.length === 7
+                ? appState.businessHours
+                : [...baseState.businessHours];
+
+            // Asegurar objetos de configuración
+            appState.cashFlowSettings = appState.cashFlowSettings || { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 };
+            appState.invoiceTracking = appState.invoiceTracking || { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 };
+            appState.chartVisibleMetrics = appState.chartVisibleMetrics || { sales: true, profit: true, expenses: true };
+            appState.dashboardVisibleMetrics = appState.dashboardVisibleMetrics || { sales: true, profit: true, expenses: true, investment: true };
+
+            // Asegurar valores numéricos
+            appState.cash = parseFloat(appState.cash) || 0;
+            appState.bank = parseFloat(appState.bank) || 0;
+            appState.balancesUpdatedAt = parseInt(appState.balancesUpdatedAt) || 0;
+            appState.defaultMargin = parseFloat(appState.defaultMargin) || 30;
+            appState.initialCapital = parseFloat(appState.initialCapital) || 0;
+            appState.mercadoCreditoFee = parseFloat(appState.mercadoCreditoFee) || 5;
+            appState.stockTargetDays = parseInt(appState.stockTargetDays) || 7;
+            appState.cashFlowSettings.projectionDays = parseInt(appState.cashFlowSettings.projectionDays) || 30;
+            appState.cashFlowSettings.estimatedDailyIncome = appState.cashFlowSettings.estimatedDailyIncome === null ? null : (parseFloat(appState.cashFlowSettings.estimatedDailyIncome) || null);
+            appState.cashFlowSettings.lowBalanceThreshold = parseFloat(appState.cashFlowSettings.lowBalanceThreshold) || 0;
+
+            // Reconstruir sobrantes/faltantes desde los arqueos por si el backup no los traía
+            rebuildCashDifferences();
+
+            // Guardar en localStorage
+            saveToLocalStorage(false); // No disparar sync automático todavía
+
+            // Renderizar todo
+            renderAll();
+            updateSidebar();
+
+            // SINCRONIZAR INMEDIATAMENTE CON FIREBASE para reemplazar datos en la nube
+            if (window.db && navigator.onLine) {
+                syncToFirebase(true, {
+                    restoredFromBackup: true,
+                    restoredAt: new Date().toISOString()
+                });
+            } else {
+                showNotification('📴 Backup restaurado localmente (sin conexión a internet)', 'info');
+            }
+
+            showNotification('✅ Backup restaurado completamente. Se cargaron ' + getActiveInventory().length + ' productos activos y ' + appState.sales.length + ' ventas.', 'success');
+            return true;
+        }
+
         function restoreData(input) {
             const file = input.files[0];
             if (!file) return;
-            
+
             // Solo el dispositivo principal debe restaurar backups, para que el backup
             // se propague correctamente a los secundarios. Si se restaura en un secundario,
             // sus datos locales se pisarán inmediatamente con los del principal.
@@ -15714,133 +15805,186 @@ RESULTADOS:
                 input.value = '';
                 return;
             }
-            
+
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
                     const backupData = JSON.parse(e.target.result);
-                    
-                    // CONFIRMAR antes de borrar todo
-                    if (!confirm('⚠️ ¿Estás seguro? Esto reemplazará TODOS los datos actuales por los del backup.\n\nSe restaurarán:\n• ' + (backupData.inventory?.length || 0) + ' productos\n• ' + (backupData.sales?.length || 0) + ' ventas\n• ' + (backupData.expenses?.length || 0) + ' gastos\n• $' + formatMoney((backupData.cash || 0)) + ' en caja\n\nLos datos actuales se perderán.')) {
-                        input.value = '';
-                        return;
+                    const restored = applyBackupData(backupData, file.name);
+
+                    // Subir el archivo de backup dividido en pedazos a la nube
+                    if (restored && window.db && navigator.onLine) {
+                        uploadBackupFileToCloud(file).catch(err => {
+                            console.error('Error subiendo backup a la nube:', err);
+                            showNotification('⚠️ Backup restaurado, pero no se pudo subir a la nube', 'warning');
+                        });
                     }
-                    
-                    // Limpiar todo el estado actual: empezar del estado inicial y sobrescribir con el backup
-                    const baseState = { ...appState };
-                    appState = {
-                        ...baseState,
-                        ...backupData,
-                        // Campos temporales que no se restauran por seguridad
-                        cart: [],
-                        currentUser: null,
-                        currentDate: new Date(),
-                        activeDate: new Date(backupData.activeDate || new Date()),
-                        calendarMonth: new Date(backupData.calendarMonth || new Date())
-                    };
-                    
-                    // Asegurar arrays principales
-                    appState.inventory = Array.isArray(appState.inventory) ? appState.inventory : [];
-                    appState.sales = Array.isArray(appState.sales) ? appState.sales : [];
-                    appState.expenses = Array.isArray(appState.expenses) ? appState.expenses : [];
-                    appState.investments = Array.isArray(appState.investments) ? appState.investments : [];
-                    appState.cashMovements = Array.isArray(appState.cashMovements) ? appState.cashMovements : [];
-                    appState.capitalAdjustments = Array.isArray(appState.capitalAdjustments) ? appState.capitalAdjustments : [];
-                    appState.returns = Array.isArray(appState.returns) ? appState.returns : [];
-                    appState.foundStock = Array.isArray(appState.foundStock) ? appState.foundStock : [];
-                    appState.losses = Array.isArray(appState.losses) ? appState.losses : [];
-                    appState.cashCounts = Array.isArray(appState.cashCounts) ? appState.cashCounts : [];
-                    appState.cashDifferences = Array.isArray(appState.cashDifferences) ? appState.cashDifferences : [];
-                    appState.alerts = Array.isArray(appState.alerts) ? appState.alerts : [];
-                    appState.guestLogs = Array.isArray(appState.guestLogs) ? appState.guestLogs : [];
-                    appState.deletedProductIds = Array.isArray(appState.deletedProductIds) ? appState.deletedProductIds : [];
-                    appState.deletedInvestmentIds = Array.isArray(appState.deletedInvestmentIds) ? appState.deletedInvestmentIds : [];
-                    appState.deletedPromotionIds = Array.isArray(appState.deletedPromotionIds) ? appState.deletedPromotionIds : [];
-                    appState.billedDays = Array.isArray(appState.billedDays) ? appState.billedDays : [];
-                    appState.promotions = Array.isArray(appState.promotions) ? appState.promotions : [];
-                    appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
-                    appState.ticketRules = Array.isArray(appState.ticketRules) ? appState.ticketRules : [];
-                    appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
-                    appState.suppliers = Array.isArray(appState.suppliers) ? appState.suppliers : [];
-                    appState.businessHours = Array.isArray(appState.businessHours) && appState.businessHours.length === 7
-                        ? appState.businessHours
-                        : [...baseState.businessHours];
-                    
-                    // Asegurar objetos de configuración
-                    appState.cashFlowSettings = appState.cashFlowSettings || { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 };
-                    appState.invoiceTracking = appState.invoiceTracking || { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 };
-                    appState.chartVisibleMetrics = appState.chartVisibleMetrics || { sales: true, profit: true, expenses: true };
-                    appState.dashboardVisibleMetrics = appState.dashboardVisibleMetrics || { sales: true, profit: true, expenses: true, investment: true };
-                    
-                    // Asegurar valores numéricos
-                    appState.cash = parseFloat(appState.cash) || 0;
-                    appState.bank = parseFloat(appState.bank) || 0;
-                    appState.balancesUpdatedAt = parseInt(appState.balancesUpdatedAt) || 0;
-                    appState.defaultMargin = parseFloat(appState.defaultMargin) || 30;
-                    appState.initialCapital = parseFloat(appState.initialCapital) || 0;
-                    appState.mercadoCreditoFee = parseFloat(appState.mercadoCreditoFee) || 5;
-                    appState.stockTargetDays = parseInt(appState.stockTargetDays) || 7;
-                    appState.cashFlowSettings.projectionDays = parseInt(appState.cashFlowSettings.projectionDays) || 30;
-                    appState.cashFlowSettings.estimatedDailyIncome = appState.cashFlowSettings.estimatedDailyIncome === null ? null : (parseFloat(appState.cashFlowSettings.estimatedDailyIncome) || null);
-                    appState.cashFlowSettings.lowBalanceThreshold = parseFloat(appState.cashFlowSettings.lowBalanceThreshold) || 0;
-                    
-                    // Reconstruir sobrantes/faltantes desde los arqueos por si el backup no los traía
-                    rebuildCashDifferences();
-                    
-                    // Guardar en localStorage
-                    saveToLocalStorage(false); // No disparar sync automático todavía
-                    
-                    // Renderizar todo
-                    renderAll();
-                    updateSidebar();
-                    
-                    // SINCRONIZAR INMEDIATAMENTE CON FIREBASE para reemplazar datos en la nube
-                    if (window.db && navigator.onLine) {
-                        (async () => {
-                            try {
-                                const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
-                                
-                                const dataToSync = {
-                                    ...appState,
-                                    cart: [],
-                                    currentDate: new Date().toISOString(),
-                                    lastSync: new Date().toISOString(),
-                                    deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId(),
-                                    restoredFromBackup: true,
-                                    restoredAt: new Date().toISOString()
-                                };
-                                // No pisar fechas activas de otros dispositivos
-                                delete dataToSync.activeDate;
-                                delete dataToSync.calendarMonth;
-                                
-                                // Sanitizar para Firebase (quitar undefined, funciones, etc.)
-                                const cleanDataToSync = JSON.parse(JSON.stringify(dataToSync));
-                                await setDoc(doc(window.db, "kioscos", "main"), cleanDataToSync);
-                                lastSyncTime = Date.now();
-                                localStorage.setItem('kioscopro-last-sync', lastSyncTime);
-                                updateSyncStatus('synced');
-                                showNotification('☁️ Datos restaurados subidos a la nube', 'success');
-                                console.log('✅ Backup restaurado y sincronizado con Firebase');
-                            } catch (err) {
-                                console.error('Error sincronizando restore:', err);
-                                showNotification('⚠️ Backup restaurado localmente. Error al subir a la nube: ' + (err.message || err), 'warning', 10000);
-                            }
-                        })();
-                    } else {
-                        showNotification('📴 Backup restaurado localmente (sin conexión a internet)', 'info');
-                    }
-                    
-                    showNotification('✅ Backup restaurado completamente. Se cargaron ' + getActiveInventory().length + ' productos activos y ' + appState.sales.length + ' ventas.', 'success');
-                    
                 } catch (err) {
                     console.error('Error al restaurar:', err);
                     showNotification('❌ Error al restaurar datos: ' + err.message, 'error');
                 }
-                
-                // Limpiar input
                 input.value = '';
             };
             reader.readAsText(file);
+        }
+
+        // Dividir texto del backup en pedazos para no superar 1 MB por documento de Firestore
+        function splitTextIntoChunks(text, maxSize = 300000) {
+            const chunks = [];
+            for (let i = 0; i < text.length; i += maxSize) {
+                chunks.push(text.slice(i, i + maxSize));
+            }
+            return chunks;
+        }
+
+        // Subir un archivo de backup físico a Firebase dividido en chunks
+        async function uploadBackupFileToCloud(file) {
+            if (!window.db) throw new Error('Firebase no disponible');
+
+            const text = await new Promise((resolve, reject) => {
+                const r = new FileReader();
+                r.onload = e => resolve(e.target.result);
+                r.onerror = e => reject(new Error('Error leyendo archivo'));
+                r.readAsText(file);
+            });
+
+            const chunks = splitTextIntoChunks(text, 300000);
+            const backupId = 'bf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+            const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+
+            await setDoc(doc(window.db, 'kioscos', 'backupFiles', backupId), {
+                fileName: file.name,
+                totalSize: text.length,
+                chunksCount: chunks.length,
+                createdAt: new Date().toISOString(),
+                deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId()
+            });
+
+            for (let i = 0; i < chunks.length; i++) {
+                await setDoc(doc(window.db, 'kioscos', 'backupFiles', backupId, 'chunks', i.toString()), {
+                    text: chunks[i],
+                    index: i
+                });
+                if (i === chunks.length - 1 || i % 3 === 0) {
+                    showNotification('☁️ Subiendo backup... ' + (i + 1) + '/' + chunks.length, 'info', 1200);
+                }
+            }
+
+            showNotification('☁️ Backup subido a la nube en ' + chunks.length + ' pedazos', 'success');
+            return backupId;
+        }
+
+        // Listar backups de archivos guardados en la nube
+        async function listCloudBackups() {
+            if (!window.db) return [];
+            const { collection, getDocs, query, orderBy } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+            const q = query(collection(window.db, 'kioscos', 'backupFiles'), orderBy('createdAt', 'desc'));
+            const snap = await getDocs(q);
+            return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+
+        // Descargar un backup de archivo desde la nube y devolver su texto completo
+        async function downloadCloudBackupText(backupId) {
+            if (!window.db) throw new Error('Firebase no disponible');
+            const { doc, getDoc, collection, getDocs, query, orderBy } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+
+            const metaSnap = await getDoc(doc(window.db, 'kioscos', 'backupFiles', backupId));
+            if (!metaSnap.exists()) throw new Error('Backup no encontrado');
+
+            const chunksSnap = await getDocs(query(collection(window.db, 'kioscos', 'backupFiles', backupId, 'chunks'), orderBy('index')));
+            const chunks = chunksSnap.docs.map(d => d.data().text || '');
+            return chunks.join('');
+        }
+
+        // Restaurar un backup de archivo desde la nube
+        async function restoreCloudBackup(backupId) {
+            if (!isMasterDevice()) {
+                showNotification('⚠️ Restaurar backup de la nube solo desde el dispositivo PRINCIPAL.', 'warning', 8000);
+                return;
+            }
+            updateSyncStatus('syncing');
+            try {
+                const text = await downloadCloudBackupText(backupId);
+                const backupData = JSON.parse(text);
+                applyBackupData(backupData, 'nube');
+            } catch (err) {
+                console.error('Error restaurando backup de la nube:', err);
+                showNotification('❌ Error al restaurar backup de la nube: ' + err.message, 'error');
+            } finally {
+                updateSyncStatus('synced');
+            }
+        }
+
+        // Descargar un backup de archivo desde la nube como archivo .json
+        async function downloadCloudBackupFile(backupId) {
+            updateSyncStatus('syncing');
+            try {
+                const text = await downloadCloudBackupText(backupId);
+                const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                const metaSnap = await getDoc(doc(window.db, 'kioscos', 'backupFiles', backupId));
+                const fileName = metaSnap.exists() ? metaSnap.data().fileName : ('kioscopro_cloud_backup_' + backupId + '.json');
+                downloadFile(text, fileName, 'application/json');
+                showNotification('💾 Backup descargado', 'success');
+            } catch (err) {
+                console.error('Error descargando backup de la nube:', err);
+                showNotification('❌ Error al descargar backup de la nube', 'error');
+            } finally {
+                updateSyncStatus('synced');
+            }
+        }
+
+        // Eliminar un backup de archivo de la nube
+        async function deleteCloudBackup(backupId) {
+            if (!confirm('¿Eliminar este backup de la nube?')) return;
+            if (!window.db) return;
+            const { doc, deleteDoc, collection, getDocs } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+            const chunksSnap = await getDocs(collection(window.db, 'kioscos', 'backupFiles', backupId, 'chunks'));
+            await Promise.all(chunksSnap.docs.map(d => deleteDoc(d.ref)));
+            await deleteDoc(doc(window.db, 'kioscos', 'backupFiles', backupId));
+            renderCloudBackupsList();
+            showNotification('🗑️ Backup eliminado de la nube', 'success');
+        }
+
+        function openCloudBackupsModal() {
+            const modal = document.getElementById('cloud-backups-modal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                renderCloudBackupsList();
+            }
+        }
+
+        function closeCloudBackupsModal() {
+            const modal = document.getElementById('cloud-backups-modal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        async function renderCloudBackupsList() {
+            const container = document.getElementById('cloud-backups-list');
+            if (!container) return;
+            container.innerHTML = '<p class="text-sm text-gray-500">Cargando...</p>';
+            try {
+                const list = await listCloudBackups();
+                if (list.length === 0) {
+                    container.innerHTML = '<p class="text-sm text-gray-500">No hay backups de archivos en la nube.</p>';
+                    return;
+                }
+                container.innerHTML = list.map(b => `
+                    <div class="flex items-center justify-between bg-gray-50 rounded-lg p-3 mb-2">
+                        <div class="overflow-hidden">
+                            <p class="font-bold text-sm truncate" title="${b.fileName || 'Backup'}">${b.fileName || 'Backup'}</p>
+                            <p class="text-xs text-gray-500">${b.createdAt ? new Date(b.createdAt).toLocaleString('es-AR') : '-'} • ${Math.round((b.totalSize || 0) / 1024)} KB • ${b.chunksCount || 0} pedazos</p>
+                        </div>
+                        <div class="flex gap-2 ml-2 shrink-0">
+                            <button onclick="restoreCloudBackup('${b.id}')" class="bg-green-500 hover:bg-green-600 text-white text-xs px-2 py-1 rounded">Restaurar</button>
+                            <button onclick="downloadCloudBackupFile('${b.id}')" class="bg-blue-500 hover:bg-blue-600 text-white text-xs px-2 py-1 rounded">Descargar</button>
+                            <button onclick="deleteCloudBackup('${b.id}')" class="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded">Borrar</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error('Error listando backups:', err);
+                container.innerHTML = '<p class="text-sm text-red-500">Error al cargar backups.</p>';
+            }
         }
 
         // ==================== PROMOTIONS SYSTEM ====================
@@ -17369,9 +17513,204 @@ RESULTADOS:
             }
         }
 
+        // Reduce el estado para que quepa en el límite de 1MB de Firestore por documento.
+        // Los datos completos siempre se guardan en localStorage; en Firebase se sincroniza
+        // una versión recortada de arrays históricos para no romper el límite.
+                // Mapa de documentos de Firebase a campos de appState (documentos de datos grandes)
+        function getFirebaseSyncDocMap() {
+            return {
+                main_inventory: 'inventory',
+                main_sales: 'sales',
+                main_expenses: 'expenses',
+                main_investments: 'investments',
+                main_returns: 'returns',
+                main_promotions: 'promotions',
+                main_discountTickets: 'discountTickets',
+                main_ticketRules: 'ticketRules',
+                main_cashCounts: 'cashCounts',
+                main_cashDifferences: 'cashDifferences',
+                main_cashMovements: 'cashMovements',
+                main_capitalAdjustments: 'capitalAdjustments',
+                main_foundStock: 'foundStock',
+                main_losses: 'losses',
+                main_recurringExpenses: 'recurringExpenses',
+                main_billedDays: 'billedDays',
+                main_guestLogs: 'guestLogs'
+            };
+        }
+
+        // Construye el documento base (configuración y saldos) para kioscos/main
+        function buildFirebaseBaseDoc(extraBaseFields = {}) {
+            const now = new Date().toISOString();
+            return {
+                cash: parseFloat(appState.cash) || 0,
+                bank: parseFloat(appState.bank) || 0,
+                initialCapital: parseFloat(appState.initialCapital) || 0,
+                defaultMargin: parseFloat(appState.defaultMargin) || 30,
+                mercadoCreditoFee: parseFloat(appState.mercadoCreditoFee) || 5,
+                stockTargetDays: parseInt(appState.stockTargetDays) || 7,
+                balancesUpdatedAt: appState.balancesUpdatedAt || 0,
+                cashFlowSettings: appState.cashFlowSettings || { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
+                invoiceTracking: appState.invoiceTracking || { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 },
+                chartVisibleMetrics: appState.chartVisibleMetrics || { sales: true, profit: true, expenses: true },
+                dashboardVisibleMetrics: appState.dashboardVisibleMetrics || { sales: true, profit: true, expenses: true, investment: true },
+                suppliers: appState.suppliers || [],
+                businessHours: appState.businessHours || [],
+                deletedProductIds: appState.deletedProductIds || [],
+                deletedInvestmentIds: appState.deletedInvestmentIds || [],
+                deletedPromotionIds: appState.deletedPromotionIds || [],
+                lastRoundPriceEnabled: !!appState.lastRoundPriceEnabled,
+                lastInvoiceType: appState.lastInvoiceType || 'white',
+                lastCategory: appState.lastCategory || null,
+                lastExpiryDate: appState.lastExpiryDate || null,
+                currentDate: now,
+                lastSync: now,
+                lastMasterSync: now,
+                deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId(),
+                ...extraBaseFields
+            };
+        }
+
+        // Divide un array en chunks que no superen ~maxBytes cada uno (para límite 1 MB de Firestore)
+        function chunkArrayBySize(arr, maxBytes = 400000) {
+            if (!Array.isArray(arr) || arr.length === 0) return [];
+            const chunks = [];
+            let current = [];
+            let currentSize = 2; // '[]'
+            for (const item of arr) {
+                const itemSize = JSON.stringify(item).length + 1; // + coma aproximada
+                if (current.length > 0 && currentSize + itemSize > maxBytes) {
+                    chunks.push(current);
+                    current = [item];
+                    currentSize = 2 + itemSize;
+                } else {
+                    current.push(item);
+                    currentSize += itemSize;
+                }
+            }
+            if (current.length > 0) chunks.push(current);
+            return chunks;
+        }
+
+        // Construye el payload completo para sincronizar con Firebase (documentos separados y con chunks)
+        function buildFirebaseSyncPayload(extraBaseFields = {}) {
+            const payload = {};
+            const chunkCounts = {};
+            const map = getFirebaseSyncDocMap();
+            for (const [docName, field] of Object.entries(map)) {
+                const arr = appState[field];
+                const chunks = chunkArrayBySize(Array.isArray(arr) ? arr : [], 400000);
+                chunkCounts[docName] = chunks.length;
+                if (chunks.length === 0) {
+                    payload[docName] = { data: [] };
+                } else {
+                    chunks.forEach((chunk, i) => {
+                        payload[docName + '_chunk_' + i] = { data: chunk };
+                    });
+                }
+            }
+            payload.main = buildFirebaseBaseDoc(extraBaseFields);
+            payload.main.chunkCounts = chunkCounts;
+            return payload;
+        }
+
+        // Descarga todos los documentos de Firestore (base + chunks o docs antiguos) y devuelve un objeto plano
+        async function downloadAllFirebaseData() {
+            if (!window.db) return {};
+            const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+
+            const mainSnap = await getDoc(doc(window.db, 'kioscos', 'main'));
+            const downloaded = { main: mainSnap.exists() ? mainSnap.data() : null };
+            if (!downloaded.main) return downloaded;
+
+            const map = getFirebaseSyncDocMap();
+            const chunkCounts = downloaded.main.chunkCounts || {};
+            const docsToFetch = [];
+
+            if (Object.keys(chunkCounts).length > 0) {
+                for (const docName of Object.keys(chunkCounts)) {
+                    const count = chunkCounts[docName] || 0;
+                    if (count === 0) {
+                        downloaded[docName] = { data: [] };
+                    } else {
+                        for (let i = 0; i < count; i++) {
+                            docsToFetch.push(docName + '_chunk_' + i);
+                        }
+                    }
+                }
+            } else {
+                // Compatibilidad con estructura antigua: un documento por campo
+                docsToFetch.push(...Object.keys(map));
+            }
+
+            if (docsToFetch.length > 0) {
+                const snapshots = await Promise.all(docsToFetch.map(name => getDoc(doc(window.db, 'kioscos', name))));
+                docsToFetch.forEach((name, i) => {
+                    downloaded[name] = snapshots[i].exists() ? snapshots[i].data() : null;
+                });
+
+                // VALIDACIÓN: si usamos chunks, ninguno puede faltar o estar corrupto.
+                // Si falta alguno, es mejor fallar que aplicar datos incompletos.
+                if (Object.keys(chunkCounts).length > 0) {
+                    for (const docName of Object.keys(chunkCounts)) {
+                        const count = chunkCounts[docName] || 0;
+                        for (let i = 0; i < count; i++) {
+                            const chunkName = docName + '_chunk_' + i;
+                            const chunkDoc = downloaded[chunkName];
+                            if (!chunkDoc || !Array.isArray(chunkDoc.data)) {
+                                throw new Error('Chunk faltante o corrupto: ' + chunkName);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return downloaded;
+        }
+
+        // Normaliza los datos descargados de Firebase al formato plano esperado por mergeFirebaseData
+        function normalizeFirebaseData(downloaded) {
+            const normalized = {};
+            const main = downloaded && (downloaded.main || downloaded);
+            const baseFields = ['cash','bank','initialCapital','defaultMargin','mercadoCreditoFee','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
+            for (const f of baseFields) {
+                if (main && main[f] !== undefined) normalized[f] = main[f];
+            }
+            const map = getFirebaseSyncDocMap();
+            const chunkCounts = main && main.chunkCounts ? main.chunkCounts : null;
+            for (const [docName, field] of Object.entries(map)) {
+                let arr = [];
+                if (chunkCounts && chunkCounts[docName] !== undefined) {
+                    const count = chunkCounts[docName] || 0;
+                    if (count === 0) {
+                        const fallback = downloaded && downloaded[docName];
+                        arr = (fallback && Array.isArray(fallback.data)) ? fallback.data : [];
+                    } else {
+                        const merged = [];
+                        for (let i = 0; i < count; i++) {
+                            const chunkDoc = downloaded && downloaded[docName + '_chunk_' + i];
+                            if (chunkDoc && Array.isArray(chunkDoc.data)) {
+                                merged.push(...chunkDoc.data);
+                            }
+                        }
+                        arr = merged;
+                    }
+                } else if (downloaded && downloaded[docName] && downloaded[docName][field] !== undefined) {
+                    arr = downloaded[docName][field];
+                } else if (main && main[field] !== undefined) {
+                    arr = main[field]; // compatibilidad con estructura antigua monolítica
+                } else {
+                    arr = [];
+                }
+                normalized[field] = arr;
+            }
+            return normalized;
+        }
+
+
         // Función para guardar en Firebase (con debounce)
         let syncTimeout = null;
-        function syncToFirebase(immediate = false) {
+        function syncToFirebase(immediate = false, extraBaseFields = {}) {
             if (!window.db) {
                 console.log('Firebase no disponible, usando solo localStorage');
                 return;
@@ -17405,70 +17744,93 @@ RESULTADOS:
                         return;
                     }
                     
-                    const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                    const { doc, setDoc, writeBatch } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
                     
                     // Asegurar que cash/bank sean números válidos antes de enviar
                     appState.cash = parseFloat(appState.cash) || 0;
                     appState.bank = parseFloat(appState.bank) || 0;
                     if (!appState.balancesUpdatedAt) appState.balancesUpdatedAt = 0;
                     
-                    // Preparar datos para Firebase (sin cart que es temporal, ni fechas locales)
-                    const dataToSync = {
-                        ...appState,
-                        cart: [], // No sincronizar carrito temporal
-                        currentDate: new Date().toISOString(),
-                        lastSync: new Date().toISOString(),
-                        lastMasterSync: new Date().toISOString(),
-                        balancesUpdatedAt: appState.balancesUpdatedAt,
-                        deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId()
-                    };
-                    // No sincronizar la fecha activa ni el mes del calendario: son locales de cada dispositivo
-                    delete dataToSync.activeDate;
-                    delete dataToSync.calendarMonth;
+                    // Preparar datos para Firebase: un documento por array grande + documento base
+                    const payload = buildFirebaseSyncPayload(extraBaseFields);
                     
                     // Sanitizar para Firebase (quitar undefined, funciones, referencias circulares)
-                    const cleanDataToSync = JSON.parse(JSON.stringify(dataToSync));
-                    await setDoc(doc(window.db, "kioscos", "main"), cleanDataToSync);
+                    const cleanPayload = JSON.parse(JSON.stringify(payload));
+                    const docNames = Object.keys(cleanPayload);
+                    
+                    // Marcar tiempo propio antes de subir para que el listener ignore su propio cambio
                     lastSyncTime = Date.now();
+                    
+                    // Usar writeBatch para que todos los documentos (main + chunks) se escriban atómicamente.
+                    // Así ningún dispositivo lee un main con chunkCounts que aún no existan.
+                    if (docNames.length <= 500) {
+                        const batch = writeBatch(window.db);
+                        for (const docName of docNames) {
+                            batch.set(doc(window.db, 'kioscos', docName), cleanPayload[docName]);
+                        }
+                        await batch.commit();
+                    } else {
+                        // Fallback por si supera el límite de 500 ops/batch (improbable)
+                        const mainData = cleanPayload.main;
+                        const otherEntries = Object.entries(cleanPayload).filter(([name]) => name !== 'main');
+                        if (otherEntries.length > 0) {
+                            await Promise.all(otherEntries.map(([name, data]) => setDoc(doc(window.db, 'kioscos', name), data)));
+                        }
+                        await setDoc(doc(window.db, 'kioscos', 'main'), mainData);
+                    }
+                    
                     localStorage.setItem('kioscopro-last-sync', lastSyncTime);
                     updateSyncStatus('synced');
-                    console.log('✅ Sincronizado con Firebase - Caja:', appState.cash, 'Cuenta:', appState.bank, 'balancesUpdatedAt:', appState.balancesUpdatedAt);
+                    
+                    const totalSize = JSON.stringify(cleanPayload).length;
+                    showNotification('☁️ Sincronizado con Firebase (~' + Math.round(totalSize / 1024) + ' KB)', 'success');
+                    console.log('✅ Sincronizado con Firebase - docs:', docNames.length, 'tamaño:', Math.round(totalSize / 1024) + 'KB');
                 } catch (err) {
                     console.error('Error sincronizando:', err);
                     updateSyncStatus('error');
                 }
-            }, 1000);
+            }, delay);
         }
+
         
         // Escuchar cambios de Firebase (tiempo real)
+                // Escuchar cambios de Firebase (tiempo real)
         async function startFirebaseListener() {
             if (!window.db) return;
             
             try {
                 const { doc, onSnapshot } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
                 
-                syncListener = onSnapshot(doc(window.db, "kioscos", "main"), (docSnapshot) => {
+                syncListener = onSnapshot(doc(window.db, "kioscos", "main"), async (docSnapshot) => {
                     if (!isOnline) {
                         updateSyncStatus('offline');
                         return;
                     }
                     
                     if (docSnapshot.exists()) {
-                        const data = docSnapshot.data();
-                        const deviceId = localStorage.getItem('kioscopro-device-id') || generateDeviceId();
-                        
-                        // Evitar loop: no actualizar si el cambio vino de este dispositivo hace menos de 2 segundos
-                        // EXCEPCIÓN: si es un borrado intencional (clearedAt), SIEMPRE procesarlo
-                        const isRecentOwnChange = data.deviceId === deviceId && Date.now() - lastSyncTime < 2000;
-                        const isClearAction = !!data.clearedAt;
-                        if (isRecentOwnChange && !isClearAction) {
-                            return;
+                        try {
+                            const baseData = docSnapshot.data();
+                            const deviceId = localStorage.getItem('kioscopro-device-id') || generateDeviceId();
+                            
+                            // Evitar loop: no actualizar si el cambio vino de este dispositivo hace menos de 2 segundos
+                            // EXCEPCIÓN: si es un borrado intencional (clearedAt), SIEMPRE procesarlo
+                            const isRecentOwnChange = baseData.deviceId === deviceId && Date.now() - lastSyncTime < 2000;
+                            const isClearAction = !!baseData.clearedAt;
+                            if (isRecentOwnChange && !isClearAction) {
+                                return;
+                            }
+                            
+                            // Descargar todos los documentos y fusionar con estado local
+                            const downloaded = await downloadAllFirebaseData();
+                            const data = normalizeFirebaseData(downloaded);
+                            mergeFirebaseData(data);
+                            updateSyncStatus('synced');
+                            console.log('📥 Datos recibidos de Firebase');
+                        } catch (err) {
+                            console.error('Error procesando datos del listener:', err);
+                            updateSyncStatus('error');
+                            showNotification('Error al sincronizar datos de Firebase', 'error');
                         }
-                        
-                        // Fusionar datos de Firebase con estado local
-                        mergeFirebaseData(data);
-                        updateSyncStatus('synced');
-                        console.log('📥 Datos recibidos de Firebase');
                     }
                 }, (err) => {
                     console.error('Error en listener:', err);
@@ -17496,6 +17858,7 @@ RESULTADOS:
                 updateSyncStatus('offline');
             }
         }
+
         
         function getItemTimestamp(item) {
             if (!item || typeof item !== 'object') return 0;
@@ -17791,7 +18154,8 @@ RESULTADOS:
         }
         
         // Fusionar datos de Firebase con estado local
-        function mergeFirebaseData(data) {
+        function mergeFirebaseData(rawData) {
+            const data = normalizeFirebaseData(rawData);
             const deviceId = localStorage.getItem('kioscopro-device-id') || generateDeviceId();
             const isSameDevice = data.deviceId === deviceId;
             
@@ -17972,6 +18336,10 @@ RESULTADOS:
                             closeTime: bh.closeTime || '22:00'
                         }));
                     }
+                    if (data.lastRoundPriceEnabled !== undefined) appState.lastRoundPriceEnabled = !!data.lastRoundPriceEnabled;
+                    if (data.lastInvoiceType !== undefined) appState.lastInvoiceType = data.lastInvoiceType || 'white';
+                    if (data.lastCategory !== undefined) appState.lastCategory = data.lastCategory || null;
+                    if (data.lastExpiryDate !== undefined) appState.lastExpiryDate = data.lastExpiryDate || null;
                     // Propagar el timestamp de saldos si el remoto es más reciente
                     if (remoteBalancesUpdatedAt > localBalancesUpdatedAt) {
                         appState.balancesUpdatedAt = remoteBalancesUpdatedAt;
@@ -17995,6 +18363,8 @@ RESULTADOS:
                 appState.investments = appState.investments.filter(i => !deletedInvIdsMaster.has(i.id));
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
+                appState.billedDays = smartMergeArrays(appState.billedDays || [], data.billedDays || []);
+                appState.guestLogs = smartMergeArrays(appState.guestLogs || [], data.guestLogs || []);
                 // Tomar deletedProductIds y deletedInvestmentIds de Firebase (la PC es la fuente de verdad), pero si Firebase está vacío no borrar locales
                 if (!remoteLooksEmpty) {
                     appState.deletedProductIds = Array.isArray(data.deletedProductIds) ? data.deletedProductIds : [];
@@ -18024,7 +18394,27 @@ RESULTADOS:
                 for (const d of remoteDeletedInv) { if (d && d.id && !deletedInvMap.has(d.id)) deletedInvMap.set(d.id, d); }
                 appState.deletedInvestmentIds = Array.from(deletedInvMap.values()).slice(-500);
                 
-                appState.inventory = mergeInventory(appState.inventory, data.inventory);
+                // Protección anti-borrado/anti-incompleto también en el principal
+                const remoteInvMaster = Array.isArray(data.inventory) ? data.inventory : [];
+                const localInvMaster = Array.isArray(appState.inventory) ? appState.inventory : [];
+                const remoteSalesMaster = Array.isArray(data.sales) ? data.sales.length : 0;
+                const masterRemoteLooksEmpty = remoteInvMaster.length === 0 && remoteSalesMaster === 0 && new Date(data.lastSync || 0).getTime() === 0;
+                const masterRemoteLooksIncomplete = localInvMaster.length > 0 && remoteInvMaster.length < Math.max(1, localInvMaster.length * 0.3);
+
+                if (masterRemoteLooksEmpty && localInvMaster.length > 0) {
+                    console.warn('🛡️ Principal: Firebase devolvió datos vacíos. Se conservan', localInvMaster.length, 'productos locales.');
+                    showNotification('🛡️ Firebase devolvió datos vacíos. Se conservaron los datos locales.', 'warning');
+                    createAutoBackup('master-empty-firebase-protect');
+                    return;
+                } else if (masterRemoteLooksIncomplete && localInvMaster.length > 0) {
+                    console.warn('🛡️ Principal: datos en la nube incompletos. Se fusionan con locales.');
+                    showNotification('🛡️ Datos en la nube incompletos. Se fusionaron con los locales.', 'warning');
+                    createAutoBackup('master-incomplete-firebase-merge');
+                    appState.inventory = mergeInventory(localInvMaster, remoteInvMaster);
+                } else {
+                    appState.inventory = mergeInventory(appState.inventory, data.inventory);
+                }
+
                 appState.sales = smartMergeArrays(appState.sales, data.sales);
                 appState.expenses = smartMergeArrays(appState.expenses, data.expenses);
                 appState.investments = smartMergeArrays(appState.investments, data.investments);
@@ -18053,6 +18443,8 @@ RESULTADOS:
                 appState.foundStock = smartMergeArrays(appState.foundStock || [], data.foundStock || []);
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
+                appState.billedDays = smartMergeArrays(appState.billedDays || [], data.billedDays || []);
+                appState.guestLogs = smartMergeArrays(appState.guestLogs || [], data.guestLogs || []);
                 
                 // Para valores simples, usar Firebase solo si es más reciente o no hay datos locales
                 if (isRestore || firebaseTime > localTime || !hasLocalData) {
@@ -18078,6 +18470,10 @@ RESULTADOS:
                             closeTime: bh.closeTime || '22:00'
                         }));
                     }
+                    if (data.lastRoundPriceEnabled !== undefined) appState.lastRoundPriceEnabled = !!data.lastRoundPriceEnabled;
+                    if (data.lastInvoiceType !== undefined) appState.lastInvoiceType = data.lastInvoiceType || 'white';
+                    if (data.lastCategory !== undefined) appState.lastCategory = data.lastCategory || null;
+                    if (data.lastExpiryDate !== undefined) appState.lastExpiryDate = data.lastExpiryDate || null;
                 }
                 
                 // cash y bank: usar Firebase solo si el remoto tiene un ajuste de saldos más reciente
@@ -18183,23 +18579,22 @@ RESULTADOS:
         }
         
         // Forzar sincronización manual
+                // Forzar sincronización manual
         async function forceSync() {
             updateSyncStatus('syncing');
             
             // 1. Enviar datos locales a Firebase
-            syncToFirebase();
+            syncToFirebase(true);
             
             // 2. Recibir datos de Firebase (forzar recarga)
             try {
-                const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
-                const docRef = doc(window.db, "kioscos", "main");
-                const docSnap = await getDoc(docRef);
+                const downloaded = await downloadAllFirebaseData();
+                const hasAnyData = Object.values(downloaded).some(d => d !== null);
                 
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
+                if (hasAnyData) {
                     // Resetear flag para que muestre notificación
                     isInitialSync = false;
-                    mergeFirebaseData(data);
+                    mergeFirebaseData(downloaded);
                     updateSyncStatus('synced');
                     showNotification('🔄 Datos actualizados', 'success');
                     console.log('📥 Datos recargados manualmente desde Firebase');
@@ -18211,6 +18606,29 @@ RESULTADOS:
             }
         }
 
+        // Subir TODOS los datos locales a Firebase manualmente (solo principal)
+        async function pushAllToFirebase() {
+            if (!isMasterDevice()) {
+                showNotification('⚠️ Solo el dispositivo PRINCIPAL puede subir datos a la nube.', 'warning', 6000);
+                return;
+            }
+            if (!window.db) {
+                showNotification('Firebase no disponible', 'error');
+                return;
+            }
+            updateSyncStatus('syncing');
+            try {
+                await syncToFirebase(true);
+                showNotification('☁️ Datos locales subidos a Firebase', 'success');
+                console.log('📤 pushAllToFirebase completado');
+            } catch (err) {
+                console.error('Error subiendo datos:', err);
+                updateSyncStatus('error');
+                showNotification('❌ Error al subir datos a Firebase', 'error');
+            }
+        }
+
+
         function toggleMasterDevice(isMaster) {
             localStorage.setItem('kioscopro-is-master', isMaster ? '1' : '0');
             showNotification(isMaster ? '💻 Este dispositivo ahora es el PRINCIPAL' : '📱 Este dispositivo ahora es SECUNDARIO', 'success');
@@ -18220,22 +18638,20 @@ RESULTADOS:
             return localStorage.getItem('kioscopro-is-master') === '1';
         }
         
-        async function downloadFromCloud() {
+                async function downloadFromCloud() {
             if (!window.db) {
                 showNotification('Firebase no disponible', 'error');
                 return;
             }
             updateSyncStatus('syncing');
             try {
-                const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
-                const docRef = doc(window.db, "kioscos", "main");
-                const docSnap = await getDoc(docRef);
+                const downloaded = await downloadAllFirebaseData();
+                const hasAnyData = Object.values(downloaded).some(d => d !== null);
                 
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
+                if (hasAnyData) {
                     // Forzar merge completo como si fuera la primera vez
                     isInitialSync = true;
-                    mergeFirebaseData(data);
+                    mergeFirebaseData(downloaded);
                     updateSyncStatus('synced');
                     showNotification('☁️ Datos descargados desde la nube', 'success');
                 } else {
@@ -18247,6 +18663,7 @@ RESULTADOS:
                 showNotification('Error al descargar datos', 'error');
             }
         }
+
         
         // ==================== LOCAL STORAGE ====================
         function saveToLocalStorage(triggerSync = true) {
@@ -18526,6 +18943,19 @@ RESULTADOS:
             (function exposeAdditionalFunctions() {
                 const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup','changeDashboardPeriod','toggleChartMetric','renderChartMetricToggles','toggleDashboardMetric','renderDashboardMetricToggles','renderCashFlowProjection','setCashFlowProjectionDays','saveCashFlowEstimatedIncome','resetCashFlowEstimatedIncome','saveCashFlowLowThreshold','openRecurringExpensesModal','closeRecurringExpensesModal','saveRecurringExpense','editRecurringExpense','deleteRecurringExpense','resetRecurringExpenseForm','onRecExpenseFrequencyChange','addSupplier','deleteSupplier','renderSuppliersList','addCategoryToSupplier','removeCategoryFromSupplier','renderSupplierCategories','saveBusinessHours','toggleBusinessDay','onInvSupplierChange','onEditSupplierChange','populateSupplierSelects','getSupplierByName','getSupplierName','getSupplierPhone'];
                 for (const name of extraFns) {
+                    try {
+                        const fn = eval(name);
+                        if (typeof fn === 'function' && !window[name]) {
+                            window[name] = fn;
+                        }
+                    } catch(e) {}
+                }
+            })();
+
+            // Exponer funciones de backups en la nube
+            (function exposeCloudBackupFunctions() {
+                const cloudFns = ['openCloudBackupsModal','closeCloudBackupsModal','renderCloudBackupsList','restoreCloudBackup','downloadCloudBackupFile','deleteCloudBackup','uploadBackupFileToCloud','pushAllToFirebase'];
+                for (const name of cloudFns) {
                     try {
                         const fn = eval(name);
                         if (typeof fn === 'function' && !window[name]) {
@@ -18924,5 +19354,13 @@ RESULTADOS:
         </div>
     </div>
 
+    <!-- ==================== BACKUPS DE ARCHIVOS EN LA NUBE MODAL ==================== -->
+    <div id="cloud-backups-modal" class="modal hidden">
+        <div class="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 class="text-xl font-bold mb-4 text-indigo-600"><i class="fas fa-cloud"></i> Backups de archivos en la nube</h3>
+            <div id="cloud-backups-list" class="space-y-2 mb-4"></div>
+            <button onclick="closeCloudBackupsModal()" class="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cerrar</button>
+        </div>
+    </div>
 </body>
 </html>

@@ -615,8 +615,8 @@
                         </div>
                     </div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Facturación de lotes</label>
+                <div id="edit-prod-global-invoice-section">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Facturación del producto</label>
                     <div class="flex gap-2">
                         <button type="button" tabindex="-1" onclick="setEditProdInvoiceType('white')" id="btn-edit-prod-white" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-sm font-medium transition flex items-center justify-center gap-2 text-gray-600 hover:border-gray-400">
                             <i class="fas fa-file-invoice text-blue-500"></i> Blanco
@@ -626,7 +626,7 @@
                         </button>
                     </div>
                     <input type="hidden" id="edit-prod-invoice-type" value="white">
-                    <p class="text-xs text-gray-500 mt-1">Se aplicará a todos los lotes existentes</p>
+                    <p class="text-xs text-gray-500 mt-1">Solo aplica a productos compuestos. Los lotes tienen su propio selector.</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Stock Mínimo</label>
@@ -6733,9 +6733,11 @@
         function toggleEditCompositeSection() {
             const checkbox = document.getElementById('edit-prod-is-composite');
             const section = document.getElementById('edit-prod-composite-section');
+            const invoiceSection = document.getElementById('edit-prod-global-invoice-section');
             
             if (checkbox && checkbox.checked) {
                 section.classList.remove('hidden');
+                if (invoiceSection) invoiceSection.classList.remove('hidden');
                 // Limpiar autocomplete de componentes
                 const searchInput = document.getElementById('edit-prod-component-search');
                 const hiddenInput = document.getElementById('edit-prod-component-selected-id');
@@ -6745,6 +6747,7 @@
                 if (resultsDiv) resultsDiv.classList.add('hidden');
             } else {
                 section.classList.add('hidden');
+                if (invoiceSection) invoiceSection.classList.add('hidden');
             }
         }
 
@@ -8283,7 +8286,7 @@
                 }
                 return maxUnits === Infinity ? 0 : maxUnits;
             }
-            if (product.batches && product.batches.length > 0) {
+            if (Array.isArray(product.batches)) {
                 return product.batches.reduce((sum, b) => sum + (b.stock || 0), 0);
             }
             return parseFloat(product.stock) || 0;
@@ -8301,6 +8304,7 @@
                     const qtyToRestore = quantity * (comp.quantity || 1);
                     if (!compProduct.batches) {
                         compProduct.batches = [{
+                            id: 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
                             stock: qtyToRestore,
                             expiry: '',
                             dateAdded: formatDateISO(appState.activeDate),
@@ -8310,6 +8314,7 @@
                         compProduct.batches[0].stock += qtyToRestore;
                     } else {
                         compProduct.batches.push({
+                            id: 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
                             stock: qtyToRestore,
                             expiry: '',
                             dateAdded: formatDateISO(appState.activeDate),
@@ -8322,6 +8327,7 @@
                 // Producto normal: agregar al primer lote o crear uno nuevo
                 if (!product.batches) {
                     product.batches = [{
+                        id: 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
                         stock: quantity,
                         expiry: '',
                         dateAdded: formatDateISO(appState.activeDate),
@@ -8331,6 +8337,7 @@
                     product.batches[0].stock += quantity;
                 } else {
                     product.batches.push({
+                        id: 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
                         stock: quantity,
                         expiry: '',
                         dateAdded: formatDateISO(appState.activeDate),
@@ -8447,6 +8454,7 @@
             if (!product.batches) {
                 // Migración: si el producto no tiene lotes, crear el primer lote con el stock actual
                 product.batches = [{
+                    id: 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
                     stock: 0,
                     expiry: '',
                     dateAdded: formatDateISO(appState.activeDate)
@@ -8580,6 +8588,13 @@
                         <label class="text-xs text-gray-500">Vencimiento</label>
                         <input type="date" class="edit-batch-expiry w-full border rounded px-2 py-1 text-sm" value="${batch.expiry || ''}">
                     </div>
+                    <div class="w-20">
+                        <label class="text-xs text-gray-500">Factura</label>
+                        <select class="edit-batch-invoice-type w-full border rounded px-2 py-1 text-sm">
+                            <option value="white" ${batch.invoiceType === 'black' ? '' : 'selected'}>B</option>
+                            <option value="black" ${batch.invoiceType === 'black' ? 'selected' : ''}>N</option>
+                        </select>
+                    </div>
                     <div class="flex-1">
                         <label class="text-xs text-gray-500">Pagar con</label>
                         <select class="edit-batch-source w-full border rounded px-2 py-1 text-sm">
@@ -8609,6 +8624,8 @@
             
             const row = document.createElement('div');
             row.className = 'flex items-center gap-2 p-2 bg-purple-50 rounded-lg border batch-row';
+            const newBatchId = 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+            row.dataset.batchId = newBatchId;
             if (isWeight) {
                 row.dataset.saleByWeight = 'true';
                 row.dataset.weightPerUnit = product.weightPerUnit;
@@ -8630,6 +8647,13 @@
                 <div class="flex-1">
                     <label class="text-xs text-gray-500">Vencimiento</label>
                     <input type="date" class="edit-batch-expiry w-full border rounded px-2 py-1 text-sm">
+                </div>
+                <div class="w-20">
+                    <label class="text-xs text-gray-500">Factura</label>
+                    <select class="edit-batch-invoice-type w-full border rounded px-2 py-1 text-sm">
+                        <option value="white" selected>B</option>
+                        <option value="black">N</option>
+                    </select>
                 </div>
                 <div class="flex-1">
                     <label class="text-xs text-gray-500">Pagar con</label>
@@ -8817,6 +8841,8 @@
                     const batchIndex = row.dataset.batchIndex;
                     const sourceSelect = row.querySelector('.edit-batch-source');
                     const domSource = sourceSelect ? sourceSelect.value : 'cash';
+                    const invoiceTypeSelect = row.querySelector('.edit-batch-invoice-type');
+                    const domInvoiceType = invoiceTypeSelect ? invoiceTypeSelect.value : (document.getElementById('edit-prod-invoice-type').value || 'white');
                     
                     // Si es producto por peso, convertir gramos a bolsas
                     if (isWeight && qty > 0) {
@@ -8839,12 +8865,13 @@
                         if (qty <= 0) return;
                         
                         newBatches.push({
+                            id: orig.id || ('BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)),
                             stock: qty,
                             initialStock: qty > origQty ? (orig.initialStock || origQty) + (qty - origQty) : (orig.initialStock || origQty),
                             expiry: expiry,
                             dateAdded: orig.dateAdded || formatDateISO(appState.activeDate),
-                            invoiceType: orig.invoiceType || (document.getElementById('edit-prod-invoice-type').value || 'white'),
-                            source: orig.source || domSource || 'cash',
+                            invoiceType: domInvoiceType,
+                            source: domSource || 'cash',
                             cost: unitBatchCost > 0 ? unitBatchCost : (orig.cost || product.cost || 0),
                             updatedAt: new Date().toISOString()
                         });
@@ -8852,11 +8879,12 @@
                         // Nuevo lote
                         if (qty <= 0) return;
                         newBatches.push({
+                            id: row.dataset.batchId || ('BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)),
                             stock: qty,
                             initialStock: qty,
                             expiry: expiry,
                             dateAdded: formatDateISO(appState.activeDate),
-                            invoiceType: document.getElementById('edit-prod-invoice-type').value || 'white',
+                            invoiceType: domInvoiceType,
                             source: domSource,
                             cost: unitBatchCost > 0 ? unitBatchCost : (product.cost || 0),
                             updatedAt: new Date().toISOString()
@@ -8888,11 +8916,7 @@
                 } else {
                     product.isComposite = false;
                     delete product.components;
-                    // Aplicar tipo de factura a todos los lotes existentes
-                    const newInvoiceType = document.getElementById('edit-prod-invoice-type').value || 'white';
-                    product.batches.forEach(batch => {
-                        batch.invoiceType = newInvoiceType;
-                    });
+                    // El tipo de factura ahora se maneja por lote (selector en cada fila)
                 }
                 
                 // Guardar venta por peso
@@ -13842,6 +13866,7 @@
                         firstBatch.stock += restoreUnits;
                     } else {
                         product.batches.push({
+                            id: 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
                             stock: restoreUnits,
                             cost: product.cost || 0,
                             date: formatDateISO(new Date()),
@@ -17986,7 +18011,8 @@ RESULTADOS:
                     const batchMap = new Map();
                     
                     const batchKey = (b) => {
-                        return (b.dateAdded || '') + '|' + (b.cost || 0) + '|' + (b.expiry || '') + '|' + (b.source || '') + '|' + (b.invoiceType || '');
+                        // Usar ID del lote si existe; si no, fallback a una clave compuesta
+                        return b.id || ((b.dateAdded || '') + '|' + (b.cost || 0) + '|' + (b.expiry || '') + '|' + (b.source || '') + '|' + (b.invoiceType || ''));
                     };
                     
                     for (const b of localBatches) {

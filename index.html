@@ -410,7 +410,7 @@
     <!-- Add Stock Modal -->
     <div id="add-stock-modal" class="modal">
         <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <h3 class="text-xl font-bold mb-4 text-purple-600"><i class="fas fa-box-open"></i> Agregar Stock</h3>
+            <h3 class="text-xl font-bold mb-4 text-purple-600" id="add-stock-modal-title"><i class="fas fa-box-open"></i> Agregar Stock</h3>
             <div id="add-stock-product-info" class="mb-4 p-3 bg-gray-50 rounded-lg"></div>
             <div class="space-y-4">
                 <div id="add-stock-weight-info" class="hidden p-2 bg-blue-50 rounded-lg text-xs text-blue-700">
@@ -493,7 +493,7 @@
                 </div>
                 <div class="flex gap-2">
                     <button onclick="closeAddStockModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
-                    <button onclick="executeAddStock()" class="flex-1 bg-purple-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-purple-700">Agregar Stock</button>
+                    <button onclick="executeAddStock()" id="btn-add-stock-confirm" class="flex-1 bg-purple-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-purple-700">Agregar Stock</button>
                 </div>
             </div>
         </div>
@@ -7948,6 +7948,7 @@
             
             currentAddStockProduct = product;
             addStockPaymentMethod = 'cash'; // Default
+            resetAddStockEditMode(); // Abrir siempre en modo "agregar" por defecto
             
             // Calcular días hasta el vencimiento actual
             let expiryInfo = '';
@@ -8062,6 +8063,76 @@
 
         // Variable para control de IVA en agregar stock
         let addStockVatApplied = false;
+
+        // Estado de edición de reposición (cuando se edita una compra existente)
+        let editingRestockId = null;
+        let editingRestockDate = null;
+
+        function resetAddStockEditMode() {
+            editingRestockId = null;
+            editingRestockDate = null;
+            const title = document.getElementById('add-stock-modal-title');
+            if (title) title.innerHTML = '<i class="fas fa-box-open"></i> Agregar Stock';
+            const confirmBtn = document.getElementById('btn-add-stock-confirm');
+            if (confirmBtn) confirmBtn.textContent = 'Agregar Stock';
+        }
+
+        // Abrir el modal de stock en modo edición para corregir una reposición existente
+        function openEditRestockModal(investmentId) {
+            const investment = appState.investments.find(i => i.id === investmentId);
+            if (!investment || !investment.productId) {
+                showNotification('No se encontró la compra a editar', 'error');
+                return;
+            }
+            const product = appState.inventory.find(p => p.id === investment.productId);
+            if (!product) {
+                showNotification('El producto de esta compra ya no existe', 'error');
+                return;
+            }
+            if (product.isComposite) {
+                showNotification('Las preparaciones no tienen compras directas. Editá los subproductos.', 'warning');
+                return;
+            }
+
+            const batch = (product.batches || []).find(b => b.id === investment.batchId);
+
+            // Abrir el modal con la config base del producto
+            openAddStockModal(product.id);
+
+            // Precargar cantidad y costo originales
+            const isWeight = product.saleByWeight && product.weightPerUnit > 0;
+            const batchQty = batch ? (batch.initialStock ?? batch.stock ?? 0) : 0;
+            const qtyInput = document.getElementById('add-stock-qty');
+            const costInput = document.getElementById('add-stock-unit-cost');
+            if (isWeight) {
+                qtyInput.value = Math.round(batchQty * product.weightPerUnit);
+                costInput.value = investment.amount; // En productos por peso el costo es el total
+            } else {
+                qtyInput.value = batchQty;
+                costInput.value = batch && batch.cost ? batch.cost : (batchQty > 0 ? (investment.amount / batchQty) : (product.cost || 0));
+            }
+            document.getElementById('add-stock-expiry').value = batch && batch.expiry ? batch.expiry : '';
+
+            // Precargar tipo de compra y método de pago originales
+            setAddStockInvoiceType((batch && batch.invoiceType) || 'white');
+            setAddStockPayment(investment.source === 'bank' ? 'bank' : 'cash');
+
+            // Activar modo edición
+            editingRestockId = investmentId;
+            editingRestockDate = investment.date;
+
+            const soldQty = batch ? Math.max(0, (batch.initialStock ?? batch.stock ?? 0) - (batch.stock ?? 0)) : 0;
+            if (soldQty > 0) {
+                showNotification('⚠️ Este lote ya tuvo ventas: lo vendido se descontará del nuevo stock', 'info', 5000);
+            }
+
+            const title = document.getElementById('add-stock-modal-title');
+            if (title) title.innerHTML = '<i class="fas fa-edit"></i> Editar Reposición';
+            const confirmBtn = document.getElementById('btn-add-stock-confirm');
+            if (confirmBtn) confirmBtn.textContent = 'Guardar Cambios';
+
+            updateAddStockCost();
+        }
 
         function toggleAddStockVat() {
             const checkbox = document.getElementById('add-stock-vat');
@@ -8231,6 +8302,7 @@
         function closeAddStockModal() {
             document.getElementById('add-stock-modal').classList.remove('active');
             currentAddStockProduct = null;
+            resetAddStockEditMode();
         }
 
         function handleAddStockKeypress(e) {
@@ -8440,7 +8512,52 @@
                 totalCost = qty * newUnitCost;
                 qtyBags = qty;
             }
-            
+
+            // MODO EDICIÓN: revertir la compra original antes de aplicar la corregida
+            let wasEditMode = !!editingRestockId;
+            let editOriginalDate = editingRestockDate;
+            let editSoldQty = 0;
+            if (editingRestockId) {
+                const oldInvestment = appState.investments.find(i => i.id === editingRestockId);
+                if (oldInvestment) {
+                    const oldBatch = (product.batches || []).find(b => b.id === oldInvestment.batchId);
+                    // Unidades del lote original que ya se vendieron (se conservan descontadas)
+                    editSoldQty = oldBatch ? Math.max(0, (oldBatch.initialStock ?? oldBatch.stock ?? 0) - (oldBatch.stock ?? 0)) : 0;
+
+                    // Devolver el dinero original a su fuente
+                    if (oldInvestment.source === 'bank') {
+                        appState.bank = (parseFloat(appState.bank) || 0) + oldInvestment.amount;
+                    } else {
+                        appState.cash = (parseFloat(appState.cash) || 0) + oldInvestment.amount;
+                    }
+
+                    // Revertir tracking de facturación
+                    if (appState.invoiceTracking && oldInvestment.amount) {
+                        const oldInvoiceType = (oldBatch && oldBatch.invoiceType) || 'black';
+                        if (oldInvoiceType === 'white') {
+                            appState.invoiceTracking.purchasedWhite = Math.max(0, (appState.invoiceTracking.purchasedWhite || 0) - oldInvestment.amount);
+                        } else {
+                            appState.invoiceTracking.purchasedBlack = Math.max(0, (appState.invoiceTracking.purchasedBlack || 0) - oldInvestment.amount);
+                        }
+                    }
+
+                    // Quitar el lote original
+                    if (oldBatch) {
+                        product.batches = product.batches.filter(b => b.id !== oldBatch.id);
+                    }
+
+                    // Eliminar la inversión original (con tumba para que no vuelva por sync)
+                    appState.investments = appState.investments.filter(i => i.id !== oldInvestment.id);
+                    if (!appState.deletedInvestmentIds) appState.deletedInvestmentIds = [];
+                    appState.deletedInvestmentIds.push({ id: oldInvestment.id, deletedAt: Date.now() });
+                } else {
+                    // La compra original ya no existe: seguir como alta normal
+                    resetAddStockEditMode();
+                    wasEditMode = false;
+                    editOriginalDate = null;
+                }
+            }
+
             // Verificar si hay un nuevo precio de venta
             const newPriceInput = document.getElementById('add-stock-new-price').value;
             const newPrice = newPriceInput ? parseFloat(newPriceInput) : null;
@@ -8485,13 +8602,13 @@
             // invoiceType ya validado arriba
             
             // Stock esperado después de agregar el lote (para verificación asíncrona)
-            const expectedStockAfter = (getProductStock(product) || 0) + qtyBags;
+            const expectedStockAfter = (getProductStock(product) || 0) + Math.max(0, qtyBags - editSoldQty);
             
-            // Agregar nuevo lote
+            // Agregar nuevo lote (en modo edición se conserva lo ya vendido del lote original)
             const batchId = 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
             product.batches.push({
                 id: batchId,
-                stock: qtyBags,
+                stock: Math.max(0, qtyBags - editSoldQty),
                 initialStock: qtyBags,
                 expiry: newExpiry || '',
                 dateAdded: formatDateISO(appState.activeDate),
@@ -8524,7 +8641,7 @@
             const qtyLabel = isWeight ? `${grams}g` : `${qty} unidades`;
             appState.investments.push({
                 id: 'RESTOCK-' + Date.now(),
-                date: formatDateISO(appState.activeDate),
+                date: editOriginalDate || formatDateISO(appState.activeDate),
                 concept: `Reposición: ${product.name} (+${qtyLabel})${newExpiry ? ' Venc: ' + newExpiry : ''}`,
                 amount: totalCost,
                 source: addStockPaymentMethod === 'cash' ? 'cash' : 'bank',
@@ -8545,16 +8662,27 @@
             }
             
             product.updatedAt = new Date().toISOString();
-            
+
             saveToLocalStorage();
             renderAll();
+
+            // En modo edición, refrescar el calendario y el detalle del día original
+            if (wasEditMode) {
+                renderCalendar();
+                const dayDetail = document.getElementById('day-detail');
+                if (dayDetail && !dayDetail.classList.contains('hidden') && editOriginalDate) {
+                    showDayDetail(editOriginalDate);
+                    showDayTab('investments');
+                }
+            }
+
             closeAddStockModal();
-            
+
             // Verificar asíncronamente que el stock se reflejó correctamente
-            verifyAndRetryStockChange('Reposición ' + product.name, product.id, () => expectedStockAfter);
-            
+            verifyAndRetryStockChange((wasEditMode ? 'Edición reposición ' : 'Reposición ') + product.name, product.id, () => expectedStockAfter);
+
             // Construir mensaje de notificación
-            let message = `Nuevo lote agregado: ${product.name} (+${qty}). Total lotes: ${product.batches.length}. Pagado con ${addStockPaymentMethod === 'cash' ? 'Caja' : 'Cuenta'}`;
+            let message = `${wasEditMode ? 'Compra actualizada' : 'Nuevo lote agregado'}: ${product.name} (+${qty}). Total lotes: ${product.batches.length}. Pagado con ${addStockPaymentMethod === 'cash' ? 'Caja' : 'Cuenta'}`;
             if (newExpiry) {
                 message += `. 📅 Vencimiento: ${newExpiry}`;
             }
@@ -9420,7 +9548,7 @@
             // Si tiene productId asociado, abrir el modal de edición correspondiente
             if (investment.productId) {
                 if (investment.type === 'restock') {
-                    openAddStockModal(investment.productId);
+                    openEditRestockModal(investmentId);
                 } else if (investment.type === 'purchase') {
                     openEditProductModal(investment.productId);
                 } else {
@@ -16913,7 +17041,8 @@ RESULTADOS:
                             <td class="px-4 py-3 text-center">
                                 <button onclick="viewTicket('${t.id}')" class="text-purple-500 hover:text-purple-700 mr-2" title="Ver"><i class="fas fa-eye"></i></button>
                                 <button onclick="printTicketById('${t.id}')" class="text-blue-500 hover:text-blue-700 mr-2" title="Imprimir"><i class="fas fa-print"></i></button>
-                                ${!t.used && !isExpired ? `<button onclick="markTicketUsed('${t.id}')" class="text-green-500 hover:text-green-700" title="Marcar usado"><i class="fas fa-check"></i></button>` : ''}
+                                ${!t.used && !isExpired ? `<button onclick="markTicketUsed('${t.id}')" class="text-green-500 hover:text-green-700 mr-2" title="Marcar usado"><i class="fas fa-check"></i></button>` : ''}
+                                <button onclick="deleteTicket('${t.id}')" class="text-red-500 hover:text-red-700" title="Eliminar del historial"><i class="fas fa-trash"></i></button>
                             </td>
                         </tr>
                     `;
@@ -17465,6 +17594,17 @@ RESULTADOS:
             renderDiscountTickets();
             updateTicketBadge();
             showNotification('Ticket marcado como usado', 'success');
+        }
+
+        function deleteTicket(id) {
+            const ticket = appState.discountTickets.find(t => t.id === id);
+            if (!ticket) return;
+            if (!confirm(`¿Eliminar del historial el ticket #${ticket.ticketNumber || id.slice(0, 8).toUpperCase()}?\nEsta acción no se puede deshacer.`)) return;
+            appState.discountTickets = appState.discountTickets.filter(t => t.id !== id);
+            saveToLocalStorage();
+            renderDiscountTickets();
+            updateTicketBadge();
+            showNotification('Ticket eliminado del historial', 'success');
         }
 
         // ==================== PROMO METRICS ====================
@@ -19057,7 +19197,7 @@ RESULTADOS:
             
             // Exponer funciones adicionales de venta por peso y sync
             (function exposeAdditionalFunctions() {
-                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup','changeDashboardPeriod','toggleChartMetric','renderChartMetricToggles','toggleDashboardMetric','renderDashboardMetricToggles','renderCashFlowProjection','setCashFlowProjectionDays','saveCashFlowEstimatedIncome','resetCashFlowEstimatedIncome','saveCashFlowLowThreshold','openRecurringExpensesModal','closeRecurringExpensesModal','saveRecurringExpense','editRecurringExpense','deleteRecurringExpense','resetRecurringExpenseForm','onRecExpenseFrequencyChange','addSupplier','deleteSupplier','renderSuppliersList','addCategoryToSupplier','removeCategoryFromSupplier','renderSupplierCategories','saveBusinessHours','toggleBusinessDay','onInvSupplierChange','onEditSupplierChange','populateSupplierSelects','getSupplierByName','getSupplierName','getSupplierPhone'];
+                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup','changeDashboardPeriod','toggleChartMetric','renderChartMetricToggles','toggleDashboardMetric','renderDashboardMetricToggles','renderCashFlowProjection','setCashFlowProjectionDays','saveCashFlowEstimatedIncome','resetCashFlowEstimatedIncome','saveCashFlowLowThreshold','openRecurringExpensesModal','closeRecurringExpensesModal','saveRecurringExpense','editRecurringExpense','deleteRecurringExpense','resetRecurringExpenseForm','onRecExpenseFrequencyChange','addSupplier','deleteSupplier','renderSuppliersList','addCategoryToSupplier','removeCategoryFromSupplier','renderSupplierCategories','saveBusinessHours','toggleBusinessDay','onInvSupplierChange','onEditSupplierChange','populateSupplierSelects','getSupplierByName','getSupplierName','getSupplierPhone','deleteTicket'];
                 for (const name of extraFns) {
                     try {
                         const fn = eval(name);

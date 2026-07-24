@@ -11989,10 +11989,11 @@
             }
         }
 
-        function openCashCountModal() {
-            const today = formatDateISO(appState.activeDate || new Date());
+        function openCashCountModal(forDate) {
+            const today = forDate || formatDateISO(appState.activeDate || new Date());
             // Registrar que ya se mostró el arqueo hoy para no repetirlo automáticamente
-            localStorage.setItem('kioscopro-last-cashcount-prompt', today);
+            // (solo cuando se abre para el día activo, no al editar un arqueo puntual de la lista)
+            if (!forDate) localStorage.setItem('kioscopro-last-cashcount-prompt', today);
             const existing = appState.cashCounts ? appState.cashCounts.find(c => c.date === today) : null;
             
             // Fijar la fecha en el modal para evitar cambios si la fecha activa cambia mientras está abierto
@@ -12009,8 +12010,9 @@
                 document.getElementById('cash-count-closing-section').classList.add('hidden');
                 const openingCashInput = document.getElementById('cash-count-opening');
                 const openingBankInput = document.getElementById('cash-count-opening-bank');
-                openingCashInput.value = formatMoney(appState.cash || 0, 2);
-                openingBankInput.value = formatMoney(appState.bank || 0, 2);
+                // Inputs type=number: precargar en formato numérico plano (punto decimal), no localizado
+                openingCashInput.value = (parseFloat(appState.cash) || 0).toFixed(2);
+                openingBankInput.value = (parseFloat(appState.bank) || 0).toFixed(2);
                 if (undoSection) undoSection.classList.add('hidden');
                 setTimeout(() => {
                     if (openingCashInput) openingCashInput.select();
@@ -12075,8 +12077,9 @@
                 const closingCashInput = document.getElementById('cash-count-closing');
                 const closingBankInput = document.getElementById('cash-count-closing-bank');
                 // En edición, precargar los montos guardados; en cierre nuevo, los saldos actuales
-                closingCashInput.value = formatMoney(isEdit && existing.closingCash != null ? existing.closingCash : (parseFloat(appState.cash) || 0), 2);
-                closingBankInput.value = formatMoney(isEdit && existing.closingBank != null ? existing.closingBank : (parseFloat(appState.bank) || 0), 2);
+                // (formato numérico plano: los inputs type=number no aceptan el formato localizado con coma)
+                closingCashInput.value = (isEdit && existing.closingCash != null ? existing.closingCash : (parseFloat(appState.cash) || 0)).toFixed(2);
+                closingBankInput.value = (isEdit && existing.closingBank != null ? existing.closingBank : (parseFloat(appState.bank) || 0)).toFixed(2);
                 document.getElementById('cash-count-notes').value = existing.notes || '';
                 document.getElementById('cash-count-date').textContent = today + (isEdit ? ' · editando cierre' : '');
                 const saveClosingBtn = document.getElementById('btn-save-cash-closing');
@@ -12262,6 +12265,50 @@
             showNotification('Arqueo eliminado', 'success');
         }
 
+        function reopenCashCount(date) {
+            if (!appState.cashCounts) return;
+            const record = appState.cashCounts.find(c => c.date === date);
+            if (!record) {
+                showNotification('No hay arqueo para esa fecha', 'error');
+                return;
+            }
+            if (record.closingAmount === undefined || record.closingAmount === null) {
+                showNotification('Ese día no tiene cierre registrado', 'error');
+                return;
+            }
+            if (!confirm('¿Eliminar solo el CIERRE del ' + date + '?\n\nSe mantiene la apertura y el día queda como "sin cerrar".')) return;
+
+            // Dejar el arqueo como nunca cerrado
+            record.closingCash = null;
+            record.closingBank = null;
+            record.closingAmount = null;
+            record.expectedCash = null;
+            record.expectedBank = null;
+            record.expectedAmount = null;
+            record.differenceCash = null;
+            record.differenceBank = null;
+            record.difference = null;
+            record.timestamp = Date.now();
+
+            // Eliminar los artefactos del cierre (mismos filtros que deleteCashCount)
+            if (appState.cashDifferences) {
+                appState.cashDifferences = appState.cashDifferences.filter(d => d.date !== date);
+            }
+            if (appState.expenses) {
+                appState.expenses = appState.expenses.filter(e => !(e.id && e.id.startsWith('EXP-SHORTAGE-') && e.date === date));
+            }
+            if (appState.capitalAdjustments) {
+                appState.capitalAdjustments = appState.capitalAdjustments.filter(a => !(a.id && (a.id.startsWith('ADJ-SURPLUS-') || a.id.startsWith('ADJ-CLOSE-CASH-') || a.id.startsWith('ADJ-CLOSE-BANK-')) && a.date === date));
+            }
+
+            recalculateBalances();
+            saveToLocalStorage();
+            renderCashCountsList();
+            renderCashDifferences();
+            renderAll();
+            showNotification('Cierre eliminado. El día ' + date + ' quedó abierto', 'success');
+        }
+
         function renderCashCountsList() {
             const container = document.getElementById('cash-counts-list');
             if (!container) return;
@@ -12295,6 +12342,13 @@
                             ${hasClose ? '• Cierre: $' + formatMoney(closingBank) + ' • Dif: $' + formatMoney(diffBank) : ''}
                         </p>
                     </div>
+                    <button onclick="openCashCountModal('${c.date}')" class="text-blue-500 hover:text-blue-700 p-2 flex-shrink-0" title="Editar arqueo${hasClose ? ' (cierre)' : ''}">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    ${hasClose ? `
+                    <button onclick="reopenCashCount('${c.date}')" class="text-orange-500 hover:text-orange-700 p-2 flex-shrink-0" title="Eliminar cierre (mantener apertura)">
+                        <i class="fas fa-undo"></i>
+                    </button>` : ''}
                     <button onclick="deleteCashCount('${c.date}')" class="text-red-500 hover:text-red-700 p-2 flex-shrink-0" title="Eliminar">
                         <i class="fas fa-trash"></i>
                     </button>
@@ -12347,9 +12401,12 @@
             appState.expenses = (appState.expenses || []).filter(e => !(e.id && e.id.startsWith('EXP-SHORTAGE-') && e.date === targetDate));
             appState.capitalAdjustments = (appState.capitalAdjustments || []).filter(a => !(a.id && (a.id.startsWith('ADJ-SURPLUS-') || a.id.startsWith('ADJ-CLOSE-CASH-') || a.id.startsWith('ADJ-CLOSE-BANK-')) && a.date === targetDate));
 
-            // Ajustar saldos reales de caja y banco al monto contado
-            appState.cash = closingCash;
-            appState.bank = closingBank;
+            // Ajustar saldos reales de caja y banco al monto contado (solo si es el día activo;
+            // para fechas pasadas los saldos se recalculan más abajo con los ajustes de cierre)
+            if (targetDate === activeDate) {
+                appState.cash = closingCash;
+                appState.bank = closingBank;
+            }
             
             // Registrar sobrante o faltante en cashDifferences
             if (!appState.cashDifferences) appState.cashDifferences = [];
@@ -12415,6 +12472,12 @@
                 });
             }
             appState.balancesUpdatedAt = closeNow;
+
+            // Si se editó el cierre de una fecha distinta a la activa, recalcular los saldos
+            // actuales incluyendo los ajustes de cierre recién registrados
+            if (targetDate !== activeDate && typeof recalculateBalances === 'function') {
+                recalculateBalances();
+            }
             
             saveToLocalStorage();
             renderAll();

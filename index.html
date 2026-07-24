@@ -921,9 +921,14 @@
             <div class="sidebar-admin-only bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-purple-50" onclick="showSection('cashflow')">
                 <div class="flex justify-between items-center mb-0.5">
                     <span class="text-xs text-gray-500 font-medium">💵 Caja</span>
-                    <button onclick="event.stopPropagation(); openAdjustModal('cash')" class="text-xs text-blue-600 hover:text-blue-800" title="Agregar/Retirar">
-                        <i class="fas fa-plus-minus"></i>
-                    </button>
+                    <span class="flex items-center gap-1">
+                        <button onclick="event.stopPropagation(); toggleAmountsHidden()" class="amounts-eye text-xs text-gray-400 hover:text-gray-600" title="Ocultar/mostrar montos">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button onclick="event.stopPropagation(); openAdjustModal('cash')" class="text-xs text-blue-600 hover:text-blue-800" title="Agregar/Retirar">
+                            <i class="fas fa-plus-minus"></i>
+                        </button>
+                    </span>
                 </div>
                 <p class="text-base font-bold text-gray-800" id="liquidity-amount">$0</p>
             </div>
@@ -931,9 +936,14 @@
             <div class="sidebar-admin-only bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-blue-50" onclick="showSection('cashflow')">
                 <div class="flex justify-between items-center mb-0.5">
                     <span class="text-xs text-gray-500 font-medium">🏦 Cuenta</span>
-                    <button onclick="event.stopPropagation(); openAdjustModal('bank')" class="text-xs text-blue-600 hover:text-blue-800" title="Agregar/Retirar">
-                        <i class="fas fa-plus-minus"></i>
-                    </button>
+                    <span class="flex items-center gap-1">
+                        <button onclick="event.stopPropagation(); toggleAmountsHidden()" class="amounts-eye text-xs text-gray-400 hover:text-gray-600" title="Ocultar/mostrar montos">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button onclick="event.stopPropagation(); openAdjustModal('bank')" class="text-xs text-blue-600 hover:text-blue-800" title="Agregar/Retirar">
+                            <i class="fas fa-plus-minus"></i>
+                        </button>
+                    </span>
                 </div>
                 <p class="text-base font-bold text-blue-700" id="bank-amount">$0</p>
             </div>
@@ -941,13 +951,21 @@
             <div class="sidebar-admin-only bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-green-50" onclick="showSection('inventory')">
                 <div class="flex justify-between items-center mb-0.5">
                     <span class="text-xs text-gray-500 font-medium">📦 Mercadería</span>
+                    <button onclick="event.stopPropagation(); toggleAmountsHidden()" class="amounts-eye text-xs text-gray-400 hover:text-gray-600" title="Ocultar/mostrar montos">
+                        <i class="fas fa-eye"></i>
+                    </button>
                 </div>
                 <p class="text-xs font-bold text-green-700" id="inventory-cost-amount">$0 costo</p>
                 <p class="text-xs font-bold text-green-600" id="inventory-sale-amount">$0 venta</p>
             </div>
 
             <div class="bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg p-2 text-white text-center cursor-pointer" onclick="showSection('cashflow')">
-                <p class="text-xs opacity-90">Ventas hoy</p>
+                <p class="text-xs opacity-90 flex items-center justify-center gap-1">
+                    Ventas hoy
+                    <button onclick="event.stopPropagation(); toggleAmountsHidden()" class="amounts-eye text-xs text-white/70 hover:text-white" title="Ocultar/mostrar montos">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </p>
                 <p class="text-lg font-bold" id="sidebar-balance">$0</p>
             </div>
             
@@ -7700,8 +7718,8 @@
                 const inventoryCostAmount = document.getElementById('inventory-cost-amount');
                 const inventorySaleAmount = document.getElementById('inventory-sale-amount');
                 
-                if (inventoryCostAmount) inventoryCostAmount.textContent = `$${formatMoney(costValue)} costo`;
-                if (inventorySaleAmount) inventorySaleAmount.textContent = `$${formatMoney(saleValue)} venta`;
+                if (inventoryCostAmount) inventoryCostAmount.textContent = fmtPrivate(costValue) + ' costo';
+                if (inventorySaleAmount) inventorySaleAmount.textContent = fmtPrivate(saleValue) + ' venta';
                 
                 // Actualizar elementos en la página de inventario si existen
                 const inventoryValueCost = document.getElementById('inventory-value-cost');
@@ -15811,6 +15829,28 @@ RESULTADOS:
             refreshOpenStockDisplays();
         }
 
+        // ==================== OCULTAR MONTOS (ojo tipo billetera) ====================
+        let amountsHidden = localStorage.getItem('kioscopro-hide-amounts') === '1';
+
+        function toggleAmountsHidden() {
+            amountsHidden = !amountsHidden;
+            localStorage.setItem('kioscopro-hide-amounts', amountsHidden ? '1' : '0');
+            updateAmountsEyes();
+            updateSidebar();
+            updateInventoryValues();
+        }
+
+        function updateAmountsEyes() {
+            document.querySelectorAll('.amounts-eye i').forEach(icon => {
+                icon.className = amountsHidden ? 'fas fa-eye-slash' : 'fas fa-eye';
+            });
+        }
+
+        // Monto con privacidad: si está oculto muestra asteriscos en vez del valor
+        function fmtPrivate(amount) {
+            return amountsHidden ? '$ ••••' : '$' + formatMoney(amount);
+        }
+
         function updateSidebar() {
             try {
                 // Asegurar que los valores sean números
@@ -15832,22 +15872,24 @@ RESULTADOS:
                 const bankAmount = document.getElementById('bank-amount');
                 
                 if (sidebarBalance) {
-                    sidebarBalance.textContent = `$${formatMoney(todayTotal)}`;
+                    sidebarBalance.textContent = fmtPrivate(todayTotal);
                 } else {
                     console.warn('No se encontró el elemento sidebar-balance');
                 }
                 
                 if (liquidityAmount) {
-                    liquidityAmount.textContent = `$${formatMoney(cash)}`;
+                    liquidityAmount.textContent = fmtPrivate(cash);
                 } else {
                     console.warn('No se encontró el elemento liquidity-amount');
                 }
                 
                 if (bankAmount) {
-                    bankAmount.textContent = `$${formatMoney(bank)}`;
+                    bankAmount.textContent = fmtPrivate(bank);
                 } else {
                     console.warn('No se encontró el elemento bank-amount');
                 }
+                
+                updateAmountsEyes();
                 
                 console.log('Sidebar actualizado - Caja:', cash, 'Cuenta:', bank, 'Ventas hoy:', todayTotal);
                 

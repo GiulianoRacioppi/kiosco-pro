@@ -354,48 +354,29 @@
             </div>
             
             <div id="login-options" class="space-y-4">
-                <button onclick="showLoginForm('admin')" class="w-full py-4 px-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition flex items-center justify-center gap-3">
-                    <i class="fas fa-user-shield text-xl"></i>
-                    <div class="text-left">
-                        <div class="font-bold">Administrador</div>
-                        <div class="text-xs opacity-80">Acceso completo al sistema</div>
-                    </div>
-                </button>
-                
-                <div class="relative my-4">
-                    <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-200"></div></div>
-                    <div class="relative flex justify-center text-sm"><span class="px-2 bg-white text-gray-500">o</span></div>
+                <div class="text-left">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Usuario</label>
+                    <select id="login-user-select" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white">
+                    </select>
                 </div>
-                
-                <button onclick="showLoginForm('guest')" class="w-full py-4 px-6 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition flex items-center justify-center gap-3">
-                    <i class="fas fa-user text-xl"></i>
-                    <div class="text-left">
-                        <div class="font-bold">Colaborador</div>
-                        <div class="text-xs opacity-80">Acceso para empleados</div>
-                    </div>
+                <div class="text-left">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Contraseña</label>
+                    <input type="password" id="login-password" placeholder="Contraseña" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" onkeypress="if(event.key==='Enter')login()">
+                </div>
+                <p id="login-error" class="text-red-500 text-sm hidden">Contraseña incorrecta</p>
+                <button onclick="login()" class="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition">
+                    <i class="fas fa-sign-in-alt"></i> Ingresar
                 </button>
             </div>
             
-            <!-- Formulario Admin -->
+            <!-- Formularios viejos (ya no se usan, quedan ocultos) -->
             <div id="admin-login-form" class="hidden space-y-4">
-                <button onclick="backToLoginOptions()" class="text-gray-500 hover:text-gray-700 flex items-center gap-2 text-sm">
-                    <i class="fas fa-arrow-left"></i> Volver
-                </button>
-                <h3 class="text-lg font-bold text-gray-800">Acceso Administrador</h3>
-                <input type="password" id="admin-password" placeholder="Contraseña" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" onkeypress="handleAdminKeypress(event)">
-                <button onclick="loginAdmin()" class="w-full py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition">Ingresar</button>
+                <input type="password" id="admin-password" class="hidden">
                 <p id="admin-login-error" class="text-red-500 text-sm hidden">Contraseña incorrecta</p>
             </div>
-            
-            <!-- Formulario Colaborador -->
             <div id="collaborator-login-form" class="hidden space-y-4">
-                <button onclick="backToLoginOptions()" class="text-gray-500 hover:text-gray-700 flex items-center gap-2 text-sm">
-                    <i class="fas fa-arrow-left"></i> Volver
-                </button>
-                <h3 class="text-lg font-bold text-gray-800">Acceso Colaborador</h3>
-                <input type="password" id="collaborator-password" placeholder="Contraseña" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" onkeypress="if(event.key==='Enter')loginCollaborator()">
+                <input type="password" id="collaborator-password" class="hidden">
                 <p id="collaborator-login-error" class="text-red-500 text-sm hidden">Contraseña incorrecta</p>
-                <button onclick="loginCollaborator()" class="w-full py-3 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-800 transition">Entrar como Colaborador</button>
             </div>
         </div>
     </div>
@@ -717,6 +698,9 @@
                 <button onclick="setAdjustTarget('bank')" id="btn-adjust-bank" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-sm">
                     🏦 Cuenta
                 </button>
+                <button onclick="setAdjustTarget('reserve')" id="btn-adjust-reserve" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-sm">
+                    🔐 Reserva
+                </button>
             </div>
             <div class="flex gap-2 mb-4">
                 <button onclick="setAdjustType('add')" id="btn-adjust-add" class="flex-1 py-2 rounded-lg border-2 border-green-500 bg-green-50 text-green-700 font-bold text-sm">
@@ -752,6 +736,57 @@
                 <div class="flex gap-2">
                     <button onclick="closeAdjustModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
                     <button onclick="executeAdjustMoney()" class="flex-1 bg-purple-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-purple-700">Confirmar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reserve Move Modal -->
+    <div id="reserve-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();saveReserveMove();}">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-2 text-amber-600" id="reserve-modal-title">🔐 Mover plata a la Reserva</h3>
+            <p class="text-xs text-gray-500 mb-4" id="reserve-modal-help"></p>
+            <div class="mb-4 p-4 bg-gray-50 rounded-lg">
+                <p class="text-sm text-gray-600">En Reserva: <span class="font-bold" id="reserve-current">$0</span></p>
+                <p class="text-sm text-gray-600">En Caja: <span class="font-bold" id="reserve-cash-current">$0</span></p>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Monto</label>
+                    <input type="number" id="reserve-amount" class="w-full border-2 border-amber-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Nota (opcional)</label>
+                    <input type="text" id="reserve-note" class="w-full border rounded-lg px-3 py-2" placeholder="Ej: Guardo ganancia del finde">
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="closeReserveModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                    <button onclick="saveReserveMove()" class="flex-1 bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-amber-700">Confirmar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shift Count Modal -->
+    <div id="shift-count-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();saveShiftCount();}">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-2 text-orange-500">🔒 Conteo de Turno</h3>
+            <p class="text-xs text-gray-500 mb-4">Contá el efectivo de la caja y escribí cuánto hay. Si falta o sobra plata queda registrado a tu nombre.</p>
+            <div class="mb-4 p-4 bg-gray-50 rounded-lg" id="shift-expected-row">
+                <p class="text-sm text-gray-600">Según el sistema debería haber: <span class="font-bold" id="shift-expected">$0</span></p>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">💵 Efectivo contado en caja</label>
+                    <input type="number" id="shift-counted" class="w-full border-2 border-orange-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Nota (opcional)</label>
+                    <input type="text" id="shift-notes" class="w-full border rounded-lg px-3 py-2" placeholder="Ej: Me faltan $500, no sé por qué">
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="closeShiftCountModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                    <button onclick="saveShiftCount()" class="flex-1 bg-orange-500 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-orange-600">Guardar Conteo</button>
                 </div>
             </div>
         </div>
@@ -948,6 +983,16 @@
                 <p class="text-base font-bold text-blue-700" id="bank-amount">$0</p>
             </div>
             
+            <div class="sidebar-admin-only bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-amber-50" onclick="showSection('cashflow')">
+                <div class="flex justify-between items-center mb-0.5">
+                    <span class="text-xs text-gray-500 font-medium">🔐 Reserva</span>
+                    <button onclick="event.stopPropagation(); toggleAmountsHidden()" class="amounts-eye text-xs text-gray-400 hover:text-gray-600" title="Ocultar/mostrar montos">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
+                <p class="text-base font-bold text-amber-700" id="reserve-amount">$0</p>
+            </div>
+            
             <div class="sidebar-admin-only bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-green-50" onclick="showSection('inventory')">
                 <div class="flex justify-between items-center mb-0.5">
                     <span class="text-xs text-gray-500 font-medium">📦 Mercadería</span>
@@ -959,7 +1004,7 @@
                 <p class="text-xs font-bold text-green-600" id="inventory-sale-amount">$0 venta</p>
             </div>
 
-            <div class="bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg p-2 text-white text-center cursor-pointer" onclick="showSection('cashflow')">
+            <div class="sidebar-admin-only bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg p-2 text-white text-center cursor-pointer" onclick="showSection('cashflow')">
                 <p class="text-xs opacity-90 flex items-center justify-center gap-1">
                     Ventas hoy
                     <button onclick="event.stopPropagation(); toggleAmountsHidden()" class="amounts-eye text-xs text-white/70 hover:text-white" title="Ocultar/mostrar montos">
@@ -968,6 +1013,10 @@
                 </p>
                 <p class="text-lg font-bold" id="sidebar-balance">$0</p>
             </div>
+            
+            <button onclick="openShiftCountModal()" id="btn-shift-close" class="w-full bg-orange-500 text-white text-xs py-2 rounded-lg hover:bg-orange-600 font-bold" style="display:none">
+                <i class="fas fa-clipboard-check"></i> 🔒 Cerrar mi turno (conteo de caja)
+            </button>
             
             <div class="flex gap-1">
                 <button onclick="backupData()" class="flex-1 bg-blue-500 text-white text-xs py-1.5 rounded hover:bg-blue-600">
@@ -1825,9 +1874,48 @@
                         <p class="text-xs text-gray-500">Control de apertura y cierre</p>
                     </div>
                 </div>
-                <button onclick="openCashCountModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold text-sm">
-                    <i class="fas fa-clipboard-check"></i> Hacer Arqueo
-                </button>
+                <div class="flex gap-2">
+                    <button onclick="openShiftCountModal()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-bold text-sm">
+                        <i class="fas fa-clipboard-check"></i> Conteo de Turno
+                    </button>
+                    <button onclick="openCashCountModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold text-sm">
+                        <i class="fas fa-clipboard-check"></i> Hacer Arqueo
+                    </button>
+                </div>
+            </div>
+
+            <!-- Reserva / Caja Fuerte -->
+            <div class="bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl p-6 text-white shadow-lg sidebar-admin-only">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <p class="text-amber-100 text-sm font-semibold uppercase">🔐 Reserva (caja fuerte)</p>
+                        <p class="text-4xl font-bold mt-1" id="cashflow-reserve">$0</p>
+                        <p class="text-amber-100 text-xs mt-1">Plata guardada fuera de la caja de cambio</p>
+                    </div>
+                </div>
+                <div class="flex gap-2 mb-4">
+                    <button onclick="openReserveModal('deposit')" class="flex-1 bg-amber-400 hover:bg-amber-300 text-white py-2 rounded-lg font-semibold">
+                        <i class="fas fa-arrow-right"></i> Mover a reserva
+                    </button>
+                    <button onclick="openReserveModal('withdraw')" class="flex-1 bg-amber-700 hover:bg-amber-800 text-white py-2 rounded-lg font-semibold">
+                        <i class="fas fa-arrow-left"></i> Sacar a caja
+                    </button>
+                </div>
+                <div class="bg-white/10 rounded-lg p-2">
+                    <p class="text-xs font-bold text-amber-100 mb-2 px-1">Últimos movimientos</p>
+                    <div id="reserve-movements-list" class="space-y-1 max-h-40 overflow-y-auto bg-white rounded-lg p-1"></div>
+                </div>
+            </div>
+
+            <!-- Conteos de Turno -->
+            <div class="bg-white rounded-2xl p-6 shadow-lg sidebar-admin-only">
+                <h3 class="text-lg font-bold mb-4 flex items-center gap-2 text-gray-800">
+                    <i class="fas fa-user-check text-orange-500"></i> Conteos de Turno
+                </h3>
+                <p class="text-xs text-gray-500 mb-3">Cada empleado cuenta la caja al terminar su turno. Si falta plata, acá se ve de quién es.</p>
+                <div id="shift-counts-list" class="space-y-2 max-h-64 overflow-y-auto">
+                    <p class="text-center text-gray-400 py-4 text-sm">Sin conteos de turno</p>
+                </div>
             </div>
 
             <!-- Historial de Arqueos -->
@@ -2465,8 +2553,16 @@
                             <label class="block text-sm font-medium text-gray-700 mb-2">🏦 Dinero en Cuenta</label>
                             <div class="relative">
                                 <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">$</span>
-                                <input type="number" id="settings-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('settings-initial-capital').focus();}">
+                                <input type="number" id="settings-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('settings-reserve').focus();}">
                             </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">🔐 Reserva (caja fuerte)</label>
+                            <div class="relative">
+                                <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">$</span>
+                                <input type="number" id="settings-reserve" class="w-full border-2 border-amber-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('settings-initial-capital').focus();}">
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Plata guardada fuera de la caja de cambio.</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">🔥 Capital Inicial (plata que pusiste para empezar)</label>
@@ -2482,6 +2578,38 @@
                         <button onclick="recalculateBalances(); renderAll(); showNotification('Saldos recalculados desde transacciones', 'success');" class="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 py-2 rounded-xl font-bold text-sm mt-2">
                             <i class="fas fa-calculator"></i> Recalcular desde transacciones
                         </button>
+                    </div>
+                </div>
+
+                <!-- Usuarios y contraseñas -->
+                <div class="bg-white rounded-2xl p-6 shadow-lg">
+                    <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-indigo-600">
+                        <i class="fas fa-users-cog"></i> Usuarios
+                    </h3>
+                    <div class="space-y-4">
+                        <div id="users-list" class="space-y-2 max-h-48 overflow-y-auto"></div>
+                        <input type="hidden" id="user-edit-id" value="">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+                            <input type="text" id="user-name-input" class="w-full border rounded-lg px-3 py-2" placeholder="Ej: Juan">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+                            <input type="text" id="user-password-input" class="w-full border rounded-lg px-3 py-2" placeholder="Contraseña">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Rol</label>
+                            <select id="user-role-input" class="w-full border rounded-lg px-3 py-2 bg-white">
+                                <option value="collaborator">👤 Empleado (solo vender y reponer)</option>
+                                <option value="admin">🛡️ Administrador (acceso completo)</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="cancelEditUser()" id="btn-cancel-edit-user" class="hidden flex-1 bg-gray-200 text-gray-700 py-2 rounded-xl font-bold text-sm">Cancelar</button>
+                            <button onclick="saveUser()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg">
+                                <i class="fas fa-save"></i> <span id="user-save-label">Agregar Usuario</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -3366,6 +3494,13 @@
             cashCounts: [],
             // Sobrantes y faltantes de caja
             cashDifferences: [],
+            // Usuarios individuales (admin los crea en Configuración)
+            users: [],
+            // Reserva / caja fuerte (plata guardada fuera de la caja de cambio)
+            reserve: 0,
+            reserveMovements: [],
+            // Conteos de turno (mini-arqueos por empleado)
+            shiftCounts: [],
             // Productos eliminados (para evitar que vuelvan por sync)
             deletedProductIds: [],
             // Inversiones/compras eliminadas (para evitar que vuelvan por sync)
@@ -3446,7 +3581,9 @@
             // Mostrar login modal - el usuario debe iniciar sesión primero
             document.getElementById('login-modal').classList.remove('hidden');
             
-            // NO cargamos datos ni renderizamos hasta que se loguee
+            // Cargar datos ANTES del login para conocer los usuarios creados por el admin
+            loadFromLocalStorage();
+            renderLoginUsers();
             console.log('Esperando inicio de sesión...');
             
             // Debug: mostrar valores cargados
@@ -3654,86 +3791,74 @@
         }
 
         // ==================== LOGIN SYSTEM ====================
-        function showLoginForm(type) {
-            document.getElementById('login-options').classList.add('hidden');
-            if (type === 'admin') {
-                document.getElementById('admin-login-form').classList.remove('hidden');
-                document.getElementById('admin-password').focus();
-            } else {
-                document.getElementById('collaborator-login-form').classList.remove('hidden');
-                document.getElementById('collaborator-name').focus();
+        // Si no hay usuarios cargados, crear los dos por defecto (migración desde contraseñas fijas)
+        function ensureDefaultUsers() {
+            if (!Array.isArray(appState.users)) appState.users = [];
+            if (appState.users.length === 0) {
+                appState.users = [
+                    { id: 'USER-ADMIN', name: 'Administrador', password: 'admin123', role: 'admin', active: true },
+                    { id: 'USER-COLAB', name: 'Colaborador', password: 'colab123', role: 'collaborator', active: true }
+                ];
             }
         }
-        
-        function backToLoginOptions() {
-            document.getElementById('admin-login-form').classList.add('hidden');
-            document.getElementById('collaborator-login-form').classList.add('hidden');
-            document.getElementById('login-options').classList.remove('hidden');
-            document.getElementById('admin-login-error').classList.add('hidden');
+
+        function renderLoginUsers() {
+            const select = document.getElementById('login-user-select');
+            if (!select) return;
+            ensureDefaultUsers();
+            const activeUsers = appState.users.filter(u => u.active !== false);
+            select.innerHTML = activeUsers.map(u =>
+                `<option value="${u.id}">${u.role === 'admin' ? '🛡️' : '👤'} ${u.name}</option>`
+            ).join('');
         }
-        
-        function handleAdminKeypress(event) {
-            if (event.key === 'Enter') {
-                loginAdmin();
-            }
-        }
-        
-        function loginAdmin() {
-            const password = document.getElementById('admin-password').value;
-            if (password === ADMIN_PASSWORD) {
-                isDemoMode = false;
-                appState.currentUser = { role: 'admin', name: 'Administrador' };
-                isLoggedIn = true;
-                closeLoginModal();
-                loadFromLocalStorage();
-                updateDateDisplay();
-                renderAll();
-                updateSidebar(); // Asegurar que se muestren todas las opciones de admin
-                showSection('dashboard'); // Admin va al dashboard con métricas completas
-                showNotification('Bienvenido, Administrador', 'success');
-                setTimeout(checkCashCountAlert, 1000);
-            } else {
-                document.getElementById('admin-login-error').classList.remove('hidden');
-            }
-        }
-        
-        function loginCollaborator() {
-            const password = document.getElementById('collaborator-password').value;
-            const errorEl = document.getElementById('collaborator-login-error');
-            
-            if (password !== 'colab123') {
+
+        function login() {
+            const select = document.getElementById('login-user-select');
+            const password = document.getElementById('login-password').value;
+            const errorEl = document.getElementById('login-error');
+            const user = appState.users.find(u => u.id === select.value && u.active !== false);
+
+            if (!user || user.password !== password) {
                 errorEl.classList.remove('hidden');
                 return;
             }
-            
+
             errorEl.classList.add('hidden');
-            isDemoMode = false; // Los colaboradores usan datos reales, no demo
-            appState.currentUser = { role: 'collaborator', name: 'Colaborador' };
+            isDemoMode = false;
+            appState.currentUser = { id: user.id, role: user.role, name: user.name };
             isLoggedIn = true;
-            
-            // Cargar datos reales (igual que admin)
-            loadFromLocalStorage();
-            
             closeLoginModal();
+            loadFromLocalStorage();
             updateDateDisplay();
             renderAll();
             updateSidebar();
-            showSection('sell'); // Colaboradores van directo a vender
-            showNotification('Modo Colaborador activado', 'success');
+            if (user.role === 'admin') {
+                showSection('dashboard');
+            } else {
+                showSection('sell'); // Empleados van directo a vender
+            }
+            showNotification('Bienvenido, ' + user.name, 'success');
             setTimeout(checkCashCountAlert, 1000);
         }
-        
+
         function closeLoginModal() {
             document.getElementById('login-modal').classList.add('hidden');
             // Mostrar sidebar después de login exitoso
             const sidebar = document.getElementById('mobile-sidebar');
             if (sidebar) sidebar.classList.remove('hidden');
         }
-        
+
         function logout() {
-            if (confirm('¿Cerrar sesión?')) {
-                location.reload();
+            if (!confirm('¿Cerrar sesión?')) return;
+            // Si es empleado, ofrecer hacer el conteo de turno antes de salir
+            if (appState.currentUser && appState.currentUser.role === 'collaborator') {
+                if (confirm('¿Hacer el conteo de turno antes de salir?')) {
+                    sessionStorage.setItem('kioscopro-logout-after-shift', '1');
+                    openShiftCountModal();
+                    return;
+                }
             }
+            location.reload();
         }
         
         function isAdmin() {
@@ -6325,6 +6450,7 @@
                 isMercadoCredito: isMercadoCredito,
                 mercadoCreditoFee: mercadoFeeAmount,
                 mercadoCreditoFeePct: mercadoFeePct,
+                user: appState.currentUser ? appState.currentUser.name : null,
                 timestamp: Date.now()
             };
 
@@ -9958,6 +10084,9 @@
             if (cashEl) cashEl.textContent = '$' + formatMoney(appState.cash);
             if (bankEl) bankEl.textContent = '$' + formatMoney(appState.bank);
             
+            renderReserve();
+            renderShiftCountsList();
+            
             updateInventoryValues();
             
             const today = formatDateISO(appState.activeDate);
@@ -9991,7 +10120,7 @@
                     <td class="px-4 py-2 text-sm font-medium">${e.concept}</td>
                     <td class="px-4 py-2 text-sm">
                         <span class="px-2 py-1 rounded-full text-xs ${e.source === 'cash' ? 'bg-green-100 text-green-700' : e.source === 'bank' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}">
-                            ${e.source === 'cash' ? '💵 Caja' : e.source === 'bank' ? '🏦 Cuenta' : '📦 Compra'}
+                            ${e.source === 'cash' ? '💵 Caja' : e.source === 'bank' ? '🏦 Cuenta' : e.source === 'reserve' ? '🔐 Reserva' : '📦 Compra'}
                         </span>
                     </td>
                     <td class="px-4 py-2 text-sm text-right font-bold text-red-600">-$${formatMoney(e.amount)}</td>
@@ -11876,6 +12005,10 @@
             document.getElementById('btn-adjust-bank').className = target === 'bank'
                 ? 'flex-1 py-2 rounded-lg border-2 border-blue-500 bg-blue-50 text-blue-700 font-bold text-sm'
                 : 'flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-sm';
+            const reserveBtn = document.getElementById('btn-adjust-reserve');
+            if (reserveBtn) reserveBtn.className = target === 'reserve'
+                ? 'flex-1 py-2 rounded-lg border-2 border-amber-500 bg-amber-50 text-amber-700 font-bold text-sm'
+                : 'flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-sm';
         }
 
         function setAdjustType(type) {
@@ -11916,6 +12049,10 @@
             }
 
             if (adjustType === 'add') {
+                if (adjustTarget === 'reserve') {
+                    showNotification('Para sumar plata a la reserva usá "Mover a reserva" en Finanzas', 'error');
+                    return;
+                }
                 if (adjustTarget === 'cash') {
                     appState.cash += amount;
                 } else {
@@ -11929,6 +12066,7 @@
                     amount: amount,
                     target: adjustTarget,
                     concept: concept,
+                    user: appState.currentUser ? appState.currentUser.name : null,
                     timestamp: Date.now()
                 });
                 
@@ -11942,25 +12080,43 @@
                     showNotification('Fondos insuficientes en cuenta', 'error');
                     return;
                 }
+                if (adjustTarget === 'reserve' && amount > (parseFloat(appState.reserve) || 0)) {
+                    showNotification('Fondos insuficientes en la reserva', 'error');
+                    return;
+                }
 
                 if (adjustTarget === 'cash') {
                     appState.cash -= amount;
-                } else {
+                } else if (adjustTarget === 'bank') {
                     appState.bank -= amount;
+                } else {
+                    appState.reserve = (parseFloat(appState.reserve) || 0) - amount;
+                    if (!Array.isArray(appState.reserveMovements)) appState.reserveMovements = [];
+                    appState.reserveMovements.push({
+                        id: 'RES-' + Date.now(),
+                        date: formatDateISO(appState.activeDate),
+                        time: new Date().toLocaleTimeString('es-ES'),
+                        type: 'withdraw-out',
+                        amount: amount,
+                        user: appState.currentUser ? appState.currentUser.name : null,
+                        note: concept,
+                        timestamp: Date.now()
+                    });
                 }
 
                 appState.expenses.push({
                     id: 'WITHDRAW-' + Date.now(),
                     date: formatDateISO(appState.activeDate),
-                    concept: concept,
+                    concept: concept + (adjustTarget === 'reserve' ? ' (desde reserva)' : ''),
                     amount: amount,
                     source: adjustTarget,
                     type: 'withdrawal',
                     withdrawalType: withdrawalType,
+                    user: appState.currentUser ? appState.currentUser.name : null,
                     timestamp: Date.now()
                 });
                 
-                showNotification(`$${formatMoney(amount)} retirados de ${adjustTarget === 'cash' ? 'Caja' : 'Cuenta'} y registrados como gasto`, 'success');
+                showNotification(`$${formatMoney(amount)} retirados de ${adjustTarget === 'cash' ? 'Caja' : adjustTarget === 'bank' ? 'Cuenta' : 'Reserva'} y registrados como gasto`, 'success');
             }
 
             saveToLocalStorage();
@@ -12181,6 +12337,7 @@
                     differenceBank: null,
                     difference: null,
                     notes: '',
+                    user: appState.currentUser ? appState.currentUser.name : null,
                     timestamp: Date.now()
                 };
                 appState.cashCounts.push(record);
@@ -12413,6 +12570,7 @@
             record.differenceBank = closingBank - expected.bank;
             record.difference = (closingCash + closingBank) - expected.total;
             record.notes = document.getElementById('cash-count-notes').value || '';
+            record.closingUser = appState.currentUser ? appState.currentUser.name : null;
             record.timestamp = Date.now();
 
             // Si el cierre ya existía (edición), revertir sus efectos previos para no duplicarlos
@@ -12439,6 +12597,7 @@
                     cashAmount: record.differenceCash,
                     bankAmount: record.differenceBank,
                     notes: record.notes || '',
+                    user: appState.currentUser ? appState.currentUser.name : null,
                     timestamp: Date.now()
                 });
             }
@@ -12502,6 +12661,314 @@
             renderCashflow();
             closeCashCountModal();
             showNotification('Cierre de caja ' + (wasEdit ? 'actualizado' : 'registrado') + '. Diferencia: $' + formatMoney(record.difference), record.difference === 0 ? 'success' : 'warning');
+        }
+
+        // ==================== USUARIOS ====================
+        function renderUsersList() {
+            const container = document.getElementById('users-list');
+            if (!container) return;
+            ensureDefaultUsers();
+            if (appState.users.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-400 py-2 text-sm">Sin usuarios</p>';
+                return;
+            }
+            container.innerHTML = appState.users.map(u => `
+                <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-sm ${u.active === false ? 'opacity-50' : ''}">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-bold text-gray-700">${u.role === 'admin' ? '🛡️' : '👤'} ${u.name}</p>
+                        <p class="text-xs text-gray-500">${u.role === 'admin' ? 'Administrador' : 'Empleado'}${u.active === false ? ' · desactivado' : ''}</p>
+                    </div>
+                    <button onclick="toggleUserActive('${u.id}')" class="text-gray-400 hover:text-gray-600 p-1" title="${u.active === false ? 'Activar' : 'Desactivar'}">
+                        <i class="fas ${u.active === false ? 'fa-toggle-off' : 'fa-toggle-on'}"></i>
+                    </button>
+                    <button onclick="editUser('${u.id}')" class="text-blue-500 hover:text-blue-700 p-1" title="Editar">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button onclick="deleteUser('${u.id}')" class="text-red-500 hover:text-red-700 p-1" title="Eliminar">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function saveUser() {
+            const id = document.getElementById('user-edit-id').value;
+            const name = document.getElementById('user-name-input').value.trim();
+            const password = document.getElementById('user-password-input').value.trim();
+            const role = document.getElementById('user-role-input').value;
+            if (!name || !password) {
+                showNotification('Complete nombre y contraseña', 'error');
+                return;
+            }
+            ensureDefaultUsers();
+            if (id) {
+                const user = appState.users.find(u => u.id === id);
+                if (!user) return;
+                // No permitir quitar el rol al último admin
+                if (user.role === 'admin' && role !== 'admin' && appState.users.filter(u => u.role === 'admin' && u.active !== false).length <= 1) {
+                    showNotification('Debe quedar al menos un administrador', 'error');
+                    return;
+                }
+                user.name = name;
+                user.password = password;
+                user.role = role;
+                showNotification('Usuario actualizado', 'success');
+            } else {
+                if (appState.users.some(u => u.name.toLowerCase() === name.toLowerCase())) {
+                    showNotification('Ya existe un usuario con ese nombre', 'error');
+                    return;
+                }
+                appState.users.push({ id: 'USER-' + Date.now(), name, password, role, active: true });
+                showNotification('Usuario creado', 'success');
+            }
+            cancelEditUser();
+            saveToLocalStorage();
+            renderUsersList();
+            renderLoginUsers();
+        }
+
+        function editUser(id) {
+            const user = appState.users.find(u => u.id === id);
+            if (!user) return;
+            document.getElementById('user-edit-id').value = user.id;
+            document.getElementById('user-name-input').value = user.name;
+            document.getElementById('user-password-input').value = user.password;
+            document.getElementById('user-role-input').value = user.role;
+            document.getElementById('user-save-label').textContent = 'Guardar Cambios';
+            document.getElementById('btn-cancel-edit-user').classList.remove('hidden');
+        }
+
+        function cancelEditUser() {
+            document.getElementById('user-edit-id').value = '';
+            document.getElementById('user-name-input').value = '';
+            document.getElementById('user-password-input').value = '';
+            document.getElementById('user-role-input').value = 'collaborator';
+            document.getElementById('user-save-label').textContent = 'Agregar Usuario';
+            document.getElementById('btn-cancel-edit-user').classList.add('hidden');
+        }
+
+        function deleteUser(id) {
+            const user = appState.users.find(u => u.id === id);
+            if (!user) return;
+            if (user.role === 'admin' && appState.users.filter(u => u.role === 'admin' && u.active !== false).length <= 1) {
+                showNotification('Debe quedar al menos un administrador', 'error');
+                return;
+            }
+            if (!confirm('¿Eliminar el usuario "' + user.name + '"?')) return;
+            appState.users = appState.users.filter(u => u.id !== id);
+            saveToLocalStorage();
+            renderUsersList();
+            renderLoginUsers();
+            showNotification('Usuario eliminado', 'success');
+        }
+
+        function toggleUserActive(id) {
+            const user = appState.users.find(u => u.id === id);
+            if (!user) return;
+            if (user.role === 'admin' && user.active !== false && appState.users.filter(u => u.role === 'admin' && u.active !== false).length <= 1) {
+                showNotification('Debe quedar al menos un administrador activo', 'error');
+                return;
+            }
+            user.active = user.active === false;
+            saveToLocalStorage();
+            renderUsersList();
+            renderLoginUsers();
+        }
+
+        // ==================== RESERVA / CAJA FUERTE ====================
+        let reserveMoveType = 'deposit';
+
+        function openReserveModal(type) {
+            reserveMoveType = type;
+            document.getElementById('reserve-modal-title').textContent = type === 'deposit' ? '🔐 Mover plata a la Reserva' : '💵 Sacar plata de la Reserva';
+            document.getElementById('reserve-modal-help').textContent = type === 'deposit'
+                ? 'La plata sale de la Caja y pasa a la Reserva (caja fuerte).'
+                : 'La plata sale de la Reserva y vuelve a la Caja.';
+            document.getElementById('reserve-current').textContent = '$' + formatMoney(appState.reserve || 0);
+            document.getElementById('reserve-cash-current').textContent = '$' + formatMoney(appState.cash || 0);
+            document.getElementById('reserve-amount').value = '';
+            document.getElementById('reserve-note').value = '';
+            document.getElementById('reserve-modal').classList.add('active');
+            setTimeout(() => document.getElementById('reserve-amount').focus(), 50);
+        }
+
+        function closeReserveModal() {
+            document.getElementById('reserve-modal').classList.remove('active');
+        }
+
+        function saveReserveMove() {
+            const amount = parseFloat(document.getElementById('reserve-amount').value);
+            const note = document.getElementById('reserve-note').value.trim();
+            if (!amount || amount <= 0) {
+                showNotification('Ingrese un monto válido', 'error');
+                return;
+            }
+            if (!Array.isArray(appState.reserveMovements)) appState.reserveMovements = [];
+            if (reserveMoveType === 'deposit') {
+                if (amount > (parseFloat(appState.cash) || 0)) {
+                    showNotification('No hay suficiente plata en caja', 'error');
+                    return;
+                }
+                appState.cash -= amount;
+                appState.reserve = (parseFloat(appState.reserve) || 0) + amount;
+                appState.reserveMovements.push({ id: 'RES-' + Date.now(), date: formatDateISO(appState.activeDate), time: new Date().toLocaleTimeString('es-ES'), type: 'deposit', amount, user: appState.currentUser ? appState.currentUser.name : null, note, timestamp: Date.now() });
+                showNotification('$' + formatMoney(amount) + ' movidos a la Reserva', 'success');
+            } else {
+                if (amount > (parseFloat(appState.reserve) || 0)) {
+                    showNotification('No hay suficiente plata en la reserva', 'error');
+                    return;
+                }
+                appState.reserve = (parseFloat(appState.reserve) || 0) - amount;
+                appState.cash += amount;
+                appState.reserveMovements.push({ id: 'RES-' + Date.now(), date: formatDateISO(appState.activeDate), time: new Date().toLocaleTimeString('es-ES'), type: 'withdraw', amount, user: appState.currentUser ? appState.currentUser.name : null, note, timestamp: Date.now() });
+                showNotification('$' + formatMoney(amount) + ' sacados de la Reserva', 'success');
+            }
+            saveToLocalStorage();
+            renderAll();
+            closeReserveModal();
+        }
+
+        function renderReserve() {
+            const el = document.getElementById('cashflow-reserve');
+            if (el) el.textContent = fmtPrivate(appState.reserve || 0);
+            const list = document.getElementById('reserve-movements-list');
+            if (!list) return;
+            const movements = (appState.reserveMovements || []).slice(-15).reverse();
+            if (movements.length === 0) {
+                list.innerHTML = '<p class="text-center text-gray-400 py-2 text-sm">Sin movimientos</p>';
+                return;
+            }
+            list.innerHTML = movements.map(m => `
+                <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-xs">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-bold text-gray-700">${m.type === 'deposit' ? '➡️ A reserva' : m.type === 'withdraw' ? '⬅️ A caja' : m.type === 'withdraw-out' ? '🚪 Retiro' : '✏️ Ajuste'} — $${formatMoney(Math.abs(m.amount))}</p>
+                        <p class="text-gray-500">${m.date} ${m.time || ''}${m.user ? ' · ' + m.user : ''}${m.note ? ' · ' + m.note : ''}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ==================== CONTEO DE TURNO ====================
+        function openShiftCountModal() {
+            const isAdminUser = isAdmin();
+            // El empleado NO ve cuánto debería haber (cuenta de verdad); el admin sí
+            const expectedRow = document.getElementById('shift-expected-row');
+            if (expectedRow) {
+                expectedRow.classList.toggle('hidden', !isAdminUser);
+                document.getElementById('shift-expected').textContent = '$' + formatMoney(appState.cash || 0);
+            }
+            document.getElementById('shift-counted').value = '';
+            document.getElementById('shift-notes').value = '';
+            document.getElementById('shift-count-modal').classList.add('active');
+            setTimeout(() => document.getElementById('shift-counted').focus(), 50);
+        }
+
+        function closeShiftCountModal() {
+            document.getElementById('shift-count-modal').classList.remove('active');
+            // Si el conteo se pidió al cerrar sesión y se cancela, se limpia el flag y sigue logueado
+            sessionStorage.removeItem('kioscopro-logout-after-shift');
+        }
+
+        function saveShiftCount() {
+            const counted = parseFloat(document.getElementById('shift-counted').value);
+            if (isNaN(counted) || counted < 0) {
+                showNotification('Ingrese el efectivo contado', 'error');
+                return;
+            }
+            const expected = parseFloat(appState.cash) || 0;
+            const difference = Math.round((counted - expected) * 100) / 100;
+            const notes = document.getElementById('shift-notes').value.trim();
+            const user = appState.currentUser || { id: null, name: 'Desconocido' };
+
+            if (!Array.isArray(appState.shiftCounts)) appState.shiftCounts = [];
+            appState.shiftCounts.push({
+                id: 'SHIFT-' + Date.now(),
+                date: formatDateISO(appState.activeDate),
+                time: new Date().toLocaleTimeString('es-ES'),
+                userId: user.id || null,
+                userName: user.name,
+                countedCash: counted,
+                expectedCash: expected,
+                difference: difference,
+                notes: notes,
+                timestamp: Date.now()
+            });
+
+            // Registrar diferencia con responsable
+            if (difference !== 0) {
+                if (!Array.isArray(appState.cashDifferences)) appState.cashDifferences = [];
+                appState.cashDifferences.push({
+                    id: 'CASHDIFF-' + Date.now(),
+                    date: formatDateISO(appState.activeDate),
+                    amount: difference,
+                    type: difference > 0 ? 'surplus' : 'shortage',
+                    cashAmount: difference,
+                    bankAmount: 0,
+                    notes: 'Conteo de turno - ' + user.name + (notes ? ': ' + notes : ''),
+                    user: user.name,
+                    timestamp: Date.now()
+                });
+                const now = Date.now();
+                if (difference < 0) {
+                    appState.expenses.push({
+                        id: 'EXP-SHORTAGE-' + now,
+                        date: formatDateISO(appState.activeDate),
+                        concept: 'Faltante de caja (turno de ' + user.name + ')' + (notes ? ': ' + notes : ''),
+                        amount: Math.abs(difference),
+                        source: 'cash',
+                        user: user.name,
+                        timestamp: now
+                    });
+                } else {
+                    if (!Array.isArray(appState.capitalAdjustments)) appState.capitalAdjustments = [];
+                    appState.capitalAdjustments.push({
+                        id: 'ADJ-SURPLUS-' + now,
+                        amount: difference,
+                        target: 'cash',
+                        date: formatDateISO(appState.activeDate),
+                        timestamp: now,
+                        note: 'Sobrante de caja (turno de ' + user.name + ')',
+                        user: user.name
+                    });
+                }
+            }
+
+            // La caja queda con lo contado: el próximo turno arranca desde ahí
+            appState.cash = counted;
+            appState.balancesUpdatedAt = Date.now();
+
+            saveToLocalStorage();
+            renderAll();
+            renderShiftCountsList();
+            document.getElementById('shift-count-modal').classList.remove('active');
+            showNotification('Conteo guardado. Diferencia: $' + formatMoney(difference), difference === 0 ? 'success' : 'warning');
+
+            // Si el conteo se pidió al cerrar sesión, salir ahora
+            if (sessionStorage.getItem('kioscopro-logout-after-shift') === '1') {
+                sessionStorage.removeItem('kioscopro-logout-after-shift');
+                location.reload();
+            }
+        }
+
+        function renderShiftCountsList() {
+            const list = document.getElementById('shift-counts-list');
+            if (!list) return;
+            const counts = (appState.shiftCounts || []).slice(-20).reverse();
+            if (counts.length === 0) {
+                list.innerHTML = '<p class="text-center text-gray-400 py-2 text-sm">Sin conteos de turno</p>';
+                return;
+            }
+            list.innerHTML = counts.map(c => `
+                <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-xs">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-bold text-gray-700">👤 ${c.userName} — ${c.date} ${c.time || ''}</p>
+                        <p class="text-gray-500">Contó: $${formatMoney(c.countedCash)} · Esperado: $${formatMoney(c.expectedCash)}${c.notes ? ' · ' + c.notes : ''}</p>
+                    </div>
+                    <span class="font-bold ${c.difference === 0 ? 'text-green-600' : c.difference < 0 ? 'text-red-600' : 'text-blue-600'}">
+                        ${c.difference === 0 ? '✔️' : (c.difference > 0 ? '+' : '-') + '$' + formatMoney(Math.abs(c.difference))}
+                    </span>
+                </div>
+            `).join('');
         }
 
         // ==================== STOCK GRATIS / ENCONTRADO ====================
@@ -14768,9 +15235,11 @@ Total de productos a comprar: ${shoppingList.length}
             document.getElementById('settings-margin').value = appState.defaultMargin;
             document.getElementById('settings-cash').value = appState.cash;
             document.getElementById('settings-bank').value = appState.bank;
+            document.getElementById('settings-reserve').value = appState.reserve || 0;
             document.getElementById('settings-initial-capital').value = appState.initialCapital || 0;
             document.getElementById('settings-mercado-fee').value = appState.mercadoCreditoFee || 5;
             document.getElementById('settings-stock-days').value = appState.stockTargetDays || 7;
+            renderUsersList();
             
             document.getElementById('settings-product-count').textContent = getActiveInventory().length;
             document.getElementById('settings-sales-count').textContent = appState.sales.length;
@@ -15107,10 +15576,12 @@ Total de productos a comprar: ${shoppingList.length}
         function saveBalancesFromSettings() {
             const newCash = parseFloat(document.getElementById('settings-cash').value) || 0;
             const newBank = parseFloat(document.getElementById('settings-bank').value) || 0;
+            const newReserve = parseFloat(document.getElementById('settings-reserve').value) || 0;
             const initialCapital = parseFloat(document.getElementById('settings-initial-capital').value) || 0;
             
             const currentCash = parseFloat(appState.cash) || 0;
             const currentBank = parseFloat(appState.bank) || 0;
+            const currentReserve = parseFloat(appState.reserve) || 0;
             
             // Registrar la diferencia como ajuste de capital para que recalculateBalances sea consistente
             if (!Array.isArray(appState.capitalAdjustments)) appState.capitalAdjustments = [];
@@ -15136,8 +15607,23 @@ Total de productos a comprar: ${shoppingList.length}
                 });
             }
             
+            if (Math.abs(newReserve - currentReserve) > 0.001) {
+                if (!Array.isArray(appState.reserveMovements)) appState.reserveMovements = [];
+                appState.reserveMovements.push({
+                    id: 'RES-ADJ-' + now,
+                    amount: Math.round((newReserve - currentReserve) * 100) / 100,
+                    type: 'adjust',
+                    date: new Date().toISOString().split('T')[0],
+                    time: new Date().toLocaleTimeString('es-ES'),
+                    timestamp: now,
+                    note: 'Ajuste manual de reserva',
+                    user: appState.currentUser ? appState.currentUser.name : null
+                });
+            }
+            
             appState.cash = newCash;
             appState.bank = newBank;
+            appState.reserve = newReserve;
             appState.initialCapital = initialCapital;
             appState.balancesUpdatedAt = now;
             
@@ -15245,6 +15731,10 @@ Total de productos a comprar: ${shoppingList.length}
                 ticketRules: [],
                 cashCounts: [],
                 cashDifferences: [],
+                users: [],
+                reserve: 0,
+                reserveMovements: [],
+                shiftCounts: [],
                 deletedProductIds: [],
                 deletedInvestmentIds: [],
                 deletedPromotionIds: [],
@@ -15946,6 +16436,14 @@ RESULTADOS:
                 document.querySelectorAll('.sidebar-admin-only').forEach(el => {
                     el.style.display = isAdmin ? 'block' : 'none';
                 });
+                
+                // Reserva en el panel lateral (con privacidad de montos)
+                const reserveAmountEl = document.getElementById('reserve-amount');
+                if (reserveAmountEl) reserveAmountEl.textContent = fmtPrivate(appState.reserve || 0);
+                
+                // Botón de conteo de turno: solo para empleados (el admin lo tiene en Finanzas)
+                const shiftBtn = document.getElementById('btn-shift-close');
+                if (shiftBtn) shiftBtn.style.display = isAdmin ? 'none' : 'block';
                 
                 // Actualizar badge de tickets pendientes
                 updateTicketBadge();
@@ -17894,7 +18392,10 @@ RESULTADOS:
                 main_losses: 'losses',
                 main_recurringExpenses: 'recurringExpenses',
                 main_billedDays: 'billedDays',
-                main_guestLogs: 'guestLogs'
+                main_guestLogs: 'guestLogs',
+                main_users: 'users',
+                main_reserveMovements: 'reserveMovements',
+                main_shiftCounts: 'shiftCounts'
             };
         }
 
@@ -17904,6 +18405,7 @@ RESULTADOS:
             return {
                 cash: parseFloat(appState.cash) || 0,
                 bank: parseFloat(appState.bank) || 0,
+                reserve: parseFloat(appState.reserve) || 0,
                 initialCapital: parseFloat(appState.initialCapital) || 0,
                 defaultMargin: parseFloat(appState.defaultMargin) || 30,
                 mercadoCreditoFee: parseFloat(appState.mercadoCreditoFee) || 5,
@@ -18031,7 +18533,7 @@ RESULTADOS:
         function normalizeFirebaseData(downloaded) {
             const normalized = {};
             const main = downloaded && (downloaded.main || downloaded);
-            const baseFields = ['cash','bank','initialCapital','defaultMargin','mercadoCreditoFee','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
+            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
             for (const f of baseFields) {
                 if (main && main[f] !== undefined) normalized[f] = main[f];
             }
@@ -18459,6 +18961,24 @@ RESULTADOS:
                     }
                 }
                 
+                // Reserva (caja fuerte): los depósitos salen de caja, los retiros vuelven a caja
+                let reserve = 0;
+                for (const mov of (appState.reserveMovements || [])) {
+                    const amount = parseFloat(mov.amount) || 0;
+                    if (mov.type === 'deposit') {
+                        cash -= amount;
+                        reserve += amount;
+                    } else if (mov.type === 'withdraw') {
+                        cash += amount;
+                        reserve -= amount;
+                    } else if (mov.type === 'withdraw-out') {
+                        reserve -= amount;
+                    } else if (mov.type === 'adjust') {
+                        reserve += amount; // amount firmado
+                    }
+                }
+                appState.reserve = Math.round(reserve * 100) / 100;
+                
                 appState.cash = Math.round(cash * 100) / 100;
                 appState.bank = Math.round(bank * 100) / 100;
                 
@@ -18564,6 +19084,10 @@ RESULTADOS:
                     appState.losses = [];
                     appState.returns = [];
                     appState.deletedProductIds = [];
+                    appState.users = [];
+                    appState.reserveMovements = [];
+                    appState.shiftCounts = [];
+                    appState.reserve = parseFloat(data.reserve) || 0;
                     appState.cash = parseFloat(data.cash) || 0;
                     appState.bank = parseFloat(data.bank) || 0;
                     appState.balancesUpdatedAt = 0;
@@ -18663,6 +19187,14 @@ RESULTADOS:
                     appState.ticketRules = JSON.parse(JSON.stringify(remoteRules));
                 }
                 
+                // Usuarios: la PC (principal) es la fuente de verdad; reemplazar si hay datos remotos
+                const remoteUsers = Array.isArray(data.users) ? data.users : [];
+                if (remoteUsers.length > 0) {
+                    appState.users = JSON.parse(JSON.stringify(remoteUsers));
+                } else if (appState.users.length === 0) {
+                    ensureDefaultUsers();
+                }
+                
                 // Saldos y config vienen de la PC, solo si los datos remotos parecen válidos
                 if (!remoteLooksEmpty) {
                     const remoteBalancesUpdatedAt = parseInt(data.balancesUpdatedAt) || 0;
@@ -18671,6 +19203,7 @@ RESULTADOS:
                     if (remoteBalancesUpdatedAt >= localBalancesUpdatedAt || localBalancesUpdatedAt === 0) {
                         if (data.cash !== undefined) appState.cash = parseFloat(data.cash) || 0;
                         if (data.bank !== undefined) appState.bank = parseFloat(data.bank) || 0;
+                        if (data.reserve !== undefined) appState.reserve = parseFloat(data.reserve) || 0;
                     } else {
                         console.log('🛡️ Modo secundario: saldos locales más recientes, se conservan');
                     }
@@ -18716,6 +19249,8 @@ RESULTADOS:
                 appState.returns = smartMergeArrays(appState.returns, data.returns);
                 appState.cashCounts = smartMergeArrays(appState.cashCounts || [], data.cashCounts || []);
                 appState.cashDifferences = smartMergeArrays(appState.cashDifferences || [], data.cashDifferences || []);
+                appState.reserveMovements = smartMergeArrays(appState.reserveMovements || [], data.reserveMovements || []);
+                appState.shiftCounts = smartMergeArrays(appState.shiftCounts || [], data.shiftCounts || []);
                 appState.foundStock = smartMergeArrays(appState.foundStock || [], data.foundStock || []);
                 
                 // Filtrar inversiones eliminadas
@@ -18753,6 +19288,9 @@ RESULTADOS:
                 for (const d of localDeletedInv) { if (d && d.id) deletedInvMap.set(d.id, d); }
                 for (const d of remoteDeletedInv) { if (d && d.id && !deletedInvMap.has(d.id)) deletedInvMap.set(d.id, d); }
                 appState.deletedInvestmentIds = Array.from(deletedInvMap.values()).slice(-500);
+                
+                // Usuarios: fusionar (en empate gana local, el principal es fuente de verdad)
+                appState.users = smartMergeArrays(appState.users || [], data.users || []);
                 
                 // Protección anti-borrado/anti-incompleto también en el principal
                 const remoteInvMaster = Array.isArray(data.inventory) ? data.inventory : [];
@@ -18800,6 +19338,8 @@ RESULTADOS:
                 appState.ticketRules = smartMergeArrays(appState.ticketRules, data.ticketRules);
                 appState.cashCounts = smartMergeArrays(appState.cashCounts || [], data.cashCounts || []);
                 appState.cashDifferences = smartMergeArrays(appState.cashDifferences || [], data.cashDifferences || []);
+                appState.reserveMovements = smartMergeArrays(appState.reserveMovements || [], data.reserveMovements || []);
+                appState.shiftCounts = smartMergeArrays(appState.shiftCounts || [], data.shiftCounts || []);
                 appState.foundStock = smartMergeArrays(appState.foundStock || [], data.foundStock || []);
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
@@ -19144,6 +19684,12 @@ RESULTADOS:
                     appState.ticketRules = Array.isArray(appState.ticketRules) ? appState.ticketRules : [];
                     appState.cashCounts = Array.isArray(appState.cashCounts) ? appState.cashCounts : [];
                     appState.cashDifferences = Array.isArray(appState.cashDifferences) ? appState.cashDifferences : [];
+                    appState.users = Array.isArray(appState.users) ? appState.users : [];
+                    appState.reserve = parseFloat(appState.reserve);
+                    appState.reserve = isNaN(appState.reserve) ? 0 : appState.reserve;
+                    appState.reserveMovements = Array.isArray(appState.reserveMovements) ? appState.reserveMovements : [];
+                    appState.shiftCounts = Array.isArray(appState.shiftCounts) ? appState.shiftCounts : [];
+                    ensureDefaultUsers();
                     appState.deletedProductIds = Array.isArray(appState.deletedProductIds) ? appState.deletedProductIds : [];
                     
                     // Reconstruir sobrantes/faltantes desde los arqueos por si cashDifferences se perdió
@@ -19288,7 +19834,7 @@ RESULTADOS:
 
             // === EXPONER FUNCIONES AL WINDOW PARA ONCLICK HANDLERS ===
             (function exposeLocalFunctions() {
-                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','loginAdmin','loginCollaborator','logout','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeydown','renderSellSearchResults','scrollSelectedIntoView','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
+                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','login','logout','saveUser','editUser','deleteUser','cancelEditUser','toggleUserActive','openReserveModal','closeReserveModal','saveReserveMove','openShiftCountModal','closeShiftCountModal','saveShiftCount','renderShiftCountsList','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeydown','renderSellSearchResults','scrollSelectedIntoView','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
                 for (const name of fnNames) {
                     try {
                         const fn = eval(name);
@@ -19301,7 +19847,7 @@ RESULTADOS:
             
             // Exponer funciones adicionales de venta por peso y sync
             (function exposeAdditionalFunctions() {
-                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup','changeDashboardPeriod','toggleChartMetric','renderChartMetricToggles','toggleDashboardMetric','renderDashboardMetricToggles','renderCashFlowProjection','setCashFlowProjectionDays','saveCashFlowEstimatedIncome','resetCashFlowEstimatedIncome','saveCashFlowLowThreshold','openRecurringExpensesModal','closeRecurringExpensesModal','saveRecurringExpense','editRecurringExpense','deleteRecurringExpense','resetRecurringExpenseForm','onRecExpenseFrequencyChange','addSupplier','deleteSupplier','renderSuppliersList','addCategoryToSupplier','removeCategoryFromSupplier','renderSupplierCategories','saveBusinessHours','toggleBusinessDay','onInvSupplierChange','onEditSupplierChange','populateSupplierSelects','getSupplierByName','getSupplierName','getSupplierPhone','deleteTicket'];
+                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup','changeDashboardPeriod','toggleChartMetric','renderChartMetricToggles','toggleDashboardMetric','renderDashboardMetricToggles','renderCashFlowProjection','setCashFlowProjectionDays','saveCashFlowEstimatedIncome','resetCashFlowEstimatedIncome','saveCashFlowLowThreshold','openRecurringExpensesModal','closeRecurringExpensesModal','saveRecurringExpense','editRecurringExpense','deleteRecurringExpense','resetRecurringExpenseForm','onRecExpenseFrequencyChange','addSupplier','deleteSupplier','renderSuppliersList','addCategoryToSupplier','removeCategoryFromSupplier','renderSupplierCategories','saveBusinessHours','toggleBusinessDay','onInvSupplierChange','onEditSupplierChange','populateSupplierSelects','getSupplierByName','getSupplierName','getSupplierPhone','deleteTicket','reopenCashCount','toggleAmountsHidden'];
                 for (const name of extraFns) {
                     try {
                         const fn = eval(name);

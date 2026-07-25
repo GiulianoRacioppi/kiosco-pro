@@ -8316,6 +8316,8 @@
             }
             
             document.getElementById('add-stock-total-cost').textContent = `$${formatMoney(totalCost)}`;
+            // Recalcular el margen en vivo: cambió el costo, el precio sigue igual
+            updateAddStockMarginDisplay();
         }
 
         function calculateAddStockPriceFromMargin() {
@@ -8369,7 +8371,8 @@
             const marginResult = document.getElementById('add-stock-margin-result');
             
             const costValue = unitCostInput ? (parseFloat(unitCostInput.value.replace(',', '.')) || currentAddStockProduct.cost || 0) : (currentAddStockProduct.cost || 0);
-            const price = parseFloat(priceInput.value) || 0;
+            // Si el precio está vacío, calcular el margen contra el precio actual del producto
+            const price = parseFloat(priceInput.value) || currentAddStockProduct.salePrice || 0;
             
             let unitCost;
             if (isWeight) {

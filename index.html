@@ -2097,6 +2097,10 @@
             <!-- Tabla de Gastos -->
             <div class="bg-white rounded-2xl shadow-lg p-6">
                 <h3 class="text-lg font-bold mb-4"><i class="fas fa-list text-gray-600"></i> <span id="expenses-table-title">Detalle de Gastos</span></h3>
+                <div class="relative mb-4">
+                    <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="expenses-search" class="w-full border-2 border-gray-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:border-purple-400 focus:outline-none" placeholder="Buscar gasto por concepto (ej: sueldo, luz, proveedor...)" oninput="renderExpensesTable()">
+                </div>
                 <div class="overflow-x-auto">
                     <table class="w-full">
                         <thead class="bg-gray-50">
@@ -9998,6 +10002,59 @@
         // ==================== CASHFLOW ====================
         let cashflowViewMode = 'invoice'; // 'category' | 'invoice'
 
+        // Detalle de gastos: sin texto en el buscador muestra el mes activo;
+        // con texto busca en TODOS los gastos por concepto
+        function renderExpensesTable() {
+            const tableEl = document.getElementById('expenses-table');
+            if (!tableEl) return;
+            const searchInput = document.getElementById('expenses-search');
+            const query = (searchInput ? searchInput.value : '').trim().toLowerCase();
+            const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+            const titleEl = document.getElementById('expenses-table-title');
+
+            let list, emptyMsg;
+            if (query) {
+                list = appState.expenses
+                    .filter(e => (e.concept || '').toLowerCase().includes(query))
+                    .slice()
+                    .reverse();
+                if (titleEl) titleEl.textContent = 'Resultados para "' + query + '" (' + list.length + ')';
+                emptyMsg = 'No hay gastos que coincidan con "' + query + '"';
+            } else {
+                const currentMonth = formatDateISO(appState.activeDate).slice(0, 7);
+                list = appState.expenses
+                    .filter(e => e.date && e.date.startsWith(currentMonth))
+                    .slice()
+                    .reverse();
+                if (titleEl) {
+                    const y = parseInt(currentMonth.slice(0, 4)), m = parseInt(currentMonth.slice(5, 7));
+                    titleEl.textContent = 'Detalle de Gastos — ' + (monthNames[m - 1] || currentMonth) + ' ' + y;
+                }
+                emptyMsg = 'No hay gastos registrados este mes';
+            }
+
+            tableEl.innerHTML = list.map(e => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2 text-sm">${e.date}</td>
+                    <td class="px-4 py-2 text-sm font-medium">${e.concept}</td>
+                    <td class="px-4 py-2 text-sm">
+                        <span class="px-2 py-1 rounded-full text-xs ${e.source === 'cash' ? 'bg-green-100 text-green-700' : e.source === 'bank' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}">
+                            ${e.source === 'cash' ? '💵 Caja' : e.source === 'bank' ? '🏦 Cuenta' : e.source === 'reserve' ? '🔐 Reserva' : '📦 Compra'}
+                        </span>
+                    </td>
+                    <td class="px-4 py-2 text-sm text-right font-bold text-red-600">-$${formatMoney(e.amount)}</td>
+                    <td class="px-4 py-2 text-right">
+                        <button onclick="openEditExpenseModal('${e.id}')" class="text-blue-500 hover:text-blue-700 p-1 hover:bg-blue-100 rounded mr-1" title="Editar">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button onclick="deleteExpense('${e.id}', '${e.date}')" class="text-red-500 hover:text-red-700 p-1 hover:bg-red-100 rounded" title="Eliminar">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('') || '<tr><td colspan="5" class="text-center py-4 text-gray-400">' + emptyMsg + '</td></tr>';
+        }
+
         function setCashflowView(mode) {
             cashflowViewMode = mode;
             const btnCat = document.getElementById('btn-cf-category');
@@ -10122,37 +10179,8 @@
             if (invMonth) invMonth.textContent = `$${formatMoney(monthInvestments)}`;
             if (invTotal) invTotal.textContent = `$${formatMoney(totalInvestments)}`;
             
-            // Detalle: gastos del mes de la fecha activa (más recientes primero)
-            const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-            const monthTitleEl = document.getElementById('expenses-table-title');
-            if (monthTitleEl) {
-                const y = parseInt(currentMonth.slice(0, 4)), m = parseInt(currentMonth.slice(5, 7));
-                monthTitleEl.textContent = 'Detalle de Gastos — ' + (monthNames[m - 1] || currentMonth) + ' ' + y;
-            }
-            const monthExpensesList = appState.expenses
-                .filter(e => e.date && e.date.startsWith(currentMonth))
-                .slice()
-                .reverse();
-            document.getElementById('expenses-table').innerHTML = monthExpensesList.map(e => `
-                <tr class="hover:bg-gray-50">
-                    <td class="px-4 py-2 text-sm">${e.date}</td>
-                    <td class="px-4 py-2 text-sm font-medium">${e.concept}</td>
-                    <td class="px-4 py-2 text-sm">
-                        <span class="px-2 py-1 rounded-full text-xs ${e.source === 'cash' ? 'bg-green-100 text-green-700' : e.source === 'bank' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}">
-                            ${e.source === 'cash' ? '💵 Caja' : e.source === 'bank' ? '🏦 Cuenta' : e.source === 'reserve' ? '🔐 Reserva' : '📦 Compra'}
-                        </span>
-                    </td>
-                    <td class="px-4 py-2 text-sm text-right font-bold text-red-600">-$${formatMoney(e.amount)}</td>
-                    <td class="px-4 py-2 text-right">
-                        <button onclick="openEditExpenseModal('${e.id}')" class="text-blue-500 hover:text-blue-700 p-1 hover:bg-blue-100 rounded mr-1" title="Editar">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button onclick="deleteExpense('${e.id}', '${e.date}')" class="text-red-500 hover:text-red-700 p-1 hover:bg-red-100 rounded" title="Eliminar">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </td>
-                </tr>
-            `).join('') || '<tr><td colspan="5" class="text-center py-4 text-gray-400">No hay gastos registrados este mes</td></tr>';
+            // Detalle de gastos (mes activo o búsqueda global)
+            renderExpensesTable();
             
             // Renderizar movimientos de Caja y Cuenta
             renderCashMovements();
@@ -19900,7 +19928,7 @@ RESULTADOS:
 
             // === EXPONER FUNCIONES AL WINDOW PARA ONCLICK HANDLERS ===
             (function exposeLocalFunctions() {
-                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','login','logout','saveUser','editUser','deleteUser','cancelEditUser','toggleUserActive','openReserveModal','closeReserveModal','saveReserveMove','openShiftCountModal','closeShiftCountModal','saveShiftCount','renderShiftCountsList','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeydown','renderSellSearchResults','scrollSelectedIntoView','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
+                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','login','logout','saveUser','editUser','deleteUser','cancelEditUser','toggleUserActive','openReserveModal','closeReserveModal','saveReserveMove','openShiftCountModal','closeShiftCountModal','saveShiftCount','renderShiftCountsList','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeydown','renderSellSearchResults','scrollSelectedIntoView','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderExpensesTable','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
                 for (const name of fnNames) {
                     try {
                         const fn = eval(name);

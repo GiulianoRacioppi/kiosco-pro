@@ -771,14 +771,20 @@
     <div id="shift-count-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();saveShiftCount();}">
         <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
             <h3 class="text-xl font-bold mb-2 text-orange-500">🔒 Conteo de Turno</h3>
-            <p class="text-xs text-gray-500 mb-4">Contá el efectivo de la caja y escribí cuánto hay. Si falta o sobra plata queda registrado a tu nombre.</p>
+            <p class="text-xs text-gray-500 mb-4">Contá el efectivo de la caja y la plata de la cuenta, y escribí cuánto hay en cada una. Si falta o sobra plata queda registrado a tu nombre.</p>
             <div class="mb-4 p-4 bg-gray-50 rounded-lg" id="shift-expected-row">
-                <p class="text-sm text-gray-600">Según el sistema debería haber: <span class="font-bold" id="shift-expected">$0</span></p>
+                <p class="text-sm text-gray-600">Según el sistema debería haber:</p>
+                <p class="text-sm text-gray-600">💵 Caja: <span class="font-bold" id="shift-expected">$0</span></p>
+                <p class="text-sm text-gray-600">🏦 Cuenta: <span class="font-bold" id="shift-expected-bank">$0</span></p>
             </div>
             <div class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">💵 Efectivo contado en caja</label>
                     <input type="number" id="shift-counted" class="w-full border-2 border-orange-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">🏦 Plata contada en cuenta</label>
+                    <input type="number" id="shift-counted-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Nota (opcional)</label>
@@ -2090,7 +2096,7 @@
 
             <!-- Tabla de Gastos -->
             <div class="bg-white rounded-2xl shadow-lg p-6">
-                <h3 class="text-lg font-bold mb-4"><i class="fas fa-list text-gray-600"></i> Detalle de Gastos</h3>
+                <h3 class="text-lg font-bold mb-4"><i class="fas fa-list text-gray-600"></i> <span id="expenses-table-title">Detalle de Gastos</span></h3>
                 <div class="overflow-x-auto">
                     <table class="w-full">
                         <thead class="bg-gray-50">
@@ -10116,8 +10122,18 @@
             if (invMonth) invMonth.textContent = `$${formatMoney(monthInvestments)}`;
             if (invTotal) invTotal.textContent = `$${formatMoney(totalInvestments)}`;
             
-            const recentExpenses = appState.expenses.slice(-20).reverse();
-            document.getElementById('expenses-table').innerHTML = recentExpenses.map(e => `
+            // Detalle: gastos del mes de la fecha activa (más recientes primero)
+            const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+            const monthTitleEl = document.getElementById('expenses-table-title');
+            if (monthTitleEl) {
+                const y = parseInt(currentMonth.slice(0, 4)), m = parseInt(currentMonth.slice(5, 7));
+                monthTitleEl.textContent = 'Detalle de Gastos — ' + (monthNames[m - 1] || currentMonth) + ' ' + y;
+            }
+            const monthExpensesList = appState.expenses
+                .filter(e => e.date && e.date.startsWith(currentMonth))
+                .slice()
+                .reverse();
+            document.getElementById('expenses-table').innerHTML = monthExpensesList.map(e => `
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-2 text-sm">${e.date}</td>
                     <td class="px-4 py-2 text-sm font-medium">${e.concept}</td>
@@ -10136,7 +10152,7 @@
                         </button>
                     </td>
                 </tr>
-            `).join('') || '<tr><td colspan="5" class="text-center py-4 text-gray-400">No hay gastos registrados</td></tr>';
+            `).join('') || '<tr><td colspan="5" class="text-center py-4 text-gray-400">No hay gastos registrados este mes</td></tr>';
             
             // Renderizar movimientos de Caja y Cuenta
             renderCashMovements();
@@ -12844,7 +12860,7 @@
             list.innerHTML = movements.map(m => `
                 <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-xs">
                     <div class="flex-1 min-w-0">
-                        <p class="font-bold text-gray-700">${m.type === 'deposit' ? '➡️ A reserva' : m.type === 'withdraw' ? '⬅️ A caja' : m.type === 'withdraw-out' ? '🚪 Retiro' : '✏️ Ajuste'} — $${formatMoney(Math.abs(m.amount))}</p>
+                        <p class="font-bold text-gray-700">${m.type === 'deposit' ? '➡️ A reserva' : m.type === 'withdraw' ? '⬅️ A caja' : m.type === 'withdraw-out' ? '🚪 Retiro' : '✏️ Ajuste'} — ${fmtPrivate(Math.abs(m.amount))}</p>
                         <p class="text-gray-500">${m.date} ${m.time || ''}${m.user ? ' · ' + m.user : ''}${m.note ? ' · ' + m.note : ''}</p>
                     </div>
                 </div>
@@ -12859,8 +12875,10 @@
             if (expectedRow) {
                 expectedRow.classList.toggle('hidden', !isAdminUser);
                 document.getElementById('shift-expected').textContent = '$' + formatMoney(appState.cash || 0);
+                document.getElementById('shift-expected-bank').textContent = '$' + formatMoney(appState.bank || 0);
             }
             document.getElementById('shift-counted').value = '';
+            document.getElementById('shift-counted-bank').value = '';
             document.getElementById('shift-notes').value = '';
             document.getElementById('shift-count-modal').classList.add('active');
             setTimeout(() => document.getElementById('shift-counted').focus(), 50);
@@ -12875,76 +12893,112 @@
         function saveShiftCount() {
             const counted = parseFloat(document.getElementById('shift-counted').value);
             if (isNaN(counted) || counted < 0) {
-                showNotification('Ingrese el efectivo contado', 'error');
+                showNotification('Ingrese el efectivo contado en caja', 'error');
+                return;
+            }
+            // Cuenta: si se deja vacío, se asume que coincide con el sistema (sin diferencia)
+            const countedBankRaw = document.getElementById('shift-counted-bank').value;
+            const expectedBank = parseFloat(appState.bank) || 0;
+            const countedBank = countedBankRaw === '' ? expectedBank : parseFloat(countedBankRaw);
+            if (isNaN(countedBank) || countedBank < 0) {
+                showNotification('Ingrese un monto válido para la cuenta', 'error');
                 return;
             }
             const expected = parseFloat(appState.cash) || 0;
             const difference = Math.round((counted - expected) * 100) / 100;
+            const differenceBank = Math.round((countedBank - expectedBank) * 100) / 100;
+            const totalDifference = Math.round((difference + differenceBank) * 100) / 100;
             const notes = document.getElementById('shift-notes').value.trim();
             const user = appState.currentUser || { id: null, name: 'Desconocido' };
+            const today = formatDateISO(appState.activeDate);
 
             if (!Array.isArray(appState.shiftCounts)) appState.shiftCounts = [];
             appState.shiftCounts.push({
                 id: 'SHIFT-' + Date.now(),
-                date: formatDateISO(appState.activeDate),
+                date: today,
                 time: new Date().toLocaleTimeString('es-ES'),
                 userId: user.id || null,
                 userName: user.name,
                 countedCash: counted,
                 expectedCash: expected,
                 difference: difference,
+                countedBank: countedBank,
+                expectedBank: expectedBank,
+                differenceBank: differenceBank,
                 notes: notes,
                 timestamp: Date.now()
             });
 
             // Registrar diferencia con responsable
-            if (difference !== 0) {
+            if (totalDifference !== 0) {
                 if (!Array.isArray(appState.cashDifferences)) appState.cashDifferences = [];
                 appState.cashDifferences.push({
                     id: 'CASHDIFF-' + Date.now(),
-                    date: formatDateISO(appState.activeDate),
-                    amount: difference,
-                    type: difference > 0 ? 'surplus' : 'shortage',
+                    date: today,
+                    amount: totalDifference,
+                    type: totalDifference > 0 ? 'surplus' : 'shortage',
                     cashAmount: difference,
-                    bankAmount: 0,
+                    bankAmount: differenceBank,
                     notes: 'Conteo de turno - ' + user.name + (notes ? ': ' + notes : ''),
                     user: user.name,
                     timestamp: Date.now()
                 });
                 const now = Date.now();
+                if (!Array.isArray(appState.capitalAdjustments)) appState.capitalAdjustments = [];
                 if (difference < 0) {
                     appState.expenses.push({
                         id: 'EXP-SHORTAGE-' + now,
-                        date: formatDateISO(appState.activeDate),
+                        date: today,
                         concept: 'Faltante de caja (turno de ' + user.name + ')' + (notes ? ': ' + notes : ''),
                         amount: Math.abs(difference),
                         source: 'cash',
                         user: user.name,
                         timestamp: now
                     });
-                } else {
-                    if (!Array.isArray(appState.capitalAdjustments)) appState.capitalAdjustments = [];
+                } else if (difference > 0) {
                     appState.capitalAdjustments.push({
                         id: 'ADJ-SURPLUS-' + now,
                         amount: difference,
                         target: 'cash',
-                        date: formatDateISO(appState.activeDate),
+                        date: today,
                         timestamp: now,
                         note: 'Sobrante de caja (turno de ' + user.name + ')',
                         user: user.name
                     });
                 }
+                if (differenceBank < 0) {
+                    appState.expenses.push({
+                        id: 'EXP-SHORTAGE-BANK-' + now,
+                        date: today,
+                        concept: 'Faltante de cuenta (turno de ' + user.name + ')' + (notes ? ': ' + notes : ''),
+                        amount: Math.abs(differenceBank),
+                        source: 'bank',
+                        user: user.name,
+                        timestamp: now
+                    });
+                } else if (differenceBank > 0) {
+                    appState.capitalAdjustments.push({
+                        id: 'ADJ-SURPLUS-BANK-' + now,
+                        amount: differenceBank,
+                        target: 'bank',
+                        date: today,
+                        timestamp: now,
+                        note: 'Sobrante de cuenta (turno de ' + user.name + ')',
+                        user: user.name
+                    });
+                }
             }
 
-            // La caja queda con lo contado: el próximo turno arranca desde ahí
+            // Caja y cuenta quedan con lo contado: el próximo turno arranca desde ahí
             appState.cash = counted;
+            appState.bank = countedBank;
             appState.balancesUpdatedAt = Date.now();
 
             saveToLocalStorage();
             renderAll();
             renderShiftCountsList();
             document.getElementById('shift-count-modal').classList.remove('active');
-            showNotification('Conteo guardado. Diferencia: $' + formatMoney(difference), difference === 0 ? 'success' : 'warning');
+            showNotification('Conteo guardado. Diferencia total: $' + formatMoney(totalDifference), totalDifference === 0 ? 'success' : 'warning');
 
             // Si el conteo se pidió al cerrar sesión, salir ahora
             if (sessionStorage.getItem('kioscopro-logout-after-shift') === '1') {
@@ -12961,17 +13015,25 @@
                 list.innerHTML = '<p class="text-center text-gray-400 py-2 text-sm">Sin conteos de turno</p>';
                 return;
             }
-            list.innerHTML = counts.map(c => `
+            list.innerHTML = counts.map(c => {
+                const diffTotal = Math.round(((c.difference || 0) + (c.differenceBank || 0)) * 100) / 100;
+                const bankLine = c.countedBank !== undefined && c.countedBank !== null
+                    ? `<p class="text-gray-500">🏦 Contó: $${formatMoney(c.countedBank)} · Esperado: $${formatMoney(c.expectedBank || 0)}</p>`
+                    : '';
+                return `
                 <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-xs">
                     <div class="flex-1 min-w-0">
                         <p class="font-bold text-gray-700">👤 ${c.userName} — ${c.date} ${c.time || ''}</p>
-                        <p class="text-gray-500">Contó: $${formatMoney(c.countedCash)} · Esperado: $${formatMoney(c.expectedCash)}${c.notes ? ' · ' + c.notes : ''}</p>
+                        <p class="text-gray-500">💵 Contó: $${formatMoney(c.countedCash)} · Esperado: $${formatMoney(c.expectedCash)}</p>
+                        ${bankLine}
+                        ${c.notes ? `<p class="text-gray-500">📝 ${c.notes}</p>` : ''}
                     </div>
-                    <span class="font-bold ${c.difference === 0 ? 'text-green-600' : c.difference < 0 ? 'text-red-600' : 'text-blue-600'}">
-                        ${c.difference === 0 ? '✔️' : (c.difference > 0 ? '+' : '-') + '$' + formatMoney(Math.abs(c.difference))}
+                    <span class="font-bold ${diffTotal === 0 ? 'text-green-600' : diffTotal < 0 ? 'text-red-600' : 'text-blue-600'}">
+                        ${diffTotal === 0 ? '✔️' : (diffTotal > 0 ? '+' : '-') + '$' + formatMoney(Math.abs(diffTotal))}
                     </span>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         // ==================== STOCK GRATIS / ENCONTRADO ====================
@@ -16331,6 +16393,7 @@ RESULTADOS:
             updateAmountsEyes();
             updateSidebar();
             updateInventoryValues();
+            renderReserve(); // también la tarjeta de Reserva en Finanzas
         }
 
         function updateAmountsEyes() {

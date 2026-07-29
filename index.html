@@ -6888,10 +6888,16 @@
             }
         }
 
+        // Limpia caracteres invisibles/no-ASCII que vienen al pegar desde chats
+        // (los headers HTTP solo aceptan ISO-8859-1 y rompen el fetch)
+        function sanitizeHeaderValue(s) {
+            return String(s || '').replace(/[^\x21-\x7E]/g, '');
+        }
+
         function saveArcaSettings() {
             appState.arcaConfig = {
-                backendUrl: document.getElementById('arca-backend-url').value.trim(),
-                apiKey: document.getElementById('arca-api-key').value.trim(),
+                backendUrl: sanitizeHeaderValue(document.getElementById('arca-backend-url').value),
+                apiKey: sanitizeHeaderValue(document.getElementById('arca-api-key').value),
                 cuit: document.getElementById('arca-cuit').value.trim(),
                 ptoVta: parseInt(document.getElementById('arca-pto-vta').value) || 1,
                 cbteTipo: parseInt(document.getElementById('arca-cbte-tipo').value) || 11,

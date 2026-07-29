@@ -6783,6 +6783,18 @@
                 </div>
             `;
             
+            // Bloques de facturas emitidas (puede haber varias parciales)
+            const facturasHtml = saleFacturas(sale).map(f => `
+                <hr>
+                <div style="text-align: center; font-size: 11px;">
+                    <p style="font-weight: bold;">FACTURA ${arcaCbteLetra(f.cbteTipo)} N° ${String(f.ptoVta).padStart(4, '0')}-${String(f.cbteNro).padStart(8, '0')}</p>
+                    <p>Importe: $${formatMoney(f.total !== undefined ? f.total : sale.total)}</p>
+                    <p>CAE: ${f.cae}</p>
+                    <p>Vto. CAE: ${f.caeVencimiento}</p>
+                    <img src="${arcaQrUrl(sale, f)}" width="120" height="120" style="margin: 5px auto; display: block;">
+                </div>
+            `).join('');
+
             receiptWindow.document.write(`
                 <html>
                 <head><title>Ticket ${sale.id}</title></head>
@@ -6813,15 +6825,7 @@
                         <span>$${formatMoney(sale.total)}</span>
                     </div>
                     ${cashInfo}
-                    ${sale.factura && sale.factura.cae ? `
-                    <hr>
-                    <div style="text-align: center; font-size: 11px;">
-                        <p style="font-weight: bold;">FACTURA ${arcaCbteLetra(sale.factura.cbteTipo)} N° ${String(sale.factura.ptoVta).padStart(4, '0')}-${String(sale.factura.cbteNro).padStart(8, '0')}</p>
-                        <p>CAE: ${sale.factura.cae}</p>
-                        <p>Vto. CAE: ${sale.factura.caeVencimiento}</p>
-                        <img src="${arcaQrUrl(sale)}" width="120" height="120" style="margin: 5px auto; display: block;">
-                    </div>
-                    ` : ''}
+                    ${facturasHtml}
                     <p style="text-align: center; margin-top: 20px;">¡Gracias por su compra!</p>
                     <p style="text-align: center; font-size: 10px; color: #999; margin-top: 10px;">Powered by KioscoPro App</p>
                 </body>
@@ -6831,14 +6835,15 @@
         }
 
         // ==================== FACTURA C IMPRIMABLE ====================
-        function printFactura(saleId) {
+        function printFactura(saleId, facturaIdx) {
             const sale = appState.sales.find(s => s.id === saleId);
-            if (!sale || !sale.factura || !sale.factura.cae) {
+            const facturas = sale ? saleFacturas(sale) : [];
+            const f = facturas[facturaIdx || 0];
+            if (!f) {
                 showNotification('Esta venta no tiene factura emitida', 'error');
                 return;
             }
             const cfg = appState.arcaConfig || {};
-            const f = sale.factura;
             const letra = arcaCbteLetra(f.cbteTipo);
             const nroCompleto = String(f.ptoVta).padStart(4, '0') + '-' + String(f.cbteNro).padStart(8, '0');
             const cuitFmt = cfg.cuit && cfg.cuit.length === 11
@@ -6846,6 +6851,11 @@
                 : (cfg.cuit || '');
             const fechaEmision = f.fecha ? f.fecha.split('-').reverse().join('/') : sale.date;
             const inicioFmt = cfg.emisorInicio ? cfg.emisorInicio.split('-').reverse().join('/') : '';
+            // Ítems de ESTA factura (puede ser parcial)
+            const idxs = f.itemIndexes || sale.items.map((_, i) => i);
+            const itemsFac = idxs.map(i => sale.items[i]).filter(Boolean);
+            const totalFac = f.total !== undefined ? f.total : sale.total;
+            const esParcial = itemsFac.length < sale.items.length;
 
             const w = window.open('', '_blank');
             w.document.write(`<!DOCTYPE html>
@@ -6859,7 +6869,7 @@
     .header { display: flex; position: relative; }
     .col { flex: 1; padding: 10px; }
     .col-izq { border-right: 1px solid #000; }
-    .col-der { text-align: left; }
+    .col-der { text-align: left; padding-left: 50px; }
     .letra-box {
         position: absolute; left: 50%; top: 0; transform: translateX(-50%);
         border: 2px solid #000; background: #fff; width: 50px; text-align: center;
@@ -6916,14 +6926,14 @@
                     </tr>
                 </thead>
                 <tbody>
-                    ${sale.items.map(item => `
+                    ${itemsFac.map(item => `
                     <tr>
                         <td>${item.name}</td>
                         <td class="num">${item.quantity}</td>
                         <td class="num">$${formatMoney(item.price)}</td>
                         <td class="num">$${formatMoney(item.price * item.quantity)}</td>
                     </tr>`).join('')}
-                    ${sale.discount > 0 ? `
+                    ${!esParcial && sale.discount > 0 ? `
                     <tr>
                         <td>Descuento ${sale.discountLabel ? '(' + sale.discountLabel + ')' : ''}</td>
                         <td class="num">-</td>
@@ -6932,7 +6942,7 @@
                     </tr>` : ''}
                     <tr class="total-row">
                         <td colspan="3" class="num">IMPORTE TOTAL</td>
-                        <td class="num">$${formatMoney(sale.total)}</td>
+                        <td class="num">$${formatMoney(totalFac)}</td>
                     </tr>
                 </tbody>
             </table>
@@ -6947,7 +6957,7 @@
                 <div><strong>Fecha Vto. CAE:</strong> ${f.caeVencimiento ? f.caeVencimiento.split('-').reverse().join('/') : '-'}</div>
                 <div style="font-size: 9px; margin-top: 4px;">Esta Administración Federal no se responsabiliza por los datos ingresados en el detalle de la operación.</div>
             </div>
-            <img src="${arcaQrUrl(sale)}" width="100" height="100" alt="QR ARCA">
+            <img src="${arcaQrUrl(sale, f)}" width="100" height="100" alt="QR ARCA">
         </div>
     </div>
 </body>
@@ -6957,8 +6967,35 @@
         }
 
         // ==================== FACTURACIÓN ARCA ====================
-        function arcaQrUrl(sale) {
-            const f = sale.factura;
+        // Devuelve el array de facturas de una venta, migrando el formato
+        // viejo (sale.factura única) al nuevo (sale.facturas, varias parciales)
+        function saleFacturas(sale) {
+            if (!sale.facturas) {
+                if (sale.factura && sale.factura.cae) {
+                    sale.facturas = [Object.assign({}, sale.factura, {
+                        total: sale.total,
+                        itemIndexes: sale.items.map((_, i) => i)
+                    })];
+                } else {
+                    sale.facturas = [];
+                }
+                delete sale.factura;
+            }
+            return sale.facturas;
+        }
+
+        // Índices de ítems todavía no facturados de la venta
+        function saleItemsSinFacturar(sale) {
+            const usados = new Set();
+            for (const f of saleFacturas(sale)) {
+                (f.itemIndexes || []).forEach(i => usados.add(i));
+            }
+            return sale.items.map((_, i) => i).filter(i => !usados.has(i));
+        }
+
+        function arcaQrUrl(sale, factura) {
+            const f = factura || saleFacturas(sale)[0];
+            if (!f) return '';
             const cfg = appState.arcaConfig || {};
             const payload = {
                 ver: 1,
@@ -6967,7 +7004,7 @@
                 ptoVta: f.ptoVta,
                 tipoCmp: f.cbteTipo,
                 nroCmp: f.cbteNro,
-                importe: sale.total,
+                importe: f.total || sale.total,
                 moneda: 'PES',
                 ctz: 1,
                 tipoDocRec: f.docTipo || 99,
@@ -6984,7 +7021,9 @@
             return { 1: 'A', 6: 'B', 11: 'C' }[tipo] || 'C';
         }
 
-        async function facturarVenta(saleId, auto) {
+        // Emite una factura en ARCA. Si itemIndexes viene, factura solo esos
+        // ítems (factura parcial); si no, factura todo lo que quede sin facturar.
+        async function facturarVenta(saleId, auto, itemIndexes) {
             const sale = appState.sales.find(s => s.id === saleId);
             if (!sale) return;
             const cfg = appState.arcaConfig || {};
@@ -6992,22 +7031,37 @@
                 if (!auto) showNotification('Primero configurá ARCA en Configuración', 'error');
                 return;
             }
-            if (sale.factura && sale.factura.cae) {
-                if (!auto) showNotification('Esta venta ya tiene factura (CAE ' + sale.factura.cae + ')', 'warning');
+            const sinFacturar = saleItemsSinFacturar(sale);
+            let indexes;
+            if (itemIndexes) {
+                const permitidos = new Set(sinFacturar);
+                indexes = itemIndexes.filter(i => permitidos.has(i));
+            } else {
+                indexes = sinFacturar;
+            }
+            if (indexes.length === 0) {
+                if (!auto) showNotification('No queda nada por facturar en esta venta', 'warning');
                 return;
             }
-            if (!auto && !confirm('¿Emitir factura en ARCA por $' + formatMoney(sale.total) + '?')) return;
+            const esVentaCompleta = indexes.length === sale.items.length;
+            const itemsSel = indexes.map(i => sale.items[i]);
+            const total = esVentaCompleta
+                ? sale.total
+                : Math.round(itemsSel.reduce((s, it) => s + it.price * it.quantity, 0) * 100) / 100;
+
+            const avisoParcial = esVentaCompleta ? '' : ' (parcial: ' + indexes.length + ' de ' + sale.items.length + ' ítems)';
+            if (!auto && !confirm('¿Emitir factura en ARCA por $' + formatMoney(total) + avisoParcial + '?')) return;
             showNotification((auto ? 'Auto-facturando' : 'Enviando') + ' a ARCA...', 'info');
             try {
                 const res = await fetch(cfg.backendUrl.replace(/\/+$/, '') + '/facturar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'x-api-key': cfg.apiKey },
                     body: JSON.stringify({
-                        total: sale.total,
+                        total: total,
                         cbteTipo: cfg.cbteTipo || 11,
                         docTipo: 99,
                         docNro: 0,
-                        items: sale.items.map(i => ({ descripcion: i.name, cantidad: i.quantity, precio: i.price }))
+                        items: itemsSel.map(i => ({ descripcion: i.name, cantidad: i.quantity, precio: i.price }))
                     })
                 });
                 const data = await res.json();
@@ -7015,7 +7069,7 @@
                     showNotification('ARCA rechazó la factura: ' + data.error, 'error', 6000);
                     return;
                 }
-                sale.factura = {
+                saleFacturas(sale).push({
                     cae: data.cae,
                     caeVencimiento: data.caeVencimiento,
                     cbteNro: data.cbteNro,
@@ -7023,15 +7077,29 @@
                     ptoVta: data.ptoVta,
                     docTipo: 99,
                     docNro: 0,
-                    fecha: sale.date
-                };
+                    fecha: sale.date,
+                    total: total,
+                    itemIndexes: indexes
+                });
                 saveToLocalStorage();
                 if (!auto) showSaleDetail(saleId);
                 renderArcaStatus();
-                showNotification('✅ Factura emitida — CAE ' + data.cae, 'success', 6000);
+                showNotification('✅ Factura emitida por $' + formatMoney(total) + ' — CAE ' + data.cae, 'success', 6000);
             } catch (e) {
                 showNotification('Error conectando con el backend: ' + e.message, 'error', 6000);
             }
+        }
+
+        // Lee los checkboxes del detalle de venta y factura los ítems elegidos
+        function facturarItemsSeleccionados(saleId) {
+            const checks = document.querySelectorAll('.arca-item-check:checked');
+            const indexes = [];
+            checks.forEach(c => indexes.push(parseInt(c.getAttribute('data-idx'), 10)));
+            if (indexes.length === 0) {
+                showNotification('Tildá al menos un ítem para facturar', 'error');
+                return;
+            }
+            facturarVenta(saleId, false, indexes);
         }
 
         // Limpia caracteres invisibles/no-ASCII que vienen al pegar desde chats
@@ -7122,7 +7190,10 @@
             const desde = formatDateISO(hace12m);
             let total = 0;
             for (const s of (appState.sales || [])) {
-                if (s.factura && s.factura.cae && (s.date || '') >= desde) total += s.total || 0;
+                if ((s.date || '') < desde) continue;
+                for (const f of saleFacturas(s)) {
+                    if (f.cae) total += (f.total !== undefined ? f.total : s.total) || 0;
+                }
             }
             const previo = (appState.arcaConfig && appState.arcaConfig.facturadoPrevio) || 0;
             return { app: total, previo: previo, total: total + previo };
@@ -10391,6 +10462,48 @@
             const sale = appState.sales.find(s => s.id === saleId);
             if (!sale) return;
 
+            // Bloque de facturas ARCA (emitidas + ítems pendientes con checkbox)
+            const facturasVenta = saleFacturas(sale);
+            const sinFacturar = saleItemsSinFacturar(sale);
+            let facturasHtml = '';
+            facturasVenta.forEach((f, i) => {
+                facturasHtml += `
+                <div class="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+                    <p class="font-bold text-green-700">🧾 Factura ${arcaCbteLetra(f.cbteTipo)} N° ${String(f.ptoVta).padStart(4, '0')}-${String(f.cbteNro).padStart(8, '0')} — $${formatMoney(f.total !== undefined ? f.total : sale.total)}</p>
+                    <p class="text-green-700">CAE: ${f.cae} — Vto: ${f.caeVencimiento}</p>
+                    <img src="${arcaQrUrl(sale, f)}" class="mx-auto mt-2" width="110" height="110">
+                    <button onclick="printFactura('${sale.id}', ${i})" class="w-full mt-2 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-bold">
+                        <i class="fas fa-print"></i> Imprimir factura
+                    </button>
+                </div>`;
+            });
+            if (isAdmin() && sinFacturar.length > 0) {
+                if (facturasVenta.length === 0) {
+                    facturasHtml += `
+                <button onclick="facturarVenta('${sale.id}')" class="w-full mt-3 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg font-bold">
+                    <i class="fas fa-file-invoice"></i> 🧾 Emitir factura ARCA
+                </button>`;
+                }
+                if (sale.items.length > 1) {
+                    facturasHtml += `
+                <div class="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm">
+                    <p class="font-bold text-orange-700 mb-2">🧾 Facturar solo algunos ítems:</p>
+                    ${sale.items.map((item, i) => sinFacturar.includes(i) ? `
+                        <label class="flex justify-between items-center py-1 cursor-pointer">
+                            <span><input type="checkbox" class="arca-item-check mr-2" data-idx="${i}" checked>${item.name} x${item.quantity}</span>
+                            <span class="font-bold">$${formatMoney(item.price * item.quantity)}</span>
+                        </label>` : `
+                        <div class="flex justify-between py-1 text-gray-400">
+                            <span>✅ ${item.name} x${item.quantity}</span>
+                            <span>facturado</span>
+                        </div>`).join('')}
+                    <button onclick="facturarItemsSeleccionados('${sale.id}')" class="w-full mt-2 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg font-bold">
+                        <i class="fas fa-check-double"></i> Facturar ítems tildados
+                    </button>
+                </div>`;
+                }
+            }
+
             document.getElementById('sale-detail-content').innerHTML = `
                 <div class="mb-4">
                     <p class="text-sm text-gray-500">Venta #${sale.id}</p>
@@ -10444,20 +10557,7 @@
                     </div>
                     ` : ''}
                 </div>
-                ${sale.factura && sale.factura.cae ? `
-                <div class="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
-                    <p class="font-bold text-green-700">🧾 Factura ${arcaCbteLetra(sale.factura.cbteTipo)} N° ${String(sale.factura.ptoVta).padStart(4, '0')}-${String(sale.factura.cbteNro).padStart(8, '0')}</p>
-                    <p class="text-green-700">CAE: ${sale.factura.cae} — Vto: ${sale.factura.caeVencimiento}</p>
-                    <img src="${arcaQrUrl(sale)}" class="mx-auto mt-2" width="110" height="110">
-                    <button onclick="printFactura('${sale.id}')" class="w-full mt-2 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-bold">
-                        <i class="fas fa-print"></i> Imprimir factura
-                    </button>
-                </div>
-                ` : (isAdmin() ? `
-                <button onclick="facturarVenta('${sale.id}')" class="w-full mt-3 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg font-bold">
-                    <i class="fas fa-file-invoice"></i> 🧾 Emitir factura ARCA
-                </button>
-                ` : '')}
+                ${facturasHtml}
                 <div class="flex gap-2 mt-4">
                     <button onclick="printReceiptFromNotification('${sale.id}')" class="flex-1 bg-purple-500 hover:bg-purple-600 text-white py-2 rounded-lg font-bold">
                         <i class="fas fa-print"></i> Imprimir ticket
@@ -20439,7 +20539,7 @@ RESULTADOS:
 
             // === EXPONER FUNCIONES AL WINDOW PARA ONCLICK HANDLERS ===
             (function exposeLocalFunctions() {
-                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','login','logout','saveUser','editUser','deleteUser','cancelEditUser','toggleUserActive','openReserveModal','closeReserveModal','saveReserveMove','openShiftCountModal','closeShiftCountModal','saveShiftCount','renderShiftCountsList','facturarVenta','saveArcaSettings','testArcaConnection','printFactura','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeydown','renderSellSearchResults','scrollSelectedIntoView','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderExpensesTable','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
+                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','login','logout','saveUser','editUser','deleteUser','cancelEditUser','toggleUserActive','openReserveModal','closeReserveModal','saveReserveMove','openShiftCountModal','closeShiftCountModal','saveShiftCount','renderShiftCountsList','facturarVenta','saveArcaSettings','testArcaConnection','printFactura','facturarItemsSeleccionados','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeydown','renderSellSearchResults','scrollSelectedIntoView','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderExpensesTable','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
                 for (const name of fnNames) {
                     try {
                         const fn = eval(name);

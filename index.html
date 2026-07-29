@@ -2707,6 +2707,26 @@
                             </div>
                         </div>
                         <div id="arca-status" class="mt-1"></div>
+
+                        <hr class="border-gray-200">
+
+                        <div>
+                            <p class="text-sm font-medium text-gray-700 mb-2">Datos del emisor (salen en la factura impresa)</p>
+                            <div class="space-y-2">
+                                <input type="text" id="arca-emisor-nombre" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Razón social / Nombre y apellido">
+                                <input type="text" id="arca-emisor-domicilio" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Domicilio comercial">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-xs text-gray-500 mb-1">Inicio de actividades</label>
+                                        <input type="date" id="arca-emisor-inicio" class="w-full border rounded-lg px-3 py-2 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-500 mb-1">Ingresos Brutos</label>
+                                        <input type="text" id="arca-emisor-iibb" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Exento">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -6810,6 +6830,132 @@
             receiptWindow.print();
         }
 
+        // ==================== FACTURA C IMPRIMABLE ====================
+        function printFactura(saleId) {
+            const sale = appState.sales.find(s => s.id === saleId);
+            if (!sale || !sale.factura || !sale.factura.cae) {
+                showNotification('Esta venta no tiene factura emitida', 'error');
+                return;
+            }
+            const cfg = appState.arcaConfig || {};
+            const f = sale.factura;
+            const letra = arcaCbteLetra(f.cbteTipo);
+            const nroCompleto = String(f.ptoVta).padStart(4, '0') + '-' + String(f.cbteNro).padStart(8, '0');
+            const cuitFmt = cfg.cuit && cfg.cuit.length === 11
+                ? cfg.cuit.slice(0, 2) + '-' + cfg.cuit.slice(2, 10) + '-' + cfg.cuit.slice(10)
+                : (cfg.cuit || '');
+            const fechaEmision = f.fecha ? f.fecha.split('-').reverse().join('/') : sale.date;
+            const inicioFmt = cfg.emisorInicio ? cfg.emisorInicio.split('-').reverse().join('/') : '';
+
+            const w = window.open('', '_blank');
+            w.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Factura ${letra} ${nroCompleto}</title>
+<style>
+    body { font-family: Arial, sans-serif; margin: 20px; color: #000; font-size: 12px; }
+    .borde { border: 2px solid #000; }
+    .header { display: flex; position: relative; }
+    .col { flex: 1; padding: 10px; }
+    .col-izq { border-right: 1px solid #000; }
+    .col-der { text-align: left; }
+    .letra-box {
+        position: absolute; left: 50%; top: 0; transform: translateX(-50%);
+        border: 2px solid #000; background: #fff; width: 50px; text-align: center;
+        font-size: 28px; font-weight: bold; padding: 2px 0; z-index: 2;
+    }
+    .letra-cod { font-size: 10px; font-weight: normal; }
+    .razon { font-size: 16px; font-weight: bold; text-transform: uppercase; }
+    .factura-titulo { font-size: 20px; font-weight: bold; }
+    .seccion { border-top: 2px solid #000; padding: 8px 10px; }
+    table.items { width: 100%; border-collapse: collapse; }
+    table.items th { border-bottom: 1px solid #000; text-align: left; padding: 4px; font-size: 11px; }
+    table.items td { padding: 4px; }
+    .num { text-align: right; }
+    .total-row { border-top: 2px solid #000; }
+    .total-row td { font-size: 16px; font-weight: bold; padding: 8px 4px; }
+    .footer { display: flex; align-items: center; gap: 15px; border-top: 2px solid #000; padding: 10px; }
+    .cae-box { flex: 1; }
+    .original { text-align: center; font-weight: bold; letter-spacing: 3px; padding: 3px; border-bottom: 2px solid #000; }
+    @media print { body { margin: 0; } }
+</style>
+</head>
+<body>
+    <div class="original">ORIGINAL</div>
+    <div class="borde">
+        <div class="header">
+            <div class="letra-box">${letra}<div class="letra-cod">CÓD. ${String(f.cbteTipo).padStart(3, '0')}</div></div>
+            <div class="col col-izq">
+                <div class="razon">${cfg.emisorNombre || 'Razón Social'}</div>
+                <div><strong>Domicilio comercial:</strong> ${cfg.emisorDomicilio || '-'}</div>
+                <div><strong>Condición frente al IVA:</strong> Monotributo</div>
+            </div>
+            <div class="col col-der">
+                <div class="factura-titulo">FACTURA</div>
+                <div><strong>Punto de Venta:</strong> ${String(f.ptoVta).padStart(4, '0')} &nbsp; <strong>Comp. Nro:</strong> ${String(f.cbteNro).padStart(8, '0')}</div>
+                <div><strong>Fecha de Emisión:</strong> ${fechaEmision}</div>
+                <div><strong>CUIT:</strong> ${cuitFmt}</div>
+                <div><strong>Ingresos Brutos:</strong> ${cfg.emisorIibb || 'Exento'}</div>
+                <div><strong>Fecha de Inicio de Actividades:</strong> ${inicioFmt || '-'}</div>
+            </div>
+        </div>
+        <div class="seccion">
+            <strong>Señor/es:</strong> Consumidor Final &nbsp;&nbsp;
+            <strong>Condición frente al IVA:</strong> Consumidor Final &nbsp;&nbsp;
+            <strong>Condición de venta:</strong> ${sale.paymentMethod === 'cash' ? 'Contado Efectivo' : 'Tarjeta de Débito'}
+        </div>
+        <div class="seccion" style="padding: 0;">
+            <table class="items">
+                <thead>
+                    <tr>
+                        <th>Descripción</th>
+                        <th class="num">Cantidad</th>
+                        <th class="num">P. Unitario</th>
+                        <th class="num">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sale.items.map(item => `
+                    <tr>
+                        <td>${item.name}</td>
+                        <td class="num">${item.quantity}</td>
+                        <td class="num">$${formatMoney(item.price)}</td>
+                        <td class="num">$${formatMoney(item.price * item.quantity)}</td>
+                    </tr>`).join('')}
+                    ${sale.discount > 0 ? `
+                    <tr>
+                        <td>Descuento ${sale.discountLabel ? '(' + sale.discountLabel + ')' : ''}</td>
+                        <td class="num">-</td>
+                        <td class="num">-</td>
+                        <td class="num">-$${formatMoney(sale.discount)}</td>
+                    </tr>` : ''}
+                    <tr class="total-row">
+                        <td colspan="3" class="num">IMPORTE TOTAL</td>
+                        <td class="num">$${formatMoney(sale.total)}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="seccion" style="font-size: 10px; color: #333;">
+            Régimen de Transparencia Fiscal al Consumidor (Ley 27.743): IVA contenido en el precio final. Otros impuestos nacionales indirectos: $0,00.
+        </div>
+        <div class="footer">
+            <div class="cae-box">
+                <div style="font-weight: bold; font-size: 14px;">Comprobante Autorizado</div>
+                <div><strong>CAE N°:</strong> ${f.cae}</div>
+                <div><strong>Fecha Vto. CAE:</strong> ${f.caeVencimiento ? f.caeVencimiento.split('-').reverse().join('/') : '-'}</div>
+                <div style="font-size: 9px; margin-top: 4px;">Esta Administración Federal no se responsabiliza por los datos ingresados en el detalle de la operación.</div>
+            </div>
+            <img src="${arcaQrUrl(sale)}" width="100" height="100" alt="QR ARCA">
+        </div>
+    </div>
+</body>
+</html>`);
+            w.document.close();
+            w.print();
+        }
+
         // ==================== FACTURACIÓN ARCA ====================
         function arcaQrUrl(sale) {
             const f = sale.factura;
@@ -6903,7 +7049,11 @@
                 cbteTipo: parseInt(document.getElementById('arca-cbte-tipo').value) || 11,
                 autoMode: document.getElementById('arca-auto-mode').value || 'off',
                 categoria: document.getElementById('arca-categoria').value || '',
-                facturadoPrevio: parseFloat(document.getElementById('arca-facturado-previo').value) || 0
+                facturadoPrevio: parseFloat(document.getElementById('arca-facturado-previo').value) || 0,
+                emisorNombre: document.getElementById('arca-emisor-nombre').value.trim(),
+                emisorDomicilio: document.getElementById('arca-emisor-domicilio').value.trim(),
+                emisorInicio: document.getElementById('arca-emisor-inicio').value || '',
+                emisorIibb: document.getElementById('arca-emisor-iibb').value.trim() || 'Exento'
             };
             saveToLocalStorage();
             renderArcaStatus();
@@ -10299,6 +10449,9 @@
                     <p class="font-bold text-green-700">🧾 Factura ${arcaCbteLetra(sale.factura.cbteTipo)} N° ${String(sale.factura.ptoVta).padStart(4, '0')}-${String(sale.factura.cbteNro).padStart(8, '0')}</p>
                     <p class="text-green-700">CAE: ${sale.factura.cae} — Vto: ${sale.factura.caeVencimiento}</p>
                     <img src="${arcaQrUrl(sale)}" class="mx-auto mt-2" width="110" height="110">
+                    <button onclick="printFactura('${sale.id}')" class="w-full mt-2 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-bold">
+                        <i class="fas fa-print"></i> Imprimir factura
+                    </button>
                 </div>
                 ` : (isAdmin() ? `
                 <button onclick="facturarVenta('${sale.id}')" class="w-full mt-3 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg font-bold">
@@ -15682,6 +15835,14 @@ Total de productos a comprar: ${shoppingList.length}
             if (arcaCatEl) arcaCatEl.value = arcaCfg.categoria || '';
             const arcaPrevEl = document.getElementById('arca-facturado-previo');
             if (arcaPrevEl) arcaPrevEl.value = arcaCfg.facturadoPrevio || '';
+            const arcaNomEl = document.getElementById('arca-emisor-nombre');
+            if (arcaNomEl) arcaNomEl.value = arcaCfg.emisorNombre || '';
+            const arcaDomEl = document.getElementById('arca-emisor-domicilio');
+            if (arcaDomEl) arcaDomEl.value = arcaCfg.emisorDomicilio || '';
+            const arcaIniEl = document.getElementById('arca-emisor-inicio');
+            if (arcaIniEl) arcaIniEl.value = arcaCfg.emisorInicio || '';
+            const arcaIibbEl = document.getElementById('arca-emisor-iibb');
+            if (arcaIibbEl) arcaIibbEl.value = arcaCfg.emisorIibb || '';
             renderArcaStatus();
             
             document.getElementById('settings-product-count').textContent = getActiveInventory().length;
@@ -20278,7 +20439,7 @@ RESULTADOS:
 
             // === EXPONER FUNCIONES AL WINDOW PARA ONCLICK HANDLERS ===
             (function exposeLocalFunctions() {
-                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','login','logout','saveUser','editUser','deleteUser','cancelEditUser','toggleUserActive','openReserveModal','closeReserveModal','saveReserveMove','openShiftCountModal','closeShiftCountModal','saveShiftCount','renderShiftCountsList','facturarVenta','saveArcaSettings','testArcaConnection','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeydown','renderSellSearchResults','scrollSelectedIntoView','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderExpensesTable','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
+                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','login','logout','saveUser','editUser','deleteUser','cancelEditUser','toggleUserActive','openReserveModal','closeReserveModal','saveReserveMove','openShiftCountModal','closeShiftCountModal','saveShiftCount','renderShiftCountsList','facturarVenta','saveArcaSettings','testArcaConnection','printFactura','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeydown','renderSellSearchResults','scrollSelectedIntoView','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderExpensesTable','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
                 for (const name of fnNames) {
                     try {
                         const fn = eval(name);

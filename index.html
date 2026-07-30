@@ -554,6 +554,13 @@
                         <p class="text-xs text-blue-600">El stock se maneja en bolsas, pero en ventas se podrá vender por gramos o por precio.</p>
                     </div>
                 </div>
+                <div class="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="edit-prod-hidden-sale">
+                        <span class="text-sm font-bold text-gray-700">🙈 Ocultar de la venta</span>
+                    </label>
+                    <p class="text-xs text-gray-500 mt-1">No aparece al buscar o escanear productos para vender (sigue en el inventario, las compras y los compuestos).</p>
+                </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Lotes / Stock</label>
                     <div id="edit-prod-batches" class="space-y-2 mb-3"></div>
@@ -2546,6 +2553,25 @@
                     </div>
                 </div>
 
+                <!-- Pantalla / Accesibilidad -->
+                <div class="bg-white rounded-2xl p-6 shadow-lg">
+                    <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-blue-600">
+                        <i class="fas fa-text-height"></i> Pantalla
+                    </h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Tamaño de letra</label>
+                            <select id="settings-font-scale" onchange="setFontScale(this.value)" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-lg font-bold text-center bg-white">
+                                <option value="100">Normal</option>
+                                <option value="125">Grande</option>
+                                <option value="150">Muy grande</option>
+                                <option value="175">Enorme</option>
+                            </select>
+                            <p class="text-xs text-gray-500 mt-2">Agranda toda la letra de la app (precios, productos, botones). Se aplica al instante y queda guardada.</p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Saldos Iniciales -->
                 <div class="bg-white rounded-2xl p-6 shadow-lg">
                     <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-green-600">
@@ -2682,8 +2708,26 @@
                                 <option value="cash">Solo efectivo</option>
                                 <option value="debit">Solo débito</option>
                             </select>
+                            <label class="block text-sm font-medium text-gray-700 mb-1 mt-2">…con demora de</label>
+                            <select id="arca-auto-delay" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
+                                <option value="0">En el momento</option>
+                                <option value="60">1 hora</option>
+                                <option value="120">2 horas</option>
+                                <option value="240">4 horas</option>
+                                <option value="1440">Al día siguiente (8:00)</option>
+                            </select>
                             <p class="text-xs text-gray-500 mt-1">Si la venta es mixta, se facturan solo los ítems que cumplen la regla (factura parcial).</p>
-                            <p class="text-xs text-orange-600 mt-1">⚠️ Las facturas automáticas son REALES y se emiten al finalizar la venta.</p>
+                            <p class="text-xs text-gray-500">Con demora, la factura sale cuando se cumple el plazo (con la app abierta). Si borrás la venta antes, no se factura.</p>
+                            <p class="text-xs text-orange-600 mt-1">⚠️ Las facturas automáticas son REALES.</p>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nota de Crédito al anular una venta facturada</label>
+                            <select id="arca-auto-nc" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
+                                <option value="no">Manual — botón "Anular con Nota de Crédito" en la venta</option>
+                                <option value="si">Automática — se emite sola al anular la venta</option>
+                            </select>
+                            <p class="text-xs text-gray-500 mt-1">La Nota de Crédito anula la factura ante ARCA y descuenta tu facturado del año.</p>
                         </div>
 
                         <hr class="border-gray-200">
@@ -3707,6 +3751,7 @@
             // Cargar datos ANTES del login para conocer los usuarios creados por el admin
             loadFromLocalStorage();
             renderLoginUsers();
+            applyFontScale();
             console.log('Esperando inicio de sesión...');
             
             // Debug: mostrar valores cargados
@@ -3721,6 +3766,10 @@
                 // Inicializar período del gráfico
                 setChartPeriod('month');
             }, 100);
+            
+            // Facturas programadas: procesar al abrir la app y cada minuto
+            setInterval(procesarFacturasProgramadas, 60000);
+            setTimeout(procesarFacturasProgramadas, 5000);
             
             // Inicializar display de margen en formulario
             const marginDisplay = document.getElementById('inv-margin-display');
@@ -4294,7 +4343,8 @@
             document.getElementById('today-sales-count').textContent = `(${todaySales.length} ventas)`;
             document.getElementById('today-total-sales').textContent = `$${formatMoney(todayRevenue)}`;
             
-            if (todaySales.length === 0) {
+            const todayAnuladas = (appState.salesAnuladas || []).filter(s => s.date === today);
+            if (todaySales.length === 0 && todayAnuladas.length === 0) {
                 document.getElementById('today-sales-list').innerHTML = '<p class="text-center text-gray-400 py-8">No hay ventas hoy</p>';
             } else {
                 document.getElementById('today-sales-list').innerHTML = todaySales.slice().reverse().map(sale => `
@@ -4307,6 +4357,17 @@
                             <p class="font-bold text-lg text-green-600">$${formatMoney(sale.total)}</p>
                             ${sale.discount > 0 ? `<p class="text-xs text-green-500 font-bold">-$${formatMoney(sale.discount)} ${sale.discountLabel || ''}</p>` : ''}
                             ${isAdmin ? `<p class="text-xs text-gray-400">Ganancia: $${formatMoney(sale.profit)}</p>` : ''}
+                        </div>
+                    </div>
+                `).join('') + todayAnuladas.slice().reverse().map(sale => `
+                    <div class="sale-item flex justify-between items-center p-3 rounded-lg border bg-gray-100 opacity-60 cursor-pointer" onclick="showSaleDetail('${sale.id}')">
+                        <div>
+                            <p class="font-bold text-gray-400">🔒 Venta #${sale.id.slice(-4)} — ANULADA</p>
+                            <p class="text-sm text-gray-400">${sale.time} • ${sale.items.map(i => i.name + ' x' + i.quantity).join(', ')}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold text-lg text-gray-400 line-through">$${formatMoney(sale.total)}</p>
+                            <p class="text-xs text-gray-400">anulada</p>
                         </div>
                     </div>
                 `).join('');
@@ -4736,7 +4797,7 @@
                 return;
             }
             
-            const activeInv = getActiveInventory();
+            const activeInv = getActiveInventory().filter(p => !p.hiddenFromSale);
             const results = fuzzySearchProducts(search, activeInv, 15, { sortBySales: true });
             sellSearchCurrentResults = results;
             sellSearchSelectedIndex = results.length > 0 ? 0 : -1;
@@ -5088,6 +5149,10 @@
         function addToCartFromSearch(productId, qty = 1) {
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
+            if (product.hiddenFromSale) {
+                showNotification('🙈 "' + product.name + '" está oculto de la venta', 'warning', 4000);
+                return;
+            }
             
             qty = Math.max(1, parseInt(qty) || 1);
             
@@ -5251,6 +5316,10 @@
             const product = activeInv.find(p => p.barcode === barcode);
             if (!product) {
                 showNotification('Producto no encontrado', 'error');
+                return;
+            }
+            if (product.hiddenFromSale) {
+                showNotification('🙈 "' + product.name + '" está oculto de la venta', 'warning', 4000);
                 return;
             }
             const availableStock = getProductStock(product);
@@ -6670,11 +6739,18 @@
                 }
             }
             
-            // Auto-facturación ARCA según reglas configuradas (factura real, fire-and-forget)
+            // Auto-facturación ARCA según reglas configuradas (factura real).
+            // Si hay demora configurada, queda programada y sale después —
+            // si el cliente cambia algo antes, borrás la venta y no se factura.
             try {
                 const reglasIdx = saleItemsFacturables(sale);
                 if (reglasIdx.length > 0) {
-                    facturarVenta(sale.id, true, reglasIdx.length === sale.items.length ? undefined : reglasIdx);
+                    const delayMin = (appState.arcaConfig || {}).autoDelayMin || 0;
+                    if (delayMin > 0) {
+                        programarFactura(sale.id, reglasIdx.length === sale.items.length ? null : reglasIdx, delayMin);
+                    } else {
+                        facturarVenta(sale.id, true, reglasIdx.length === sale.items.length ? undefined : reglasIdx);
+                    }
                 }
             } catch (e) { console.error('Auto-factura ARCA:', e); }
 
@@ -6769,7 +6845,7 @@
         }
 
         function printReceiptFromNotification(saleId) {
-            const sale = appState.sales.find(s => s.id === saleId);
+            const sale = findSale(saleId);
             if (sale) {
                 printReceipt(sale);
             }
@@ -6860,7 +6936,7 @@
 
         // ==================== FACTURA C IMPRIMABLE ====================
         function printFactura(saleId, facturaIdx) {
-            const sale = appState.sales.find(s => s.id === saleId);
+            const sale = findSale(saleId);
             const facturas = sale ? saleFacturas(sale) : [];
             const f = facturas[facturaIdx || 0];
             if (!f) {
@@ -7008,6 +7084,12 @@
             return sale.facturas;
         }
 
+        // Busca una venta por id, incluyendo las anuladas (quedan visibles en gris)
+        function findSale(saleId) {
+            return appState.sales.find(s => s.id === saleId) ||
+                (appState.salesAnuladas || []).find(s => s.id === saleId) || null;
+        }
+
         // Índices de ítems todavía no facturados de la venta
         function saleItemsSinFacturar(sale) {
             const usados = new Set();
@@ -7141,6 +7223,8 @@
                 cbteTipo: parseInt(document.getElementById('arca-cbte-tipo').value) || 11,
                 autoStock: document.getElementById('arca-auto-stock').value || 'off',
                 autoPay: document.getElementById('arca-auto-pay').value || 'both',
+                autoDelayMin: parseInt(document.getElementById('arca-auto-delay').value) || 0,
+                autoNC: document.getElementById('arca-auto-nc').value === 'si',
                 categoria: document.getElementById('arca-categoria').value || '',
                 facturadoPrevio: parseFloat(document.getElementById('arca-facturado-previo').value) || 0,
                 emisorNombre: document.getElementById('arca-emisor-nombre').value.trim(),
@@ -7207,17 +7291,21 @@
             return MONOTRIBUTO_TABLAS[MONOTRIBUTO_TABLAS.length - 1].topes[categoria] || null;
         }
 
-        // Suma lo facturado con ARCA en los últimos 12 meses (ventas con CAE)
+        // Suma lo facturado con ARCA en los últimos 12 meses (ventas con CAE,
+        // incluidas las anuladas) menos lo anulado con Nota de Crédito,
         // más lo que el usuario cargó como facturado fuera de la app.
         function arcaFacturado12m() {
             const hace12m = new Date();
             hace12m.setFullYear(hace12m.getFullYear() - 1);
             const desde = formatDateISO(hace12m);
             let total = 0;
-            for (const s of (appState.sales || [])) {
+            const todas = (appState.sales || []).concat(appState.salesAnuladas || []);
+            for (const s of todas) {
                 if ((s.date || '') < desde) continue;
                 for (const f of saleFacturas(s)) {
-                    if (f.cae) total += (f.total !== undefined ? f.total : s.total) || 0;
+                    if (f.cae && !(f.notaCredito && f.notaCredito.cae)) {
+                        total += (f.total !== undefined ? f.total : s.total) || 0;
+                    }
                 }
             }
             const previo = (appState.arcaConfig && appState.arcaConfig.facturadoPrevio) || 0;
@@ -7337,10 +7425,16 @@
             if (!el) return;
             const reg = arcaRegistroPendientes();
             const totalPend = reg.pendientes.reduce((sum, p) => sum + p.total, 0);
+            const programadas = (appState.facturasProgramadas || []).filter(p => appState.sales.some(s => s.id === p.saleId));
             let html = '<div class="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">' +
                 '<p class="font-bold text-blue-800 mb-1"><i class="fas fa-clipboard-list"></i> Registro de facturación</p>' +
                 '<div class="flex justify-between"><span class="text-gray-600">Pendiente según tus reglas:</span><strong class="text-blue-700">$' + formatMoney(totalPend) + '</strong></div>' +
                 '<div class="flex justify-between"><span class="text-gray-600">Sin facturar (fuera de tus reglas):</span><strong class="text-gray-700">$' + formatMoney(reg.fueraReglas) + '</strong></div>';
+            if (programadas.length > 0) {
+                const prox = new Date(Math.min.apply(null, programadas.map(p => p.notBefore)));
+                html += '<div class="text-xs text-blue-600 mt-1">⏳ Programadas: ' + programadas.length + ' — próxima ' +
+                    prox.toLocaleDateString('es-AR') + ' ' + prox.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + '</div>';
+            }
             if (reg.pendientes.length > 0) {
                 html += '<button onclick="facturarPendientes()" class="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-bold text-xs">' +
                     '<i class="fas fa-bolt"></i> Facturar todo lo pendiente (' + reg.pendientes.length + ')</button>' +
@@ -7388,6 +7482,103 @@
                 await facturarVenta(p.sale.id, true, p.indexes.length === p.sale.items.length ? undefined : p.indexes);
             }
             renderArcaRegistro();
+        }
+
+        // Deja una factura en cola para emitirla cuando pase la demora
+        // configurada. delayMin >= 1440 = al día siguiente, 8:00.
+        function programarFactura(saleId, itemIndexes, delayMin) {
+            if (!appState.facturasProgramadas) appState.facturasProgramadas = [];
+            let notBefore;
+            if (delayMin >= 1440) {
+                const d = new Date();
+                d.setDate(d.getDate() + 1);
+                d.setHours(8, 0, 0, 0);
+                notBefore = d.getTime();
+            } else {
+                notBefore = Date.now() + delayMin * 60000;
+            }
+            appState.facturasProgramadas.push({ saleId: saleId, itemIndexes: itemIndexes || null, notBefore: notBefore });
+            saveToLocalStorage();
+            renderArcaRegistro();
+        }
+
+        // Emite las facturas programadas cuyo plazo ya venció. Si la venta
+        // fue eliminada (cambio/devolución) o ya se facturó a mano, se saltea.
+        async function procesarFacturasProgramadas() {
+            const cola = appState.facturasProgramadas || [];
+            if (cola.length === 0) return;
+            const ahora = Date.now();
+            const vencidas = cola.filter(p => p.notBefore <= ahora);
+            if (vencidas.length === 0) return;
+            appState.facturasProgramadas = cola.filter(p => p.notBefore > ahora);
+            saveToLocalStorage();
+            for (const p of vencidas) {
+                const sale = appState.sales.find(s => s.id === p.saleId);
+                if (!sale) continue; // venta borrada antes del plazo → no se factura
+                if (saleItemsSinFacturar(sale).length === 0) continue; // ya facturada a mano
+                await facturarVenta(p.saleId, true, p.itemIndexes || undefined);
+            }
+            renderArcaRegistro();
+        }
+
+        // Emite una Nota de Crédito que anula una factura ya emitida.
+        // NC por tipo: Factura A→3, B→8, C→13. Si auto=true no pide confirmación
+        // (la usa la anulación de ventas con autoNC).
+        async function emitirNotaCredito(saleId, facturaIdx, auto) {
+            const sale = findSale(saleId);
+            if (!sale) return;
+            const f = saleFacturas(sale)[facturaIdx || 0];
+            if (!f || !f.cae) return;
+            if (f.notaCredito && f.notaCredito.cae) {
+                if (!auto) showNotification('Esta factura ya está anulada con Nota de Crédito', 'warning');
+                return;
+            }
+            const cfg = appState.arcaConfig || {};
+            if (!cfg.backendUrl || !cfg.apiKey) {
+                if (!auto) showNotification('Primero configurá ARCA en Configuración', 'error');
+                return;
+            }
+            const ncTipo = { 1: 3, 6: 8, 11: 13 }[f.cbteTipo] || 13;
+            const total = (f.total !== undefined ? f.total : sale.total) || 0;
+            if (!auto && !confirm('¿Emitir Nota de Crédito ' + arcaCbteLetra(ncTipo) + ' por $' + formatMoney(total) +
+                ' para anular la factura N° ' + f.cbteNro + '?\n\nLa Nota de Crédito es un comprobante REAL y descuenta lo facturado ante ARCA.')) return;
+            showNotification((auto ? 'Auto-emitiendo' : 'Enviando') + ' Nota de Crédito a ARCA...', 'info');
+            try {
+                const res = await fetch(cfg.backendUrl.replace(/\/+$/, '') + '/facturar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-api-key': cfg.apiKey },
+                    body: JSON.stringify({
+                        total: total,
+                        cbteTipo: ncTipo,
+                        docTipo: f.docTipo || 99,
+                        docNro: f.docNro || 0,
+                        cbteAsoc: { tipo: f.cbteTipo, ptoVta: f.ptoVta, nro: f.cbteNro },
+                        items: (f.itemIndexes || sale.items.map((_, i) => i))
+                            .map(i => sale.items[i]).filter(Boolean)
+                            .map(i => ({ descripcion: i.name, cantidad: i.quantity, precio: i.price }))
+                    })
+                });
+                const data = await res.json();
+                if (!data.ok) {
+                    showNotification('ARCA rechazó la Nota de Crédito: ' + data.error, 'error', 8000);
+                    return;
+                }
+                f.notaCredito = {
+                    cae: data.cae,
+                    caeVencimiento: data.caeVencimiento,
+                    cbteNro: data.cbteNro,
+                    cbteTipo: data.cbteTipo,
+                    ptoVta: data.ptoVta,
+                    fecha: formatDateISO(new Date()),
+                    total: total
+                };
+                saveToLocalStorage();
+                renderArcaStatus();
+                if (!auto) showSaleDetail(saleId);
+                showNotification('✅ Nota de Crédito emitida por $' + formatMoney(total) + ' — CAE ' + data.cae, 'success', 6000);
+            } catch (e) {
+                showNotification('Error conectando con el backend: ' + e.message, 'error', 6000);
+            }
         }
 
         // ==================== INVENTORY & PURCHASES ====================
@@ -8481,12 +8672,13 @@
                 
                 const compositeBadge = isComposite ? '<span class="text-[10px] bg-orange-100 text-orange-700 px-1 rounded mr-1">🧩</span>' : '';
                 const weightBadge = p.saleByWeight ? '<span class="text-[10px] bg-blue-100 text-blue-700 px-1 rounded mr-1">⚖️</span>' : '';
+                const hiddenBadge = p.hiddenFromSale ? '<span class="text-[10px] bg-gray-200 text-gray-600 px-1 rounded mr-1" title="Oculto de la venta">🙈</span>' : '';
                 const weightInfo = p.saleByWeight && p.weightPerUnit ? `<span class="text-xs text-blue-600">(${Math.round(totalStock * p.weightPerUnit)}g)</span>` : '';
                 
                 return `
                 <tr class="hover:bg-gray-50">
                     <td class="px-3 py-2">
-                        <div class="font-medium text-gray-900">${compositeBadge}${weightBadge}${escapeHtml(p.name)}</div>
+                        <div class="font-medium text-gray-900">${compositeBadge}${weightBadge}${hiddenBadge}${escapeHtml(p.name)}</div>
                         <div class="text-xs text-gray-500">${p.category || 'Sin cat.'} ${weightInfo}</div>
                     </td>
                     <td class="px-3 py-2 text-sm font-mono text-gray-600">${p.barcode}</td>
@@ -9718,6 +9910,10 @@
                     document.getElementById('edit-prod-weight-section').classList.add('hidden');
                 }
             }
+
+            // Cargar ocultar de la venta
+            const hiddenSaleCheckbox = document.getElementById('edit-prod-hidden-sale');
+            if (hiddenSaleCheckbox) hiddenSaleCheckbox.checked = product.hiddenFromSale || false;
             
             // Calcular margen inicial
             calculateEditMargin();
@@ -9906,6 +10102,13 @@
                 } else {
                     delete product.saleByWeight;
                     delete product.weightPerUnit;
+                }
+
+                // Guardar ocultar de la venta
+                if (document.getElementById('edit-prod-hidden-sale')?.checked) {
+                    product.hiddenFromSale = true;
+                } else {
+                    delete product.hiddenFromSale;
                 }
                 
                 product.updatedAt = new Date().toISOString();
@@ -10208,7 +10411,8 @@
                 </div>
             `).join('') : '<p class="text-center text-gray-400 py-4">No hay productos vendidos este día</p>';
             
-            document.getElementById('day-sales-list').innerHTML = daySales.length > 0 ? daySales.map(sale => `
+            const dayAnuladas = (appState.salesAnuladas || []).filter(s => s.date === dateStr);
+            document.getElementById('day-sales-list').innerHTML = (daySales.length > 0 || dayAnuladas.length > 0) ? daySales.map(sale => `
                 <div class="sale-item flex justify-between items-center p-3 rounded-lg border">
                     <div class="flex-1 cursor-pointer" onclick="showSaleDetail('${sale.id}')">
                         <p class="font-bold text-gray-800">Venta #${sale.id.slice(-4)}</p>
@@ -10223,9 +10427,23 @@
                         <button onclick="editSale('${sale.id}')" class="text-blue-600 hover:text-blue-800" title="Editar venta">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button onclick="deleteSale('${sale.id}')" class="text-red-600 hover:text-red-800" title="Eliminar venta">
-                            <i class="fas fa-trash"></i>
+                        <button onclick="deleteSale('${sale.id}')" class="text-red-600 hover:text-red-800" title="Anular venta">
+                            <i class="fas fa-ban"></i>
                         </button>
+                    </div>
+                </div>
+            `).join('') + dayAnuladas.map(sale => `
+                <div class="sale-item flex justify-between items-center p-3 rounded-lg border bg-gray-100 opacity-60">
+                    <div class="flex-1 cursor-pointer" onclick="showSaleDetail('${sale.id}')">
+                        <p class="font-bold text-gray-400">🔒 Venta #${sale.id.slice(-4)} — ANULADA</p>
+                        <p class="text-sm text-gray-400">${sale.time} • ${sale.items.map(i => i.name + ' x' + i.quantity).join(', ')}</p>
+                        ${saleFacturas(sale).some(f => f.cae && !(f.notaCredito && f.notaCredito.cae))
+                            ? '<p class="text-xs font-bold text-orange-500">⚠️ Tiene factura vigente — tocala para emitir la Nota de Crédito</p>'
+                            : (saleFacturas(sale).some(f => f.notaCredito && f.notaCredito.cae) ? '<p class="text-xs text-gray-400">🚫 Factura anulada con Nota de Crédito</p>' : '')}
+                    </div>
+                    <div class="text-right mr-4">
+                        <p class="font-bold text-gray-400 line-through">+$${formatMoney(sale.total)}</p>
+                        <p class="text-xs text-gray-400">anulada</p>
                     </div>
                 </div>
             `).join('') : '<p class="text-center text-gray-400 py-4">No hay ventas este día</p>';
@@ -10277,13 +10495,29 @@
             }, 100);
         }
 
-        function deleteSale(saleId) {
-            if (!confirm('¿Estás seguro de que deseas eliminar esta venta? Se revertirá el stock y el dinero.')) return;
-
+        // Anula una venta: revierte stock/dinero y la deja visible en gris.
+        // Si tenía factura emitida, según la config emite la Nota de Crédito
+        // automáticamente o avisa para emitirla a mano desde el detalle.
+        async function deleteSale(saleId) {
             const saleIndex = appState.sales.findIndex(s => s.id === saleId);
             if (saleIndex === -1) return;
 
             const sale = appState.sales[saleIndex];
+            const facturasActivas = saleFacturas(sale).filter(f => f.cae && !(f.notaCredito && f.notaCredito.cae));
+            const autoNC = !!(appState.arcaConfig && appState.arcaConfig.autoNC);
+
+            let aviso = '¿Anular esta venta? Se revertirá el stock y el dinero, y quedará registrada en gris.';
+            if (facturasActivas.length > 0) {
+                aviso += autoNC
+                    ? '\n\nLa venta tiene factura emitida: se va a generar la Nota de Crédito automáticamente.'
+                    : '\n\n⚠️ La venta tiene factura emitida en ARCA: para anularla fiscalmente, emití la Nota de Crédito desde el detalle de la venta.';
+            }
+            if (!confirm(aviso)) return;
+
+            // Cancelar factura programada de esta venta (si tenía una en cola)
+            if (appState.facturasProgramadas && appState.facturasProgramadas.length > 0) {
+                appState.facturasProgramadas = appState.facturasProgramadas.filter(p => p.saleId !== saleId);
+            }
 
             sale.items.forEach(item => {
                 // Los ítems manuales no tienen stock que restaurar
@@ -10324,18 +10558,42 @@
                 }
             }
 
+            // Ajustar el tracking blanco/negro (la venta anulada deja de contar)
+            if (appState.invoiceTracking && sale.invoiceBreakdown) {
+                appState.invoiceTracking.soldWhite -= (sale.invoiceBreakdown.white || 0);
+                appState.invoiceTracking.soldBlack -= (sale.invoiceBreakdown.black || 0);
+                if (sale.paymentMethod === 'debit') {
+                    appState.invoiceTracking.soldDebit -= sale.total;
+                }
+            }
+
+            // Anulación suave: la venta queda registrada y se muestra en gris
             appState.sales.splice(saleIndex, 1);
+            sale.anulada = true;
+            sale.anuladaAt = new Date().toISOString();
+            if (!appState.salesAnuladas) appState.salesAnuladas = [];
+            appState.salesAnuladas.push(sale);
 
             saveToLocalStorage();
             renderAll();
             renderCalendar();
-            
+
             const dayDetail = document.getElementById('day-detail');
             if (!dayDetail.classList.contains('hidden')) {
                 showDayDetail(sale.date);
             }
-            
-            showNotification('Venta eliminada correctamente', 'success');
+
+            // Nota de Crédito automática si estaba facturada y la config lo pide
+            if (facturasActivas.length > 0 && autoNC) {
+                for (let i = 0; i < saleFacturas(sale).length; i++) {
+                    await emitirNotaCredito(sale.id, i, true);
+                }
+                showNotification('Venta anulada y Nota de Crédito emitida', 'success', 6000);
+            } else if (facturasActivas.length > 0) {
+                showNotification('Venta anulada. OJO: la factura sigue vigente en ARCA — emití la Nota de Crédito desde el detalle', 'warning', 8000);
+            } else {
+                showNotification('Venta anulada correctamente', 'success');
+            }
         }
 
         function deleteExpense(expenseId, dateStr) {
@@ -10608,7 +10866,7 @@
         }
 
         function showSaleDetail(saleId) {
-            const sale = appState.sales.find(s => s.id === saleId);
+            const sale = findSale(saleId);
             if (!sale) return;
 
             // Bloque de facturas ARCA (emitidas + ítems pendientes con checkbox)
@@ -10616,17 +10874,25 @@
             const sinFacturar = saleItemsSinFacturar(sale);
             let facturasHtml = '';
             facturasVenta.forEach((f, i) => {
+                const nc = (f.notaCredito && f.notaCredito.cae) ? f.notaCredito : null;
                 facturasHtml += `
-                <div class="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
-                    <p class="font-bold text-green-700">🧾 Factura ${arcaCbteLetra(f.cbteTipo)} N° ${String(f.ptoVta).padStart(4, '0')}-${String(f.cbteNro).padStart(8, '0')} — $${formatMoney(f.total !== undefined ? f.total : sale.total)}</p>
+                <div class="mt-3 p-3 ${nc ? 'bg-gray-100 border-gray-300' : 'bg-green-50 border-green-200'} border rounded-lg text-sm">
+                    <p class="font-bold ${nc ? 'text-gray-500 line-through' : 'text-green-700'}">🧾 Factura ${arcaCbteLetra(f.cbteTipo)} N° ${String(f.ptoVta).padStart(4, '0')}-${String(f.cbteNro).padStart(8, '0')} — $${formatMoney(f.total !== undefined ? f.total : sale.total)}</p>
+                    ${nc ? `
+                    <p class="text-gray-500 font-bold">🚫 Anulada con Nota de Crédito N° ${String(nc.ptoVta).padStart(4, '0')}-${String(nc.cbteNro).padStart(8, '0')}</p>
+                    <p class="text-gray-400 text-xs">CAE NC: ${nc.cae}</p>` : `
                     <p class="text-green-700">CAE: ${f.cae} — Vto: ${f.caeVencimiento}</p>
-                    <img src="${arcaQrUrl(sale, f)}" class="mx-auto mt-2" width="110" height="110">
-                    <button onclick="printFactura('${sale.id}', ${i})" class="w-full mt-2 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-bold">
+                    <img src="${arcaQrUrl(sale, f)}" class="mx-auto mt-2" width="110" height="110">`}
+                    <button onclick="printFactura('${sale.id}', ${i})" class="w-full mt-2 ${nc ? 'bg-gray-400 hover:bg-gray-500' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded-lg font-bold">
                         <i class="fas fa-print"></i> Imprimir factura
                     </button>
+                    ${!nc && isAdmin() ? `
+                    <button onclick="emitirNotaCredito('${sale.id}', ${i})" class="w-full mt-2 bg-red-100 hover:bg-red-200 text-red-700 border border-red-300 py-2 rounded-lg font-bold">
+                        <i class="fas fa-ban"></i> Anular con Nota de Crédito
+                    </button>` : ''}
                 </div>`;
             });
-            if (isAdmin() && sinFacturar.length > 0) {
+            if (isAdmin() && !sale.anulada && sinFacturar.length > 0) {
                 if (facturasVenta.length === 0) {
                     facturasHtml += `
                 <button onclick="facturarVenta('${sale.id}')" class="w-full mt-3 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg font-bold">
@@ -10658,11 +10924,16 @@
                     <p class="text-sm text-gray-500">Venta #${sale.id}</p>
                     <p class="text-lg font-bold">${sale.date} ${sale.time}</p>
                 </div>
-                <div class="space-y-2 mb-4">
+                ${sale.anulada ? `
+                <div class="p-3 mb-4 bg-gray-200 border border-gray-300 rounded-lg text-center">
+                    <p class="font-bold text-gray-500">🚫 VENTA ANULADA${sale.anuladaAt ? ' — ' + new Date(sale.anuladaAt).toLocaleString('es-AR') : ''}</p>
+                    <p class="text-xs text-gray-400">Se revirtió el stock y el dinero. Queda solo como registro.</p>
+                </div>` : ''}
+                <div class="space-y-2 mb-4 ${sale.anulada ? 'opacity-50' : ''}">
                     ${sale.items.map(item => `
                         <div class="flex justify-between p-2 bg-gray-50 rounded">
-                            <span>${item.name} x${item.quantity}</span>
-                            <span class="font-bold">$${formatMoney((item.price * item.quantity))}</span>
+                            <span class="${sale.anulada ? 'text-gray-400' : ''}">${item.name} x${item.quantity}</span>
+                            <span class="font-bold ${sale.anulada ? 'text-gray-400' : ''}">$${formatMoney((item.price * item.quantity))}</span>
                         </div>
                     `).join('')}
                 </div>
@@ -10679,7 +10950,7 @@
                     ` : ''}
                     <div class="flex justify-between text-lg font-bold">
                         <span>Total:</span>
-                        <span class="text-green-600">$${formatMoney(sale.total)}</span>
+                        <span class="${sale.anulada ? 'text-gray-400 line-through' : 'text-green-600'}">$${formatMoney(sale.total)}</span>
                     </div>
                     <div class="flex justify-between text-sm text-gray-500 mt-2">
                         <span>Ganancia:</span>
@@ -10711,6 +10982,7 @@
                     <button onclick="printReceiptFromNotification('${sale.id}')" class="flex-1 bg-purple-500 hover:bg-purple-600 text-white py-2 rounded-lg font-bold">
                         <i class="fas fa-print"></i> Imprimir ticket
                     </button>
+                    ${!sale.anulada ? `
                     <button onclick="generateTicketFromSale('${sale.id}')" class="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white py-2 rounded-lg font-bold">
                         <i class="fas fa-ticket-alt"></i> Crear ticket
                     </button>
@@ -10718,8 +10990,8 @@
                         <i class="fas fa-edit"></i> Editar
                     </button>
                     <button onclick="deleteSale('${sale.id}'); closeSaleDetail();" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg font-bold">
-                        <i class="fas fa-trash"></i> Eliminar
-                    </button>
+                        <i class="fas fa-ban"></i> Anular
+                    </button>` : ''}
                     <button onclick="closeSaleDetail()" class="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg font-bold">
                         Cerrar
                     </button>
@@ -16065,6 +16337,8 @@ Total de productos a comprar: ${shoppingList.length}
             document.getElementById('settings-initial-capital').value = appState.initialCapital || 0;
             document.getElementById('settings-mercado-fee').value = appState.mercadoCreditoFee || 5;
             document.getElementById('settings-stock-days').value = appState.stockTargetDays || 7;
+            const fontScaleEl = document.getElementById('settings-font-scale');
+            if (fontScaleEl) fontScaleEl.value = String(appState.fontScale || 100);
             renderUsersList();
             // Config ARCA
             const arcaCfg = appState.arcaConfig || {};
@@ -16083,6 +16357,10 @@ Total de productos a comprar: ${shoppingList.length}
             if (arcaAutoStockEl) arcaAutoStockEl.value = arcaReglasCfg.stock;
             const arcaAutoPayEl = document.getElementById('arca-auto-pay');
             if (arcaAutoPayEl) arcaAutoPayEl.value = arcaReglasCfg.pay;
+            const arcaAutoDelayEl = document.getElementById('arca-auto-delay');
+            if (arcaAutoDelayEl) arcaAutoDelayEl.value = String(arcaCfg.autoDelayMin || 0);
+            const arcaAutoNcEl = document.getElementById('arca-auto-nc');
+            if (arcaAutoNcEl) arcaAutoNcEl.value = arcaCfg.autoNC ? 'si' : 'no';
             const arcaCatEl = document.getElementById('arca-categoria');
             if (arcaCatEl) arcaCatEl.value = arcaCfg.categoria || '';
             const arcaPrevEl = document.getElementById('arca-facturado-previo');
@@ -16416,6 +16694,20 @@ Total de productos a comprar: ${shoppingList.length}
             } else {
                 showNotification('Los días de stock deben estar entre 1 y 90', 'error');
             }
+        }
+
+        // Tamaño de letra global: escala la raíz (Tailwind usa rem, así que
+        // agranda textos, paddings y botones de toda la app)
+        function applyFontScale() {
+            const scale = parseInt(appState.fontScale) || 100;
+            document.documentElement.style.fontSize = (16 * scale / 100) + 'px';
+        }
+
+        function setFontScale(value) {
+            appState.fontScale = parseInt(value) || 100;
+            saveToLocalStorage();
+            applyFontScale();
+            showNotification('Tamaño de letra: ' + appState.fontScale + '%', 'success');
         }
 
         function saveMarginFromSettings() {
@@ -20691,7 +20983,7 @@ RESULTADOS:
 
             // === EXPONER FUNCIONES AL WINDOW PARA ONCLICK HANDLERS ===
             (function exposeLocalFunctions() {
-                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','login','logout','saveUser','editUser','deleteUser','cancelEditUser','toggleUserActive','openReserveModal','closeReserveModal','saveReserveMove','openShiftCountModal','closeShiftCountModal','saveShiftCount','renderShiftCountsList','facturarVenta','saveArcaSettings','testArcaConnection','printFactura','facturarItemsSeleccionados','facturarPendienteVenta','facturarPendientes','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeydown','renderSellSearchResults','scrollSelectedIntoView','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderExpensesTable','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
+                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','login','logout','saveUser','editUser','deleteUser','cancelEditUser','toggleUserActive','openReserveModal','closeReserveModal','saveReserveMove','openShiftCountModal','closeShiftCountModal','saveShiftCount','renderShiftCountsList','facturarVenta','saveArcaSettings','testArcaConnection','printFactura','facturarItemsSeleccionados','facturarPendienteVenta','facturarPendientes','emitirNotaCredito','setFontScale','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeydown','renderSellSearchResults','scrollSelectedIntoView','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderExpensesTable','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
                 for (const name of fnNames) {
                     try {
                         const fn = eval(name);

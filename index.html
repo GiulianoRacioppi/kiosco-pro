@@ -2670,14 +2670,19 @@
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Facturar automáticamente</label>
-                            <select id="arca-auto-mode" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
+                            <select id="arca-auto-stock" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
                                 <option value="off">No — solo manual (botón en cada venta)</option>
-                                <option value="all">Todas las ventas</option>
-                                <option value="debit">Solo ventas con débito</option>
-                                <option value="cash">Solo ventas en efectivo</option>
-                                <option value="white">Solo ventas 100% en blanco</option>
-                                <option value="black">Solo ventas con mercadería en negro</option>
+                                <option value="both">Todo (mercadería en blanco y en negro)</option>
+                                <option value="white">Solo lo comprado en blanco</option>
+                                <option value="black">Solo lo comprado en negro</option>
                             </select>
+                            <label class="block text-sm font-medium text-gray-700 mb-1 mt-2">…en ventas pagadas con</label>
+                            <select id="arca-auto-pay" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
+                                <option value="both">Cualquier medio (efectivo y débito)</option>
+                                <option value="cash">Solo efectivo</option>
+                                <option value="debit">Solo débito</option>
+                            </select>
+                            <p class="text-xs text-gray-500 mt-1">Si la venta es mixta, se facturan solo los ítems que cumplen la regla (factura parcial).</p>
                             <p class="text-xs text-orange-600 mt-1">⚠️ Las facturas automáticas son REALES y se emiten al finalizar la venta.</p>
                         </div>
 
@@ -2707,6 +2712,7 @@
                             </div>
                         </div>
                         <div id="arca-status" class="mt-1"></div>
+                        <div id="arca-registro" class="mt-2"></div>
 
                         <hr class="border-gray-200">
 
@@ -6254,17 +6260,24 @@
             const snapshot = []; // { productId, previousTotalStock, previousBatches }
             let saleWhiteTotal = 0;
             let saleBlackTotal = 0;
+            const itemBreakdown = []; // blanco/negro por ítem, en el orden del carrito
             
             for (const item of cart) {
+                let itemWhite = 0;
+                let itemBlack = 0;
                 // Ítems manuales no descontar stock; se facturan como blanco
                 if (!item.productId || item.isManual) {
                     const itemValue = item.quantity * item.price;
                     saleWhiteTotal += itemValue;
+                    itemBreakdown.push({ white: itemValue, black: 0 });
                     continue;
                 }
                 
                 const product = appState.inventory.find(p => p.id === item.productId);
-                if (!product) continue;
+                if (!product) {
+                    itemBreakdown.push({ white: item.quantity * item.price, black: 0 });
+                    continue;
+                }
                 
                 // Guardar snapshot del producto (o componentes si es compuesto)
                 if (product.isComposite && product.components) {
@@ -6284,8 +6297,10 @@
                     const itemValue = item.quantity * item.price;
                     if (product.invoiceType === 'white') {
                         saleWhiteTotal += itemValue;
+                        itemWhite += itemValue;
                     } else {
                         saleBlackTotal += itemValue;
+                        itemBlack += itemValue;
                     }
                     product.lastSale = new Date().toISOString();
                     product.updatedAt = new Date().toISOString();
@@ -6351,8 +6366,10 @@
                             const batchValue = deductFromBatch * item.price;
                             if (batch.invoiceType === 'white') {
                                 saleWhiteTotal += batchValue;
+                                itemWhite += batchValue;
                             } else {
                                 saleBlackTotal += batchValue;
+                                itemBlack += batchValue;
                             }
                         }
                         product.batches = product.batches.filter(b => b.stock > 0);
@@ -6364,16 +6381,19 @@
                         const stockValue = deductFromStock * item.price;
                         if (product.invoiceType === 'white') {
                             saleWhiteTotal += stockValue;
+                            itemWhite += stockValue;
                         } else {
                             saleBlackTotal += stockValue;
+                            itemBlack += stockValue;
                         }
                     }
                     product.lastSale = new Date().toISOString();
                     product.updatedAt = new Date().toISOString();
                 }
+                itemBreakdown.push({ white: itemWhite, black: itemBlack });
             }
             
-            return { snapshot, saleWhiteTotal, saleBlackTotal };
+            return { snapshot, saleWhiteTotal, saleBlackTotal, itemBreakdown };
         }
         
         // 3. Verificar que el stock realmente cambió
@@ -6572,7 +6592,7 @@
             };
 
             // ========== FASE 2: DESCONTAR STOCK CON SNAPSHOT ==========
-            const { snapshot: stockSnapshot, saleWhiteTotal, saleBlackTotal } = deductStockWithSnapshot(appState.cart);
+            const { snapshot: stockSnapshot, saleWhiteTotal, saleBlackTotal, itemBreakdown } = deductStockWithSnapshot(appState.cart);
             
             // ========== FASE 3: VERIFICAR QUE EL STOCK REALMENTE CAMBIÓ ==========
             const verifyErrors = verifyStockDeduction(stockSnapshot);
@@ -6590,6 +6610,10 @@
                 white: Math.round(saleWhiteTotal * 100) / 100,
                 black: Math.round(saleBlackTotal * 100) / 100
             };
+            sale.itemInvoice = (itemBreakdown || []).map(b => ({
+                white: Math.round((b.white || 0) * 100) / 100,
+                black: Math.round((b.black || 0) * 100) / 100
+            }));
 
             if (appState.paymentMethod === 'cash') {
                 appState.cash += finalTotal;
@@ -6646,11 +6670,11 @@
                 }
             }
             
-            // Auto-facturación ARCA según configuración (factura real, fire-and-forget)
+            // Auto-facturación ARCA según reglas configuradas (factura real, fire-and-forget)
             try {
-                const autoMode = (appState.arcaConfig || {}).autoMode || 'off';
-                if (arcaAutoModeMatches(sale, autoMode)) {
-                    facturarVenta(sale.id, true);
+                const reglasIdx = saleItemsFacturables(sale);
+                if (reglasIdx.length > 0) {
+                    facturarVenta(sale.id, true, reglasIdx.length === sale.items.length ? undefined : reglasIdx);
                 }
             } catch (e) { console.error('Auto-factura ARCA:', e); }
 
@@ -7115,7 +7139,8 @@
                 cuit: document.getElementById('arca-cuit').value.trim(),
                 ptoVta: parseInt(document.getElementById('arca-pto-vta').value) || 1,
                 cbteTipo: parseInt(document.getElementById('arca-cbte-tipo').value) || 11,
-                autoMode: document.getElementById('arca-auto-mode').value || 'off',
+                autoStock: document.getElementById('arca-auto-stock').value || 'off',
+                autoPay: document.getElementById('arca-auto-pay').value || 'both',
                 categoria: document.getElementById('arca-categoria').value || '',
                 facturadoPrevio: parseFloat(document.getElementById('arca-facturado-previo').value) || 0,
                 emisorNombre: document.getElementById('arca-emisor-nombre').value.trim(),
@@ -7199,18 +7224,57 @@
             return { app: total, previo: previo, total: total + previo };
         }
 
-        // ¿La venta entra en la auto-facturación según el modo configurado?
-        function arcaAutoModeMatches(sale, mode) {
-            if (!mode || mode === 'off') return false;
-            const bd = sale.invoiceBreakdown || { white: 0, black: 0 };
-            switch (mode) {
-                case 'all': return true;
-                case 'debit': return sale.paymentMethod === 'debit';
-                case 'cash': return sale.paymentMethod === 'cash';
-                case 'white': return (bd.black || 0) <= 0;
-                case 'black': return (bd.black || 0) > 0;
-                default: return false;
+        // Reglas de auto-facturación normalizadas (mercadería × medio de pago).
+        // Migra el autoMode viejo (all/cash/debit/white/black) al esquema nuevo.
+        function arcaRules() {
+            const cfg = appState.arcaConfig || {};
+            let stock = cfg.autoStock;
+            let pay = cfg.autoPay || 'both';
+            if (!stock) {
+                switch (cfg.autoMode) {
+                    case 'all': stock = 'both'; break;
+                    case 'white': stock = 'white'; break;
+                    case 'black': stock = 'black'; break;
+                    case 'cash': stock = 'both'; pay = 'cash'; break;
+                    case 'debit': stock = 'both'; pay = 'debit'; break;
+                    default: stock = 'off';
+                }
             }
+            return { stock: stock, pay: pay };
+        }
+
+        // Clasifica cada ítem de la venta como 'white' o 'black' según el
+        // origen del stock al vender. Ventas viejas sin dato por ítem: si el
+        // total negro es 0 → todo blanco; si el blanco es 0 → todo negro;
+        // si es mixta y no hay dato, se usa el invoiceType actual del producto.
+        function saleItemInvoiceTypes(sale) {
+            const per = sale.itemInvoice;
+            return sale.items.map((item, i) => {
+                if (per && per[i]) {
+                    const w = per[i].white || 0;
+                    const b = per[i].black || 0;
+                    if (b <= 0) return 'white';
+                    if (w <= 0) return 'black';
+                    return w >= b ? 'white' : 'black'; // ítem mixto: gana el mayor
+                }
+                const bd = sale.invoiceBreakdown || {};
+                if ((bd.black || 0) <= 0) return 'white';
+                if ((bd.white || 0) <= 0) return 'black';
+                const product = appState.inventory.find(p => p.id === item.productId);
+                return (product && product.invoiceType === 'black') ? 'black' : 'white';
+            });
+        }
+
+        // Índices de los ítems de la venta que entran en la facturación según
+        // las reglas configuradas (mercadería blanco/negro × medio de pago).
+        function saleItemsFacturables(sale, rules) {
+            rules = rules || arcaRules();
+            if (rules.stock === 'off') return [];
+            if (rules.pay === 'cash' && sale.paymentMethod !== 'cash') return [];
+            if (rules.pay === 'debit' && sale.paymentMethod !== 'debit') return [];
+            if (rules.stock === 'both') return sale.items.map((_, i) => i);
+            const types = saleItemInvoiceTypes(sale);
+            return sale.items.map((_, i) => i).filter(i => types[i] === rules.stock);
         }
 
         function renderArcaStatus() {
@@ -7219,6 +7283,7 @@
             const cfg = appState.arcaConfig || {};
             if (!cfg.categoria) {
                 el.innerHTML = '<p class="text-xs text-gray-400">Elegí tu categoría de monotributo para ver cuánto más podés facturar.</p>';
+                renderArcaRegistro();
                 return;
             }
             const tope = monotributoTope(cfg.categoria);
@@ -7239,6 +7304,90 @@
                     '<p class="text-xs text-gray-500 mt-1 text-right">' + pct.toFixed(1) + '% del tope usado</p>' +
                     alerta +
                 '</div>';
+            renderArcaRegistro();
+        }
+
+        // Registro de facturación: qué falta facturar según las reglas y qué
+        // vendido queda fuera de ellas (no se va a facturar).
+        function arcaRegistroPendientes() {
+            const rules = arcaRules();
+            const pendientes = [];
+            let fueraReglas = 0;
+            for (const s of (appState.sales || [])) {
+                const sinFact = saleItemsSinFacturar(s);
+                if (sinFact.length === 0) continue;
+                const sinFactSet = new Set(sinFact);
+                const idxs = saleItemsFacturables(s, rules).filter(i => sinFactSet.has(i));
+                let pendTotal;
+                if (idxs.length === s.items.length) {
+                    pendTotal = s.total;
+                } else {
+                    pendTotal = idxs.reduce((sum, i) => sum + s.items[i].price * s.items[i].quantity, 0);
+                }
+                if (idxs.length > 0) pendientes.push({ sale: s, indexes: idxs, total: Math.round(pendTotal * 100) / 100 });
+                const facSet = new Set(idxs);
+                fueraReglas += sinFact.filter(i => !facSet.has(i))
+                    .reduce((sum, i) => sum + s.items[i].price * s.items[i].quantity, 0);
+            }
+            return { pendientes: pendientes, fueraReglas: Math.round(fueraReglas * 100) / 100 };
+        }
+
+        function renderArcaRegistro() {
+            const el = document.getElementById('arca-registro');
+            if (!el) return;
+            const reg = arcaRegistroPendientes();
+            const totalPend = reg.pendientes.reduce((sum, p) => sum + p.total, 0);
+            let html = '<div class="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">' +
+                '<p class="font-bold text-blue-800 mb-1"><i class="fas fa-clipboard-list"></i> Registro de facturación</p>' +
+                '<div class="flex justify-between"><span class="text-gray-600">Pendiente según tus reglas:</span><strong class="text-blue-700">$' + formatMoney(totalPend) + '</strong></div>' +
+                '<div class="flex justify-between"><span class="text-gray-600">Sin facturar (fuera de tus reglas):</span><strong class="text-gray-700">$' + formatMoney(reg.fueraReglas) + '</strong></div>';
+            if (reg.pendientes.length > 0) {
+                html += '<button onclick="facturarPendientes()" class="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-bold text-xs">' +
+                    '<i class="fas fa-bolt"></i> Facturar todo lo pendiente (' + reg.pendientes.length + ')</button>' +
+                    '<div class="mt-2 space-y-1 max-h-48 overflow-y-auto">';
+                reg.pendientes.slice(0, 10).forEach(p => {
+                    html += '<div class="flex justify-between items-center bg-white rounded px-2 py-1 text-xs border border-blue-100">' +
+                        '<span>' + p.sale.date + ' • ' + (p.sale.paymentMethod === 'cash' ? '💵' : '💳') + ' <strong>$' + formatMoney(p.total) + '</strong></span>' +
+                        '<button onclick="facturarPendienteVenta(\'' + p.sale.id + '\')" class="bg-orange-500 hover:bg-orange-600 text-white px-2 py-1 rounded font-bold">Facturar</button>' +
+                    '</div>';
+                });
+                if (reg.pendientes.length > 10) {
+                    html += '<p class="text-xs text-gray-500 text-center">y ' + (reg.pendientes.length - 10) + ' más…</p>';
+                }
+                html += '</div>';
+            } else {
+                html += '<p class="text-xs text-green-700 mt-1">✅ No hay nada pendiente de facturar según tus reglas.</p>';
+            }
+            html += '</div>';
+            el.innerHTML = html;
+        }
+
+        // Factura lo que falta de una venta puntual, respetando las reglas
+        function facturarPendienteVenta(saleId) {
+            const sale = appState.sales.find(s => s.id === saleId);
+            if (!sale) return;
+            const sinFact = new Set(saleItemsSinFacturar(sale));
+            const idxs = saleItemsFacturables(sale).filter(i => sinFact.has(i));
+            if (idxs.length === 0) {
+                showNotification('Esta venta no tiene nada pendiente según tus reglas', 'warning');
+                return;
+            }
+            return facturarVenta(saleId, false, idxs.length === sale.items.length ? undefined : idxs);
+        }
+
+        // Emite facturas para todas las ventas pendientes según las reglas
+        async function facturarPendientes() {
+            const reg = arcaRegistroPendientes();
+            if (reg.pendientes.length === 0) {
+                showNotification('No hay nada pendiente de facturar', 'info');
+                return;
+            }
+            const total = reg.pendientes.reduce((s, p) => s + p.total, 0);
+            if (!confirm('¿Emitir ' + reg.pendientes.length + ' facturas REALES en ARCA por un total de $' + formatMoney(total) + '?')) return;
+            for (const p of reg.pendientes) {
+                await facturarVenta(p.sale.id, true, p.indexes.length === p.sale.items.length ? undefined : p.indexes);
+            }
+            renderArcaRegistro();
         }
 
         // ==================== INVENTORY & PURCHASES ====================
@@ -15929,8 +16078,11 @@ Total de productos a comprar: ${shoppingList.length}
             if (arcaPvEl) arcaPvEl.value = arcaCfg.ptoVta || 1;
             const arcaTipoEl = document.getElementById('arca-cbte-tipo');
             if (arcaTipoEl) arcaTipoEl.value = arcaCfg.cbteTipo || 11;
-            const arcaAutoEl = document.getElementById('arca-auto-mode');
-            if (arcaAutoEl) arcaAutoEl.value = arcaCfg.autoMode || 'off';
+            const arcaReglasCfg = arcaRules();
+            const arcaAutoStockEl = document.getElementById('arca-auto-stock');
+            if (arcaAutoStockEl) arcaAutoStockEl.value = arcaReglasCfg.stock;
+            const arcaAutoPayEl = document.getElementById('arca-auto-pay');
+            if (arcaAutoPayEl) arcaAutoPayEl.value = arcaReglasCfg.pay;
             const arcaCatEl = document.getElementById('arca-categoria');
             if (arcaCatEl) arcaCatEl.value = arcaCfg.categoria || '';
             const arcaPrevEl = document.getElementById('arca-facturado-previo');
@@ -20539,7 +20691,7 @@ RESULTADOS:
 
             // === EXPONER FUNCIONES AL WINDOW PARA ONCLICK HANDLERS ===
             (function exposeLocalFunctions() {
-                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','login','logout','saveUser','editUser','deleteUser','cancelEditUser','toggleUserActive','openReserveModal','closeReserveModal','saveReserveMove','openShiftCountModal','closeShiftCountModal','saveShiftCount','renderShiftCountsList','facturarVenta','saveArcaSettings','testArcaConnection','printFactura','facturarItemsSeleccionados','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeydown','renderSellSearchResults','scrollSelectedIntoView','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderExpensesTable','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
+                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','login','logout','saveUser','editUser','deleteUser','cancelEditUser','toggleUserActive','openReserveModal','closeReserveModal','saveReserveMove','openShiftCountModal','closeShiftCountModal','saveShiftCount','renderShiftCountsList','facturarVenta','saveArcaSettings','testArcaConnection','printFactura','facturarItemsSeleccionados','facturarPendienteVenta','facturarPendientes','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeydown','renderSellSearchResults','scrollSelectedIntoView','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderExpensesTable','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
                 for (const name of fnNames) {
                     try {
                         const fn = eval(name);

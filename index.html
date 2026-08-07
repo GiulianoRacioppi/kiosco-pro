@@ -1003,7 +1003,7 @@
                         <i class="fas fa-eye"></i>
                     </button>
                 </div>
-                <p class="text-base font-bold text-amber-700" id="reserve-amount">$0</p>
+                <p class="text-base font-bold text-amber-700" id="sidebar-reserve-amount">$0</p>
             </div>
             
             <div class="sidebar-admin-only bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-green-50" onclick="showSection('inventory')">
@@ -2900,6 +2900,13 @@
                                 <span class="text-sm text-gray-600">Última sync:</span>
                                 <span id="settings-sync-time" class="text-sm font-mono text-gray-700">-</span>
                             </div>
+                            <div class="mb-2">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-sm text-gray-600">Almacenamiento local:</span>
+                                    <span id="settings-storage-usage" class="text-sm font-mono text-gray-700">-</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-1.5 mt-1"><div id="settings-storage-bar" class="bg-indigo-500 h-1.5 rounded-full" style="width:0%"></div></div>
+                            </div>
                             <div class="flex items-center justify-between pt-2 border-t border-gray-200">
                                 <span class="text-sm text-gray-700 font-medium">💻 Este dispositivo es el principal</span>
                                 <label class="relative inline-flex items-center cursor-pointer">
@@ -2936,6 +2943,24 @@
                                     <p class="text-xs text-amber-600 mt-1">Usá esto como emergencia si ves datos en 0 o faltantes.</p>
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- Respaldo automático en carpeta de la PC -->
+                        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-sm font-bold text-blue-800"><i class="fas fa-folder"></i> Respaldo en carpeta de la PC</span>
+                                <span id="folder-backup-status" class="text-sm font-bold text-gray-700">-</span>
+                            </div>
+                            <p id="folder-backup-detail" class="text-xs text-blue-700 mb-2">-</p>
+                            <button id="folder-backup-btn-main" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-bold text-sm">
+                                📁 Elegir carpeta de respaldo
+                            </button>
+                            <button id="folder-backup-btn-now" onclick="escribirBackupEnCarpeta(true)" class="hidden w-full mt-2 bg-blue-100 hover:bg-blue-200 text-blue-700 py-2 rounded-lg font-bold text-sm">
+                                <i class="fas fa-save"></i> Guardar respaldo ahora
+                            </button>
+                            <button id="folder-backup-btn-off" onclick="desactivarCarpetaBackup()" class="hidden w-full mt-2 text-xs text-gray-500 hover:text-red-600 underline">
+                                Desactivar respaldo en carpeta
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -3770,6 +3795,9 @@
             // Facturas programadas: procesar al abrir la app y cada minuto
             setInterval(procesarFacturasProgramadas, 60000);
             setTimeout(procesarFacturasProgramadas, 5000);
+
+            // Recuperar la carpeta de respaldo en la PC (si fue configurada)
+            initBackupFolder();
             
             // Inicializar display de margen en formulario
             const marginDisplay = document.getElementById('inv-margin-display');
@@ -14286,9 +14314,23 @@
                 estimatedCost = Math.round((product.cost || 0) * units * 100) / 100;
             }
             
-            // Agregar stock al producto (al primer lote o stock directo)
-            if (product.batches && product.batches.length > 0) {
-                product.batches[0].stock += units;
+            // Agregar stock al producto. Si maneja lotes, sumar al primero; si el
+            // array quedó vacío (se consumieron todos), crear un lote nuevo —
+            // getProductStock suma lotes e ignoraría un stock suelto.
+            if (Array.isArray(product.batches)) {
+                if (product.batches.length > 0) {
+                    product.batches[0].stock += units;
+                } else {
+                    product.batches.push({
+                        id: 'BATCH-FOUND-' + Date.now(),
+                        stock: units,
+                        cost: units > 0 ? Math.round((estimatedCost / units) * 100) / 100 : 0,
+                        invoiceType: 'black', // stock gratis/encontrado: nunca viene con factura
+                        dateAdded: formatDateISO(appState.activeDate || new Date()),
+                        expiry: null
+                    });
+                }
+                product.stock = product.batches.reduce((sum, b) => sum + (b.stock || 0), 0);
             } else {
                 product.stock = (product.stock || 0) + units;
             }
@@ -16396,6 +16438,29 @@ Total de productos a comprar: ${shoppingList.length}
                     syncStatusEl.className = 'text-sm font-bold text-orange-600';
                 }
             }
+
+            // Uso del almacenamiento local (localStorage, límite ~5 MB)
+            const storageEl = document.getElementById('settings-storage-usage');
+            if (storageEl) {
+                try {
+                    let bytes = 0;
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const k = localStorage.key(i);
+                        const v = localStorage.getItem(k) || '';
+                        bytes += (k.length + v.length) * 2; // UTF-16
+                    }
+                    const kb = Math.round(bytes / 1024);
+                    const limiteKb = 5120;
+                    const pct = Math.min(100, (kb / limiteKb) * 100);
+                    storageEl.textContent = '~' + kb + ' KB de ~' + limiteKb + ' KB';
+                    storageEl.className = 'text-sm font-mono ' + (pct >= 85 ? 'text-red-600 font-bold' : (pct >= 65 ? 'text-yellow-600' : 'text-gray-700'));
+                    const bar = document.getElementById('settings-storage-bar');
+                    if (bar) {
+                        bar.style.width = pct.toFixed(1) + '%';
+                        bar.className = (pct >= 85 ? 'bg-red-500' : (pct >= 65 ? 'bg-yellow-500' : 'bg-indigo-500')) + ' h-1.5 rounded-full';
+                    }
+                } catch (e) { storageEl.textContent = '-'; }
+            }
             if (syncTimeEl) {
                 const lastSync = localStorage.getItem('kioscopro-last-sync');
                 if (lastSync) {
@@ -16427,6 +16492,9 @@ Total de productos a comprar: ${shoppingList.length}
                     backupInfoEl.classList.add('hidden');
                 }
             }
+
+            // Estado del respaldo en carpeta de la PC
+            renderFolderBackupUI();
         }
 
         let billingPeriod = 'all'; // 'today' | 'week' | 'month' | 'all'
@@ -17587,7 +17655,7 @@ RESULTADOS:
                 });
                 
                 // Reserva en el panel lateral (con privacidad de montos)
-                const reserveAmountEl = document.getElementById('reserve-amount');
+                const reserveAmountEl = document.getElementById('sidebar-reserve-amount');
                 if (reserveAmountEl) reserveAmountEl.textContent = fmtPrivate(appState.reserve || 0);
                 
                 // Botón de conteo de turno: solo para empleados (el admin lo tiene en Finanzas)
@@ -20716,12 +20784,281 @@ RESULTADOS:
         
         // ==================== LOCAL STORAGE ====================
         function saveToLocalStorage(triggerSync = true) {
-            localStorage.setItem('kioscopro-data', JSON.stringify(appState));
-            
+            try {
+                localStorage.setItem('kioscopro-data', JSON.stringify(appState));
+            } catch (e) {
+                const esCuota = e && (e.name === 'QuotaExceededError' || e.code === 22 || /quota/i.test(e.message || ''));
+                if (!esCuota) throw e;
+                // Sin espacio: el auto-backup ocupa una copia entera de los datos.
+                // Se borra para liberar lugar (la copia real de seguridad es Firebase)
+                // y se reintenta una vez.
+                console.warn('localStorage lleno: borrando auto-backup para liberar espacio');
+                try { localStorage.removeItem('kioscopro-auto-backup'); localStorage.removeItem('kioscopro-auto-backup-time'); } catch (_) {}
+                try {
+                    localStorage.setItem('kioscopro-data', JSON.stringify(appState));
+                    showNotification('⚠️ Almacenamiento casi lleno: se liberó espacio. Tus datos están a salvo en la nube.', 'warning', 8000);
+                } catch (e2) {
+                    console.error('localStorage sigue lleno tras liberar backup:', e2);
+                    showNotification('❌ Almacenamiento del navegador lleno: los cambios NO se están guardando localmente (la nube sigue al día). Avisá al administrador.', 'error', 15000);
+                }
+            }
+
             // Sincronizar con Firebase inmediatamente para que todos los dispositivos vean los cambios
             if (triggerSync) {
                 syncToFirebase(true);
             }
+
+            // Respaldo automático a carpeta de la PC (si está configurado)
+            programarBackupCarpeta();
+        }
+
+        // ==================== RESPALDO EN CARPETA DE LA PC ====================
+        // Usa la File System Access API (Chrome/Edge de escritorio). El usuario
+        // elige una carpeta UNA vez; el handle se guarda en IndexedDB (los handles
+        // no se pueden guardar en localStorage) y a partir de ahí la app escribe
+        // backups JSON sin pedir nada más (salvo que el navegador pida re-permiso).
+        const fsBackupSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window && typeof indexedDB !== 'undefined';
+        let backupDirHandle = null;          // handle activo con permiso concedido
+        let backupDirHandlePendiente = null; // handle guardado pero que necesita re-permiso (click del usuario)
+        let backupCarpetaTimer = null;
+        let backupCarpetaUltimaEscritura = 0;
+        const BACKUP_CARPETA_INTERVALO = 5 * 60 * 1000; // como máximo 1 escritura cada 5 min
+
+        function idbAbrir() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open('kioscopro-fs', 1);
+                req.onupgradeneeded = () => req.result.createObjectStore('handles');
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function idbGuardarHandle(handle) {
+            const db = await idbAbrir();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction('handles', 'readwrite');
+                tx.objectStore('handles').put(handle, 'backupDir');
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        async function idbLeerHandle() {
+            const db = await idbAbrir();
+            return new Promise((resolve, reject) => {
+                const req = db.transaction('handles', 'readonly').objectStore('handles').get('backupDir');
+                req.onsuccess = () => resolve(req.result || null);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function idbBorrarHandle() {
+            const db = await idbAbrir();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction('handles', 'readwrite');
+                tx.objectStore('handles').delete('backupDir');
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        // Al abrir la app: recuperar la carpeta guardada (si existe)
+        async function initBackupFolder() {
+            if (!fsBackupSupported) { renderFolderBackupUI(); return; }
+            try {
+                const handle = await idbLeerHandle();
+                if (!handle) { renderFolderBackupUI(); return; }
+                const permiso = await handle.queryPermission({ mode: 'readwrite' });
+                if (permiso === 'granted') {
+                    backupDirHandle = handle;
+                } else {
+                    // El navegador exige un click del usuario para renovar el permiso
+                    backupDirHandlePendiente = handle;
+                }
+            } catch (e) {
+                console.warn('No se pudo recuperar la carpeta de respaldo:', e);
+            }
+            renderFolderBackupUI();
+        }
+
+        // Click del usuario: elegir carpeta nueva
+        async function elegirCarpetaBackup() {
+            if (!fsBackupSupported) {
+                showNotification('Tu navegador no soporta esto. Usá Chrome o Edge en la PC.', 'warning');
+                return;
+            }
+            try {
+                const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+                await idbGuardarHandle(handle);
+                backupDirHandle = handle;
+                backupDirHandlePendiente = null;
+                renderFolderBackupUI();
+                await escribirBackupEnCarpeta(true);
+                showNotification('📁 Respaldo activado en la carpeta "' + handle.name + '"', 'success');
+            } catch (e) {
+                if (e && e.name === 'AbortError') return; // el usuario canceló el selector
+                console.error('Error eligiendo carpeta de respaldo:', e);
+                showNotification('No se pudo activar el respaldo en carpeta', 'error');
+            }
+        }
+
+        // Click del usuario: renovar permiso sobre la carpeta ya elegida
+        async function reactivarCarpetaBackup() {
+            if (!backupDirHandlePendiente) return;
+            try {
+                const permiso = await backupDirHandlePendiente.requestPermission({ mode: 'readwrite' });
+                if (permiso === 'granted') {
+                    backupDirHandle = backupDirHandlePendiente;
+                    backupDirHandlePendiente = null;
+                    renderFolderBackupUI();
+                    await escribirBackupEnCarpeta(true);
+                    showNotification('📁 Respaldo en carpeta reactivado', 'success');
+                } else {
+                    showNotification('No se concedió permiso a la carpeta', 'warning');
+                }
+            } catch (e) {
+                console.error('Error reactivando carpeta:', e);
+                showNotification('No se pudo reactivar la carpeta. Elegila de nuevo.', 'error');
+            }
+        }
+
+        async function desactivarCarpetaBackup() {
+            backupDirHandle = null;
+            backupDirHandlePendiente = null;
+            if (backupCarpetaTimer) { clearTimeout(backupCarpetaTimer); backupCarpetaTimer = null; }
+            try { await idbBorrarHandle(); } catch (_) {}
+            try { localStorage.removeItem('kioscopro-folder-backup-time'); } catch (_) {}
+            renderFolderBackupUI();
+            showNotification('Respaldo en carpeta desactivado', 'info');
+        }
+
+        // Se llama en cada guardado: escribe como mucho 1 vez cada 5 minutos
+        function programarBackupCarpeta() {
+            if (!backupDirHandle) return;
+            const ahora = Date.now();
+            const espera = backupCarpetaUltimaEscritura + BACKUP_CARPETA_INTERVALO - ahora;
+            if (espera <= 0) {
+                escribirBackupEnCarpeta(false);
+            } else if (!backupCarpetaTimer) {
+                backupCarpetaTimer = setTimeout(() => {
+                    backupCarpetaTimer = null;
+                    escribirBackupEnCarpeta(false);
+                }, espera);
+            }
+        }
+
+        // Escribe kioscopro-backup.json (siempre actual) + una copia diaria
+        // kioscopro-backup-AAAA-MM-DD.json, conservando solo los últimos 7 días.
+        async function escribirBackupEnCarpeta(forzar) {
+            if (!backupDirHandle) return;
+            if (!forzar && Date.now() - backupCarpetaUltimaEscritura < BACKUP_CARPETA_INTERVALO) return;
+            backupCarpetaUltimaEscritura = Date.now();
+            try {
+                const contenido = JSON.stringify(appState);
+                const archivo = await backupDirHandle.getFileHandle('kioscopro-backup.json', { create: true });
+                const writable = await archivo.createWritable();
+                await writable.write(contenido);
+                await writable.close();
+
+                // Copia diaria (una por día, no se pisa hasta el día siguiente)
+                const hoy = formatDateISO(new Date());
+                const nombreDiario = 'kioscopro-backup-' + hoy + '.json';
+                let existeHoy = true;
+                try { await backupDirHandle.getFileHandle(nombreDiario); } catch (_) { existeHoy = false; }
+                if (!existeHoy) {
+                    const diario = await backupDirHandle.getFileHandle(nombreDiario, { create: true });
+                    const w2 = await diario.createWritable();
+                    await w2.write(contenido);
+                    await w2.close();
+                    await limpiarBackupsDiarios();
+                }
+
+                try { localStorage.setItem('kioscopro-folder-backup-time', Date.now().toString()); } catch (_) {}
+                renderFolderBackupUI();
+            } catch (e) {
+                console.error('Error escribiendo backup en carpeta:', e);
+                if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) {
+                    // Permiso perdido: pedir reactivación
+                    backupDirHandlePendiente = backupDirHandle;
+                    backupDirHandle = null;
+                    renderFolderBackupUI();
+                    showNotification('⚠️ El respaldo en carpeta necesita permiso de nuevo. Andá a Configuración → Sincronización.', 'warning', 10000);
+                } else if (e && e.name === 'NotFoundError') {
+                    // La carpeta fue movida o borrada
+                    backupDirHandle = null;
+                    try { await idbBorrarHandle(); } catch (_) {}
+                    renderFolderBackupUI();
+                    showNotification('⚠️ No se encontró la carpeta de respaldo (¿la moviste o borraste?). Elegila de nuevo en Configuración.', 'warning', 10000);
+                }
+            }
+        }
+
+        // Conserva solo los últimos 7 kioscopro-backup-AAAA-MM-DD.json
+        async function limpiarBackupsDiarios() {
+            try {
+                const diarios = [];
+                for await (const nombre of backupDirHandle.keys()) {
+                    if (/^kioscopro-backup-\d{4}-\d{2}-\d{2}\.json$/.test(nombre)) diarios.push(nombre);
+                }
+                diarios.sort();
+                while (diarios.length > 7) {
+                    await backupDirHandle.removeEntry(diarios.shift());
+                }
+            } catch (e) {
+                console.warn('No se pudieron limpiar backups diarios viejos:', e);
+            }
+        }
+
+        // Estado actual del respaldo: 'no-soportado' | 'sin-carpeta' | 'necesita-permiso' | 'activo'
+        function estadoBackupCarpeta() {
+            if (!fsBackupSupported) return 'no-soportado';
+            if (backupDirHandle) return 'activo';
+            if (backupDirHandlePendiente) return 'necesita-permiso';
+            return 'sin-carpeta';
+        }
+
+        function renderFolderBackupUI() {
+            const statusEl = document.getElementById('folder-backup-status');
+            if (!statusEl) return;
+            const detailEl = document.getElementById('folder-backup-detail');
+            const btnMain = document.getElementById('folder-backup-btn-main');
+            const btnNow = document.getElementById('folder-backup-btn-now');
+            const btnOff = document.getElementById('folder-backup-btn-off');
+            const estado = estadoBackupCarpeta();
+            const handle = backupDirHandle || backupDirHandlePendiente;
+
+            if (btnNow) btnNow.classList.toggle('hidden', estado !== 'activo');
+            if (btnOff) btnOff.classList.toggle('hidden', estado === 'sin-carpeta' || estado === 'no-soportado');
+
+            if (estado === 'activo') {
+                statusEl.textContent = 'Activo ✓';
+                statusEl.className = 'text-sm font-bold text-green-600';
+                const t = localStorage.getItem('kioscopro-folder-backup-time');
+                detailEl.textContent = 'Carpeta: "' + handle.name + '". Último respaldo: ' +
+                    (t ? new Date(parseInt(t)).toLocaleString('es-AR') : 'todavía no') +
+                    '. Se guarda solo, como máximo cada 5 minutos, y guarda copias de los últimos 7 días.';
+                btnMain.textContent = 'Cambiar carpeta';
+                btnMain.onclick = elegirCarpetaBackup;
+            } else if (estado === 'necesita-permiso') {
+                statusEl.textContent = 'Necesita permiso';
+                statusEl.className = 'text-sm font-bold text-yellow-600';
+                detailEl.textContent = 'Carpeta: "' + handle.name + '". El navegador pide que confirmes el permiso otra vez (es normal, pasa al reabrir la app).';
+                btnMain.textContent = 'Reactivar respaldo';
+                btnMain.onclick = reactivarCarpetaBackup;
+            } else if (estado === 'sin-carpeta') {
+                statusEl.textContent = 'No configurado';
+                statusEl.className = 'text-sm font-bold text-gray-700';
+                detailEl.textContent = 'Elegí una carpeta de la PC (ej: Documentos) y la app va a guardar ahí un archivo kioscopro-backup.json actualizado solo, más copias diarias de los últimos 7 días.';
+                btnMain.textContent = '📁 Elegir carpeta de respaldo';
+                btnMain.onclick = elegirCarpetaBackup;
+            } else {
+                statusEl.textContent = 'No disponible';
+                statusEl.className = 'text-sm font-bold text-gray-500';
+                detailEl.textContent = 'Esta función solo funciona en Chrome o Edge de escritorio. En este dispositivo/navegador no está disponible.';
+                btnMain.classList.add('hidden');
+                return;
+            }
+            btnMain.classList.remove('hidden');
         }
 
         function loadFromLocalStorage() {

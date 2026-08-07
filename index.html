@@ -4083,7 +4083,20 @@
                 showNotification('Acceso restringido solo para administradores', 'error');
                 sectionId = 'sell';
             }
-            
+
+            // Modal de agregar stock abierto: al cambiar de sección se minimiza
+            // (conserva los datos cargados) y se restaura al volver a la sección original
+            const addStockModal = document.getElementById('add-stock-modal');
+            if (addStockModal && addStockModal.classList.contains('active') && sectionId !== currentSection) {
+                addStockModal.classList.remove('active');
+                addStockMinimized = true;
+                addStockReturnSection = currentSection;
+            } else if (addStockMinimized && addStockModal && sectionId === addStockReturnSection) {
+                addStockModal.classList.add('active');
+                addStockMinimized = false;
+                addStockReturnSection = null;
+            }
+            currentSection = sectionId;
             document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
             document.getElementById(sectionId).classList.remove('hidden');
             
@@ -9115,6 +9128,13 @@
         let editingRestockId = null;
         let editingRestockDate = null;
 
+        // Modal de stock "minimizado": si se navega a otra sección (ej: venta rápida
+        // porque entró un cliente), el modal se esconde SIN perder lo cargado y
+        // vuelve a aparecer al regresar a la sección de donde se salió
+        let currentSection = 'sell';
+        let addStockMinimized = false;
+        let addStockReturnSection = null;
+
         function resetAddStockEditMode() {
             editingRestockId = null;
             editingRestockDate = null;
@@ -9353,6 +9373,9 @@
             document.getElementById('add-stock-modal').classList.remove('active');
             currentAddStockProduct = null;
             resetAddStockEditMode();
+            // Cierre explícito (cancelar o guardar): descartar cualquier minimizado pendiente
+            addStockMinimized = false;
+            addStockReturnSection = null;
         }
 
         function handleAddStockKeypress(e) {
@@ -9567,10 +9590,18 @@
             let wasEditMode = !!editingRestockId;
             let editOriginalDate = editingRestockDate;
             let editSoldQty = 0;
+            let editOriginalIndex = -1;
+            let editOriginalTimestamp = null;
+            let editOriginalBatchDate = null;
             if (editingRestockId) {
-                const oldInvestment = appState.investments.find(i => i.id === editingRestockId);
+                editOriginalIndex = appState.investments.findIndex(i => i.id === editingRestockId);
+                const oldInvestment = editOriginalIndex >= 0 ? appState.investments[editOriginalIndex] : null;
                 if (oldInvestment) {
                     const oldBatch = (product.batches || []).find(b => b.id === oldInvestment.batchId);
+                    // Conservar hora y fecha del lote original para que la compra
+                    // editada quede en su lugar (no salte al final como si fuera nueva)
+                    editOriginalTimestamp = oldInvestment.timestamp || null;
+                    editOriginalBatchDate = (oldBatch && oldBatch.dateAdded) || null;
                     // Unidades del lote original que ya se vendieron (se conservan descontadas)
                     editSoldQty = oldBatch ? Math.max(0, (oldBatch.initialStock ?? oldBatch.stock ?? 0) - (oldBatch.stock ?? 0)) : 0;
 
@@ -9661,7 +9692,7 @@
                 stock: Math.max(0, qtyBags - editSoldQty),
                 initialStock: qtyBags,
                 expiry: newExpiry || '',
-                dateAdded: formatDateISO(appState.activeDate),
+                dateAdded: editOriginalBatchDate || formatDateISO(appState.activeDate),
                 invoiceType: invoiceType,
                 source: addStockPaymentMethod || 'cash',
                 cost: newUnitCost,
@@ -9689,7 +9720,7 @@
             
             // Registrar como INVERSIÓN (no como gasto)
             const qtyLabel = isWeight ? `${grams}g` : `${qty} unidades`;
-            appState.investments.push({
+            const newInvestment = {
                 id: 'RESTOCK-' + Date.now(),
                 date: editOriginalDate || formatDateISO(appState.activeDate),
                 concept: `Reposición: ${product.name} (+${qtyLabel})${newExpiry ? ' Venc: ' + newExpiry : ''}`,
@@ -9698,8 +9729,14 @@
                 type: 'restock',
                 productId: product.id,
                 batchId: batchId,
-                timestamp: Date.now()
-            });
+                timestamp: editOriginalTimestamp || Date.now()
+            };
+            // En modo edición, insertar en el lugar que ocupaba la compra original
+            if (editOriginalIndex >= 0) {
+                appState.investments.splice(editOriginalIndex, 0, newInvestment);
+            } else {
+                appState.investments.push(newInvestment);
+            }
             
             // Tracking de facturación
             if (!appState.invoiceTracking) {

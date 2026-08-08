@@ -35,6 +35,9 @@
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99999; align-items: center; justify-content: center; }
         .modal.active { display: flex !important; }
+        /* Con el modal de stock abierto, los botones rápidos (Nueva Venta / Stock / Gasto)
+           quedan por encima para poder atender un cliente sin perder lo cargado */
+        body.addstock-open #quick-actions { z-index: 100000; }
         .calendar-day { min-height: 80px; transition: all 0.2s; cursor: pointer; }
         .calendar-day:hover { transform: scale(1.05); z-index: 10; }
         .calendar-today { border: 2px solid #667eea; }
@@ -1068,7 +1071,7 @@
         </div>
 
         <!-- Botones de acción rápida flotantes -->
-        <div class="fixed top-4 right-4 z-50 flex flex-col sm:flex-row gap-2 sm:gap-3">
+        <div id="quick-actions" class="fixed top-4 right-4 z-50 flex flex-col sm:flex-row gap-2 sm:gap-3">
             <button onclick="quickSell()" id="btn-quick-sell" class="bg-green-500 hover:bg-green-600 text-white px-3 sm:px-6 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap">
                 <i class="fas fa-plus"></i> <span class="hidden sm:inline">Nueva Venta</span><span class="sm:hidden">Venta</span>
             </button>
@@ -4089,10 +4092,12 @@
             const addStockModal = document.getElementById('add-stock-modal');
             if (addStockModal && addStockModal.classList.contains('active') && sectionId !== currentSection) {
                 addStockModal.classList.remove('active');
+                document.body.classList.remove('addstock-open');
                 addStockMinimized = true;
                 addStockReturnSection = currentSection;
             } else if (addStockMinimized && addStockModal && sectionId === addStockReturnSection) {
                 addStockModal.classList.add('active');
+                document.body.classList.add('addstock-open');
                 addStockMinimized = false;
                 addStockReturnSection = null;
             }
@@ -9119,6 +9124,7 @@
             
             document.getElementById('add-stock-modal').dataset.productId = productId;
             document.getElementById('add-stock-modal').classList.add('active');
+            document.body.classList.add('addstock-open');
         }
 
         // Variable para control de IVA en agregar stock
@@ -9371,6 +9377,7 @@
 
         function closeAddStockModal() {
             document.getElementById('add-stock-modal').classList.remove('active');
+            document.body.classList.remove('addstock-open');
             currentAddStockProduct = null;
             resetAddStockEditMode();
             // Cierre explícito (cancelar o guardar): descartar cualquier minimizado pendiente
@@ -13256,6 +13263,12 @@
             const cashReturns = appState.returns ? appState.returns.filter(r => r.date === today && r.paymentMethod === 'cash').reduce((sum, r) => sum + r.amount, 0) : 0;
             const toBank = appState.cashMovements ? appState.cashMovements.filter(m => m.date === today && m.type === 'to_bank').reduce((sum, m) => sum + m.amount, 0) : 0;
             const toCash = appState.cashMovements ? appState.cashMovements.filter(m => m.date === today && m.type === 'to_cash').reduce((sum, m) => sum + m.amount, 0) : 0;
+
+            // Movimientos de reserva: la plata movida a la caja fuerte sale del cajón
+            // (deposit) y la que vuelve de la reserva entra al cajón (withdraw).
+            // Los retiros al exterior ('withdraw-out') y ajustes no tocan la caja.
+            const resDeposits = appState.reserveMovements ? appState.reserveMovements.filter(m => m.date === today && m.type === 'deposit').reduce((sum, m) => sum + m.amount, 0) : 0;
+            const resWithdraws = appState.reserveMovements ? appState.reserveMovements.filter(m => m.date === today && m.type === 'withdraw').reduce((sum, m) => sum + m.amount, 0) : 0;
             
             // Transacciones de cuenta (banco/débito)
             const bankSales = appState.sales.filter(s => s.date === today && s.paymentMethod === 'debit').reduce((sum, s) => sum + (s.total - (s.mercadoCreditoFee || 0)), 0);
@@ -13263,10 +13276,10 @@
             const bankInvestments = appState.investments.filter(i => i.date === today && i.source === 'bank').reduce((sum, i) => sum + i.amount, 0);
             const bankReturns = appState.returns ? appState.returns.filter(r => r.date === today && r.paymentMethod === 'debit').reduce((sum, r) => sum + r.amount, 0) : 0;
             
-            const expectedCash = openingCash + cashSales - cashExpenses - cashInvestments - cashReturns + toCash - toBank;
+            const expectedCash = openingCash + cashSales - cashExpenses - cashInvestments - cashReturns + toCash - toBank - resDeposits + resWithdraws;
             const expectedBank = openingBank + bankSales - bankExpenses - bankInvestments - bankReturns - toCash + toBank;
-            
-            return { cash: expectedCash, bank: expectedBank, total: expectedCash + expectedBank };
+
+            return { cash: expectedCash, bank: expectedBank, total: expectedCash + expectedBank, reserveNet: resDeposits - resWithdraws };
         }
 
         // Abre el arqueo automáticamente una sola vez por día si aún no se hizo
@@ -13346,6 +13359,14 @@
                 document.getElementById('cc-sales').textContent = '$' + formatMoney(todayCashSales);
                 document.getElementById('cc-expenses').textContent = '$' + formatMoney(todayCashExpenses);
                 document.getElementById('cc-investments').textContent = '$' + formatMoney(todayCashInvestments);
+                // Neto a reserva: positivo = plata que salió del cajón a la caja fuerte
+                const reserveNet = expected.reserveNet || 0;
+                const ccReserveRow = document.getElementById('cc-reserve-row');
+                const ccReserve = document.getElementById('cc-reserve');
+                if (ccReserveRow && ccReserve) {
+                    ccReserveRow.classList.toggle('hidden', reserveNet === 0);
+                    ccReserve.textContent = (reserveNet >= 0 ? '-' : '+') + '$' + formatMoney(Math.abs(reserveNet));
+                }
                 document.getElementById('cc-expected').textContent = '$' + formatMoney(expected.cash);
                 
                 document.getElementById('cc-opening-bank').textContent = '$' + formatMoney(openingBank);
@@ -21422,6 +21443,7 @@ RESULTADOS:
                     <div class="flex justify-between"><span>Ventas efectivo:</span><span class="font-bold text-green-600" id="cc-sales">$0</span></div>
                     <div class="flex justify-between"><span>Gastos efectivo:</span><span class="font-bold text-red-600" id="cc-expenses">$0</span></div>
                     <div class="flex justify-between"><span>Compras efectivo:</span><span class="font-bold text-orange-600" id="cc-investments">$0</span></div>
+                    <div class="flex justify-between" id="cc-reserve-row"><span>A reserva (caja fuerte):</span><span class="font-bold text-amber-600" id="cc-reserve">$0</span></div>
                     <div class="flex justify-between"><span>Esperado caja:</span><span class="font-bold text-blue-600" id="cc-expected">$0</span></div>
                 </div>
                 <div class="bg-blue-50 rounded-lg p-3 space-y-2 text-sm">

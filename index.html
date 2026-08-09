@@ -504,6 +504,7 @@
                 <div class="bg-gray-50 rounded-xl p-4 mb-4">
                     <p class="font-bold text-lg text-gray-800" id="stock-count-name">-</p>
                     <p class="text-xs text-gray-500" id="stock-count-code">-</p>
+                    <p class="text-sm font-bold text-teal-700 mt-1" id="stock-count-expected">-</p>
                 </div>
                 <label class="block text-sm font-medium text-gray-700 mb-1" id="stock-count-label">¿Cuánto hay físicamente?</label>
                 <input type="number" id="stock-count-input" class="w-full border-2 border-teal-300 rounded-xl px-4 py-3 text-2xl font-bold text-center mb-2" min="0" step="any" autocomplete="off" oninput="updateStockCountDiff()" onkeydown="if(event.key==='Enter'){event.preventDefault();stockCountNext();}">
@@ -513,6 +514,7 @@
                     <button onclick="stockCountNext()" id="stock-count-next-btn" class="flex-1 bg-teal-600 text-white py-3 rounded-xl font-bold shadow hover:bg-teal-700">Siguiente →</button>
                 </div>
                 <button onclick="stockCountFinish(true)" class="w-full mt-2 text-xs text-gray-500 hover:text-red-600 underline">Terminar antes (resume solo lo ya contado)</button>
+                <button onclick="stockCountSkipForever()" class="w-full mt-1 text-xs text-gray-400 hover:text-orange-600 underline">🚫 No contar este producto nunca (ej: elementos del negocio)</button>
             </div>
             <div id="stock-count-summary" class="hidden">
                 <div id="stock-count-summary-list" class="space-y-2 max-h-72 overflow-y-auto custom-scrollbar mb-3"></div>
@@ -592,6 +594,13 @@
                         <span class="text-sm font-bold text-gray-700">🙈 Ocultar de la venta</span>
                     </label>
                     <p class="text-xs text-gray-500 mt-1">No aparece al buscar o escanear productos para vender (sigue en el inventario, las compras y los compuestos).</p>
+                </div>
+                <div class="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="edit-prod-skip-count">
+                        <span class="text-sm font-bold text-gray-700">📋 No incluir en el conteo de stock</span>
+                    </label>
+                    <p class="text-xs text-gray-500 mt-1">Para cosas que no vendés pero tenés anotadas (cafetera, abrochadora, etc.). No aparece en el Conteo de Stock.</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Lotes / Stock</label>
@@ -2439,14 +2448,15 @@
                 <p class="text-sm text-gray-500 mb-4">Seguimiento de compras y ventas en blanco (facturado) y negro (sin factura).</p>
                 
                 <!-- Selector de Período -->
-                <div class="flex justify-center mb-6">
+                <div class="flex justify-center mb-1">
                     <div class="flex bg-gray-100 rounded-lg p-1">
                         <button onclick="setBillingPeriod('today')" id="btn-billing-today" class="px-4 py-2 text-xs font-bold rounded text-gray-600 hover:bg-white transition">Hoy</button>
-                        <button onclick="setBillingPeriod('week')" id="btn-billing-week" class="px-4 py-2 text-xs font-bold rounded text-gray-600 hover:bg-white transition">Semana</button>
-                        <button onclick="setBillingPeriod('month')" id="btn-billing-month" class="px-4 py-2 text-xs font-bold rounded text-gray-600 hover:bg-white transition">Mes</button>
+                        <button onclick="setBillingPeriod('week')" id="btn-billing-week" class="px-4 py-2 text-xs font-bold rounded text-gray-600 hover:bg-white transition">Esta semana</button>
+                        <button onclick="setBillingPeriod('month')" id="btn-billing-month" class="px-4 py-2 text-xs font-bold rounded text-gray-600 hover:bg-white transition">Este mes</button>
                         <button onclick="setBillingPeriod('all')" id="btn-billing-all" class="px-4 py-2 text-xs font-bold rounded bg-white text-gray-800 shadow-sm transition">Todo</button>
                     </div>
                 </div>
+                <p id="billing-period-caption" class="text-center text-sm font-bold text-purple-600 mb-6">-</p>
                 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <div class="bg-blue-50 rounded-xl p-4 border border-blue-200 text-center">
@@ -2484,6 +2494,32 @@
                     </div>
                 </div>
                 
+                <!-- Facturado real en ARCA en el período -->
+                <div class="bg-emerald-50 rounded-xl p-4 border border-emerald-200 mb-6">
+                    <div class="flex items-center justify-between mb-3">
+                        <p class="text-emerald-700 text-xs font-bold uppercase">✅ Facturado en ARCA <span id="billing-arca-period" class="normal-case font-medium text-emerald-600"></span></p>
+                        <button onclick="toggleBillingArcaList()" id="btn-billing-arca-list" class="text-xs font-bold text-emerald-700 underline">Ver comprobantes</button>
+                    </div>
+                    <div class="grid grid-cols-3 gap-3 text-center">
+                        <div>
+                            <p class="text-xs text-emerald-600">Facturas emitidas</p>
+                            <p class="text-xl font-bold text-emerald-700" id="billing-arca-gross">$0</p>
+                            <p class="text-xs text-emerald-500" id="billing-arca-count">0 comprobantes</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-red-500">Notas de crédito</p>
+                            <p class="text-xl font-bold text-red-600" id="billing-arca-nc">$0</p>
+                            <p class="text-xs text-red-400" id="billing-arca-nc-count">0 NC</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-emerald-800 font-bold">Neto facturado</p>
+                            <p class="text-2xl font-bold text-emerald-800" id="billing-arca-net">$0</p>
+                            <p class="text-xs text-emerald-500">lo que declarás</p>
+                        </div>
+                    </div>
+                    <div id="billing-arca-list" class="hidden mt-3 max-h-64 overflow-y-auto custom-scrollbar space-y-1"></div>
+                </div>
+
                 <!-- Control de Facturación Diaria -->
                 <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg mb-6">
                     <h4 class="text-lg font-bold mb-1 flex items-center gap-2">
@@ -4504,54 +4540,8 @@
                 });
             }
             
-            // 3. Productos por VENCER (Próximos 7 días) - con sugerencia de PROMOCIÓN
-            // Buscar en el primer lote de cada producto (FIFO - el que se vende primero)
-            const expiringProducts = [];
-            activeInv.forEach(p => {
-                if (p.batches && p.batches.length > 0) {
-                    // Ordenar por vencimiento y tomar el primero (FIFO)
-                    const sortedBatches = [...p.batches].sort((a, b) => {
-                        if (!a.expiry) return 1;
-                        if (!b.expiry) return -1;
-                        return new Date(a.expiry) - new Date(b.expiry);
-                    });
-                    const firstBatch = sortedBatches[0];
-                    if (firstBatch.expiry && firstBatch.stock > 0) {
-                        const daysUntil = Math.ceil((new Date(firstBatch.expiry) - today) / (1000 * 60 * 60 * 24));
-                        if (daysUntil > 0 && daysUntil <= 7) {
-                            expiringProducts.push({ product: p, daysUntil, batch: firstBatch });
-                        }
-                    }
-                } else if (p.expiry) {
-                    // Compatibilidad con productos antiguos
-                    const daysUntil = Math.ceil((new Date(p.expiry) - today) / (1000 * 60 * 60 * 24));
-                    if (daysUntil > 0 && daysUntil <= 7) {
-                        expiringProducts.push({ product: p, daysUntil, batch: null });
-                    }
-                }
-            });
-            
-            if (expiringProducts.length > 0) {
-                expiringProducts.forEach(({ product: p, daysUntil }) => {
-                    const promoPriceNum = p.salePrice * 0.7;
-                    const promoPrice = formatMoney(promoPriceNum); // 30% off
-                    const stock = getProductStock(p);
-                    
-                    alerts.push({
-                        type: 'promo',
-                        icon: '🎯',
-                        title: `🚨 PROMO por Vencer: ${p.name}`,
-                        message: `Vence en ${daysUntil} día${daysUntil > 1 ? 's' : ''}. Stock: ${stock} unidades. Sugerencia: Precio promocional $${promoPrice} (30% off)`,
-                        action: 'Aplicar Promo',
-                        actionFn: `applyPromoPrice('${p.id}', ${promoPriceNum})`,
-                        bgColor: 'bg-purple-50',
-                        borderColor: 'border-purple-500',
-                        textColor: 'text-purple-800',
-                        iconBg: 'bg-purple-100'
-                    });
-                });
-            }
-            
+            // 3. (Eliminado: sugerencias de promoción por vencimiento)
+
             // 4. Productos próximos a vencer (8-15 días) - Advertencia temprana
             const earlyExpiring = [];
             activeInv.forEach(p => {
@@ -4676,26 +4666,6 @@
             }
         }
         
-        function applyPromoPrice(productId, promoPrice) {
-            const product = appState.inventory.find(p => p.id === productId);
-            if (!product) return;
-            
-            // Guardar precio original si no existe
-            if (!product.originalPrice) {
-                product.originalPrice = product.salePrice;
-            }
-            
-            // Aplicar precio promocional
-            product.salePrice = parseFloat(promoPrice);
-            product.isPromo = true;
-            product.promoEndDate = formatDateISO(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)); // 7 días de promo
-            
-            saveToLocalStorage();
-            renderAll();
-            
-            showNotification(`🎯 Precio promocional aplicado: ${product.name} ahora $${promoPrice}`, 'success');
-        }
-
         function renderCharts() {
             if (salesChartInstance) {
                 salesChartInstance.destroy();
@@ -10018,6 +9988,10 @@
             // Cargar ocultar de la venta
             const hiddenSaleCheckbox = document.getElementById('edit-prod-hidden-sale');
             if (hiddenSaleCheckbox) hiddenSaleCheckbox.checked = product.hiddenFromSale || false;
+
+            // Cargar exclusión del conteo de stock
+            const skipCountCheckbox = document.getElementById('edit-prod-skip-count');
+            if (skipCountCheckbox) skipCountCheckbox.checked = product.skipStockCount || false;
             
             // Calcular margen inicial
             calculateEditMargin();
@@ -10213,6 +10187,13 @@
                     product.hiddenFromSale = true;
                 } else {
                     delete product.hiddenFromSale;
+                }
+
+                // Guardar exclusión del conteo de stock
+                if (document.getElementById('edit-prod-skip-count')?.checked) {
+                    product.skipStockCount = true;
+                } else {
+                    delete product.skipStockCount;
                 }
                 
                 product.updatedAt = new Date().toISOString();
@@ -14026,6 +14007,7 @@
         function openStockCountModal() {
             const products = getActiveInventory()
                 .filter(p => !(p.isComposite && p.components && p.components.length > 0)) // las preparaciones no se cuentan (su stock sale de los componentes)
+                .filter(p => !p.skipStockCount) // elementos del negocio u otros excluidos del conteo
                 .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             if (products.length === 0) {
                 showNotification('No hay productos para contar', 'warning');
@@ -14065,6 +14047,7 @@
             document.getElementById('stock-count-progress').textContent = n + ' de ' + total;
             document.getElementById('stock-count-name').textContent = item.name;
             document.getElementById('stock-count-code').textContent = item.barcode ? 'Código: ' + item.barcode : 'Sin código de barras';
+            document.getElementById('stock-count-expected').textContent = '📦 Según el sistema hay: ' + item.expected + (item.isWeight ? 'g' : ' u');
             document.getElementById('stock-count-label').textContent = item.isWeight ? '¿Cuántos GRAMOS hay físicamente?' : '¿Cuántas UNIDADES hay físicamente?';
             const input = document.getElementById('stock-count-input');
             input.value = item.counted !== null ? String(item.counted) : '';
@@ -14123,6 +14106,32 @@
             stockCountCapture(); // conservar lo escrito si es válido
             stockCountSession.index--;
             renderStockCountStep();
+        }
+
+        // Saca el producto actual del conteo para siempre (queda en el inventario;
+        // se puede reactivar editando el producto → "No incluir en el conteo de stock")
+        function stockCountSkipForever() {
+            if (!stockCountSession) return;
+            const item = stockCountSession.items[stockCountSession.index];
+            if (!item) return;
+            if (!confirm('¿Sacar "' + item.name + '" del conteo de stock para siempre? Podés reactivarlo editando el producto.')) return;
+            const product = appState.inventory.find(p => p.id === item.productId);
+            if (product) {
+                product.skipStockCount = true;
+                product.updatedAt = new Date().toISOString();
+                saveToLocalStorage();
+            }
+            stockCountSession.items.splice(stockCountSession.index, 1);
+            if (stockCountSession.items.length === 0) {
+                closeStockCountModal();
+                showNotification('No quedan productos para contar', 'info');
+                return;
+            }
+            if (stockCountSession.index >= stockCountSession.items.length) {
+                stockCountSession.index = stockCountSession.items.length - 1;
+            }
+            renderStockCountStep();
+            showNotification('🚫 "' + item.name + '" ya no aparecerá en el conteo', 'success');
         }
 
         function stockCountFinish(early) {
@@ -16768,13 +16777,14 @@ Total de productos a comprar: ${shoppingList.length}
             if (period === 'today') {
                 startDate = today;
             } else if (period === 'week') {
+                // Esta semana calendario: desde el lunes
                 const d = new Date(now);
-                d.setDate(d.getDate() - 7);
+                const dow = (d.getDay() + 6) % 7; // lunes = 0
+                d.setDate(d.getDate() - dow);
                 startDate = formatDateISO(d);
             } else if (period === 'month') {
-                const d = new Date(now);
-                d.setMonth(d.getMonth() - 1);
-                startDate = formatDateISO(d);
+                // Este mes calendario: desde el 1° (la facturación se hace por mes)
+                startDate = today.slice(0, 8) + '01';
             }
             
             // Calcular compras por período (desde lotes)
@@ -16815,11 +16825,112 @@ Total de productos a comprar: ${shoppingList.length}
                 }
             });
             
-            return { purchasedWhite, purchasedBlack, soldWhite, soldBlack, soldDebit, filteredSales };
+            return { purchasedWhite, purchasedBlack, soldWhite, soldBlack, soldDebit, filteredSales, startDate };
+        }
+
+        // Texto amigable del período: "Hoy — sábado 9 de agosto", "Esta semana — del 4 al 9 de agosto", "Agosto de 2026"
+        function billingPeriodCaption(period, startDate) {
+            const hoy = parseDateLocal(formatDateISO(appState.activeDate));
+            if (period === 'today') {
+                return 'Hoy — ' + hoy.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+            }
+            if (period === 'week') {
+                const lunes = parseDateLocal(startDate);
+                return 'Esta semana — del ' + lunes.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' }) +
+                    ' al ' + hoy.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+            }
+            if (period === 'month') {
+                const mes = hoy.toLocaleDateString('es-ES', { month: 'long' });
+                return mes.charAt(0).toUpperCase() + mes.slice(1) + ' de ' + hoy.getFullYear();
+            }
+            return 'Todo el historial';
+        }
+
+        // Comprobantes ARCA emitidos en el período (facturas y notas de crédito)
+        function getFacturasPeriodo(startDate) {
+            const comprobantes = [];
+            const ventas = appState.sales.concat(appState.salesAnuladas || []);
+            ventas.forEach(sale => {
+                if (startDate && sale.date < startDate) return;
+                saleFacturas(sale).forEach(f => {
+                    if (!f.cae) return;
+                    comprobantes.push({
+                        tipo: 'factura',
+                        letra: arcaCbteLetra(f.cbteTipo),
+                        nro: f.cbteNro,
+                        ptoVta: f.ptoVta,
+                        cae: f.cae,
+                        total: f.total || 0,
+                        fecha: f.fecha || sale.date,
+                        anulada: !!(f.notaCredito && f.notaCredito.cae)
+                    });
+                    if (f.notaCredito && f.notaCredito.cae) {
+                        comprobantes.push({
+                            tipo: 'nc',
+                            letra: arcaCbteLetra(f.notaCredito.cbteTipo),
+                            nro: f.notaCredito.cbteNro,
+                            ptoVta: f.notaCredito.ptoVta,
+                            cae: f.notaCredito.cae,
+                            total: f.notaCredito.total || 0,
+                            fecha: f.notaCredito.fecha || sale.date,
+                            anulada: false
+                        });
+                    }
+                });
+            });
+            comprobantes.sort((a, b) => b.fecha.localeCompare(a.fecha) || (b.nro || 0) - (a.nro || 0));
+            return comprobantes;
+        }
+
+        function toggleBillingArcaList() {
+            const list = document.getElementById('billing-arca-list');
+            if (list) list.classList.toggle('hidden');
+        }
+
+        function renderBillingArca(startDate, period) {
+            const comprobantes = getFacturasPeriodo(startDate);
+            const facturas = comprobantes.filter(c => c.tipo === 'factura');
+            const ncs = comprobantes.filter(c => c.tipo === 'nc');
+            const gross = facturas.reduce((s, c) => s + c.total, 0);
+            const ncTotal = ncs.reduce((s, c) => s + c.total, 0);
+
+            document.getElementById('billing-arca-period').textContent = '— ' + billingPeriodCaption(period, startDate).toLowerCase();
+            document.getElementById('billing-arca-gross').textContent = '$' + formatMoney(gross);
+            document.getElementById('billing-arca-count').textContent = facturas.length + ' comprobante' + (facturas.length === 1 ? '' : 's');
+            document.getElementById('billing-arca-nc').textContent = ncTotal > 0 ? '-$' + formatMoney(ncTotal) : '$0';
+            document.getElementById('billing-arca-nc-count').textContent = ncs.length + ' NC';
+            document.getElementById('billing-arca-net').textContent = '$' + formatMoney(gross - ncTotal);
+
+            const list = document.getElementById('billing-arca-list');
+            if (comprobantes.length === 0) {
+                list.innerHTML = '<p class="text-center text-emerald-600 text-sm py-3">No se emitieron comprobantes en este período</p>';
+            } else {
+                list.innerHTML = comprobantes.map(c => {
+                    const esNc = c.tipo === 'nc';
+                    const nroFmt = String(c.ptoVta || 0).padStart(4, '0') + '-' + String(c.nro || 0).padStart(8, '0');
+                    return `
+                        <div class="flex justify-between items-center p-2 rounded-lg text-xs ${esNc ? 'bg-red-50' : 'bg-white'} border ${esNc ? 'border-red-200' : 'border-emerald-100'}">
+                            <div class="flex-1 min-w-0">
+                                <p class="font-bold ${esNc ? 'text-red-700' : 'text-gray-800'}">${esNc ? '🚫 NC' : '🧾 Factura'} ${c.letra} ${nroFmt}${c.anulada ? ' (anulada con NC)' : ''}</p>
+                                <p class="text-gray-500">${c.fecha} · CAE ${c.cae}</p>
+                            </div>
+                            <p class="font-bold ${esNc ? 'text-red-600' : 'text-emerald-700'} ml-2">${esNc ? '-' : ''}$${formatMoney(c.total)}</p>
+                        </div>`;
+                }).join('');
+            }
         }
 
         function renderBilling() {
             const data = getBillingPeriodData(billingPeriod);
+
+            // Etiquetas del período: el botón de mes muestra el nombre ("Agosto") y un caption describe el rango
+            const hoy = parseDateLocal(formatDateISO(appState.activeDate));
+            const mesNombre = hoy.toLocaleDateString('es-ES', { month: 'long' });
+            const btnMonth = document.getElementById('btn-billing-month');
+            if (btnMonth) btnMonth.textContent = mesNombre.charAt(0).toUpperCase() + mesNombre.slice(1);
+            const captionEl = document.getElementById('billing-period-caption');
+            if (captionEl) captionEl.textContent = '📅 ' + billingPeriodCaption(billingPeriod, data.startDate);
+            renderBillingArca(data.startDate, billingPeriod);
             
             document.getElementById('billing-purchased-white').textContent = '$' + formatMoney(data.purchasedWhite);
             document.getElementById('billing-purchased-black').textContent = '$' + formatMoney(data.purchasedBlack);
@@ -21566,7 +21677,7 @@ RESULTADOS:
 
             // === EXPONER FUNCIONES AL WINDOW PARA ONCLICK HANDLERS ===
             (function exposeLocalFunctions() {
-                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','login','logout','saveUser','editUser','deleteUser','cancelEditUser','toggleUserActive','openReserveModal','closeReserveModal','saveReserveMove','openShiftCountModal','closeShiftCountModal','saveShiftCount','renderShiftCountsList','facturarVenta','saveArcaSettings','testArcaConnection','printFactura','facturarItemsSeleccionados','facturarPendienteVenta','facturarPendientes','emitirNotaCredito','setFontScale','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeydown','renderSellSearchResults','scrollSelectedIntoView','addToCartByBarcode','renderSellAlerts','applyPromoPrice','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderExpensesTable','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
+                const fnNames = ['showSection','addToCartFromSearch','updateCartQuantity','setCartQuantity','removeFromCart','clearCart','setPaymentMethod','completeSale','openManualSaleModal','closeManualSaleModal','saveManualSale','calculateChange','toggleTicketInput','applyManualTicket','validateTicketInput','removeAppliedTicket','login','logout','saveUser','editUser','deleteUser','cancelEditUser','toggleUserActive','openReserveModal','closeReserveModal','saveReserveMove','openShiftCountModal','closeShiftCountModal','saveShiftCount','renderShiftCountsList','facturarVenta','saveArcaSettings','testArcaConnection','printFactura','facturarItemsSeleccionados','facturarPendienteVenta','facturarPendientes','emitirNotaCredito','setFontScale','editPromotion','togglePromotion','deletePromotion','openPromoModal','closePromoModal','savePromotion','onPromoTypeChange','viewTicket','closeTicketViewModal','printCurrentTicket','printTicketById','closeTicketPrintModal','printTicketWindow','markTicketUsed','filterPromos','renderPromoMetrics','filterTickets','searchTickets','showSaleDetail','closeSaleDetail','editSale','deleteSale','printReceiptFromNotification','resetAllData','exportBackupBeforeReset','backupData','restoreData','forceSync','exportShoppingList','renderCart','renderComboSuggestions','focusBarcode','handleBarcodeAutoAdd','handleSellSearch','handleSellSearchKeydown','renderSellSearchResults','scrollSelectedIntoView','addToCartByBarcode','renderSellAlerts','renderDashboard','renderCashflow','setCashflowView','renderCashflowView','renderExpensesTable','renderInventory','updateStockKPIs','updateSidebar','updateInventoryValues','renderPromotions','renderDiscountTickets','showSuccessOverlay','showTicketNotification','printReceipt','exportSalesReport','exportExpensesReport','exportTaxReport','downloadFile','roundTo50Up','setInvInvoiceType','toggleRoundPriceCheckbox','restoreInventoryFormState','handleRoundPriceChange','calculateInventoryPrice','calculateInventoryMargin','calculateInventoryPriceFromMargin','preparePurchase','showPurchaseConfirmation','closePurchaseConfirmation','confirmPurchase','showPurchaseSuccess','closePurchaseSuccess','editProduct','showEditProductModal','setEditProdInvoiceType','closeEditProductModal','saveProductEdit','renderEditProdBatches','addEditProdBatchRow','removeEditProdBatchRow','deleteProduct','showAddStockModal','closeAddStockModal','executeAddStock','resetAddStockSelections','setAddStockPayment','setAddStockInvoiceType','generateShoppingList','renderPredictions','renderAlerts','renderSettings','renderBilling','setBillingPeriod','getBillingPeriodData','resetInvoiceTracking','exportBillingReport','setPurchaseInvoiceType','setAddStockInvoiceType','saveMarginFromSettings','saveBalancesFromSettings','saveMercadoFeeFromSettings','openManualTicketModal','closeManualTicketModal','saveManualTicket','generateTicketFromSale','onManualTicketTypeChange','setChartPeriod','setCashflowPeriod','updateCashFlowChartByPeriod','renderCashFlowChartByPeriod','renderCalendar','changeCalendarMonth','selectCalendarDate','showDayDetail','switchDayTab','renderDaySales','renderDayExpenses','renderDayInvestments','closeDayDetail','formatDateISO','normalizeText','levenshteinDistance','generateDeviceId','updateSyncStatus','syncToFirebase','startFirebaseListener','mergeFirebaseData','saveToLocalStorage','loadFromLocalStorage','showNotification','isAdmin','getProductStock','fuzzySearchProducts','calculateActivePromoDiscount','isPromoApplicableNow','generateTicketNumber','generateDiscountTicket','updateTicketBadge','showTicketGeneratedNotification','calculateTicketDiscount','escapeHtml','backToLoginOptions','changeDate','resetToToday','showLoginForm','toggleMobileSidebar','quickSell','setPurchasePayment','closePurchaseModal','toggleBuyDay','setAddStockPayment','openEditProductModal','showDayTab','deleteExpense','editInvestment','deleteInvestment','navigateChartPeriod','openAdjustModal','closeAdjustModal','setAdjustTarget','setAdjustType','setWithdrawalType','openCashCountModal','closeCashCountModal','saveCashOpening','saveCashClosing','updateCashDifference','deleteCashCount','renderCashCountsList','openLossModal','closeLossModal','setLossReason','saveLoss','openReturnModal','closeReturnModal','searchSaleForReturn','selectReturnSale','saveReturn','executeAdjustMoney','openMoveMoneyModal','closeMoveModal','setMoveDirection','executeMoveMoney','openExpenseModal','exportInventoryReport','exportFinancialReport','closeAddStockModal','closeEditProductModal','openAddStockModal','filterAlerts','showTicketRulesPanel','hideTicketRulesPanel','renderTicketRules','openTicketRuleEditor','closeTicketRuleEditor','onTicketRuleTypeChange','onTicketRuleTicketTypeChange','saveTicketRule','editTicketRule','toggleTicketRule','deleteTicketRule','generateDiscountTicketFromRule','toggleCalendarOnlyB'];
                 for (const name of fnNames) {
                     try {
                         const fn = eval(name);

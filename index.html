@@ -2555,6 +2555,7 @@
                                     <th class="text-right py-2 px-3">Blanco</th>
                                     <th class="text-right py-2 px-3">Negro</th>
                                     <th class="text-left py-2 px-3">Pago</th>
+                                    <th class="text-left py-2 px-3">Factura</th>
                                 </tr>
                             </thead>
                             <tbody id="billing-sales-table">
@@ -16966,7 +16967,7 @@ Total de productos a comprar: ${shoppingList.length}
             const recentSales = [...data.filteredSales].reverse().slice(0, 50);
             
             if (recentSales.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400 py-4">No hay ventas en el período seleccionado</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400 py-4">No hay ventas en el período seleccionado</td></tr>';
             } else {
                 tableBody.innerHTML = recentSales.map(s => {
                     const bd = s.invoiceBreakdown || { white: 0, black: 0 };
@@ -16977,9 +16978,28 @@ Total de productos a comprar: ${shoppingList.length}
                         '<td class="py-2 px-3 text-right text-blue-600">$' + formatMoney(bd.white) + '</td>' +
                         '<td class="py-2 px-3 text-right text-gray-500">$' + formatMoney(bd.black) + '</td>' +
                         '<td class="py-2 px-3 text-xs">' + paymentIcon + '</td>' +
+                        '<td class="py-2 px-3 text-xs">' + saleFacturasResumen(s) + '</td>' +
                     '</tr>';
                 }).join('');
             }
+        }
+
+        // Texto de la columna "Factura" en la tabla de facturación:
+        // comprobantes emitidos, NC si fue anulada, ⏳ si está programada, — si no tiene
+        function saleFacturasResumen(sale) {
+            const facturas = saleFacturas(sale).filter(f => f.cae);
+            if (facturas.length > 0) {
+                return facturas.map(f => {
+                    const nroFmt = String(f.ptoVta || 0).padStart(4, '0') + '-' + String(f.cbteNro || 0).padStart(8, '0');
+                    const nc = f.notaCredito && f.notaCredito.cae;
+                    return '<span class="' + (nc ? 'text-red-500 line-through' : 'text-emerald-700 font-bold') + '" title="CAE ' + f.cae + (nc ? ' · anulada con NC' : '') + '">🧾 ' + arcaCbteLetra(f.cbteTipo) + ' ' + nroFmt + '</span>';
+                }).join('<br>');
+            }
+            const programada = (appState.facturasProgramadas || []).find(p => p.saleId === sale.id);
+            if (programada) {
+                return '<span class="text-yellow-600" title="Se emite ' + (programada.notBefore ? 'después de ' + new Date(programada.notBefore).toLocaleString('es-AR') : 'pronto') + '">⏳ programada</span>';
+            }
+            return '<span class="text-gray-300">—</span>';
         }
 
         function resetInvoiceTracking() {

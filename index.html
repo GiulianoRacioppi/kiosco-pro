@@ -492,26 +492,6 @@
         </div>
     </div>
 
-    <!-- Bulk Supplier Edit Modal -->
-    <div id="bulk-supplier-modal" class="modal">
-        <div class="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold text-indigo-600"><i class="fas fa-truck"></i> Edición masiva de proveedores</h3>
-                <button onclick="closeBulkSupplierModal()" class="text-gray-400 hover:text-gray-700 text-xl px-2"><i class="fas fa-times"></i></button>
-            </div>
-            <input type="text" id="bulk-supplier-search" placeholder="Filtrar productos..." class="w-full border-2 border-indigo-200 rounded-lg px-3 py-2 mb-2" oninput="renderBulkSupplierList()" autocomplete="off">
-            <div class="flex gap-2 mb-3">
-                <select id="bulk-supplier-apply" class="flex-1 border rounded-lg px-3 py-2 text-sm"></select>
-                <button onclick="bulkApplySupplierToVisible()" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-3 py-2 rounded-lg font-bold text-sm whitespace-nowrap">Aplicar a los visibles</button>
-            </div>
-            <div id="bulk-supplier-list" class="space-y-2 max-h-80 overflow-y-auto custom-scrollbar mb-4"></div>
-            <div class="flex gap-2">
-                <button onclick="closeBulkSupplierModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
-                <button onclick="saveBulkSuppliers()" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700">Guardar cambios</button>
-            </div>
-        </div>
-    </div>
-
     <!-- Stock Count Modal -->
     <div id="stock-count-modal" class="modal">
         <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -1522,9 +1502,6 @@
                 </button>
                 <button onclick="openFoundStockModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow">
                     <i class="fas fa-gift"></i> Stock Gratis
-                </button>
-                <button onclick="openBulkSupplierModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow">
-                    <i class="fas fa-truck"></i> Editar Proveedores
                 </button>
                 <button onclick="openStockCountModal()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow">
                     <i class="fas fa-clipboard-list"></i> Conteo de Stock
@@ -14039,95 +14016,6 @@
                     </div>
                 </div>
             `).join('');
-        }
-
-        // ==================== EDICIÓN MASIVA DE PROVEEDORES ====================
-        let bulkSupplierProducts = [];
-        let bulkSupplierPending = {}; // productId -> proveedor elegido (aún sin guardar)
-
-        function openBulkSupplierModal() {
-            bulkSupplierProducts = getActiveInventory().slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-            bulkSupplierPending = {};
-            bulkSupplierProducts.forEach(p => { bulkSupplierPending[p.id] = p.supplier || ''; });
-            const suppliers = (appState.suppliers || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-            const applySel = document.getElementById('bulk-supplier-apply');
-            applySel.innerHTML = '<option value="">Sin proveedor</option>' +
-                suppliers.map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join('');
-            document.getElementById('bulk-supplier-search').value = '';
-            renderBulkSupplierList();
-            document.getElementById('bulk-supplier-modal').classList.add('active');
-        }
-
-        function closeBulkSupplierModal() {
-            document.getElementById('bulk-supplier-modal').classList.remove('active');
-            bulkSupplierProducts = [];
-            bulkSupplierPending = {};
-        }
-
-        function renderBulkSupplierList() {
-            const q = (document.getElementById('bulk-supplier-search').value || '').toLowerCase();
-            const suppliers = (appState.suppliers || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-            const supplierNames = suppliers.map(s => s.name);
-            const list = document.getElementById('bulk-supplier-list');
-            const rows = [];
-            bulkSupplierProducts.forEach((p, i) => {
-                if (q && !(p.name || '').toLowerCase().includes(q)) return;
-                // Si el proveedor actual ya no existe en la lista (viejo), agregarlo como opción para no perderlo
-                const current = bulkSupplierPending[p.id] || '';
-                const names = supplierNames.slice();
-                if (current && !names.includes(current)) names.push(current);
-                const opts = [''].concat(names).map(n =>
-                    `<option value="${escapeHtml(n)}" ${n === current ? 'selected' : ''}>${n === '' ? 'Sin proveedor' : escapeHtml(n)}</option>`
-                ).join('');
-                const changed = current !== (p.supplier || '');
-                rows.push(`
-                    <div class="flex items-center gap-2 p-2 rounded-lg ${changed ? 'bg-indigo-50 border border-indigo-200' : 'bg-gray-50'}">
-                        <span class="flex-1 text-sm font-medium text-gray-700 truncate">${escapeHtml(p.name || '')}</span>
-                        <select onchange="bulkSupplierChanged('${p.id}', this)" class="border rounded-lg px-2 py-1 text-sm w-40">${opts}</select>
-                    </div>`);
-            });
-            list.innerHTML = rows.length > 0 ? rows.join('') : '<p class="text-center text-gray-400 py-4 text-sm">No hay productos que coincidan</p>';
-        }
-
-        function bulkSupplierChanged(productId, selectEl) {
-            bulkSupplierPending[productId] = selectEl.value;
-            const p = bulkSupplierProducts.find(x => x.id === productId);
-            const changed = p && selectEl.value !== (p.supplier || '');
-            const row = selectEl.closest('div');
-            if (row) row.className = 'flex items-center gap-2 p-2 rounded-lg ' + (changed ? 'bg-indigo-50 border border-indigo-200' : 'bg-gray-50');
-        }
-
-        function bulkApplySupplierToVisible() {
-            const value = document.getElementById('bulk-supplier-apply').value;
-            const q = (document.getElementById('bulk-supplier-search').value || '').toLowerCase();
-            let count = 0;
-            bulkSupplierProducts.forEach(p => {
-                if (q && !(p.name || '').toLowerCase().includes(q)) return;
-                bulkSupplierPending[p.id] = value;
-                count++;
-            });
-            renderBulkSupplierList();
-            showNotification('Proveedor aplicado a ' + count + ' productos visibles. Tocá "Guardar cambios" para confirmar.', 'info');
-        }
-
-        function saveBulkSuppliers() {
-            let changed = 0;
-            bulkSupplierProducts.forEach(p => {
-                const newVal = bulkSupplierPending[p.id] || '';
-                if (newVal !== (p.supplier || '')) {
-                    p.supplier = newVal;
-                    p.updatedAt = new Date().toISOString();
-                    changed++;
-                }
-            });
-            if (changed === 0) {
-                showNotification('No hay cambios para guardar', 'warning');
-                return;
-            }
-            saveToLocalStorage();
-            renderAll();
-            closeBulkSupplierModal();
-            showNotification('✅ Proveedor actualizado en ' + changed + ' productos', 'success');
         }
 
         // ==================== CONTEO DE STOCK GUIADO ====================

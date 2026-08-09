@@ -2500,7 +2500,7 @@
                         <p class="text-emerald-700 text-xs font-bold uppercase">✅ Facturado en ARCA <span id="billing-arca-period" class="normal-case font-medium text-emerald-600"></span></p>
                         <button onclick="toggleBillingArcaList()" id="btn-billing-arca-list" class="text-xs font-bold text-emerald-700 underline">Ver comprobantes</button>
                     </div>
-                    <div class="grid grid-cols-3 gap-3 text-center">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
                         <div>
                             <p class="text-xs text-emerald-600">Facturas emitidas</p>
                             <p class="text-xl font-bold text-emerald-700" id="billing-arca-gross">$0</p>
@@ -2516,39 +2516,13 @@
                             <p class="text-2xl font-bold text-emerald-800" id="billing-arca-net">$0</p>
                             <p class="text-xs text-emerald-500">lo que declarás</p>
                         </div>
+                        <div>
+                            <p class="text-xs text-gray-500">Vendido sin facturar</p>
+                            <p class="text-xl font-bold text-gray-700" id="billing-arca-unbilled">$0</p>
+                            <p class="text-xs text-gray-400">no entró a ARCA</p>
+                        </div>
                     </div>
                     <div id="billing-arca-list" class="hidden mt-3 max-h-64 overflow-y-auto custom-scrollbar space-y-1"></div>
-                </div>
-
-                <!-- Control de Facturación Diaria -->
-                <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg mb-6">
-                    <h4 class="text-lg font-bold mb-1 flex items-center gap-2">
-                        <i class="fas fa-file-invoice"></i> A Facturar
-                    </h4>
-                    <p class="text-xs text-indigo-100 mb-4" id="billing-selected-date">Fecha seleccionada</p>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                        <div class="bg-white/20 rounded-lg p-3 text-center">
-                            <p class="text-xs text-indigo-100">Vendido en Blanco (Hoy)</p>
-                            <p class="text-2xl font-bold" id="billing-today-sold-white">$0</p>
-                        </div>
-                        <div class="bg-white/20 rounded-lg p-3 text-center">
-                            <p class="text-xs text-indigo-100">Ya Facturado</p>
-                            <p class="text-2xl font-bold" id="billing-today-billed">$0</p>
-                        </div>
-                        <div class="bg-white/30 rounded-lg p-3 text-center border-2 border-white/40">
-                            <p class="text-xs text-white font-bold">A FACTURAR</p>
-                            <p class="text-3xl font-bold" id="billing-today-to-bill">$0</p>
-                        </div>
-                    </div>
-                    <div id="billing-today-actions" class="flex gap-3">
-                        <button onclick="markDayAsBilled()" id="btn-mark-billed" class="flex-1 bg-white text-purple-700 py-3 rounded-xl font-bold shadow hover:bg-gray-100 transition">
-                            <i class="fas fa-check-circle"></i> Marcar como Facturado
-                        </button>
-                    </div>
-                    <div id="billing-today-billed-msg" class="hidden text-center py-3 bg-white/20 rounded-xl">
-                        <p class="font-bold"><i class="fas fa-check"></i> Facturado correctamente</p>
-                        <button onclick="unmarkDayAsBilled()" class="text-xs text-white underline mt-1 hover:text-indigo-200">Deshacer</button>
-                    </div>
                 </div>
 
                 <!-- Alerta de control débito vs blanco -->
@@ -16769,6 +16743,20 @@ Total de productos a comprar: ${shoppingList.length}
             renderBilling();
         }
 
+        // Fecha de la primera factura emitida = inicio de la integración con ARCA.
+        // La página de Facturación solo cuenta desde ahí (hoja en blanco).
+        function arcaIntegrationStart() {
+            let min = null;
+            appState.sales.concat(appState.salesAnuladas || []).forEach(sale => {
+                saleFacturas(sale).forEach(f => {
+                    if (!f.cae) return;
+                    const fecha = f.fecha || sale.date;
+                    if (!min || fecha < min) min = fecha;
+                });
+            });
+            return min;
+        }
+
         function getBillingPeriodData(period) {
             const today = formatDateISO(appState.activeDate);
             const now = new Date(today);
@@ -16787,6 +16775,12 @@ Total de productos a comprar: ${shoppingList.length}
                 startDate = today.slice(0, 8) + '01';
             }
             
+            // Hoja en blanco desde la integración con ARCA: nada anterior a la primera factura cuenta
+            const arcaStart = arcaIntegrationStart();
+            if (arcaStart && (!startDate || startDate < arcaStart)) {
+                startDate = arcaStart;
+            }
+
             // Calcular compras por período (desde lotes)
             let purchasedWhite = 0;
             let purchasedBlack = 0;
@@ -16842,6 +16836,12 @@ Total de productos a comprar: ${shoppingList.length}
             if (period === 'month') {
                 const mes = hoy.toLocaleDateString('es-ES', { month: 'long' });
                 return mes.charAt(0).toUpperCase() + mes.slice(1) + ' de ' + hoy.getFullYear();
+            }
+            // "Todo" = desde la integración con ARCA (hoja en blanco)
+            const arcaStart = arcaIntegrationStart();
+            if (arcaStart) {
+                const d = parseDateLocal(arcaStart);
+                return 'Desde la integración ARCA — ' + d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
             }
             return 'Todo el historial';
         }
@@ -16901,6 +16901,14 @@ Total de productos a comprar: ${shoppingList.length}
             document.getElementById('billing-arca-nc-count').textContent = ncs.length + ' NC';
             document.getElementById('billing-arca-net').textContent = '$' + formatMoney(gross - ncTotal);
 
+            // Vendido sin facturar: todo lo vendido en el período que no entró a ARCA
+            let totalVendido = 0;
+            appState.sales.forEach(sale => {
+                if (!startDate || sale.date >= startDate) totalVendido += sale.total || 0;
+            });
+            const sinFacturar = Math.max(0, totalVendido - gross);
+            document.getElementById('billing-arca-unbilled').textContent = '$' + formatMoney(sinFacturar);
+
             const list = document.getElementById('billing-arca-list');
             if (comprobantes.length === 0) {
                 list.innerHTML = '<p class="text-center text-emerald-600 text-sm py-3">No se emitieron comprobantes en este período</p>';
@@ -16953,9 +16961,6 @@ Total de productos a comprar: ${shoppingList.length}
                 alertEl.classList.add('hidden');
             }
             
-            // Actualizar control de facturación del día
-            updateDailyBillingUI();
-
             // Tabla de ventas del período
             const tableBody = document.getElementById('billing-sales-table');
             const recentSales = [...data.filteredSales].reverse().slice(0, 50);
@@ -16974,101 +16979,6 @@ Total de productos a comprar: ${shoppingList.length}
                         '<td class="py-2 px-3 text-xs">' + paymentIcon + '</td>' +
                     '</tr>';
                 }).join('');
-            }
-        }
-
-        function updateDailyBillingUI() {
-            const today = formatDateISO(appState.activeDate || new Date());
-            const dateLabel = document.getElementById('billing-selected-date');
-            if (dateLabel) {
-                const todayStr = formatDateISO(new Date());
-                const isToday = today === todayStr;
-                dateLabel.textContent = isToday ? 'Fecha: Hoy (' + today + ')' : 'Fecha: ' + today;
-            }
-            
-            // Calcular vendido en blanco HOY
-            let soldWhiteToday = 0;
-            appState.sales.forEach(sale => {
-                if (sale.date === today) {
-                    const bd = sale.invoiceBreakdown || { white: 0, black: 0 };
-                    soldWhiteToday += bd.white;
-                }
-            });
-            soldWhiteToday = Math.round(soldWhiteToday * 100) / 100;
-            
-            // Ver si ya se facturó hoy
-            const billedToday = appState.billedDays ? appState.billedDays.find(b => b.date === today) : null;
-            const alreadyBilled = billedToday ? billedToday.amount : 0;
-            const toBill = Math.max(0, soldWhiteToday - alreadyBilled);
-            
-            document.getElementById('billing-today-sold-white').textContent = '$' + formatMoney(soldWhiteToday);
-            document.getElementById('billing-today-billed').textContent = '$' + formatMoney(alreadyBilled);
-            document.getElementById('billing-today-to-bill').textContent = '$' + formatMoney(toBill);
-            
-            const actionsEl = document.getElementById('billing-today-actions');
-            const msgEl = document.getElementById('billing-today-billed-msg');
-            
-            if (toBill <= 0 && billedToday) {
-                actionsEl.classList.add('hidden');
-                msgEl.classList.remove('hidden');
-            } else {
-                actionsEl.classList.remove('hidden');
-                msgEl.classList.add('hidden');
-                const btn = document.getElementById('btn-mark-billed');
-                if (toBill <= 0) {
-                    btn.disabled = true;
-                    btn.classList.add('opacity-50', 'cursor-not-allowed');
-                    btn.innerHTML = '<i class="fas fa-check"></i> Nada para facturar';
-                } else {
-                    btn.disabled = false;
-                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
-                    btn.innerHTML = '<i class="fas fa-check-circle"></i> Marcar como Facturado ($' + formatMoney(toBill) + ')';
-                }
-            }
-        }
-        
-        function markDayAsBilled() {
-            const today = formatDateISO(appState.activeDate || new Date());
-            let soldWhiteToday = 0;
-            appState.sales.forEach(sale => {
-                if (sale.date === today) {
-                    const bd = sale.invoiceBreakdown || { white: 0, black: 0 };
-                    soldWhiteToday += bd.white;
-                }
-            });
-            soldWhiteToday = Math.round(soldWhiteToday * 100) / 100;
-            
-            // Sumar lo ya facturado de hoy para no perderlo
-            const existing = appState.billedDays ? appState.billedDays.find(b => b.date === today) : null;
-            const totalBilled = existing ? (existing.amount + soldWhiteToday) : soldWhiteToday;
-            
-            if (!appState.billedDays) appState.billedDays = [];
-            
-            // Reemplazar entrada existente o agregar nueva
-            appState.billedDays = appState.billedDays.filter(b => b.date !== today);
-            appState.billedDays.push({
-                date: today,
-                amount: totalBilled,
-                timestamp: Date.now()
-            });
-            
-            saveToLocalStorage();
-            updateDailyBillingUI();
-            showNotification('Día marcado como facturado: $' + formatMoney(totalBilled), 'success');
-        }
-        
-        function unmarkDayAsBilled() {
-            const today = formatDateISO(appState.activeDate || new Date());
-            if (!appState.billedDays) return;
-            
-            const idx = appState.billedDays.findIndex(b => b.date === today);
-            if (idx > -1) {
-                if (confirm('¿Deshacer el último marcado de facturación de hoy?')) {
-                    appState.billedDays.splice(idx, 1);
-                    saveToLocalStorage();
-                    updateDailyBillingUI();
-                    showNotification('Marcado deshecho', 'info');
-                }
             }
         }
 

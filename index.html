@@ -492,9 +492,58 @@
         </div>
     </div>
 
+    <!-- Bulk Supplier Edit Modal -->
+    <div id="bulk-supplier-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-indigo-600"><i class="fas fa-truck"></i> Edición masiva de proveedores</h3>
+                <button onclick="closeBulkSupplierModal()" class="text-gray-400 hover:text-gray-700 text-xl px-2"><i class="fas fa-times"></i></button>
+            </div>
+            <input type="text" id="bulk-supplier-search" placeholder="Filtrar productos..." class="w-full border-2 border-indigo-200 rounded-lg px-3 py-2 mb-2" oninput="renderBulkSupplierList()" autocomplete="off">
+            <div class="flex gap-2 mb-3">
+                <select id="bulk-supplier-apply" class="flex-1 border rounded-lg px-3 py-2 text-sm"></select>
+                <button onclick="bulkApplySupplierToVisible()" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-3 py-2 rounded-lg font-bold text-sm whitespace-nowrap">Aplicar a los visibles</button>
+            </div>
+            <div id="bulk-supplier-list" class="space-y-2 max-h-80 overflow-y-auto custom-scrollbar mb-4"></div>
+            <div class="flex gap-2">
+                <button onclick="closeBulkSupplierModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                <button onclick="saveBulkSuppliers()" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700">Guardar cambios</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stock Count Modal -->
+    <div id="stock-count-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div class="flex justify-between items-center mb-1">
+                <h3 class="text-xl font-bold text-teal-600"><i class="fas fa-clipboard-list"></i> Conteo de Stock</h3>
+                <span id="stock-count-progress" class="text-sm font-bold text-gray-500">-</span>
+            </div>
+            <p class="text-xs text-gray-500 mb-4">Contá el producto físico y anotá cuánto hay. No modifica el stock: solo calcula si sobra o falta.</p>
+            <div id="stock-count-step">
+                <div class="bg-gray-50 rounded-xl p-4 mb-4">
+                    <p class="font-bold text-lg text-gray-800" id="stock-count-name">-</p>
+                    <p class="text-xs text-gray-500" id="stock-count-code">-</p>
+                </div>
+                <label class="block text-sm font-medium text-gray-700 mb-1" id="stock-count-label">¿Cuánto hay físicamente?</label>
+                <input type="number" id="stock-count-input" class="w-full border-2 border-teal-300 rounded-xl px-4 py-3 text-2xl font-bold text-center mb-2" min="0" step="any" autocomplete="off" oninput="updateStockCountDiff()" onkeydown="if(event.key==='Enter'){event.preventDefault();stockCountNext();}">
+                <p id="stock-count-diff" class="text-center text-sm font-bold mb-4 min-h-[1.25rem]"></p>
+                <div class="flex gap-2">
+                    <button onclick="stockCountPrev()" id="stock-count-prev" class="bg-gray-200 text-gray-700 px-4 py-3 rounded-xl font-bold">←</button>
+                    <button onclick="stockCountNext()" id="stock-count-next-btn" class="flex-1 bg-teal-600 text-white py-3 rounded-xl font-bold shadow hover:bg-teal-700">Siguiente →</button>
+                </div>
+                <button onclick="stockCountFinish(true)" class="w-full mt-2 text-xs text-gray-500 hover:text-red-600 underline">Terminar antes (resume solo lo ya contado)</button>
+            </div>
+            <div id="stock-count-summary" class="hidden">
+                <div id="stock-count-summary-list" class="space-y-2 max-h-72 overflow-y-auto custom-scrollbar mb-3"></div>
+                <p id="stock-count-summary-totals" class="text-center font-bold mb-3"></p>
+                <button onclick="closeStockCountModal()" class="w-full bg-teal-600 text-white py-3 rounded-xl font-bold shadow hover:bg-teal-700">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Edit Product Modal -->
-    <div id="edit-product-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();saveProductEdit();}">
-        <div class="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+    <div id="edit-product-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();saveProductEdit();}">        <div class="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <h3 class="text-xl font-bold mb-4 text-purple-600"><i class="fas fa-edit"></i> Editar Producto</h3>
             <div class="space-y-4">
                 <div>
@@ -1467,12 +1516,18 @@
             </div>
 
             <!-- Botones de acción rápida -->
-            <div class="flex gap-3">
+            <div class="flex gap-3 flex-wrap">
                 <button onclick="openLossModal()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow">
                     <i class="fas fa-trash-alt"></i> Registrar Merma
                 </button>
                 <button onclick="openFoundStockModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow">
                     <i class="fas fa-gift"></i> Stock Gratis
+                </button>
+                <button onclick="openBulkSupplierModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow">
+                    <i class="fas fa-truck"></i> Editar Proveedores
+                </button>
+                <button onclick="openStockCountModal()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow">
+                    <i class="fas fa-clipboard-list"></i> Conteo de Stock
                 </button>
             </div>
 
@@ -13984,6 +14039,251 @@
                     </div>
                 </div>
             `).join('');
+        }
+
+        // ==================== EDICIÓN MASIVA DE PROVEEDORES ====================
+        let bulkSupplierProducts = [];
+        let bulkSupplierPending = {}; // productId -> proveedor elegido (aún sin guardar)
+
+        function openBulkSupplierModal() {
+            bulkSupplierProducts = getActiveInventory().slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            bulkSupplierPending = {};
+            bulkSupplierProducts.forEach(p => { bulkSupplierPending[p.id] = p.supplier || ''; });
+            const suppliers = (appState.suppliers || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            const applySel = document.getElementById('bulk-supplier-apply');
+            applySel.innerHTML = '<option value="">Sin proveedor</option>' +
+                suppliers.map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join('');
+            document.getElementById('bulk-supplier-search').value = '';
+            renderBulkSupplierList();
+            document.getElementById('bulk-supplier-modal').classList.add('active');
+        }
+
+        function closeBulkSupplierModal() {
+            document.getElementById('bulk-supplier-modal').classList.remove('active');
+            bulkSupplierProducts = [];
+            bulkSupplierPending = {};
+        }
+
+        function renderBulkSupplierList() {
+            const q = (document.getElementById('bulk-supplier-search').value || '').toLowerCase();
+            const suppliers = (appState.suppliers || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            const supplierNames = suppliers.map(s => s.name);
+            const list = document.getElementById('bulk-supplier-list');
+            const rows = [];
+            bulkSupplierProducts.forEach((p, i) => {
+                if (q && !(p.name || '').toLowerCase().includes(q)) return;
+                // Si el proveedor actual ya no existe en la lista (viejo), agregarlo como opción para no perderlo
+                const current = bulkSupplierPending[p.id] || '';
+                const names = supplierNames.slice();
+                if (current && !names.includes(current)) names.push(current);
+                const opts = [''].concat(names).map(n =>
+                    `<option value="${escapeHtml(n)}" ${n === current ? 'selected' : ''}>${n === '' ? 'Sin proveedor' : escapeHtml(n)}</option>`
+                ).join('');
+                const changed = current !== (p.supplier || '');
+                rows.push(`
+                    <div class="flex items-center gap-2 p-2 rounded-lg ${changed ? 'bg-indigo-50 border border-indigo-200' : 'bg-gray-50'}">
+                        <span class="flex-1 text-sm font-medium text-gray-700 truncate">${escapeHtml(p.name || '')}</span>
+                        <select onchange="bulkSupplierChanged('${p.id}', this)" class="border rounded-lg px-2 py-1 text-sm w-40">${opts}</select>
+                    </div>`);
+            });
+            list.innerHTML = rows.length > 0 ? rows.join('') : '<p class="text-center text-gray-400 py-4 text-sm">No hay productos que coincidan</p>';
+        }
+
+        function bulkSupplierChanged(productId, selectEl) {
+            bulkSupplierPending[productId] = selectEl.value;
+            const p = bulkSupplierProducts.find(x => x.id === productId);
+            const changed = p && selectEl.value !== (p.supplier || '');
+            const row = selectEl.closest('div');
+            if (row) row.className = 'flex items-center gap-2 p-2 rounded-lg ' + (changed ? 'bg-indigo-50 border border-indigo-200' : 'bg-gray-50');
+        }
+
+        function bulkApplySupplierToVisible() {
+            const value = document.getElementById('bulk-supplier-apply').value;
+            const q = (document.getElementById('bulk-supplier-search').value || '').toLowerCase();
+            let count = 0;
+            bulkSupplierProducts.forEach(p => {
+                if (q && !(p.name || '').toLowerCase().includes(q)) return;
+                bulkSupplierPending[p.id] = value;
+                count++;
+            });
+            renderBulkSupplierList();
+            showNotification('Proveedor aplicado a ' + count + ' productos visibles. Tocá "Guardar cambios" para confirmar.', 'info');
+        }
+
+        function saveBulkSuppliers() {
+            let changed = 0;
+            bulkSupplierProducts.forEach(p => {
+                const newVal = bulkSupplierPending[p.id] || '';
+                if (newVal !== (p.supplier || '')) {
+                    p.supplier = newVal;
+                    p.updatedAt = new Date().toISOString();
+                    changed++;
+                }
+            });
+            if (changed === 0) {
+                showNotification('No hay cambios para guardar', 'warning');
+                return;
+            }
+            saveToLocalStorage();
+            renderAll();
+            closeBulkSupplierModal();
+            showNotification('✅ Proveedor actualizado en ' + changed + ' productos', 'success');
+        }
+
+        // ==================== CONTEO DE STOCK GUIADO ====================
+        // Recorre los productos uno por uno (sin salteos) y compara lo contado
+        // físicamente contra el stock del sistema. NO modifica el stock.
+        let stockCountSession = null;
+
+        function openStockCountModal() {
+            const products = getActiveInventory()
+                .filter(p => !(p.isComposite && p.components && p.components.length > 0)) // las preparaciones no se cuentan (su stock sale de los componentes)
+                .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            if (products.length === 0) {
+                showNotification('No hay productos para contar', 'warning');
+                return;
+            }
+            stockCountSession = {
+                items: products.map(p => {
+                    const isWeight = !!(p.saleByWeight && p.weightPerUnit > 0);
+                    const expectedUnits = getProductStock(p) || 0;
+                    return {
+                        productId: p.id,
+                        name: p.name || '',
+                        barcode: p.barcode || '',
+                        isWeight: isWeight,
+                        expected: isWeight ? Math.round(expectedUnits * p.weightPerUnit) : expectedUnits, // en gramos si es por peso
+                        counted: null
+                    };
+                }),
+                index: 0
+            };
+            document.getElementById('stock-count-summary').classList.add('hidden');
+            document.getElementById('stock-count-step').classList.remove('hidden');
+            document.getElementById('stock-count-modal').classList.add('active');
+            renderStockCountStep();
+        }
+
+        function closeStockCountModal() {
+            document.getElementById('stock-count-modal').classList.remove('active');
+            stockCountSession = null;
+        }
+
+        function renderStockCountStep() {
+            if (!stockCountSession) return;
+            const item = stockCountSession.items[stockCountSession.index];
+            const total = stockCountSession.items.length;
+            const n = stockCountSession.index + 1;
+            document.getElementById('stock-count-progress').textContent = n + ' de ' + total;
+            document.getElementById('stock-count-name').textContent = item.name;
+            document.getElementById('stock-count-code').textContent = item.barcode ? 'Código: ' + item.barcode : 'Sin código de barras';
+            document.getElementById('stock-count-label').textContent = item.isWeight ? '¿Cuántos GRAMOS hay físicamente?' : '¿Cuántas UNIDADES hay físicamente?';
+            const input = document.getElementById('stock-count-input');
+            input.value = item.counted !== null ? String(item.counted) : '';
+            document.getElementById('stock-count-prev').disabled = stockCountSession.index === 0;
+            document.getElementById('stock-count-next-btn').textContent = stockCountSession.index === total - 1 ? 'Ver resumen ✓' : 'Siguiente →';
+            updateStockCountDiff();
+            setTimeout(() => { input.focus(); input.select(); }, 50);
+        }
+
+        function updateStockCountDiff() {
+            const item = stockCountSession ? stockCountSession.items[stockCountSession.index] : null;
+            const el = document.getElementById('stock-count-diff');
+            if (!item) { el.textContent = ''; return; }
+            const raw = document.getElementById('stock-count-input').value;
+            if (raw === '' || isNaN(parseFloat(raw))) { el.textContent = ''; return; }
+            const counted = parseFloat(raw);
+            const diff = counted - item.expected;
+            const unit = item.isWeight ? 'g' : 'u';
+            if (diff === 0) {
+                el.textContent = '🎯 Cuadra perfecto (' + item.expected + unit + ')';
+                el.className = 'text-center text-sm font-bold mb-4 min-h-[1.25rem] text-blue-600';
+            } else if (diff > 0) {
+                el.textContent = '✅ Sobran ' + diff + unit + ' (sistema dice ' + item.expected + unit + ')';
+                el.className = 'text-center text-sm font-bold mb-4 min-h-[1.25rem] text-green-600';
+            } else {
+                el.textContent = '⚠️ Faltan ' + Math.abs(diff) + unit + ' (sistema dice ' + item.expected + unit + ')';
+                el.className = 'text-center text-sm font-bold mb-4 min-h-[1.25rem] text-red-600';
+            }
+        }
+
+        // Lee el input actual y lo guarda en el ítem; devuelve false si está vacío
+        function stockCountCapture() {
+            const item = stockCountSession.items[stockCountSession.index];
+            const raw = document.getElementById('stock-count-input').value.trim();
+            if (raw === '' || isNaN(parseFloat(raw)) || parseFloat(raw) < 0) return false;
+            item.counted = parseFloat(raw);
+            return true;
+        }
+
+        function stockCountNext() {
+            if (!stockCountSession) return;
+            if (!stockCountCapture()) {
+                showNotification('Ingresá la cantidad (poné 0 si no hay ninguno)', 'warning');
+                return;
+            }
+            if (stockCountSession.index >= stockCountSession.items.length - 1) {
+                stockCountFinish(false);
+            } else {
+                stockCountSession.index++;
+                renderStockCountStep();
+            }
+        }
+
+        function stockCountPrev() {
+            if (!stockCountSession || stockCountSession.index === 0) return;
+            stockCountCapture(); // conservar lo escrito si es válido
+            stockCountSession.index--;
+            renderStockCountStep();
+        }
+
+        function stockCountFinish(early) {
+            if (!stockCountSession) return;
+            if (early) {
+                stockCountCapture(); // conservar lo escrito si es válido
+                const contados = stockCountSession.items.filter(i => i.counted !== null).length;
+                if (contados === 0) {
+                    showNotification('Todavía no contaste ningún producto', 'warning');
+                    return;
+                }
+                if (!confirm('¿Terminar el conteo antes? Se resumen solo los ' + contados + ' productos ya contados.')) return;
+            }
+            const countedItems = stockCountSession.items.filter(i => i.counted !== null);
+            let sobrantes = 0, faltantes = 0, exactos = 0;
+            const rows = countedItems.map(i => {
+                const diff = i.counted - i.expected;
+                const unit = i.isWeight ? 'g' : 'u';
+                if (diff > 0) sobrantes++; else if (diff < 0) faltantes++; else exactos++;
+                const color = diff > 0 ? 'text-green-600' : diff < 0 ? 'text-red-600' : 'text-blue-600';
+                const label = diff > 0 ? 'Sobran ' + diff + unit : diff < 0 ? 'Faltan ' + Math.abs(diff) + unit : 'Cuadra';
+                return `
+                    <div class="flex justify-between items-center p-2 bg-gray-50 rounded-lg text-xs">
+                        <span class="font-medium text-gray-700 flex-1 truncate">${escapeHtml(i.name)}</span>
+                        <span class="text-gray-500 mx-2">sistema ${i.expected}${unit} → contado ${i.counted}${unit}</span>
+                        <span class="font-bold ${color}">${label}</span>
+                    </div>`;
+            }).join('');
+            document.getElementById('stock-count-summary-list').innerHTML = rows;
+            document.getElementById('stock-count-summary-totals').innerHTML =
+                `<span class="text-red-600">${faltantes} con faltante</span> · <span class="text-green-600">${sobrantes} con sobrante</span> · <span class="text-blue-600">${exactos} exactos</span>`;
+
+            // Guardar registro del conteo (historial, sin tocar el stock)
+            if (!Array.isArray(appState.stockAudits)) appState.stockAudits = [];
+            appState.stockAudits.push({
+                id: 'AUDIT-' + Date.now(),
+                date: formatDateISO(appState.activeDate),
+                user: appState.currentUser ? appState.currentUser.name : null,
+                totalProducts: stockCountSession.items.length,
+                countedProducts: countedItems.length,
+                completed: !early,
+                faltantes, sobrantes, exactos,
+                items: countedItems,
+                timestamp: Date.now()
+            });
+            saveToLocalStorage();
+
+            document.getElementById('stock-count-step').classList.add('hidden');
+            document.getElementById('stock-count-summary').classList.remove('hidden');
         }
 
         // ==================== CONTEO DE TURNO ====================

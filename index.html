@@ -1298,6 +1298,9 @@
                     <div class="bg-white rounded-2xl shadow-lg p-6">
                         <h3 class="text-lg font-bold mb-4"><i class="fas fa-credit-card text-purple-600"></i> Pago</h3>
                         <div class="space-y-3 mb-6">
+                            <button onclick="setPaymentMethod('fiado')" id="btn-fiado" class="w-full py-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition flex items-center justify-center gap-2">
+                                <i class="fas fa-hand-holding-usd"></i> Fiado (paga después)
+                            </button>
                             <button onclick="setPaymentMethod('cash')" id="btn-cash" class="w-full p-4 rounded-xl border-2 border-green-500 bg-green-50 text-left flex items-center gap-3 transition">
                                 <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white">
                                     <i class="fas fa-money-bill-wave"></i>
@@ -1314,15 +1317,6 @@
                                 <div>
                                     <p class="font-bold text-gray-800">Débito</p>
                                     <p class="text-sm text-gray-500">Transferencia/Tarjeta</p>
-                                </div>
-                            </button>
-                            <button onclick="setPaymentMethod('fiado')" id="btn-fiado" class="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-amber-400 text-left flex items-center gap-3 transition">
-                                <div class="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center text-white">
-                                    <i class="fas fa-hand-holding-usd"></i>
-                                </div>
-                                <div>
-                                    <p class="font-bold text-gray-800">Fiado</p>
-                                    <p class="text-sm text-gray-500">Paga después</p>
                                 </div>
                             </button>
                         </div>
@@ -6328,8 +6322,8 @@
                 : 'w-full p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 text-left flex items-center gap-3 transition';
 
             document.getElementById('btn-fiado').className = method === 'fiado'
-                ? 'w-full p-4 rounded-xl border-2 border-amber-500 bg-amber-50 text-left flex items-center gap-3 transition'
-                : 'w-full p-4 rounded-xl border-2 border-gray-200 hover:border-amber-400 text-left flex items-center gap-3 transition';
+                ? 'w-full py-2 rounded-lg border border-amber-500 bg-amber-400 text-white text-xs font-bold transition flex items-center justify-center gap-2'
+                : 'w-full py-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition flex items-center justify-center gap-2';
 
             // Fiado no pide vuelto ni MercadoCrédito: ambos paneles quedan ocultos
             document.getElementById('cash-details').classList.toggle('hidden', method !== 'cash');

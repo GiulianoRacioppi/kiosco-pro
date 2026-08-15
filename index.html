@@ -513,6 +513,7 @@
                     <button onclick="stockCountPrev()" id="stock-count-prev" class="bg-gray-200 text-gray-700 px-4 py-3 rounded-xl font-bold">←</button>
                     <button onclick="stockCountNext()" id="stock-count-next-btn" class="flex-1 bg-teal-600 text-white py-3 rounded-xl font-bold shadow hover:bg-teal-700">Siguiente →</button>
                 </div>
+                <button onclick="pauseStockCount()" class="w-full mt-2 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-xl font-bold text-sm">💾 Salir y seguir después (no se borra nada)</button>
                 <button onclick="stockCountFinish(true)" class="w-full mt-2 text-xs text-gray-500 hover:text-red-600 underline">Terminar antes (resume solo lo ya contado)</button>
                 <button onclick="stockCountSkipForever()" class="w-full mt-1 text-xs text-gray-400 hover:text-orange-600 underline">🚫 No contar este producto nunca (ej: elementos del negocio)</button>
             </div>
@@ -956,6 +957,11 @@
                 <i class="fas fa-calendar-alt w-4 text-xs"></i> Historial
             </button>
             
+            <!-- FIADOS: Ventas a crédito (todos los roles: colaboradores también venden/cobran fiados) -->
+            <button onclick="showSection('fiados')" id="nav-fiados" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="fiados">
+                <i class="fas fa-hand-holding-usd w-4 text-xs"></i> Fiados
+            </button>
+            
             <!-- REPONER: Inventario + alertas -->
             <button onclick="showSection('inventory')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="inventory">
                 <i class="fas fa-boxes w-4 text-xs"></i> Reponer
@@ -1310,6 +1316,15 @@
                                     <p class="text-sm text-gray-500">Transferencia/Tarjeta</p>
                                 </div>
                             </button>
+                            <button onclick="setPaymentMethod('fiado')" id="btn-fiado" class="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-amber-400 text-left flex items-center gap-3 transition">
+                                <div class="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center text-white">
+                                    <i class="fas fa-hand-holding-usd"></i>
+                                </div>
+                                <div>
+                                    <p class="font-bold text-gray-800">Fiado</p>
+                                    <p class="text-sm text-gray-500">Paga después</p>
+                                </div>
+                            </button>
                         </div>
 
                         <div id="mercado-credito-check" class="hidden bg-blue-50 rounded-xl p-3 border border-blue-200">
@@ -1351,6 +1366,41 @@
                             <i class="fas fa-check-circle"></i> Finalizar Venta
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fiados (ventas a crédito) -->
+        <div id="fiados" class="section hidden space-y-6 fade-in">
+            <!-- KPIs -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-white rounded-2xl shadow-lg p-5">
+                    <p class="text-gray-500 text-sm font-medium uppercase">Total pendiente</p>
+                    <p class="text-3xl font-bold text-amber-600 mt-1" id="fiados-kpi-pending-total">$0</p>
+                </div>
+                <div class="bg-white rounded-2xl shadow-lg p-5">
+                    <p class="text-gray-500 text-sm font-medium uppercase">Fiados sin cobrar</p>
+                    <p class="text-3xl font-bold text-gray-800 mt-1" id="fiados-kpi-pending-count">0</p>
+                </div>
+                <div class="bg-white rounded-2xl shadow-lg p-5">
+                    <p class="text-gray-500 text-sm font-medium uppercase">Cobrado hoy</p>
+                    <p class="text-3xl font-bold text-green-600 mt-1" id="fiados-kpi-collected-today">$0</p>
+                </div>
+            </div>
+
+            <!-- Pendientes agrupados por cliente -->
+            <div class="bg-white rounded-2xl shadow-lg p-6">
+                <h3 class="text-xl font-bold mb-4"><i class="fas fa-hand-holding-usd text-amber-500"></i> Fiados pendientes</h3>
+                <div id="fiados-pending-list" class="space-y-4">
+                    <p class="text-center text-gray-400 py-8">No hay fiados pendientes 🎉</p>
+                </div>
+            </div>
+
+            <!-- Cobrados recientes -->
+            <div class="bg-white rounded-2xl shadow-lg p-6">
+                <h3 class="text-xl font-bold mb-4"><i class="fas fa-check-circle text-green-500"></i> Últimos cobrados</h3>
+                <div id="fiados-paid-list" class="space-y-2">
+                    <p class="text-center text-gray-400 py-4">Todavía no hay fiados cobrados</p>
                 </div>
             </div>
         </div>
@@ -1667,7 +1717,29 @@
                         </span>
                         <input type="hidden" id="inv-round-price" value="false">
                     </div>
-                    <!-- El tipo de compra/facturación se elige en el modal de pago, no aquí -->
+                    <!-- Tipo de compra y medio de pago: se eligen acá mismo, todo junto (como en stock rápido) -->
+                    <div class="lg:col-span-2">
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Tipo de compra</label>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="setInvPurchaseInvoiceType('white')" id="btn-inv-invoice-white" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-sm font-medium transition flex items-center justify-center gap-1 text-gray-600 hover:border-gray-400">
+                                <i class="fas fa-file-invoice text-blue-500 text-xs"></i> Facturado (Blanco)
+                            </button>
+                            <button type="button" onclick="setInvPurchaseInvoiceType('black')" id="btn-inv-invoice-black" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-sm font-medium transition flex items-center justify-center gap-1 text-gray-600 hover:border-gray-400">
+                                <i class="fas fa-eye-slash text-gray-500 text-xs"></i> Sin factura (Negro)
+                            </button>
+                        </div>
+                    </div>
+                    <div class="lg:col-span-2">
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Pagar con</label>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="setInvPurchasePayment('cash')" id="btn-inv-pay-cash" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-sm font-medium transition hover:border-gray-400">
+                                💵 Caja ($<span id="inv-pay-cash-available">0</span>)
+                            </button>
+                            <button type="button" onclick="setInvPurchasePayment('bank')" id="btn-inv-pay-bank" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-sm font-medium transition hover:border-gray-400">
+                                🏦 Cuenta ($<span id="inv-pay-bank-available">0</span>)
+                            </button>
+                        </div>
+                    </div>
                     <div class="lg:col-span-4 flex items-end">
                         <button type="submit" tabindex="0" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold shadow">
                             <i class="fas fa-check"></i> Confirmar Compra
@@ -4168,7 +4240,8 @@
                 'predictions': 'Control de Stock',
                 'alerts': 'Alertas',
                 'reports': 'Reportes',
-                'billing': 'Facturación'
+                'billing': 'Facturación',
+                'fiados': 'Fiados'
             };
             document.getElementById('page-title').textContent = titles[sectionId] || 'KioscoPro';
 
@@ -4214,6 +4287,7 @@
             if (sectionId === 'alerts') renderAlerts();
             if (sectionId === 'reports') renderReports();
             if (sectionId === 'billing') renderBilling();
+            if (sectionId === 'fiados') renderFiados();
             if (sectionId === 'settings') renderSettings();
         }
 
@@ -4348,7 +4422,9 @@
                 'all': 'Todo el historial'
             }[dashboardPeriod];
             
-            const filteredSales = filterByPeriod(appState.sales, dashboardPeriod);
+            // Los totales de plata/ganancia usan la fecha de ingreso real:
+            // un fiado no pago no cuenta; un fiado pago cuenta el día del cobro
+            const filteredSales = filterByPeriod(appState.sales.map(s => ({ ...s, date: saleRevenueDate(s) })), dashboardPeriod);
             const filteredExpenses = filterByPeriod(appState.expenses, dashboardPeriod);
             const filteredInvestments = filterByPeriod(appState.investments, dashboardPeriod);
             
@@ -4428,7 +4504,7 @@
                 if (chartsRow) chartsRow.style.display = 'grid';
             }
 
-            const todayRevenue = todaySales.reduce((sum, s) => sum + s.total, 0);
+            const todayRevenue = appState.sales.filter(s => saleRevenueDate(s) === today).reduce((sum, s) => sum + s.total, 0);
             document.getElementById('today-sales-count').textContent = `(${todaySales.length} ventas)`;
             document.getElementById('today-total-sales').textContent = `$${formatMoney(todayRevenue)}`;
             
@@ -4440,7 +4516,7 @@
                     <div class="sale-item flex justify-between items-center p-3 rounded-lg border cursor-pointer" onclick="showSaleDetail('${sale.id}')">
                         <div>
                             <p class="font-bold text-gray-800">Venta #${sale.id.slice(-4)}</p>
-                            <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵 Efectivo' : '💳 Débito'}</p>
+                            <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵 Efectivo' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : '💳 Débito')}</p>
                         </div>
                         <div class="text-right">
                             <p class="font-bold text-lg text-green-600">$${formatMoney(sale.total)}</p>
@@ -4745,7 +4821,7 @@
                 const date = new Date();
                 date.setDate(date.getDate() - i);
                 const dateStr = formatDateISO(date);
-                sales.push(...appState.sales.filter(s => s.date === dateStr));
+                sales.push(...appState.sales.filter(s => saleRevenueDate(s) === dateStr));
             }
             return sales;
         }
@@ -6223,6 +6299,23 @@
             return { discount, label };
         }
 
+        // ==================== FIADOS: HELPERS ====================
+        // Fecha en que la plata de una venta entra realmente a caja/cuenta:
+        // fiado no pago = null (no cuenta en totales), fiado pago = día del cobro,
+        // cualquier otra venta = su propia fecha.
+        // Las LISTAS de ventas siguen filtrando por s.date; solo los TOTALES usan esto.
+        function saleRevenueDate(s) {
+            if (s.paymentMethod === 'fiado') return s.fiadoPaid ? (s.fiadoPaidDate || s.date) : null;
+            return s.date;
+        }
+
+        // Etiqueta legible del método de pago para badges y reportes
+        function paymentMethodLabel(s) {
+            if (s.paymentMethod === 'cash') return 'Efectivo';
+            if (s.paymentMethod === 'fiado') return s.fiadoPaid ? 'Fiado (pagado)' : 'Fiado';
+            return 'Débito';
+        }
+
         function setPaymentMethod(method) {
             appState.paymentMethod = method;
             
@@ -6234,6 +6327,11 @@
                 ? 'w-full p-4 rounded-xl border-2 border-blue-500 bg-blue-50 text-left flex items-center gap-3 transition'
                 : 'w-full p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 text-left flex items-center gap-3 transition';
 
+            document.getElementById('btn-fiado').className = method === 'fiado'
+                ? 'w-full p-4 rounded-xl border-2 border-amber-500 bg-amber-50 text-left flex items-center gap-3 transition'
+                : 'w-full p-4 rounded-xl border-2 border-gray-200 hover:border-amber-400 text-left flex items-center gap-3 transition';
+
+            // Fiado no pide vuelto ni MercadoCrédito: ambos paneles quedan ocultos
             document.getElementById('cash-details').classList.toggle('hidden', method !== 'cash');
             document.getElementById('mercado-credito-check').classList.toggle('hidden', method !== 'debit');
             
@@ -6309,6 +6407,149 @@
             showSection('sell');
             renderCart();
             showNotification(`Ítem manual agregado al carrito: ${concept} $${formatMoney(amount)}`, 'success');
+        }
+
+        // ==================== FIADOS (VENTAS A CRÉDITO) ====================
+        // Nombre del cliente que se está fiando (se consume en completeSale)
+        let pendingFiadoCustomerName = null;
+        // Venta fiada que se está cobrando en el modal de pago
+        let currentFiadoPaySaleId = null;
+
+        function openFiadoModal() {
+            document.getElementById('fiado-customer-name').value = '';
+            document.getElementById('fiado-modal').classList.add('active');
+            setTimeout(() => document.getElementById('fiado-customer-name').focus(), 100);
+        }
+
+        function closeFiadoModal() {
+            document.getElementById('fiado-modal').classList.remove('active');
+        }
+
+        function confirmFiadoSale() {
+            const name = document.getElementById('fiado-customer-name').value.trim();
+            if (!name) {
+                showNotification('Ingresá el nombre del cliente', 'error');
+                document.getElementById('fiado-customer-name').focus();
+                return;
+            }
+            pendingFiadoCustomerName = name;
+            closeFiadoModal();
+            completeSale();
+        }
+
+        function openFiadoPayModal(saleId) {
+            const sale = appState.sales.find(s => s.id === saleId);
+            if (!sale) return;
+            currentFiadoPaySaleId = saleId;
+            document.getElementById('fiado-pay-customer').textContent = sale.customerName || 'Cliente';
+            document.getElementById('fiado-pay-amount').textContent = '$' + formatMoney(sale.total);
+            document.getElementById('fiado-pay-modal').classList.add('active');
+        }
+
+        function closeFiadoPayModal() {
+            document.getElementById('fiado-pay-modal').classList.remove('active');
+            currentFiadoPaySaleId = null;
+        }
+
+        function confirmFiadoPayment(method) {
+            const sale = appState.sales.find(s => s.id === currentFiadoPaySaleId);
+            if (!sale || sale.fiadoPaid) {
+                closeFiadoPayModal();
+                return;
+            }
+
+            sale.fiadoPaid = true;
+            sale.fiadoPaidDate = formatDateISO(new Date()); // día real del cobro
+            sale.fiadoPaidMethod = method;
+            // Clave: actualizar el timestamp para que smartMergeArrays no pise
+            // el cobro con la copia vieja de otro dispositivo
+            sale.timestamp = Date.now();
+
+            // La plata entra recién ahora a caja o cuenta
+            if (method === 'cash') {
+                appState.cash += sale.total;
+            } else if (method === 'debit') {
+                appState.bank += sale.total;
+            }
+
+            saveToLocalStorage();
+            closeFiadoPayModal();
+            renderFiados();
+            updateSidebar();
+            showNotification(`Cobro registrado: ${sale.customerName || 'Cliente'} pagó $${formatMoney(sale.total)} en ${method === 'cash' ? 'efectivo' : 'cuenta'}`, 'success');
+        }
+
+        function renderFiados() {
+            const section = document.getElementById('fiados');
+            if (!section) return;
+
+            const today = formatDateISO(new Date());
+            const pending = appState.sales.filter(s => s.paymentMethod === 'fiado' && !s.fiadoPaid);
+            const paid = appState.sales.filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid)
+                .sort((a, b) => (b.fiadoPaidDate || '').localeCompare(a.fiadoPaidDate || '') || (b.timestamp || 0) - (a.timestamp || 0));
+
+            const totalPending = pending.reduce((sum, s) => sum + s.total, 0);
+            const collectedToday = paid.filter(s => s.fiadoPaidDate === today).reduce((sum, s) => sum + s.total, 0);
+
+            document.getElementById('fiados-kpi-pending-total').textContent = '$' + formatMoney(totalPending);
+            document.getElementById('fiados-kpi-pending-count').textContent = pending.length;
+            document.getElementById('fiados-kpi-collected-today').textContent = '$' + formatMoney(collectedToday);
+
+            // Pendientes agrupados por cliente
+            const byCustomer = {};
+            pending.forEach(s => {
+                const name = s.customerName || 'Sin nombre';
+                if (!byCustomer[name]) byCustomer[name] = [];
+                byCustomer[name].push(s);
+            });
+
+            const pendingContainer = document.getElementById('fiados-pending-list');
+            const names = Object.keys(byCustomer).sort((a, b) => a.localeCompare(b));
+            if (names.length === 0) {
+                pendingContainer.innerHTML = '<p class="text-center text-gray-400 py-8">No hay fiados pendientes 🎉</p>';
+            } else {
+                pendingContainer.innerHTML = names.map(name => {
+                    const sales = byCustomer[name];
+                    const subtotal = sales.reduce((sum, s) => sum + s.total, 0);
+                    return `
+                    <div class="border rounded-xl p-4 bg-amber-50 border-amber-200">
+                        <div class="flex justify-between items-center mb-2">
+                            <p class="font-bold text-gray-800"><i class="fas fa-user text-amber-600 mr-1"></i> ${escapeHtml(name)}</p>
+                            <p class="font-bold text-amber-700">$${formatMoney(subtotal)}</p>
+                        </div>
+                        <div class="space-y-2">
+                            ${sales.map(s => `
+                            <div class="flex justify-between items-center bg-white rounded-lg p-2 border">
+                                <div>
+                                    <p class="text-sm font-medium text-gray-700">${s.date} ${s.time || ''} • ${s.items.length} items</p>
+                                    <p class="text-xs text-gray-400">Venta #${s.id.slice(-4)}</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold text-gray-800">$${formatMoney(s.total)}</span>
+                                    <button onclick="showSaleDetail('${s.id}')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded-lg text-sm font-bold">Ver</button>
+                                    <button onclick="openFiadoPayModal('${s.id}')" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-lg text-sm font-bold">Cobrar</button>
+                                </div>
+                            </div>`).join('')}
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+
+            // Últimos 10 cobrados
+            const paidContainer = document.getElementById('fiados-paid-list');
+            const lastPaid = paid.slice(0, 10);
+            if (lastPaid.length === 0) {
+                paidContainer.innerHTML = '<p class="text-center text-gray-400 py-4">Todavía no hay fiados cobrados</p>';
+            } else {
+                paidContainer.innerHTML = lastPaid.map(s => `
+                <div class="flex justify-between items-center p-3 rounded-lg border bg-green-50 border-green-200 cursor-pointer" onclick="showSaleDetail('${s.id}')">
+                    <div>
+                        <p class="font-bold text-gray-800">${escapeHtml(s.customerName || 'Cliente')}</p>
+                        <p class="text-xs text-gray-500">Fiado del ${s.date} • Pagado el ${s.fiadoPaidDate || '-'} (${s.fiadoPaidMethod === 'cash' ? '💵 Efectivo' : '🏦 Cuenta'})</p>
+                    </div>
+                    <p class="font-bold text-green-600">+$${formatMoney(s.total)}</p>
+                </div>`).join('');
+            }
         }
 
         // ========== CONTROL DE STOCK ROBUSTO EN VENTAS ==========
@@ -6571,6 +6812,12 @@
         function completeSale() {
             if (appState.cart.length === 0) return;
 
+            // Si es fiado y todavía no tenemos el nombre del cliente, pedirlo primero
+            if (appState.paymentMethod === 'fiado' && !pendingFiadoCustomerName) {
+                openFiadoModal();
+                return;
+            }
+
             // ========== FASE 1: VALIDAR STOCK PREVIO ==========
             const stockErrors = validateStockForSale(appState.cart);
             if (stockErrors.length > 0) {
@@ -6682,6 +6929,16 @@
                 user: appState.currentUser ? appState.currentUser.name : null,
                 timestamp: Date.now()
             };
+
+            // Datos del fiado: consume el nombre pendiente del modal y lo limpia.
+            // No suma plata acá: 'fiado' queda fuera de las ramas cash/debit de abajo.
+            if (appState.paymentMethod === 'fiado') {
+                sale.customerName = pendingFiadoCustomerName;
+                sale.fiadoPaid = false;
+                sale.fiadoPaidDate = null;
+                sale.fiadoPaidMethod = null;
+                pendingFiadoCustomerName = null;
+            }
 
             // ========== FASE 2: DESCONTAR STOCK CON SNAPSHOT ==========
             const { snapshot: stockSnapshot, saleWhiteTotal, saleBlackTotal, itemBreakdown } = deductStockWithSnapshot(appState.cart);
@@ -7653,11 +7910,11 @@
         categorySelect.value = appState.lastCategory;
     }
     
-    // Restaurar última fecha de vencimiento usada
-    const expiryInput = document.getElementById('inv-expiry');
-    if (expiryInput && appState.lastExpiryDate) {
-        expiryInput.value = appState.lastExpiryDate;
-    }
+    // El vencimiento queda vacío por defecto: solo se carga si el producto vence.
+    // (No se restaura la última fecha usada — antes obligaba a borrarla a mano.)
+
+    // Inicializar los selectores de tipo de compra / medio de pago del formulario
+    updateInvPurchaseSelectors();
     
     // RESTAURAR IVA
     const vatCheckbox = document.getElementById('inv-vat');
@@ -8209,7 +8466,6 @@
             
             // Usar preferencias previas del usuario; si no existen, usar defaults
             const invoiceType = appState.pendingPurchaseInvoiceType || 'white';
-            const paymentMethod = appState.pendingPurchasePayment || 'cash';
             
             appState.pendingPurchase = {
                 barcode: document.getElementById('inv-barcode').value || '',
@@ -8231,26 +8487,10 @@
                 weightPerUnit: weightPerUnit
             };
 
-            // Si es producto compuesto, crear directamente sin pasar por modal de pago
-            if (isComposite) {
-                confirmPurchase();
-                return;
-            }
-
-            document.getElementById('purchase-total-amount').textContent = `$${formatMoney(totalCost)}`;
-            document.getElementById('purchase-cash-available').textContent = `$${formatMoney(appState.cash)}`;
-            document.getElementById('purchase-bank-available').textContent = `$${formatMoney(appState.bank)}`;
-            
-            setPurchasePayment(paymentMethod);
-            setPurchaseInvoiceType(invoiceType);
-            const modal = document.getElementById('purchase-payment-modal');
-            if (!modal) {
-                console.error('ERROR: No se encontró el modal de pago');
-                return;
-            }
-            modal.classList.add('active');
-            setTimeout(() => modal.querySelector('.bg-white')?.focus(), 100);
-            console.log('Modal abierto:', modal.classList.contains('active'));
+            // El tipo de compra y el medio de pago se eligen en el formulario mismo
+            // (botones Facturado/Sin factura y Caja/Cuenta): se confirma directo, sin modal
+            updateInvPurchaseSelectors();
+            confirmPurchase();
         }
 
         function setPurchaseInvoiceType(type) {
@@ -8282,6 +8522,53 @@
             document.getElementById('btn-purchase-bank').className = method === 'bank'
                 ? 'w-full p-4 rounded-xl border-2 border-blue-500 bg-blue-50 text-left flex items-center gap-3 transition'
                 : 'w-full p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 text-left flex items-center gap-3 transition';
+        }
+
+        // ==================== TIPO DE COMPRA Y PAGO EN EL FORMULARIO ====================
+        // Usan el mismo estado que el viejo modal de pago (pendingPurchaseInvoiceType /
+        // pendingPurchasePayment), así la elección queda recordada entre compras.
+        function setInvPurchaseInvoiceType(type) {
+            appState.pendingPurchaseInvoiceType = type;
+            updateInvPurchaseSelectors();
+        }
+
+        function setInvPurchasePayment(method) {
+            appState.pendingPurchasePayment = method;
+            updateInvPurchaseSelectors();
+        }
+
+        function updateInvPurchaseSelectors() {
+            const type = appState.pendingPurchaseInvoiceType || 'white';
+            const method = appState.pendingPurchasePayment || 'cash';
+
+            const btnWhite = document.getElementById('btn-inv-invoice-white');
+            const btnBlack = document.getElementById('btn-inv-invoice-black');
+            if (btnWhite && btnBlack) {
+                const base = 'flex-1 py-2 rounded-lg border-2 text-sm transition flex items-center justify-center gap-1 ';
+                btnWhite.className = base + (type === 'white'
+                    ? 'border-blue-500 bg-blue-50 font-bold text-blue-700'
+                    : 'border-gray-200 font-medium text-gray-600 hover:border-gray-400');
+                btnBlack.className = base + (type === 'black'
+                    ? 'border-gray-700 bg-gray-100 font-bold text-gray-800'
+                    : 'border-gray-200 font-medium text-gray-600 hover:border-gray-400');
+            }
+
+            const btnCash = document.getElementById('btn-inv-pay-cash');
+            const btnBank = document.getElementById('btn-inv-pay-bank');
+            if (btnCash && btnBank) {
+                const base = 'flex-1 py-2 rounded-lg border-2 text-sm transition ';
+                btnCash.className = base + (method === 'cash'
+                    ? 'border-green-500 bg-green-50 font-bold text-green-700'
+                    : 'border-gray-200 font-medium text-gray-600 hover:border-gray-400');
+                btnBank.className = base + (method === 'bank'
+                    ? 'border-blue-500 bg-blue-50 font-bold text-blue-700'
+                    : 'border-gray-200 font-medium text-gray-600 hover:border-gray-400');
+            }
+
+            const cashEl = document.getElementById('inv-pay-cash-available');
+            const bankEl = document.getElementById('inv-pay-bank-available');
+            if (cashEl) cashEl.textContent = formatMoney(appState.cash || 0);
+            if (bankEl) bankEl.textContent = formatMoney(appState.bank || 0);
         }
 
         function closePurchaseModal() {
@@ -10419,10 +10706,12 @@
             const daySales = appState.sales.filter(s => s.date === dateStr);
             const dayExpenses = appState.expenses.filter(e => e.date === dateStr);
             const dayInvestments = appState.investments.filter(i => i.date === dateStr);
-            const totalSales = daySales.reduce((sum, s) => sum + s.total, 0);
+            // Totales de plata/ganancia: cuentan el día que entra la plata (fiados, el día del cobro)
+            const revenueSales = appState.sales.filter(s => saleRevenueDate(s) === dateStr);
+            const totalSales = revenueSales.reduce((sum, s) => sum + s.total, 0);
             const totalExpenses = dayExpenses.reduce((sum, e) => sum + e.amount, 0);
             const totalInvestments = dayInvestments.reduce((sum, i) => sum + i.amount, 0);
-            const profit = daySales.reduce((sum, s) => sum + s.profit, 0);
+            const profit = revenueSales.reduce((sum, s) => sum + s.profit, 0);
             const items = daySales.reduce((sum, s) => sum + s.items.length, 0);
             const balance = totalSales - totalExpenses - totalInvestments;
 
@@ -10476,7 +10765,7 @@
                 <div class="sale-item flex justify-between items-center p-3 rounded-lg border">
                     <div class="flex-1 cursor-pointer" onclick="showSaleDetail('${sale.id}')">
                         <p class="font-bold text-gray-800">Venta #${sale.id.slice(-4)}</p>
-                        <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵' : (sale.isMercadoCredito ? '💳 MercadoCrédito' : '💳 Débito')}</p>
+                        <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.isMercadoCredito ? '💳 MercadoCrédito' : '💳 Débito'))}</p>
                     </div>
                     <div class="text-right mr-4">
                         <p class="font-bold text-green-600">+$${formatMoney(sale.total)}</p>
@@ -10593,6 +10882,13 @@
             } else if (sale.paymentMethod === 'debit') {
                 const neto = sale.isMercadoCredito ? (sale.total - (sale.mercadoCreditoFee || 0)) : sale.total;
                 appState.bank -= neto;
+            } else if (sale.paymentMethod === 'fiado' && sale.fiadoPaid) {
+                // Fiado ya cobrado: devolver la plata según cómo se cobró (fiado sin cobrar no movió plata)
+                if (sale.fiadoPaidMethod === 'cash') {
+                    appState.cash -= sale.total;
+                } else if (sale.fiadoPaidMethod === 'debit') {
+                    appState.bank -= sale.total;
+                }
             }
 
             // Revertir devoluciones asociadas a esta venta
@@ -10883,6 +11179,13 @@
             } else if (sale.paymentMethod === 'debit') {
                 const neto = sale.isMercadoCredito ? (sale.total - (sale.mercadoCreditoFee || 0)) : sale.total;
                 appState.bank -= neto;
+            } else if (sale.paymentMethod === 'fiado' && sale.fiadoPaid) {
+                // Fiado ya cobrado: devolver la plata según cómo se cobró (fiado sin cobrar no movió plata)
+                if (sale.fiadoPaidMethod === 'cash') {
+                    appState.cash -= sale.total;
+                } else if (sale.fiadoPaidMethod === 'debit') {
+                    appState.bank -= sale.total;
+                }
             }
 
             // Revertir devoluciones asociadas a esta venta
@@ -11028,8 +11331,18 @@
                     ` : ''}
                     <div class="flex justify-between text-sm text-gray-500">
                         <span>Método:</span>
-                        <span>${sale.paymentMethod === 'cash' ? 'Efectivo' : (sale.isMercadoCredito ? '💳 Débito (MercadoCrédito)' : '💳 Débito')}</span>
+                        <span>${sale.paymentMethod === 'cash' ? 'Efectivo' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.isMercadoCredito ? '💳 Débito (MercadoCrédito)' : '💳 Débito'))}</span>
                     </div>
+                    ${sale.paymentMethod === 'fiado' ? `
+                    <div class="flex justify-between text-sm ${sale.fiadoPaid ? 'text-green-600' : 'text-amber-600'} font-bold">
+                        <span>Cliente (fiado):</span>
+                        <span>${escapeHtml(sale.customerName || '-')}</span>
+                    </div>
+                    <div class="flex justify-between text-sm text-gray-500">
+                        <span>Estado del fiado:</span>
+                        <span>${sale.fiadoPaid ? 'Pagado el ' + (sale.fiadoPaidDate || '-') + ' (' + (sale.fiadoPaidMethod === 'cash' ? 'Efectivo' : 'Cuenta') + ')' : 'Pendiente de cobro'}</span>
+                    </div>
+                    ` : ''}
                     ${sale.user ? `
                     <div class="flex justify-between text-sm text-gray-500">
                         <span>Vendedor:</span>
@@ -11194,7 +11507,7 @@
                         '<tbody class="divide-y divide-gray-200">' +
                         todaySales.slice().reverse().map(s => {
                             const bd = s.invoiceBreakdown || { white: 0, black: 0 };
-                            const payIcon = s.paymentMethod === 'cash' ? '💵 Efectivo' : s.paymentMethod === 'debit' ? '💳 Débito' : '💳 Otro';
+                            const payIcon = s.paymentMethod === 'cash' ? '💵 Efectivo' : s.paymentMethod === 'debit' ? '💳 Débito' : s.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(s) : '💳 Otro';
                             return '<tr class="hover:bg-gray-50">' +
                                 '<td class="px-3 py-2 text-gray-600">' + s.time + '</td>' +
                                 '<td class="px-3 py-2 text-right font-bold">$' + formatMoney(s.total) + '</td>' +
@@ -11381,8 +11694,9 @@
             const start = new Date(today);
             start.setDate(start.getDate() - days);
             const filtered = sales.filter(s => {
-                if (!s.date) return false;
-                const d = new Date(s.date + 'T00:00:00');
+                const rd = saleRevenueDate(s);
+                if (!rd) return false;
+                const d = new Date(rd + 'T00:00:00');
                 return d >= start && d <= today;
             });
             if (filtered.length === 0) return 0;
@@ -11914,6 +12228,17 @@
                     time: s.time
                 }));
             
+            // Cobros de fiados en efectivo de hoy (cuentan el día del cobro)
+            const todayCashFiados = appState.sales
+                .filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid && s.fiadoPaidDate === today && s.fiadoPaidMethod === 'cash')
+                .map(s => ({
+                    type: 'income',
+                    concept: `Cobro fiado – ${s.customerName || 'Cliente'}`,
+                    amount: s.total,
+                    time: s.time,
+                    label: '🤝 FIADO'
+                }));
+            
             // Obtener gastos de caja de hoy
             const todayCashExpenses = appState.expenses
                 .filter(e => e.date === today && e.source === 'cash')
@@ -11968,7 +12293,7 @@
                 }));
             
             // Combinar y ordenar por tiempo
-            const allMovements = [...todayCashSales, ...todayCashExpenses, ...todayCashInvestments, ...todayCashCapital, ...todayCashTransfers, ...todayCashReturns]
+            const allMovements = [...todayCashSales, ...todayCashFiados, ...todayCashExpenses, ...todayCashInvestments, ...todayCashCapital, ...todayCashTransfers, ...todayCashReturns]
                 .sort((a, b) => (a.time > b.time ? -1 : 1));
             
             const container = document.getElementById('cash-movements-list');
@@ -12012,6 +12337,17 @@
                     time: s.time,
                     isMercadoCredito: s.isMercadoCredito,
                     fee: s.mercadoCreditoFee || 0
+                }));
+            
+            // Cobros de fiados a cuenta de hoy (cuentan el día del cobro)
+            const todayBankFiados = appState.sales
+                .filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid && s.fiadoPaidDate === today && s.fiadoPaidMethod === 'debit')
+                .map(s => ({
+                    type: 'income',
+                    concept: `Cobro fiado – ${s.customerName || 'Cliente'}`,
+                    amount: s.total,
+                    time: s.time,
+                    label: '🤝 FIADO'
                 }));
             
             // Obtener gastos de cuenta de hoy
@@ -12068,7 +12404,7 @@
                 }));
             
             // Combinar y ordenar por tiempo
-            const allMovements = [...todayBankSales, ...todayBankExpenses, ...todayBankInvestments, ...todayBankCapital, ...todayBankTransfers, ...todayBankReturns]
+            const allMovements = [...todayBankSales, ...todayBankFiados, ...todayBankExpenses, ...todayBankInvestments, ...todayBankCapital, ...todayBankTransfers, ...todayBankReturns]
                 .sort((a, b) => (a.time > b.time ? -1 : 1));
             
             const container = document.getElementById('bank-movements-list');
@@ -12358,10 +12694,10 @@
                         labels.push(hourStr);
                         
                         const hourSales = appState.sales
-                            .filter(s => s.date === targetDayStr && parseInt((s.time || '00:00').split(':')[0]) === h)
+                            .filter(s => saleRevenueDate(s) === targetDayStr && parseInt((s.time || '00:00').split(':')[0]) === h)
                             .reduce((sum, s) => sum + (s.total || 0), 0);
                         const hourProfit = appState.sales
-                            .filter(s => s.date === targetDayStr && parseInt((s.time || '00:00').split(':')[0]) === h)
+                            .filter(s => saleRevenueDate(s) === targetDayStr && parseInt((s.time || '00:00').split(':')[0]) === h)
                             .reduce((sum, s) => sum + (s.profit || 0), 0);
                         const hourExpenses = appState.expenses
                             .filter(e => e.date === targetDayStr && parseInt((e.time || '00:00').split(':')[0]) === h)
@@ -12395,10 +12731,10 @@
                         labels.push(dayNames[d]);
                         
                         const daySales = appState.sales
-                            .filter(s => s.date === dateStr)
+                            .filter(s => saleRevenueDate(s) === dateStr)
                             .reduce((sum, s) => sum + (s.total || 0), 0);
                         const dayProfit = appState.sales
-                            .filter(s => s.date === dateStr)
+                            .filter(s => saleRevenueDate(s) === dateStr)
                             .reduce((sum, s) => sum + (s.profit || 0), 0);
                         const dayExpenses = appState.expenses
                             .filter(e => e.date === dateStr)
@@ -12426,10 +12762,10 @@
                         
                         const dateStr = `${yearMonth}-${dayStr}`;
                         const daySales = appState.sales
-                            .filter(s => s.date === dateStr)
+                            .filter(s => saleRevenueDate(s) === dateStr)
                             .reduce((sum, s) => sum + (s.total || 0), 0);
                         const dayProfit = appState.sales
-                            .filter(s => s.date === dateStr)
+                            .filter(s => saleRevenueDate(s) === dateStr)
                             .reduce((sum, s) => sum + (s.profit || 0), 0);
                         const dayExpenses = appState.expenses
                             .filter(e => e.date === dateStr)
@@ -12456,10 +12792,10 @@
                         
                         const monthPrefix = `${targetYear}-${monthStr}`;
                         const monthSales = appState.sales
-                            .filter(s => s.date && s.date.startsWith(monthPrefix))
+                            .filter(s => { const rd = saleRevenueDate(s); return rd && rd.startsWith(monthPrefix); })
                             .reduce((sum, s) => sum + (s.total || 0), 0);
                         const monthProfit = appState.sales
-                            .filter(s => s.date && s.date.startsWith(monthPrefix))
+                            .filter(s => { const rd = saleRevenueDate(s); return rd && rd.startsWith(monthPrefix); })
                             .reduce((sum, s) => sum + (s.profit || 0), 0);
                         const monthExpenses = appState.expenses
                             .filter(e => e.date && e.date.startsWith(monthPrefix))
@@ -12684,7 +13020,8 @@
                 const totalCapital = appState.cash + appState.bank + inventoryValue;
                 
                 // Ganancia neta = suma del profit de TODAS las ventas (precio de venta - costo al momento de la venta)
-                const salesProfit = appState.sales.reduce((sum, s) => sum + (s.profit || 0), 0);
+                // Los fiados cuentan solo cuando están cobrados
+                const salesProfit = appState.sales.filter(s => saleRevenueDate(s) !== null).reduce((sum, s) => sum + (s.profit || 0), 0);
                 
                 // Ganancia fantasma = sobrantes de caja + stock gratis - pérdidas por mermas (todo el historial)
                 const totalSurplus = (appState.cashDifferences || [])
@@ -12705,8 +13042,8 @@
                     .reduce((sum, adj) => sum + adj.amount, 0);
                 const totalInvested = (appState.initialCapital || 0) + capitalInjected;
                 
-                // Calcular margen de ganancia neta sobre ventas totales
-                const totalSalesAmount = appState.sales.reduce((sum, s) => sum + (s.total || 0), 0);
+                // Calcular margen de ganancia neta sobre ventas totales (fiados solo si están cobrados)
+                const totalSalesAmount = appState.sales.filter(s => saleRevenueDate(s) !== null).reduce((sum, s) => sum + (s.total || 0), 0);
                 const netProfitMargin = totalSalesAmount > 0 ? ((netProfit / totalSalesAmount) * 100) : 0;
                 
                 updateMetric('metric-capital-injected', `$${formatMoney(totalCapital)}`, 'text-blue-800');
@@ -13258,16 +13595,20 @@
             const resDeposits = appState.reserveMovements ? appState.reserveMovements.filter(m => m.date === today && m.type === 'deposit').reduce((sum, m) => sum + m.amount, 0) : 0;
             const resWithdraws = appState.reserveMovements ? appState.reserveMovements.filter(m => m.date === today && m.type === 'withdraw').reduce((sum, m) => sum + m.amount, 0) : 0;
             
+            // Cobros de fiados del día (entran el día del cobro, no el día del fiado)
+            const cashFiados = appState.sales.filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid && s.fiadoPaidDate === today && s.fiadoPaidMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
+            const bankFiados = appState.sales.filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid && s.fiadoPaidDate === today && s.fiadoPaidMethod === 'debit').reduce((sum, s) => sum + s.total, 0);
+            
             // Transacciones de cuenta (banco/débito)
             const bankSales = appState.sales.filter(s => s.date === today && s.paymentMethod === 'debit').reduce((sum, s) => sum + (s.total - (s.mercadoCreditoFee || 0)), 0);
             const bankExpenses = appState.expenses.filter(e => e.date === today && e.source === 'bank').reduce((sum, e) => sum + e.amount, 0);
             const bankInvestments = appState.investments.filter(i => i.date === today && i.source === 'bank').reduce((sum, i) => sum + i.amount, 0);
             const bankReturns = appState.returns ? appState.returns.filter(r => r.date === today && r.paymentMethod === 'debit').reduce((sum, r) => sum + r.amount, 0) : 0;
             
-            const expectedCash = openingCash + cashSales - cashExpenses - cashInvestments - cashReturns + toCash - toBank - resDeposits + resWithdraws;
-            const expectedBank = openingBank + bankSales - bankExpenses - bankInvestments - bankReturns - toCash + toBank;
+            const expectedCash = openingCash + cashSales + cashFiados - cashExpenses - cashInvestments - cashReturns + toCash - toBank - resDeposits + resWithdraws;
+            const expectedBank = openingBank + bankSales + bankFiados - bankExpenses - bankInvestments - bankReturns - toCash + toBank;
 
-            return { cash: expectedCash, bank: expectedBank, total: expectedCash + expectedBank, reserveNet: resDeposits - resWithdraws };
+            return { cash: expectedCash, bank: expectedBank, total: expectedCash + expectedBank, reserveNet: resDeposits - resWithdraws, cashFiados, bankFiados };
         }
 
         // Abre el arqueo automáticamente una sola vez por día si aún no se hizo
@@ -13345,6 +13686,7 @@
                 
                 document.getElementById('cc-opening').textContent = '$' + formatMoney(openingCash);
                 document.getElementById('cc-sales').textContent = '$' + formatMoney(todayCashSales);
+                document.getElementById('cc-fiados').textContent = '$' + formatMoney(expected.cashFiados || 0);
                 document.getElementById('cc-expenses').textContent = '$' + formatMoney(todayCashExpenses);
                 document.getElementById('cc-investments').textContent = '$' + formatMoney(todayCashInvestments);
                 // Neto a reserva: positivo = plata que salió del cajón a la caja fuerte
@@ -13359,6 +13701,7 @@
                 
                 document.getElementById('cc-opening-bank').textContent = '$' + formatMoney(openingBank);
                 document.getElementById('cc-sales-bank').textContent = '$' + formatMoney(todayBankSales);
+                document.getElementById('cc-fiados-bank').textContent = '$' + formatMoney(expected.bankFiados || 0);
                 document.getElementById('cc-expenses-bank').textContent = '$' + formatMoney(todayBankExpenses);
                 document.getElementById('cc-investments-bank').textContent = '$' + formatMoney(todayBankInvestments);
                 document.getElementById('cc-expected-bank').textContent = '$' + formatMoney(expected.bank);
@@ -13980,6 +14323,32 @@
         let stockCountSession = null;
 
         function openStockCountModal() {
+            // Si hay un conteo guardado a medias, ofrecer seguir donde quedó
+            const saved = loadSavedStockCountSession();
+            if (saved) {
+                const contadosGuardados = saved.items.filter(i => i.counted !== null).length;
+                if (confirm('💾 Hay un conteo sin terminar (' + contadosGuardados + ' de ' + saved.items.length + ' productos contados).\n\nAceptar = seguir donde quedaste\nCancelar = empezar uno nuevo (se borra el anterior)')) {
+                    stockCountSession = saved;
+                    // Sacar productos que ya no existen en el inventario
+                    stockCountSession.items = stockCountSession.items.filter(i => appState.inventory.some(p => p.id === i.productId));
+                    if (stockCountSession.items.length === 0) {
+                        localStorage.removeItem('kioscopro-stockcount-session');
+                        stockCountSession = null;
+                        showNotification('El conteo guardado ya no aplica: esos productos no existen más', 'warning');
+                        return;
+                    }
+                    if (stockCountSession.index >= stockCountSession.items.length) {
+                        stockCountSession.index = stockCountSession.items.length - 1;
+                    }
+                    document.getElementById('stock-count-summary').classList.add('hidden');
+                    document.getElementById('stock-count-step').classList.remove('hidden');
+                    document.getElementById('stock-count-modal').classList.add('active');
+                    renderStockCountStep();
+                    return;
+                }
+                localStorage.removeItem('kioscopro-stockcount-session');
+            }
+
             const products = getActiveInventory()
                 .filter(p => !(p.isComposite && p.components && p.components.length > 0)) // las preparaciones no se cuentan (su stock sale de los componentes)
                 .filter(p => !p.skipStockCount) // elementos del negocio u otros excluidos del conteo
@@ -14012,6 +14381,41 @@
         function closeStockCountModal() {
             document.getElementById('stock-count-modal').classList.remove('active');
             stockCountSession = null;
+            localStorage.removeItem('kioscopro-stockcount-session');
+        }
+
+        // Persistencia del conteo en curso: se guarda a cada paso para poder
+        // salir del modal y seguir después sin perder lo ya contado.
+        function saveStockCountSession() {
+            try {
+                if (stockCountSession) {
+                    localStorage.setItem('kioscopro-stockcount-session', JSON.stringify(stockCountSession));
+                } else {
+                    localStorage.removeItem('kioscopro-stockcount-session');
+                }
+            } catch (e) { console.warn('No se pudo guardar el conteo en curso:', e); }
+        }
+
+        function loadSavedStockCountSession() {
+            try {
+                const raw = localStorage.getItem('kioscopro-stockcount-session');
+                if (!raw) return null;
+                const s = JSON.parse(raw);
+                if (!s || !Array.isArray(s.items) || s.items.length === 0) return null;
+                return s;
+            } catch (e) { return null; }
+        }
+
+        // Salir del modal sin perder el conteo: queda guardado y se retoma
+        // la próxima vez que se abre "Conteo de Stock"
+        function pauseStockCount() {
+            if (!stockCountSession) { closeStockCountModal(); return; }
+            stockCountCapture(); // conservar lo escrito si es válido
+            saveStockCountSession();
+            const contados = stockCountSession.items.filter(i => i.counted !== null).length;
+            document.getElementById('stock-count-modal').classList.remove('active');
+            stockCountSession = null;
+            showNotification('💾 Conteo guardado (' + contados + ' productos contados). Seguilo cuando quieras desde "Conteo de Stock".', 'success', 6000);
         }
 
         function renderStockCountStep() {
@@ -14072,6 +14476,7 @@
                 stockCountFinish(false);
             } else {
                 stockCountSession.index++;
+                saveStockCountSession();
                 renderStockCountStep();
             }
         }
@@ -14080,6 +14485,7 @@
             if (!stockCountSession || stockCountSession.index === 0) return;
             stockCountCapture(); // conservar lo escrito si es válido
             stockCountSession.index--;
+            saveStockCountSession();
             renderStockCountStep();
         }
 
@@ -14105,6 +14511,7 @@
             if (stockCountSession.index >= stockCountSession.items.length) {
                 stockCountSession.index = stockCountSession.items.length - 1;
             }
+            saveStockCountSession();
             renderStockCountStep();
             showNotification('🚫 "' + item.name + '" ya no aparecerá en el conteo', 'success');
         }
@@ -14153,6 +14560,8 @@
                 timestamp: Date.now()
             });
             saveToLocalStorage();
+            // El conteo terminó: borrar la sesión guardada (el resumen ya quedó en el historial)
+            localStorage.removeItem('kioscopro-stockcount-session');
 
             document.getElementById('stock-count-step').classList.add('hidden');
             document.getElementById('stock-count-summary').classList.remove('hidden');
@@ -15086,6 +15495,13 @@
                 appState.cash -= amount;
             } else if (currentReturnSale.paymentMethod === 'debit') {
                 appState.bank -= amount;
+            } else if (currentReturnSale.paymentMethod === 'fiado' && currentReturnSale.fiadoPaid) {
+                // Fiado ya cobrado: restar de donde entró la plata (fiado sin cobrar no movió plata)
+                if (currentReturnSale.fiadoPaidMethod === 'cash') {
+                    appState.cash -= amount;
+                } else if (currentReturnSale.fiadoPaidMethod === 'debit') {
+                    appState.bank -= amount;
+                }
             }
             
             if (!appState.returns) appState.returns = [];
@@ -17536,8 +17952,10 @@ Total de productos a comprar: ${shoppingList.length}
             if (endDate) filteredInvestments = filteredInvestments.filter(i => i.date <= endDate);
 
             // ===== KPIs =====
-            const totalSales = filteredSales.reduce((sum, s) => sum + s.total, 0);
-            const totalProfit = filteredSales.reduce((sum, s) => sum + s.profit, 0);
+            // Fiados sin cobrar no suman plata ni ganancia
+            const revenueSales = filteredSales.filter(s => saleRevenueDate(s) !== null);
+            const totalSales = revenueSales.reduce((sum, s) => sum + s.total, 0);
+            const totalProfit = revenueSales.reduce((sum, s) => sum + s.profit, 0);
             const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
             const totalInvestments = filteredInvestments.reduce((sum, i) => sum + i.amount, 0);
             const netProfit = totalProfit - totalExpenses;
@@ -17600,7 +18018,7 @@ Total de productos a comprar: ${shoppingList.length}
                     s.items.map(i => `${i.name} x${i.quantity}`).join('; '),
                     s.total,
                     s.profit,
-                    s.paymentMethod
+                    paymentMethodLabel(s)
                 ])
             ];
 
@@ -17653,8 +18071,10 @@ Total de productos a comprar: ${shoppingList.length}
         }
 
         function exportFinancialReport() {
-            const totalSales = appState.sales.reduce((sum, s) => sum + s.total, 0);
-            const totalProfit = appState.sales.reduce((sum, s) => sum + s.profit, 0);
+            // Fiados sin cobrar no suman plata ni ganancia
+            const revenueSales = appState.sales.filter(s => saleRevenueDate(s) !== null);
+            const totalSales = revenueSales.reduce((sum, s) => sum + s.total, 0);
+            const totalProfit = revenueSales.reduce((sum, s) => sum + s.profit, 0);
             const totalExpenses = appState.expenses.reduce((sum, e) => sum + e.amount, 0);
             
             const activeInv = getActiveInventory();
@@ -17856,7 +18276,7 @@ RESULTADOS:
                 if (Array.isArray(appState.sales)) {
                     const today = formatDateISO(appState.activeDate);
                     todayTotal = appState.sales
-                        .filter(s => s && s.date === today)
+                        .filter(s => s && saleRevenueDate(s) === today)
                         .reduce((sum, s) => sum + (parseFloat(s.total) || 0), 0);
                 }
                 
@@ -21628,7 +22048,7 @@ RESULTADOS:
             
             // Exponer funciones adicionales de venta por peso y sync
             (function exposeAdditionalFunctions() {
-                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup','changeDashboardPeriod','toggleChartMetric','renderChartMetricToggles','toggleDashboardMetric','renderDashboardMetricToggles','renderCashFlowProjection','setCashFlowProjectionDays','saveCashFlowEstimatedIncome','resetCashFlowEstimatedIncome','saveCashFlowLowThreshold','openRecurringExpensesModal','closeRecurringExpensesModal','saveRecurringExpense','editRecurringExpense','deleteRecurringExpense','resetRecurringExpenseForm','onRecExpenseFrequencyChange','addSupplier','deleteSupplier','renderSuppliersList','addCategoryToSupplier','removeCategoryFromSupplier','renderSupplierCategories','saveBusinessHours','toggleBusinessDay','onInvSupplierChange','onEditSupplierChange','populateSupplierSelects','getSupplierByName','getSupplierName','getSupplierPhone','deleteTicket','reopenCashCount','toggleAmountsHidden'];
+                const extraFns = ['openWeightSaleModal','closeWeightSaleModal','setWeightMode','onWeightSaleInput','addWeightToCart','toggleWeightSection','updatePricePerGram','toggleEditWeightSection','updateEditPricePerGram','downloadFromCloud','toggleMasterDevice','isMasterDevice','calculateAddStockPriceFromMargin','updateAddStockMarginDisplay','getInvUnitCost','filterInvComponents','filterEditComponents','selectCompOption','handleInvCompKeypress','handleEditCompKeypress','updateCompQtyPlaceholder','restoreFromAutoBackup','createAutoBackup','changeDashboardPeriod','toggleChartMetric','renderChartMetricToggles','toggleDashboardMetric','renderDashboardMetricToggles','renderCashFlowProjection','setCashFlowProjectionDays','saveCashFlowEstimatedIncome','resetCashFlowEstimatedIncome','saveCashFlowLowThreshold','openRecurringExpensesModal','closeRecurringExpensesModal','saveRecurringExpense','editRecurringExpense','deleteRecurringExpense','resetRecurringExpenseForm','onRecExpenseFrequencyChange','addSupplier','deleteSupplier','renderSuppliersList','addCategoryToSupplier','removeCategoryFromSupplier','renderSupplierCategories','saveBusinessHours','toggleBusinessDay','onInvSupplierChange','onEditSupplierChange','populateSupplierSelects','getSupplierByName','getSupplierName','getSupplierPhone','deleteTicket','reopenCashCount','toggleAmountsHidden','setInvPurchaseInvoiceType','setInvPurchasePayment','updateInvPurchaseSelectors','pauseStockCount','openFiadoModal','closeFiadoModal','confirmFiadoSale','renderFiados','openFiadoPayModal','closeFiadoPayModal','confirmFiadoPayment','saleRevenueDate','paymentMethodLabel'];
                 for (const name of extraFns) {
                     try {
                         const fn = eval(name);
@@ -21678,6 +22098,7 @@ RESULTADOS:
                     <p class="font-bold text-gray-700 mb-1">💵 Caja (efectivo)</p>
                     <div class="flex justify-between"><span>Apertura:</span><span class="font-bold" id="cc-opening">$0</span></div>
                     <div class="flex justify-between"><span>Ventas efectivo:</span><span class="font-bold text-green-600" id="cc-sales">$0</span></div>
+                    <div class="flex justify-between"><span>Cobros fiados:</span><span class="font-bold text-green-600" id="cc-fiados">$0</span></div>
                     <div class="flex justify-between"><span>Gastos efectivo:</span><span class="font-bold text-red-600" id="cc-expenses">$0</span></div>
                     <div class="flex justify-between"><span>Compras efectivo:</span><span class="font-bold text-orange-600" id="cc-investments">$0</span></div>
                     <div class="flex justify-between" id="cc-reserve-row"><span>A reserva (caja fuerte):</span><span class="font-bold text-amber-600" id="cc-reserve">$0</span></div>
@@ -21687,6 +22108,7 @@ RESULTADOS:
                     <p class="font-bold text-gray-700 mb-1">🏦 Cuenta (banco)</p>
                     <div class="flex justify-between"><span>Apertura:</span><span class="font-bold" id="cc-opening-bank">$0</span></div>
                     <div class="flex justify-between"><span>Ventas débito:</span><span class="font-bold text-green-600" id="cc-sales-bank">$0</span></div>
+                    <div class="flex justify-between"><span>Cobros fiados:</span><span class="font-bold text-green-600" id="cc-fiados-bank">$0</span></div>
                     <div class="flex justify-between"><span>Gastos débito:</span><span class="font-bold text-red-600" id="cc-expenses-bank">$0</span></div>
                     <div class="flex justify-between"><span>Compras débito:</span><span class="font-bold text-orange-600" id="cc-investments-bank">$0</span></div>
                     <div class="flex justify-between"><span>Esperado cuenta:</span><span class="font-bold text-blue-600" id="cc-expected-bank">$0</span></div>
@@ -21750,6 +22172,44 @@ RESULTADOS:
                     <button onclick="closeManualSaleModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
                     <button onclick="saveManualSale()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700">Guardar Venta</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== FIADO MODAL ==================== -->
+    <div id="fiado-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmFiadoSale();}">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-4 text-amber-600"><i class="fas fa-hand-holding-usd"></i> Venta Fiada</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Nombre del cliente</label>
+                    <input type="text" id="fiado-customer-name" class="w-full border-2 border-amber-200 rounded-xl px-4 py-2" placeholder="Ej: Juan, La vecina del 4to...">
+                </div>
+                <p class="text-xs text-gray-500">La venta queda registrada hoy y descuenta stock, pero la plata entra a caja/cuenta recién cuando la cobres desde la sección Fiados.</p>
+                <div class="flex gap-2">
+                    <button onclick="closeFiadoModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                    <button onclick="confirmFiadoSale()" class="flex-1 bg-amber-500 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-amber-600">Guardar Fiado</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== COBRAR FIADO MODAL ==================== -->
+    <div id="fiado-pay-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-4 text-green-600"><i class="fas fa-hand-holding-usd"></i> Cobrar Fiado</h3>
+            <div class="space-y-4">
+                <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+                    <p class="text-sm text-gray-600">Cliente</p>
+                    <p class="font-bold text-gray-800" id="fiado-pay-customer">-</p>
+                    <p class="text-2xl font-bold text-green-700 mt-1" id="fiado-pay-amount">$0</p>
+                </div>
+                <p class="text-sm text-gray-600">¿Dónde entra la plata?</p>
+                <div class="flex gap-2">
+                    <button onclick="confirmFiadoPayment('cash')" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700"><i class="fas fa-money-bill-wave"></i> Efectivo</button>
+                    <button onclick="confirmFiadoPayment('debit')" class="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-blue-700"><i class="fas fa-credit-card"></i> Cuenta</button>
+                </div>
+                <button onclick="closeFiadoPayModal()" class="w-full bg-gray-200 text-gray-700 py-2 rounded-xl font-bold hover:bg-gray-300">Cancelar</button>
             </div>
         </div>
     </div>

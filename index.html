@@ -3757,6 +3757,86 @@
     </div>
 
     <script>
+        // ==================== UNA SOLA PESTAÑA / VENTANA A LA VEZ ====================
+        // Tener KioscoPro abierto en dos lugares hace que se pisen los datos de
+        // localStorage y se puedan perder ventas. La 2da instancia queda bloqueada
+        // con un aviso hasta que se cierre la otra (ahí se recarga sola).
+        (function singleInstanceGuard() {
+            var LOCK_NAME = 'kioscopro-single-instance';
+            var forced = false;
+
+            function buildBlocker() {
+                var el = document.getElementById('single-instance-blocker');
+                if (el) return el;
+                el = document.createElement('div');
+                el.id = 'single-instance-blocker';
+                el.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(30,27,75,.97);display:none;align-items:center;justify-content:center;padding:24px;font-family:Inter,system-ui,-apple-system,sans-serif';
+                el.innerHTML =
+                    '<div style="max-width:420px;width:100%;text-align:center;background:#fff;color:#1f2937;border-radius:20px;padding:32px 26px;box-shadow:0 25px 70px rgba(0,0,0,.45)">' +
+                        '<div style="font-size:46px;margin-bottom:10px">&#129522;</div>' +
+                        '<h2 style="font-size:20px;font-weight:800;margin:0 0 8px">KioscoPro ya est&aacute; abierto</h2>' +
+                        '<p style="font-size:14px;color:#6b7280;line-height:1.5;margin:0 0 22px">Lo ten&eacute;s abierto en otra pesta&ntilde;a o ventana. Para no perder ventas ni pisar datos, cerr&aacute; la otra y us&aacute; una sola.</p>' +
+                        '<button id="sib-retry" style="width:100%;padding:12px;border:0;border-radius:12px;background:#4f46e5;color:#fff;font-weight:700;font-size:14px;cursor:pointer">Ya cerr&eacute; la otra &mdash; reintentar</button>' +
+                        '<button id="sib-force" style="width:100%;padding:10px;margin-top:8px;border:0;border-radius:12px;background:#f3f4f6;color:#374151;font-weight:700;font-size:13px;cursor:pointer">Usar esta igual (no recomendado)</button>' +
+                    '</div>';
+                (document.body || document.documentElement).appendChild(el);
+                el.querySelector('#sib-retry').onclick = function () { location.reload(); };
+                el.querySelector('#sib-force').onclick = function () {
+                    if (!confirm('Con dos pestañas abiertas podés perder ventas o pisar datos. ¿Seguir igual en esta pestaña?')) return;
+                    forced = true;
+                    hideBlocker();
+                };
+                return el;
+            }
+            function showBlocker() { if (!forced) buildBlocker().style.display = 'flex'; }
+            function hideBlocker() { var el = document.getElementById('single-instance-blocker'); if (el) el.style.display = 'none'; }
+
+            if (navigator.locks && navigator.locks.request) {
+                navigator.locks.request(LOCK_NAME, { mode: 'exclusive', ifAvailable: true }, function (lock) {
+                    if (lock) {
+                        return new Promise(function () {}); // única pestaña: retener el lock mientras viva
+                    }
+                    // Otra pestaña tiene el lock. Avisar (con margen para no parpadear en recargas propias).
+                    var waiting = true, shown = false;
+                    var t = setTimeout(function () { if (waiting && !forced) { shown = true; showBlocker(); } }, 350);
+                    return navigator.locks.request(LOCK_NAME, { mode: 'exclusive' }, function () {
+                        waiting = false; clearTimeout(t);
+                        if (shown && !forced) { location.reload(); return new Promise(function () {}); }
+                        hideBlocker();
+                        return new Promise(function () {}); // ahora somos la única: retener
+                    });
+                }).catch(function (e) { console.warn('singleInstanceGuard:', e); });
+            } else {
+                // Fallback (navegadores sin Web Locks): latido en localStorage, gana el primero
+                var ID = 'sib-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+                var KEY = 'kioscopro-active-tab';
+                var blocked = false;
+                var fresh = function (v) { return v && (Date.now() - v.ts) < 6000; };
+                try {
+                    var cur = JSON.parse(localStorage.getItem(KEY) || 'null');
+                    if (fresh(cur) && cur.id !== ID) { blocked = true; showBlocker(); }
+                } catch (e) {}
+                if (blocked) {
+                    // Si la otra deja de latir (se cerró), recargar para tomar el control
+                    var poll = setInterval(function () {
+                        try {
+                            var v = JSON.parse(localStorage.getItem(KEY) || 'null');
+                            if (!fresh(v)) { clearInterval(poll); location.reload(); }
+                        } catch (e) {}
+                    }, 3000);
+                }
+                if (!blocked) {
+                    var beat = function () { if (!blocked) { try { localStorage.setItem(KEY, JSON.stringify({ id: ID, ts: Date.now() })); } catch (e) {} } };
+                    beat();
+                    setInterval(beat, 2000);
+                    window.addEventListener('storage', function (e) {
+                        if (e.key !== KEY || !e.newValue || blocked) return;
+                        try { var v = JSON.parse(e.newValue); if (fresh(v) && v.id !== ID && v.id < ID) { blocked = true; showBlocker(); } } catch (_) {}
+                    });
+                }
+            }
+        })();
+
         function formatMoney(amount, decimals) {
             if (decimals === undefined) decimals = 2;
             if (typeof amount !== 'number' || isNaN(amount)) amount = 0;
@@ -20748,28 +20828,17 @@ RESULTADOS:
                         return;
                     }
 
-                    // ===== PROTECCIÓN ENTRE PESTAÑAS: no subir datos si otra pestaña del mismo
-                    // navegador guardó algo más nuevo que lo que tiene esta pestaña en memoria =====
+                    // ===== PROTECCIÓN ENTRE PESTAÑAS: si otra pestaña del mismo navegador guardó
+                    // algo más nuevo que lo que tiene esta pestaña, NO subir (subiríamos datos
+                    // viejos y pisaríamos los de la otra). Se avisa y el usuario recarga. =====
                     const diskStamp = parseInt(localStorage.getItem('kioscopro-write-stamp')) || 0;
                     const diskTab = localStorage.getItem('kioscopro-write-tab') || '';
                     if (diskStamp > kioscoLastWriteStamp && diskTab && diskTab !== KIOSCO_TAB_ID) {
-                        if (kioscoUserIsBusy()) {
-                            console.warn('⛔ syncToFirebase pospuesto: otra pestaña tiene cambios más nuevos y el usuario está editando.');
-                            kioscoStaleReloadPending = true;
-                            showStaleTabBanner();
-                            updateSyncStatus('synced');
-                            return;
-                        }
-                        console.warn('🔄 syncToFirebase: otra pestaña escribió después; adoptando su estado antes de subir.');
-                        kioscoAdopting = true;
-                        try {
-                            try { loadFromLocalStorage(); } catch (e) {}
-                            kioscoLastWriteStamp = Math.max(kioscoLastWriteStamp, diskStamp);
-                            try { if (typeof renderAll === 'function') renderAll(); } catch (e) {}
-                        } finally {
-                            kioscoAdopting = false;
-                            kioscoAdoptTailUntil = Date.now() + 600;
-                        }
+                        console.warn('⛔ syncToFirebase cancelado: otra pestaña tiene datos más nuevos. Recargá esta pestaña.');
+                        kioscoStaleReloadPending = true;
+                        showStaleTabBanner();
+                        updateSyncStatus('synced');
+                        return;
                     }
 
                     const { doc, setDoc, writeBatch } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
@@ -21777,49 +21846,28 @@ RESULTADOS:
         function showStaleTabBanner() { const b = document.getElementById('stale-tab-banner'); if (b) b.classList.remove('hidden'); }
         function hideStaleTabBanner() { const b = document.getElementById('stale-tab-banner'); if (b) b.classList.add('hidden'); }
 
-        // Otra pestaña guardó datos más nuevos que los que tiene esta pestaña en memoria
+        // Otra pestaña guardó datos más nuevos que los que tiene esta pestaña en memoria.
+        // NO tocamos el estado en el acto (una fusión mal hecha puede borrar una venta):
+        // solo avisamos y dejamos que el usuario recargue cuando quiera.
         function onOtherTabWrote(stamp) {
             if (kioscoSuppressBroadcast()) return;
             if (!stamp || stamp <= kioscoLastWriteStamp) return; // ya estamos al día
-            if (kioscoUserIsBusy()) {
-                kioscoStaleReloadPending = true;
-                showStaleTabBanner();
-                return;
-            }
-            adoptLatestLocalData(stamp);
+            kioscoStaleReloadPending = true;
+            showStaleTabBanner();
         }
 
-        // Recarga el estado desde localStorage (que ya tiene los datos de la otra pestaña)
-        function adoptLatestLocalData(stamp) {
-            if (kioscoAdopting) return;
-            kioscoAdopting = true;
-            let changed = false;
-            try {
-                kioscoStaleReloadPending = false;
-                hideStaleTabBanner();
-                const before = (appState.sales || []).length + '/' + (appState.inventory || []).length + '/' + (appState.expenses || []).length;
-                try { loadFromLocalStorage(); } catch (e) { console.error('adoptLatestLocalData/load:', e); }
-                kioscoLastWriteStamp = Math.max(kioscoLastWriteStamp, stamp || 0, parseInt(localStorage.getItem('kioscopro-write-stamp')) || 0);
-                try { if (typeof renderAll === 'function') renderAll(); } catch (e) { console.error(e); }
-                try { if (typeof renderCalendar === 'function' && document.getElementById('calendar-grid')) renderCalendar(); } catch (e) {}
-                const after = (appState.sales || []).length + '/' + (appState.inventory || []).length + '/' + (appState.expenses || []).length;
-                changed = before !== after;
-            } finally {
-                // El candado síncrono se libera SIEMPRE; una cola corta tapa los guardados
-                // async que el render pueda disparar (0 ms de debounce en syncToFirebase).
-                kioscoAdopting = false;
-                kioscoAdoptTailUntil = Date.now() + 600;
-            }
-            if (changed) showNotification('🔄 Datos actualizados desde otra pestaña', 'info', 4000);
+        // Recarga limpia: re-lee localStorage y vuelve a fusionar con Firebase en el arranque
+        // (ruta segura, misma que usa la app al abrir). No hace fusión "a mano" en memoria.
+        function adoptLatestLocalData() {
+            location.reload();
         }
 
         // Botón "Actualizar ahora" del cartel
         function kioscoApplyPendingReload() {
             if (Array.isArray(appState.cart) && appState.cart.length > 0) {
-                if (!confirm('Tenés una venta sin terminar en el carrito. Si actualizás ahora se va a vaciar para traer los datos nuevos. ¿Actualizar igual?')) return;
+                if (!confirm('Tenés una venta sin terminar en el carrito. Si actualizás ahora se va a vaciar. ¿Actualizar igual?')) return;
             }
-            const stamp = parseInt(localStorage.getItem('kioscopro-write-stamp')) || (kioscoLastWriteStamp + 1);
-            adoptLatestLocalData(stamp);
+            location.reload();
         }
 
         // ==================== LOCAL STORAGE ====================

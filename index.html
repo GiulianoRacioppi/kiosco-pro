@@ -290,6 +290,15 @@
             }
         }
 
+        /* Sidebar: dar más protagonismo al menú de opciones */
+        #mobile-sidebar > nav { padding: 0.5rem 0.5rem 0.25rem; }
+        #mobile-sidebar > nav > button {
+            padding-top: 0.55rem;
+            padding-bottom: 0.55rem;
+            font-size: 0.9rem;
+        }
+        #mobile-sidebar > nav > button i { font-size: 0.85rem; }
+
         /* Custom Scrollbar */
         .custom-scrollbar::-webkit-scrollbar {
             width: 6px;
@@ -916,21 +925,17 @@
     <!-- Sidebar -->
     <div id="mobile-sidebar" class="sidebar-fixed fixed left-0 top-0 h-full w-64 bg-white shadow-2xl z-50 flex flex-col hidden">
         <!-- Botón cerrar (solo móvil) -->
-        <button onclick="toggleMobileSidebar()" class="lg:hidden absolute top-4 right-4 p-2 text-gray-500 hover:text-gray-700">
-            <i class="fas fa-times text-xl"></i>
+        <button onclick="toggleMobileSidebar()" class="lg:hidden absolute top-1.5 right-2 p-2 text-white/90 hover:text-white z-10">
+            <i class="fas fa-times text-lg"></i>
         </button>
-        <div class="p-4 gradient-bg text-white flex-shrink-0">
-            <div class="flex items-center justify-between">
-                <h1 class="text-xl font-bold flex items-center gap-2"><i class="fas fa-store"></i> KioscoPro</h1>
-            </div>
-            <p class="text-xs opacity-80 mt-1">Gestión Inteligente</p>
-            <div id="user-badge" class="mt-2 inline-flex items-center gap-1 px-2 py-1 bg-white/20 rounded text-xs">
+        <div class="pl-4 pr-12 lg:pr-4 py-2 gradient-bg text-white flex-shrink-0 flex items-center justify-between gap-2">
+            <h1 class="text-base font-bold flex items-center gap-2"><i class="fas fa-store"></i> KioscoPro</h1>
+            <div id="user-badge" class="inline-flex items-center gap-1 px-2 py-0.5 bg-white/20 rounded text-[11px]">
                 <i class="fas fa-user"></i> <span id="user-name">Cargando...</span>
             </div>
-            <div id="sync-role-badge" class="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-white/20"></div>
         </div>
-        
-        <div class="px-3 py-2 bg-indigo-50 border-b border-indigo-100 flex-shrink-0">
+
+        <div class="px-3 py-1.5 bg-indigo-50 border-b border-indigo-100 flex-shrink-0">
             <div class="flex items-center justify-between mb-1">
                 <button onclick="changeDate(-1)" class="bg-white text-indigo-600 w-6 h-6 rounded-lg shadow-sm hover:shadow flex items-center justify-center text-xs">
                     <i class="fas fa-chevron-left"></i>
@@ -18611,26 +18616,14 @@ RESULTADOS:
                 const userName = document.getElementById('user-name');
                 if (userBadge && userName && appState.currentUser) {
                     if (appState.currentUser.role === 'admin') {
-                        userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-purple-500 text-white rounded text-xs font-bold';
-                        userBadge.innerHTML = '<i class="fas fa-user-shield"></i> <span>Administrador</span>';
+                        userBadge.className = 'inline-flex items-center gap-1 px-2 py-0.5 bg-purple-500 text-white rounded text-[11px] font-bold';
+                        userBadge.innerHTML = '<i class="fas fa-user-shield"></i> <span>Admin</span>';
                     } else {
-                        userBadge.className = 'mt-2 inline-flex items-center gap-1 px-2 py-1 bg-orange-500 text-white rounded text-xs font-bold';
-                        userBadge.innerHTML = '<i class="fas fa-user"></i> <span>' + appState.currentUser.name + ' (Colab.)</span>';
+                        userBadge.className = 'inline-flex items-center gap-1 px-2 py-0.5 bg-orange-500 text-white rounded text-[11px] font-bold';
+                        userBadge.innerHTML = '<i class="fas fa-user"></i> <span>' + appState.currentUser.name + '</span>';
                     }
                 }
-                
-                // Mostrar rol de sincronización (principal/secundario)
-                const syncRoleBadge = document.getElementById('sync-role-badge');
-                if (syncRoleBadge) {
-                    if (isMasterDevice()) {
-                        syncRoleBadge.className = 'mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-green-500 text-white';
-                        syncRoleBadge.innerHTML = '<i class="fas fa-server"></i> <span>Principal (escribe)</span>';
-                    } else {
-                        syncRoleBadge.className = 'mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500 text-white';
-                        syncRoleBadge.innerHTML = '<i class="fas fa-mobile-alt"></i> <span>Secundario (lee)</span>';
-                    }
-                }
-                
+
                 // Mostrar/ocultar opciones de admin en el sidebar y botones superiores
                 const isAdmin = appState.currentUser && appState.currentUser.role === 'admin';
                 

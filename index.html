@@ -6576,6 +6576,25 @@
             // el cobro con la copia vieja de otro dispositivo
             sale.timestamp = Date.now();
 
+            // Recalcular la ganancia con el COSTO ACTUAL de la mercadería (a la fecha del cobro).
+            // En contexto de inflación importa a cuánto reponés hoy, no a cuánto costaba al fiar.
+            try {
+                if (sale.profitOriginal === undefined) sale.profitOriginal = sale.profit; // guardar la del momento de la venta
+                let costoActual = 0;
+                for (const item of (sale.items || [])) {
+                    if (item.isManual || !item.productId) continue; // ítems manuales: sin costo
+                    const prod = appState.inventory.find(p => p.id === item.productId);
+                    if (!prod) { costoActual += (item.cost || 0) * (item.quantity || 0); continue; } // producto borrado: usar el costo guardado
+                    const unit = (prod.isComposite && Array.isArray(prod.components) && prod.components.length > 0)
+                        ? calculateCompositeCost(prod)
+                        : (prod.cost || 0);
+                    costoActual += unit * (item.quantity || 0);
+                }
+                sale.costAtCollection = Math.round(costoActual * 100) / 100;
+                sale.profit = Math.round((sale.total - costoActual) * 100) / 100; // sale.total ya tiene el descuento aplicado
+                sale.profitBasis = 'collection';
+            } catch (e) { console.error('Recalculo de ganancia del fiado:', e); }
+
             // La plata entra recién ahora a caja o cuenta
             if (method === 'cash') {
                 appState.cash += sale.total;
@@ -10685,8 +10704,9 @@
             
             for (let day = 1; day <= daysInMonth; day++) {
                 const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                let daySales = appState.sales.filter(s => s.date === dateStr);
-                
+                // Percibido: un fiado cuenta el día que se cobra (saleRevenueDate), no el día que se hizo
+                let daySales = appState.sales.filter(s => saleRevenueDate(s) === dateStr);
+
                 const dayExpenses = appState.expenses.filter(e => e.date === dateStr);
                 const dayInvestments = appState.investments.filter(i => i.date === dateStr);
                 const totalSales = daySales.reduce((sum, s) => sum + s.total, 0);
@@ -10728,7 +10748,8 @@
             
             // Calcular y mostrar métricas del mes
             const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
-            const monthSales = appState.sales.filter(s => s.date && s.date.startsWith(monthPrefix));
+            // Percibido: el fiado suma al mes en que se cobra, no en el que se hizo
+            const monthSales = appState.sales.filter(s => { const d = saleRevenueDate(s); return d && d.startsWith(monthPrefix); });
             const monthExpenses = appState.expenses.filter(e => e.date && e.date.startsWith(monthPrefix));
             const monthInvestments = appState.investments.filter(i => i.date && i.date.startsWith(monthPrefix));
             
@@ -13103,18 +13124,16 @@
                 dates.push(formatDateISO(d));
             }
             
-            // Calcular tres métricas para cada fecha
+            // Calcular tres métricas para cada fecha (percibido: el fiado cuenta el día que se cobra)
             const facturado = dates.map(date => {
-                // Todas las ventas del día (efectivo + débito)
                 return appState.sales
-                    .filter(s => s.date === date)
+                    .filter(s => saleRevenueDate(s) === date)
                     .reduce((sum, s) => sum + s.total, 0);
             });
-            
+
             const ganado = dates.map(date => {
-                // Ganancia neta del día (profit de ventas)
                 return appState.sales
-                    .filter(s => s.date === date)
+                    .filter(s => saleRevenueDate(s) === date)
                     .reduce((sum, s) => sum + s.profit, 0);
             });
             
@@ -13433,14 +13452,14 @@
                         
                         const todayStr = formatDateISO(today);
                         const todaySales = appState.sales
-                            .filter(s => s.date === todayStr && parseInt(s.time?.split(':')[0] || 0) === i)
+                            .filter(s => saleRevenueDate(s) === todayStr && parseInt(s.time?.split(':')[0] || 0) === i)
                             .reduce((sum, s) => sum + s.total, 0);
-                        
+
                         const yesterday = new Date(today);
                         yesterday.setDate(yesterday.getDate() - 1);
                         const yesterdayStr = formatDateISO(yesterday);
                         const yesterdaySales = appState.sales
-                            .filter(s => s.date === yesterdayStr && parseInt(s.time?.split(':')[0] || 0) === i)
+                            .filter(s => saleRevenueDate(s) === yesterdayStr && parseInt(s.time?.split(':')[0] || 0) === i)
                             .reduce((sum, s) => sum + s.total, 0);
                         
                         const change = yesterdaySales > 0 ? ((todaySales - yesterdaySales) / yesterdaySales * 100) : (todaySales > 0 ? 100 : 0);
@@ -13458,14 +13477,14 @@
                         
                         const dateStr = formatDateISO(date);
                         const currentSales = appState.sales
-                            .filter(s => s.date === dateStr)
+                            .filter(s => saleRevenueDate(s) === dateStr)
                             .reduce((sum, s) => sum + s.total, 0);
                         
                         const prevWeek = new Date(date);
                         prevWeek.setDate(prevWeek.getDate() - 7);
                         const prevWeekStr = formatDateISO(prevWeek);
                         const prevWeekSales = appState.sales
-                            .filter(s => s.date === prevWeekStr)
+                            .filter(s => saleRevenueDate(s) === prevWeekStr)
                             .reduce((sum, s) => sum + s.total, 0);
                         
                         const change = prevWeekSales > 0 ? ((currentSales - prevWeekSales) / prevWeekSales * 100) : (currentSales > 0 ? 100 : 0);
@@ -13483,14 +13502,14 @@
                         
                         const dateStr = formatDateISO(date);
                         const currentSales = appState.sales
-                            .filter(s => s.date === dateStr)
+                            .filter(s => saleRevenueDate(s) === dateStr)
                             .reduce((sum, s) => sum + s.total, 0);
                         
                         const prevMonth = new Date(date);
                         prevMonth.setMonth(prevMonth.getMonth() - 1);
                         const prevMonthStr = formatDateISO(prevMonth);
                         const prevMonthSales = appState.sales
-                            .filter(s => s.date === prevMonthStr)
+                            .filter(s => saleRevenueDate(s) === prevMonthStr)
                             .reduce((sum, s) => sum + s.total, 0);
                         
                         const change = prevMonthSales > 0 ? ((currentSales - prevMonthSales) / prevMonthSales * 100) : (currentSales > 0 ? 100 : 0);
@@ -13509,13 +13528,13 @@
                         const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
                         
                         const currentSales = appState.sales
-                            .filter(s => s.date.startsWith(yearMonth))
+                            .filter(s => (saleRevenueDate(s) || '').startsWith(yearMonth))
                             .reduce((sum, s) => sum + s.total, 0);
-                        
+
                         const prevYear = date.getFullYear() - 1;
                         const prevYearMonth = `${prevYear}-${String(date.getMonth() + 1).padStart(2, '0')}`;
                         const prevYearSales = appState.sales
-                            .filter(s => s.date.startsWith(prevYearMonth))
+                            .filter(s => (saleRevenueDate(s) || '').startsWith(prevYearMonth))
                             .reduce((sum, s) => sum + s.total, 0);
                         
                         const change = prevYearSales > 0 ? ((currentSales - prevYearSales) / prevYearSales * 100) : (currentSales > 0 ? 100 : 0);
@@ -15456,7 +15475,9 @@
                 return;
             }
 
-            const activeInv = getActiveInventory().filter(p => !p.isComposite);
+            // Se pueden anotar mermas de productos normales y de preparaciones
+            // (compuestos): al tirar un café se descuenta vaso + café molido + leche, etc.
+            const activeInv = getActiveInventory().filter(p => !p.isComposite || (Array.isArray(p.components) && p.components.length > 0));
             lossSearchResults = fuzzySearchProducts(query, activeInv, 10);
             lossSearchSelectedIndex = lossSearchResults.length > 0 ? 0 : -1;
             renderLossSearchResults();
@@ -15473,14 +15494,15 @@
             container.innerHTML = lossSearchResults.map((p, idx) => {
                 const stock = getProductStock(p);
                 const isWeight = p.saleByWeight && p.weightPerUnit > 0;
+                const isPrep = p.isComposite && Array.isArray(p.components) && p.components.length > 0;
                 const stockDisplay = isWeight ? `${Math.round(stock * p.weightPerUnit)}g` : stock;
                 const isSelected = idx === lossSearchSelectedIndex;
                 return `
                 <div class="flex justify-between items-center p-3 cursor-pointer ${isSelected ? 'bg-red-100' : 'hover:bg-red-50'}"
                      onclick="selectLossProduct('${p.id}')">
                     <div>
-                        <p class="font-bold text-sm text-gray-800">${escapeHtml(p.name)}</p>
-                        <p class="text-xs text-gray-500">Stock: ${stockDisplay}</p>
+                        <p class="font-bold text-sm text-gray-800">${escapeHtml(p.name)}${isPrep ? ' <span class="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">preparación</span>' : ''}</p>
+                        <p class="text-xs text-gray-500">${isPrep ? 'Alcanza para ' + stockDisplay + ' • descuenta los subproductos' : 'Stock: ' + stockDisplay}</p>
                     </div>
                     <div class="text-right">
                         <p class="text-xs font-bold text-green-600">$${formatMoney(p.salePrice)}</p>
@@ -15547,15 +15569,16 @@
             if (!product) return;
             
             const isWeight = product.saleByWeight && product.weightPerUnit > 0;
+            const isPrep = product.isComposite && Array.isArray(product.components) && product.components.length > 0;
             const stock = getProductStock(product);
             const stockDisplay = isWeight ? `${Math.round(stock * product.weightPerUnit)}g disponibles` : `${stock} unidades disponibles`;
-            
+
             label.textContent = isWeight ? 'Cantidad (gramos)' : 'Cantidad';
             qtyInput.step = isWeight ? '1' : '1';
             qtyInput.placeholder = isWeight ? '0 g' : '0';
-            hint.textContent = `Stock actual: ${stockDisplay}`;
+            hint.textContent = isPrep ? `Alcanza para ${stock} • se descuentan los subproductos` : `Stock actual: ${stockDisplay}`;
             hint.classList.remove('hidden');
-            
+
             let units = 0;
             let grams = 0;
             if (isWeight) {
@@ -15564,8 +15587,8 @@
             } else {
                 units = parseInt(qtyInput.value) || 0;
             }
-            
-            const unitCost = product.cost || 0;
+
+            const unitCost = isPrep ? calculateCompositeCost(product) : (product.cost || 0);
             const totalCost = unitCost * units;
             
             costDisplay.textContent = '$' + formatMoney(totalCost);
@@ -15644,29 +15667,62 @@
                 return;
             }
             
+            const isPrep = product.isComposite && Array.isArray(product.components) && product.components.length > 0;
+
             let cost = parseFloat(document.getElementById('loss-cost').value) || 0;
             if (cost <= 0) {
-                cost = (product.cost || 0) * units;
+                cost = (isPrep ? calculateCompositeCost(product) : (product.cost || 0)) * units;
             }
-            
-            // Restar del lote que vence primero (FEFO)
-            let remaining = units;
-            if (product.batches && product.batches.length > 0) {
-                product.batches.sort((a, b) => {
-                    if (!a.expiry) return 1;
-                    if (!b.expiry) return -1;
-                    return new Date(a.expiry) - new Date(b.expiry);
-                });
-                for (let i = 0; i < product.batches.length && remaining > 0; i++) {
-                    const deduct = Math.min(remaining, product.batches[i].stock);
-                    product.batches[i].stock -= deduct;
-                    remaining -= deduct;
+
+            if (isPrep) {
+                // Preparación: descontar cada subproducto (mismo criterio FIFO que una venta)
+                for (const comp of product.components) {
+                    const compProduct = appState.inventory.find(p => p.id === comp.productId);
+                    if (!compProduct) continue;
+                    let compQty = units * (comp.quantity || 1);
+                    if (Array.isArray(compProduct.batches) && compProduct.batches.length > 0) {
+                        compProduct.batches.sort((a, b) => {
+                            const dA = a.dateAdded ? new Date(a.dateAdded).getTime() : 0;
+                            const dB = b.dateAdded ? new Date(b.dateAdded).getTime() : 0;
+                            if (dA !== dB) return dA - dB;
+                            if (a.expiry && b.expiry) return new Date(a.expiry) - new Date(b.expiry);
+                            if (!a.expiry) return 1;
+                            if (!b.expiry) return -1;
+                            return 0;
+                        });
+                        for (const batch of compProduct.batches) {
+                            if (compQty <= 0) break;
+                            const d = Math.min(compQty, batch.stock);
+                            batch.stock -= d;
+                            compQty -= d;
+                        }
+                        compProduct.batches = compProduct.batches.filter(b => b.stock > 0);
+                        compProduct.stock = compProduct.batches.reduce((s, b) => s + (b.stock || 0), 0);
+                    } else if (typeof compProduct.stock === 'number') {
+                        compProduct.stock = Math.max(0, compProduct.stock - compQty);
+                    }
+                    compProduct.updatedAt = new Date().toISOString();
                 }
-                product.batches = product.batches.filter(b => b.stock > 0);
-            } else if (product.stock) {
-                product.stock -= units;
+            } else {
+                // Producto normal: restar del lote que vence primero (FEFO)
+                let remaining = units;
+                if (product.batches && product.batches.length > 0) {
+                    product.batches.sort((a, b) => {
+                        if (!a.expiry) return 1;
+                        if (!b.expiry) return -1;
+                        return new Date(a.expiry) - new Date(b.expiry);
+                    });
+                    for (let i = 0; i < product.batches.length && remaining > 0; i++) {
+                        const deduct = Math.min(remaining, product.batches[i].stock);
+                        product.batches[i].stock -= deduct;
+                        remaining -= deduct;
+                    }
+                    product.batches = product.batches.filter(b => b.stock > 0);
+                } else if (product.stock) {
+                    product.stock -= units;
+                }
             }
-            
+
             if (!appState.losses) appState.losses = [];
             appState.losses.push({
                 id: 'LOSS-' + Date.now(),
@@ -15675,19 +15731,24 @@
                 productName: product.name,
                 quantity: units,
                 grams: isWeight ? grams : null,
+                isComposite: isPrep || undefined,
+                components: isPrep ? product.components.map(c => ({ productId: c.productId, quantity: c.quantity || 1 })) : undefined,
                 reason: lossReason,
                 cost: cost,
                 notes: notes,
                 timestamp: Date.now()
             });
-            
+
             saveToLocalStorage();
             renderAll();
             closeLossModal();
-            
-            // Verificar asíncronamente que el stock se reflejó correctamente
-            verifyAndRetryStockChange('Merma ' + product.name, product.id, () => expectedStockAfter);
-            
+
+            // Verificar el stock (solo productos normales; en preparaciones el descuento
+            // es directo sobre los subproductos y este chequeo no aplica)
+            if (!isPrep) {
+                verifyAndRetryStockChange('Merma ' + product.name, product.id, () => expectedStockAfter);
+            }
+
             showNotification(`Merma registrada: ${qtyDisplay} de ${product.name}`, 'success');
         }
 
@@ -16639,12 +16700,20 @@
             
             const loss = appState.losses[idx];
             const product = appState.inventory.find(p => p.id === loss.productId);
-            
-            // Devolver stock al producto
-            if (product) {
+            const lossIsPrep = loss.isComposite || (product && product.isComposite && Array.isArray(product.components) && product.components.length > 0);
+
+            // Devolver stock: si era una preparación, se devuelve a cada subproducto
+            if (product && lossIsPrep) {
+                const comps = (Array.isArray(loss.components) && loss.components.length > 0) ? loss.components : product.components;
+                for (const comp of (comps || [])) {
+                    const compProduct = appState.inventory.find(p => p.id === comp.productId);
+                    if (!compProduct) continue;
+                    restoreProductStock(compProduct, (loss.quantity || 0) * (comp.quantity || 1));
+                }
+            } else if (product) {
                 const isWeight = product.saleByWeight && product.weightPerUnit > 0;
                 const restoreUnits = (isWeight && loss.grams) ? (loss.grams / product.weightPerUnit) : loss.quantity;
-                
+
                 if (product.batches && product.batches.length > 0) {
                     // Agregar al primer lote existente o crear uno nuevo
                     const firstBatch = product.batches[0];
@@ -16949,7 +17018,7 @@
                 const dailySales = last14Days.map(date => {
                     if (!appState.sales || !Array.isArray(appState.sales)) return 0;
                     return appState.sales
-                        .filter(s => s && s.date === date)
+                        .filter(s => s && saleRevenueDate(s) === date)
                         .reduce((sum, s) => sum + (s.total || 0), 0);
                 });
                 

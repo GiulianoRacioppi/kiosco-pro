@@ -216,16 +216,31 @@
             table-layout: fixed !important;
         }
         
-        .main-content th, 
+        .main-content th,
         .main-content td {
             overflow: hidden !important;
             text-overflow: ellipsis !important;
             white-space: nowrap !important;
         }
-        
+
         .main-content .grid {
             max-width: 100% !important;
         }
+
+        /* Lista de Compras Sugerida: mostrar los nombres de producto completos
+           (la columna deja de recortar y se agranda; los números quedan compactos) */
+        #shopping-list-content table { table-layout: auto !important; }
+        #shopping-list-content th,
+        #shopping-list-content td {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            word-break: break-word;
+        }
+        #shopping-list-content th:first-child,
+        #shopping-list-content td:first-child { min-width: 12rem; }
+        #shopping-list-content td:not(:first-child),
+        #shopping-list-content th:not(:first-child) { white-space: nowrap !important; }
         
         /* Modales por encima de todo */
         .modal {

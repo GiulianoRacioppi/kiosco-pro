@@ -7681,13 +7681,14 @@
         function renderPedidoItemsList() {
             const container = document.getElementById('pedido-items-list');
             const totalEl = document.getElementById('pedido-items-total');
+            const countEl = document.getElementById('pedido-items-count');
             if (!container) return;
 
             if (pendingPedidoItems.length === 0) {
-                container.innerHTML = '<p class="text-xs text-gray-400">Sin productos agregados (opcional, alcanza con las notas)</p>';
+                container.innerHTML = '<p class="text-center text-xs text-gray-400 py-4">Buscá productos para agregar (opcional, alcanza con las notas)</p>';
             } else {
                 container.innerHTML = pendingPedidoItems.map((item, i) => `
-                    <div class="flex justify-between items-center gap-2 bg-white rounded-lg p-2 border text-sm">
+                    <div class="flex justify-between items-center gap-2 bg-gray-50 rounded-lg p-2 border text-sm">
                         <span class="flex-1 font-medium text-gray-800">${escapeHtml(item.name)}</span>
                         <div class="flex items-center gap-1">
                             <button type="button" onclick="updatePedidoItemQty(${i}, -1)" class="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs font-bold">−</button>
@@ -7699,6 +7700,8 @@
                     </div>
                 `).join('');
             }
+            const totalItems = pendingPedidoItems.reduce((sum, i) => sum + (i.quantity || 0), 0);
+            if (countEl) countEl.textContent = `(${totalItems} items)`;
             const total = pendingPedidoItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
             if (totalEl) totalEl.textContent = '$' + formatMoney(total);
         }
@@ -7796,6 +7799,7 @@
         // No toca stock ni el carrito: es un registro informativo de que ya se cobró
         // (igual que "Marcar pagado", pero con el cálculo de vuelto de encima).
         let cobroPedidoId = null;
+        let cobroPedidoMethod = 'cash';
 
         function openPedidoCobroModal(id) {
             const pedido = findPedido(id);
@@ -7809,6 +7813,7 @@
             document.getElementById('pedido-cobro-total').textContent = '$' + formatMoney(pedido.total);
             document.getElementById('pedido-cobro-received').value = '';
             document.getElementById('pedido-cobro-change').textContent = '$0';
+            setPedidoCobroMethod('cash');
             document.getElementById('pedido-cobro-modal').classList.add('active');
             setTimeout(() => document.getElementById('pedido-cobro-received').focus(), 100);
         }
@@ -7816,6 +7821,27 @@
         function closePedidoCobroModal() {
             document.getElementById('pedido-cobro-modal').classList.remove('active');
             cobroPedidoId = null;
+        }
+
+        // Misma idea que setPaymentMethod() del carrito de Vender, pero para este modal:
+        // Fiado (paga después, no calcula vuelto), Efectivo (vuelto) o Débito (transferencia/tarjeta).
+        function setPedidoCobroMethod(method) {
+            cobroPedidoMethod = method;
+            const cashDetails = document.getElementById('pedido-cobro-cash-details');
+            if (cashDetails) cashDetails.classList.toggle('hidden', method !== 'cash');
+
+            const btnFiado = document.getElementById('pedido-cobro-btn-fiado');
+            const btnCash = document.getElementById('pedido-cobro-btn-cash');
+            const btnDebit = document.getElementById('pedido-cobro-btn-debit');
+            if (btnFiado) btnFiado.className = 'w-full py-2 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-2 ' +
+                (method === 'fiado' ? 'border-amber-500 bg-amber-100 text-amber-800' : 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100');
+            if (btnCash) btnCash.className = 'w-full p-4 rounded-xl border-2 text-left flex items-center gap-3 transition ' +
+                (method === 'cash' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-green-400');
+            if (btnDebit) btnDebit.className = 'w-full p-4 rounded-xl border-2 text-left flex items-center gap-3 transition ' +
+                (method === 'debit' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-400');
+
+            const confirmBtn = document.getElementById('pedido-cobro-confirm-btn');
+            if (confirmBtn) confirmBtn.textContent = method === 'fiado' ? 'Anotar como fiado' : 'Confirmar pago';
         }
 
         function calculatePedidoChange() {
@@ -7829,12 +7855,28 @@
         async function confirmPedidoCobro() {
             const pedido = findPedido(cobroPedidoId);
             if (!pedido) return;
-            const received = parseFloat(document.getElementById('pedido-cobro-received').value) || 0;
-            if (received > 0 && received < (pedido.total || 0)) {
-                if (!(await showConfirmModal('El monto recibido es menor al total. ¿Marcar como pagado igual?'))) return;
+
+            // Fiado = paga después: no se marca como pagado, solo se anota el medio elegido
+            if (cobroPedidoMethod === 'fiado') {
+                pedido.paymentMethod = 'fiado';
+                pedido.paymentStatus = 'pendiente';
+                saveToLocalStorage();
+                closePedidoCobroModal();
+                renderPedidos();
+                showNotification('🤝 Pedido anotado como fiado (paga después)', 'info');
+                return;
+            }
+
+            let received = 0;
+            if (cobroPedidoMethod === 'cash') {
+                received = parseFloat(document.getElementById('pedido-cobro-received').value) || 0;
+                if (received > 0 && received < (pedido.total || 0)) {
+                    if (!(await showConfirmModal('El monto recibido es menor al total. ¿Marcar como pagado igual?'))) return;
+                }
             }
             pedido.paymentStatus = 'pagado';
-            if (received > 0) {
+            pedido.paymentMethod = cobroPedidoMethod;
+            if (cobroPedidoMethod === 'cash' && received > 0) {
                 pedido.paymentReceived = received;
                 pedido.paymentChange = Math.max(0, received - (pedido.total || 0));
             }
@@ -7990,7 +8032,7 @@
                         </div>
                         <div class="flex flex-col items-end gap-1">
                             ${isUrgent ? `<span class="text-xs font-bold px-2 py-1 rounded-full bg-red-200 text-red-800">Prioridad #${urgentNumbers.get(pedido.id) || ''}</span>` : `<span class="text-xs font-bold px-2 py-1 rounded-full ${statusBadgeColors[pedido.status] || 'bg-gray-200 text-gray-600'}">${statusLabels[pedido.status] || pedido.status}</span>`}
-                            <span class="text-xs font-bold px-2 py-1 rounded-full ${pedido.paymentStatus === 'pagado' ? 'bg-green-200 text-green-800' : 'bg-red-100 text-red-700'}">${pedido.paymentStatus === 'pagado' ? '💰 Pagado' : '⏳ Sin pagar'}</span>
+                            <span class="text-xs font-bold px-2 py-1 rounded-full ${pedido.paymentStatus === 'pagado' ? 'bg-green-200 text-green-800' : (pedido.paymentMethod === 'fiado' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')}">${pedido.paymentStatus === 'pagado' ? '💰 Pagado' : (pedido.paymentMethod === 'fiado' ? '🤝 Fiado' : '⏳ Sin pagar')}</span>
                         </div>
                     </div>
                     <div class="flex flex-wrap gap-2 mt-2">
@@ -23657,21 +23699,33 @@ RESULTADOS:
                     <input type="number" id="pedido-remind-minutes" class="w-full border rounded-lg px-3 py-2 text-sm" min="0" step="1" value="10">
                 </div>
 
-                <div class="bg-orange-50 rounded-xl p-3 border border-orange-200">
-                    <p class="text-xs font-bold text-orange-700 uppercase mb-2">Productos (opcional)</p>
-                    <div class="flex gap-2">
-                        <div class="flex-1 relative">
-                            <input type="text" id="pedido-product-search" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Buscar producto..." oninput="filterPedidoProducts()" onkeydown="handlePedidoProductKeypress(event)">
-                            <input type="hidden" id="pedido-product-selected-id">
-                            <div id="pedido-product-results" class="absolute z-20 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto hidden"></div>
-                        </div>
-                        <input type="number" id="pedido-product-qty" class="w-20 border rounded-lg px-3 py-2 text-sm" placeholder="Cant" min="0.01" step="1" value="1" onkeydown="if(event.key==='Enter'){event.preventDefault();addPedidoItem();}">
-                        <button type="button" onclick="addPedidoItem()" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-bold">+</button>
+                <!-- Mismo estilo que "Buscar Producto" + "Carrito" de Vender, pero como un
+                     mini-carrito propio del pedido: no toca appState.cart, así se puede armar
+                     esta comanda sin pisar el carrito de otro cliente que ya tenías cargado. -->
+                <div class="bg-white rounded-xl shadow border p-4">
+                    <h4 class="text-sm font-bold mb-3 flex items-center gap-2 text-gray-700">
+                        <i class="fas fa-barcode text-purple-600"></i> Buscar Producto (opcional)
+                    </h4>
+                    <div class="relative mb-2">
+                        <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
+                        <input type="text" id="pedido-product-search" class="w-full pl-9 pr-3 py-2.5 text-sm border-2 border-purple-200 rounded-xl focus:border-purple-500 focus:outline-none" placeholder="Escribe nombre o escanea código..." oninput="filterPedidoProducts()" onkeydown="handlePedidoProductKeypress(event)" autocomplete="off">
+                        <input type="hidden" id="pedido-product-selected-id">
+                        <div id="pedido-product-results" class="absolute z-20 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto hidden mt-1"></div>
                     </div>
-                    <div id="pedido-items-list" class="space-y-1 mt-2"></div>
-                    <div class="flex justify-between text-sm border-t border-orange-200 pt-2 mt-2">
-                        <span class="text-orange-600">Total:</span>
-                        <span class="font-bold text-orange-800" id="pedido-items-total">$0</span>
+                    <div class="flex gap-2">
+                        <input type="number" id="pedido-product-qty" class="w-20 border rounded-lg px-3 py-2 text-sm text-center font-bold" placeholder="Cant" min="0.01" step="1" value="1" onkeydown="if(event.key==='Enter'){event.preventDefault();addPedidoItem();}">
+                        <button type="button" onclick="addPedidoItem()" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg text-sm font-bold">+ Agregar</button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow border p-4">
+                    <h4 class="text-sm font-bold mb-2 flex items-center gap-2 text-gray-700">
+                        <i class="fas fa-shopping-cart text-orange-600"></i> Carrito del pedido <span class="text-xs font-normal text-gray-500" id="pedido-items-count">(0 items)</span>
+                    </h4>
+                    <div id="pedido-items-list" class="space-y-1 max-h-40 overflow-y-auto"></div>
+                    <div class="flex justify-between text-sm border-t pt-2 mt-2">
+                        <span class="text-gray-600">Total:</span>
+                        <span class="font-bold text-orange-700" id="pedido-items-total">$0</span>
                     </div>
                 </div>
 
@@ -23702,23 +23756,51 @@ RESULTADOS:
          cargado el pedido de OTRO cliente) sin usar "Pasar a Vender". No toca stock ni
          appState.cart -- solo registra que se cobró y cuánto vuelto se dio. -->
     <div id="pedido-cobro-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmPedidoCobro();}">
-        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <h3 class="text-xl font-bold mb-4 text-green-600"><i class="fas fa-money-bill-wave"></i> Cobrar pedido</h3>
             <div class="p-3 bg-gray-50 rounded-xl border mb-4 flex justify-between items-center">
                 <span class="text-sm text-gray-600">Total del pedido</span>
                 <span id="pedido-cobro-total" class="text-xl font-bold text-gray-800">$0</span>
             </div>
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Monto recibido (dejalo vacío si no es en efectivo)</label>
-                <input type="number" id="pedido-cobro-received" class="w-full border-2 border-green-300 rounded-xl px-4 py-3 text-lg font-bold" placeholder="0" oninput="calculatePedidoChange()">
+
+            <div class="space-y-3 mb-4">
+                <button type="button" onclick="setPedidoCobroMethod('fiado')" id="pedido-cobro-btn-fiado" class="w-full py-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition flex items-center justify-center gap-2">
+                    <i class="fas fa-hand-holding-usd"></i> Fiado (paga después)
+                </button>
+                <button type="button" onclick="setPedidoCobroMethod('cash')" id="pedido-cobro-btn-cash" class="w-full p-4 rounded-xl border-2 border-green-500 bg-green-50 text-left flex items-center gap-3 transition">
+                    <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white">
+                        <i class="fas fa-money-bill-wave"></i>
+                    </div>
+                    <div>
+                        <p class="font-bold text-gray-800">Efectivo</p>
+                        <p class="text-sm text-gray-500">Calcular vuelto</p>
+                    </div>
+                </button>
+                <button type="button" onclick="setPedidoCobroMethod('debit')" id="pedido-cobro-btn-debit" class="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 text-left flex items-center gap-3 transition">
+                    <div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white">
+                        <i class="fas fa-credit-card"></i>
+                    </div>
+                    <div>
+                        <p class="font-bold text-gray-800">Débito</p>
+                        <p class="text-sm text-gray-500">Transferencia/Tarjeta</p>
+                    </div>
+                </button>
             </div>
-            <div class="p-4 bg-green-100 rounded-xl mb-4">
-                <p class="text-sm text-green-700 mb-1">Vuelto:</p>
-                <p class="text-3xl font-bold text-green-800" id="pedido-cobro-change">$0</p>
+
+            <div id="pedido-cobro-cash-details">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Monto recibido</label>
+                    <input type="number" id="pedido-cobro-received" class="w-full border-2 border-green-300 rounded-xl px-4 py-3 text-lg font-bold" placeholder="0" oninput="calculatePedidoChange()">
+                </div>
+                <div class="p-4 bg-green-100 rounded-xl mb-4">
+                    <p class="text-sm text-green-700 mb-1">Vuelto:</p>
+                    <p class="text-3xl font-bold text-green-800" id="pedido-cobro-change">$0</p>
+                </div>
             </div>
+
             <div class="flex gap-2">
                 <button onclick="closePedidoCobroModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
-                <button onclick="confirmPedidoCobro()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700">Confirmar pago</button>
+                <button onclick="confirmPedidoCobro()" id="pedido-cobro-confirm-btn" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700">Confirmar pago</button>
             </div>
         </div>
     </div>

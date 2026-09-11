@@ -7869,15 +7869,14 @@
                 : '🔥 PRIORITARIO - PARA YA';
             lines.push({ text: whenText, align: 'center', bold: true });
             if (pedido.customerName) lines.push({ text: 'Cliente: ' + pedido.customerName, align: 'center' });
+            const now = new Date();
+            lines.push({ text: 'Emitido: ' + now.toLocaleDateString('es-AR') + ' ' + now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }), align: 'center' });
             lines.push({ hr: true });
 
+            // El precio no importa para la cocina/mostrador: la comanda es solo qué preparar.
             (pedido.items || []).forEach(item => {
-                lines.push({ left: item.quantity + 'x ' + item.name, right: '$' + formatMoney(item.price * item.quantity) });
+                lines.push({ text: item.quantity + 'x ' + item.name, align: 'left' });
             });
-            if (pedido.items && pedido.items.length > 0) {
-                lines.push({ hr: true });
-                lines.push({ left: 'TOTAL', right: '$' + formatMoney(pedido.total || 0), bold: true });
-            }
             if (pedido.notes) {
                 lines.push({ hr: true });
                 lines.push({ text: 'NOTAS:', align: 'left', bold: true });
@@ -7909,8 +7908,11 @@
             const whenHtml = pedido.scheduledTime
                 ? `Para las ${pedido.scheduledTime} ${pedido.scheduledDate ? '· ' + pedido.scheduledDate : ''}`
                 : '🔥 PRIORITARIO - PARA YA';
+            const now = new Date();
+            const emitidoHtml = 'Emitido: ' + now.toLocaleDateString('es-AR') + ' ' + now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+            // El precio no importa para la cocina/mostrador: la comanda es solo qué preparar.
             const itemsHtml = (pedido.items || []).map(item => `
-                <div style="display:flex;justify-content:space-between;"><span>${item.quantity}x ${escapeHtml(item.name)}</span><span>$${formatMoney(item.price * item.quantity)}</span></div>
+                <div>${item.quantity}x ${escapeHtml(item.name)}</div>
             `).join('');
             w.document.write(`
                 <html>
@@ -7919,9 +7921,9 @@
                     <h2 style="text-align: center; font-size: 26px;">COMANDA / PEDIDO</h2>
                     <p style="text-align: center; font-weight: bold;">${whenHtml}</p>
                     ${pedido.customerName ? `<p style="text-align: center;">Cliente: ${escapeHtml(pedido.customerName)}</p>` : ''}
+                    <p style="text-align: center;">${emitidoHtml}</p>
                     <hr>
                     ${itemsHtml}
-                    ${pedido.items && pedido.items.length > 0 ? `<hr><div style="display:flex;justify-content:space-between;font-weight:bold;"><span>TOTAL</span><span>$${formatMoney(pedido.total || 0)}</span></div>` : ''}
                     ${pedido.notes ? `<hr><p style="font-weight:bold;">NOTAS:</p><p>${escapeHtml(pedido.notes)}</p>` : ''}
                 </body>
                 </html>

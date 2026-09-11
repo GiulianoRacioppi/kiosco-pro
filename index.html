@@ -989,12 +989,6 @@
                 <i class="fas fa-hand-holding-usd w-4 text-xs"></i> Fiados
             </button>
 
-            <!-- PEDIDOS: Reservas con comanda impresa y recordatorio sonoro -->
-            <button onclick="showSection('pedidos')" id="nav-pedidos" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="pedidos">
-                <i class="fas fa-bell w-4 text-xs"></i> Pedidos
-                <span id="pedidos-badge" class="ml-auto bg-orange-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden text-[10px]">0</span>
-            </button>
-
             <!-- REPONER: Inventario + alertas -->
             <button onclick="showSection('inventory')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="inventory">
                 <i class="fas fa-boxes w-4 text-xs"></i> Reponer
@@ -1231,7 +1225,31 @@
         <div id="sell" class="section hidden space-y-6 fade-in">
             <!-- Alertas en sección Ventas -->
             <div id="sell-alerts" class="space-y-3"></div>
-            
+
+            <!-- Pedidos (reservas de clientes: comanda impresa + recordatorio sonoro) -->
+            <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div class="p-4 cursor-pointer hover:bg-gray-50 flex justify-between items-center" onclick="toggleCollapsible('pedidos-content', 'pedidos-icon')">
+                    <h3 class="text-lg font-bold flex items-center gap-2">
+                        <i class="fas fa-bell text-orange-500"></i> Pedidos
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <span class="text-sm text-orange-700 bg-orange-100 px-3 py-1 rounded-full" id="pedidos-count-badge">0 pendientes</span>
+                        <i id="pedidos-icon" class="fas fa-chevron-down text-gray-400 transition-transform duration-300"></i>
+                    </div>
+                </div>
+                <div id="pedidos-content" class="hidden">
+                    <div class="px-6 pb-6">
+                        <div class="flex justify-between items-center mb-3">
+                            <p class="text-xs text-gray-500">Reservas de clientes. Al guardar se imprime la comanda para cocina/mostrador, y avisa con sonido antes y a la hora pactada.</p>
+                            <button onclick="openPedidoModal()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap ml-3">
+                                <i class="fas fa-plus"></i> Nuevo Pedido
+                            </button>
+                        </div>
+                        <div id="pedidos-list" class="space-y-3"></div>
+                    </div>
+                </div>
+            </div>
+
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div class="lg:col-span-2 space-y-4">
                     <div class="bg-white rounded-2xl shadow-lg p-6">
@@ -1394,20 +1412,6 @@
                         </button>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- Pedidos (reservas de clientes: comanda impresa + recordatorio sonoro) -->
-        <div id="pedidos" class="section hidden space-y-6 fade-in">
-            <div class="bg-white rounded-2xl shadow-lg p-6">
-                <div class="flex flex-wrap justify-between items-center gap-3 mb-2">
-                    <h2 class="text-xl font-bold flex items-center gap-2 text-gray-800"><i class="fas fa-bell text-orange-500"></i> Pedidos</h2>
-                    <button onclick="openPedidoModal()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-bold text-sm">
-                        <i class="fas fa-plus"></i> Nuevo Pedido
-                    </button>
-                </div>
-                <p class="text-xs text-gray-500 mb-4">Pedidos reservados por clientes. Al guardar se imprime la comanda para cocina/mostrador, y la app avisa con sonido unos minutos antes y justo a la hora pactada.</p>
-                <div id="pedidos-list" class="space-y-3"></div>
             </div>
         </div>
 
@@ -4392,14 +4396,14 @@
                 'alerts': 'Alertas',
                 'reports': 'Reportes',
                 'billing': 'Facturación',
-                'fiados': 'Fiados',
-                'pedidos': 'Pedidos'
+                'fiados': 'Fiados'
             };
             document.getElementById('page-title').textContent = titles[sectionId] || 'KioscoPro';
 
             if (sectionId === 'dashboard') renderDashboard();
             if (sectionId === 'sell') {
                 renderSellAlerts();
+                renderPedidos();
                 setTimeout(() => {
                     const searchInput = document.getElementById('sell-search-input');
                     if (searchInput) searchInput.focus();
@@ -4440,7 +4444,6 @@
             if (sectionId === 'reports') renderReports();
             if (sectionId === 'billing') renderBilling();
             if (sectionId === 'fiados') renderFiados();
-            if (sectionId === 'pedidos') renderPedidos();
             if (sectionId === 'settings') renderSettings();
         }
 
@@ -7733,11 +7736,13 @@
                     return da.localeCompare(db);
                 });
 
-            const badge = document.getElementById('pedidos-badge');
+            const badge = document.getElementById('pedidos-count-badge');
             const pendCount = pedidos.filter(p => p.status === 'pendiente').length;
             if (badge) {
-                if (pendCount > 0) { badge.textContent = pendCount; badge.classList.remove('hidden'); }
-                else badge.classList.add('hidden');
+                badge.textContent = pendCount + (pendCount === 1 ? ' pendiente' : ' pendientes');
+                badge.className = pendCount > 0
+                    ? 'text-sm text-orange-700 bg-orange-100 px-3 py-1 rounded-full font-bold'
+                    : 'text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full';
             }
 
             if (pedidos.length === 0) {

@@ -988,7 +988,13 @@
             <button onclick="showSection('fiados')" id="nav-fiados" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="fiados">
                 <i class="fas fa-hand-holding-usd w-4 text-xs"></i> Fiados
             </button>
-            
+
+            <!-- PEDIDOS: Reservas con comanda impresa y recordatorio sonoro -->
+            <button onclick="showSection('pedidos')" id="nav-pedidos" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="pedidos">
+                <i class="fas fa-bell w-4 text-xs"></i> Pedidos
+                <span id="pedidos-badge" class="ml-auto bg-orange-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden text-[10px]">0</span>
+            </button>
+
             <!-- REPONER: Inventario + alertas -->
             <button onclick="showSection('inventory')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="inventory">
                 <i class="fas fa-boxes w-4 text-xs"></i> Reponer
@@ -1388,6 +1394,20 @@
                         </button>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Pedidos (reservas de clientes: comanda impresa + recordatorio sonoro) -->
+        <div id="pedidos" class="section hidden space-y-6 fade-in">
+            <div class="bg-white rounded-2xl shadow-lg p-6">
+                <div class="flex flex-wrap justify-between items-center gap-3 mb-2">
+                    <h2 class="text-xl font-bold flex items-center gap-2 text-gray-800"><i class="fas fa-bell text-orange-500"></i> Pedidos</h2>
+                    <button onclick="openPedidoModal()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-bold text-sm">
+                        <i class="fas fa-plus"></i> Nuevo Pedido
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500 mb-4">Pedidos reservados por clientes. Al guardar se imprime la comanda para cocina/mostrador, y la app avisa con sonido unos minutos antes y justo a la hora pactada.</p>
+                <div id="pedidos-list" class="space-y-3"></div>
             </div>
         </div>
 
@@ -3903,6 +3923,8 @@
             discountTickets: [],
             // Reglas para generar tickets automáticamente (independiente de promos)
             ticketRules: [],
+            // Pedidos reservados por clientes (comanda impresa + recordatorio sonoro)
+            pedidos: [],
             // Arqueo de caja
             cashCounts: [],
             // Sobrantes y faltantes de caja
@@ -4038,6 +4060,10 @@
             // Facturas programadas: procesar al abrir la app y cada minuto
             setInterval(procesarFacturasProgramadas, 60000);
             setTimeout(procesarFacturasProgramadas, 5000);
+
+            // Recordatorios de pedidos: chequear cada 20s (y una vez al abrir)
+            setInterval(checkPedidoReminders, 20000);
+            setTimeout(checkPedidoReminders, 5000);
 
             // Recuperar la carpeta de respaldo en la PC (si fue configurada)
             initBackupFolder();
@@ -4366,7 +4392,8 @@
                 'alerts': 'Alertas',
                 'reports': 'Reportes',
                 'billing': 'Facturación',
-                'fiados': 'Fiados'
+                'fiados': 'Fiados',
+                'pedidos': 'Pedidos'
             };
             document.getElementById('page-title').textContent = titles[sectionId] || 'KioscoPro';
 
@@ -4413,6 +4440,7 @@
             if (sectionId === 'reports') renderReports();
             if (sectionId === 'billing') renderBilling();
             if (sectionId === 'fiados') renderFiados();
+            if (sectionId === 'pedidos') renderPedidos();
             if (sectionId === 'settings') renderSettings();
         }
 
@@ -7438,6 +7466,452 @@
                 </html>
             `);
             receiptWindow.print();
+        }
+
+        // ==================== PEDIDOS (RESERVAS CON COMANDA Y RECORDATORIO) ====================
+        let pendingPedidoItems = [];
+        let editingPedidoId = null;
+
+        function openPedidoModal(pedidoId) {
+            editingPedidoId = pedidoId || null;
+            const modal = document.getElementById('pedido-modal');
+            document.getElementById('pedido-customer').value = '';
+            document.getElementById('pedido-date').value = formatDateISO(appState.activeDate || new Date());
+            document.getElementById('pedido-time').value = '';
+            document.getElementById('pedido-remind-minutes').value = 10;
+            document.getElementById('pedido-notes').value = '';
+            document.getElementById('pedido-product-search').value = '';
+            document.getElementById('pedido-product-selected-id').value = '';
+            document.getElementById('pedido-product-results').classList.add('hidden');
+            pendingPedidoItems = [];
+
+            if (pedidoId) {
+                const pedido = (appState.pedidos || []).find(p => p.id === pedidoId);
+                if (pedido) {
+                    document.getElementById('pedido-customer').value = pedido.customerName || '';
+                    document.getElementById('pedido-date').value = pedido.scheduledDate || '';
+                    document.getElementById('pedido-time').value = pedido.scheduledTime || '';
+                    document.getElementById('pedido-remind-minutes').value = pedido.reminderMinutesBefore != null ? pedido.reminderMinutesBefore : 10;
+                    document.getElementById('pedido-notes').value = pedido.notes || '';
+                    pendingPedidoItems = JSON.parse(JSON.stringify(pedido.items || []));
+                }
+            }
+            renderPedidoItemsList();
+            modal.classList.add('active');
+            setTimeout(() => document.getElementById('pedido-customer').focus(), 100);
+        }
+
+        function closePedidoModal() {
+            document.getElementById('pedido-modal').classList.remove('active');
+            editingPedidoId = null;
+            pendingPedidoItems = [];
+        }
+
+        function filterPedidoProducts() {
+            const search = document.getElementById('pedido-product-search')?.value.trim() || '';
+            const container = document.getElementById('pedido-product-results');
+            if (!container) return;
+            if (!search) {
+                container.classList.add('hidden');
+                container.innerHTML = '';
+                return;
+            }
+            const products = getActiveInventory();
+            const results = fuzzySearchProducts(search, products, 10);
+            if (results.length === 0) {
+                container.innerHTML = '<p class="p-2 text-xs text-gray-400">No se encontraron productos</p>';
+                container.classList.remove('hidden');
+                return;
+            }
+            container.innerHTML = results.map(p => `
+                <div class="p-2 hover:bg-orange-50 cursor-pointer text-sm border-b last:border-b-0" onclick="selectPedidoProduct('${p.id}', '${escapeHtml(p.name).replace(/'/g, "\\'")}')">
+                    <div class="font-medium text-gray-800">${escapeHtml(p.name)}</div>
+                    <div class="text-xs text-gray-500">$${formatMoney(p.salePrice)}</div>
+                </div>
+            `).join('');
+            container.classList.remove('hidden');
+        }
+
+        function selectPedidoProduct(productId, productName) {
+            document.getElementById('pedido-product-search').value = productName;
+            document.getElementById('pedido-product-selected-id').value = productId;
+            document.getElementById('pedido-product-results').classList.add('hidden');
+            const qtyInput = document.getElementById('pedido-product-qty');
+            if (qtyInput) { qtyInput.value = 1; qtyInput.focus(); qtyInput.select(); }
+        }
+
+        function handlePedidoProductKeypress(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addPedidoItem();
+            }
+        }
+
+        function addPedidoItem() {
+            const hidden = document.getElementById('pedido-product-selected-id');
+            const search = document.getElementById('pedido-product-search');
+            const qtyInput = document.getElementById('pedido-product-qty');
+            if (!hidden || !qtyInput) return;
+
+            const productId = hidden.value;
+            const quantity = parseFloat(qtyInput.value);
+            if (!productId || !quantity || quantity <= 0) {
+                showNotification('Seleccioná un producto y una cantidad válida', 'error');
+                return;
+            }
+
+            const product = appState.inventory.find(p => p.id === productId);
+            if (!product) return;
+
+            const existing = pendingPedidoItems.find(i => i.productId === productId);
+            if (existing) {
+                existing.quantity += quantity;
+            } else {
+                pendingPedidoItems.push({ productId, name: product.name, quantity, price: product.salePrice || 0 });
+            }
+
+            hidden.value = '';
+            if (search) search.value = '';
+            qtyInput.value = '1';
+            const resultsDiv = document.getElementById('pedido-product-results');
+            if (resultsDiv) resultsDiv.classList.add('hidden');
+            renderPedidoItemsList();
+        }
+
+        function removePedidoItem(index) {
+            pendingPedidoItems.splice(index, 1);
+            renderPedidoItemsList();
+        }
+
+        function renderPedidoItemsList() {
+            const container = document.getElementById('pedido-items-list');
+            const totalEl = document.getElementById('pedido-items-total');
+            if (!container) return;
+
+            if (pendingPedidoItems.length === 0) {
+                container.innerHTML = '<p class="text-xs text-gray-400">Sin productos agregados (opcional, alcanza con las notas)</p>';
+            } else {
+                container.innerHTML = pendingPedidoItems.map((item, i) => `
+                    <div class="flex justify-between items-center bg-white rounded p-2 border text-sm">
+                        <span>${escapeHtml(item.name)} x${item.quantity}</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-gray-500">$${formatMoney(item.price * item.quantity)}</span>
+                            <button type="button" onclick="removePedidoItem(${i})" class="text-red-500 hover:text-red-700 text-xs font-bold">✕</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+            const total = pendingPedidoItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+            if (totalEl) totalEl.textContent = '$' + formatMoney(total);
+        }
+
+        function savePedido() {
+            const customerName = document.getElementById('pedido-customer').value.trim();
+            const scheduledDate = document.getElementById('pedido-date').value;
+            const scheduledTime = document.getElementById('pedido-time').value;
+            const reminderMinutesBefore = Math.max(0, parseInt(document.getElementById('pedido-remind-minutes').value) || 0);
+            const notes = document.getElementById('pedido-notes').value.trim();
+
+            if (!scheduledDate || !scheduledTime) {
+                showNotification('Ingresá la fecha y la hora del pedido', 'error');
+                return;
+            }
+            if (pendingPedidoItems.length === 0 && !notes) {
+                showNotification('Agregá al menos un producto o una nota', 'error');
+                return;
+            }
+
+            const total = pendingPedidoItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+            if (!appState.pedidos) appState.pedidos = [];
+
+            let pedido;
+            if (editingPedidoId) {
+                pedido = appState.pedidos.find(p => p.id === editingPedidoId);
+                if (!pedido) { showNotification('Pedido no encontrado', 'error'); return; }
+                pedido.customerName = customerName;
+                pedido.scheduledDate = scheduledDate;
+                pedido.scheduledTime = scheduledTime;
+                pedido.reminderMinutesBefore = reminderMinutesBefore;
+                pedido.notes = notes;
+                pedido.items = JSON.parse(JSON.stringify(pendingPedidoItems));
+                pedido.total = total;
+                // Se reprogramó: dejar que los avisos vuelvan a saltar
+                pedido.reminderPreFired = false;
+                pedido.reminderAtTimeFired = false;
+                pedido.updatedAt = new Date().toISOString();
+            } else {
+                pedido = {
+                    id: 'PEDIDO-' + Date.now(),
+                    customerName,
+                    scheduledDate,
+                    scheduledTime,
+                    reminderMinutesBefore,
+                    notes,
+                    items: JSON.parse(JSON.stringify(pendingPedidoItems)),
+                    total,
+                    status: 'pendiente',
+                    reminderPreFired: false,
+                    reminderAtTimeFired: false,
+                    createdAt: new Date().toISOString(),
+                    timestamp: Date.now()
+                };
+                appState.pedidos.push(pedido);
+            }
+
+            saveToLocalStorage();
+            closePedidoModal();
+            renderPedidos();
+            printComanda(pedido);
+            showNotification('📋 Pedido guardado para las ' + scheduledTime, 'success');
+        }
+
+        function marcarPedidoListo(id) {
+            const pedido = (appState.pedidos || []).find(p => p.id === id);
+            if (!pedido) return;
+            pedido.status = pedido.status === 'listo' ? 'pendiente' : 'listo';
+            saveToLocalStorage();
+            renderPedidos();
+        }
+
+        function cancelarPedido(id) {
+            if (!confirm('¿Cancelar este pedido?')) return;
+            const pedido = (appState.pedidos || []).find(p => p.id === id);
+            if (!pedido) return;
+            pedido.status = 'cancelado';
+            saveToLocalStorage();
+            renderPedidos();
+        }
+
+        function eliminarPedido(id) {
+            if (!confirm('¿Eliminar este pedido definitivamente?')) return;
+            appState.pedidos = (appState.pedidos || []).filter(p => p.id !== id);
+            saveToLocalStorage();
+            renderPedidos();
+        }
+
+        // Pasa los productos del pedido al carrito de Vender para cobrarlo con el
+        // flujo normal de venta (stock, pago, factura, ticket -- todo lo ya probado).
+        function cargarPedidoEnVenta(id) {
+            const pedido = (appState.pedidos || []).find(p => p.id === id);
+            if (!pedido) return;
+            if (!pedido.items || pedido.items.length === 0) {
+                showNotification('Este pedido no tiene productos cargados', 'warning');
+                return;
+            }
+            if (appState.cart.length > 0 && !confirm('El carrito ya tiene productos cargados. ¿Reemplazarlo con los productos de este pedido?')) {
+                return;
+            }
+            if (!confirm('¿Pasar este pedido al carrito de venta? Se va a marcar como entregado.')) return;
+
+            appState.cart = pedido.items.map(item => {
+                const product = appState.inventory.find(p => p.id === item.productId);
+                return {
+                    productId: item.productId,
+                    name: item.name,
+                    price: item.price,
+                    cost: product ? (product.isComposite ? calculateCompositeCost(product) : (product.cost || 0)) : 0,
+                    quantity: item.quantity
+                };
+            });
+            pedido.status = 'entregado';
+            saveToLocalStorage();
+            showSection('sell');
+            if (typeof renderCart === 'function') renderCart();
+            renderPedidos();
+            showNotification('🛒 Pedido cargado en el carrito — completá la venta', 'success');
+        }
+
+        function renderPedidos() {
+            const container = document.getElementById('pedidos-list');
+            if (!container) return;
+
+            const pedidos = (appState.pedidos || [])
+                .filter(p => p.status !== 'cancelado')
+                .sort((a, b) => {
+                    const da = (a.scheduledDate || '') + 'T' + (a.scheduledTime || '');
+                    const db = (b.scheduledDate || '') + 'T' + (b.scheduledTime || '');
+                    return da.localeCompare(db);
+                });
+
+            const badge = document.getElementById('pedidos-badge');
+            const pendCount = pedidos.filter(p => p.status === 'pendiente').length;
+            if (badge) {
+                if (pendCount > 0) { badge.textContent = pendCount; badge.classList.remove('hidden'); }
+                else badge.classList.add('hidden');
+            }
+
+            if (pedidos.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-400 py-8">No hay pedidos cargados</p>';
+                return;
+            }
+
+            const statusColors = {
+                pendiente: 'border-orange-400 bg-orange-50',
+                listo: 'border-green-400 bg-green-50',
+                entregado: 'border-gray-300 bg-gray-50 opacity-70'
+            };
+            const statusBadgeColors = {
+                pendiente: 'bg-orange-200 text-orange-800',
+                listo: 'bg-green-200 text-green-800',
+                entregado: 'bg-gray-200 text-gray-600'
+            };
+            const statusLabels = { pendiente: 'Pendiente', listo: 'Listo', entregado: 'Entregado' };
+
+            container.innerHTML = pedidos.map(pedido => {
+                const itemsResumen = (pedido.items || []).map(i => `${i.quantity}x ${i.name}`).join(', ');
+                return `
+                <div class="border-l-4 rounded-lg p-3 ${statusColors[pedido.status] || 'border-gray-300 bg-gray-50'}">
+                    <div class="flex flex-wrap justify-between items-start gap-2">
+                        <div>
+                            <p class="font-bold text-gray-800">🕐 ${pedido.scheduledTime || '-'} · ${pedido.scheduledDate || '-'}${pedido.customerName ? ' — ' + escapeHtml(pedido.customerName) : ''}</p>
+                            ${itemsResumen ? `<p class="text-sm text-gray-600">${escapeHtml(itemsResumen)}</p>` : ''}
+                            ${pedido.notes ? `<p class="text-xs text-gray-500 mt-1">📝 ${escapeHtml(pedido.notes)}</p>` : ''}
+                            ${pedido.total > 0 ? `<p class="text-xs font-bold text-purple-700 mt-1">$${formatMoney(pedido.total)}</p>` : ''}
+                        </div>
+                        <span class="text-xs font-bold px-2 py-1 rounded-full ${statusBadgeColors[pedido.status] || 'bg-gray-200 text-gray-600'}">${statusLabels[pedido.status] || pedido.status}</span>
+                    </div>
+                    <div class="flex flex-wrap gap-2 mt-2">
+                        <button onclick="marcarPedidoListo('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-green-50">${pedido.status === 'listo' ? '↩️ Pendiente' : '✅ Listo'}</button>
+                        ${pedido.items && pedido.items.length > 0 ? `<button onclick="cargarPedidoEnVenta('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-purple-50">🛒 Pasar a Vender</button>` : ''}
+                        <button onclick="printComanda(findPedido('${pedido.id}'))" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-blue-50">🖨️ Reimprimir</button>
+                        <button onclick="openPedidoModal('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-yellow-50">✏️ Editar</button>
+                        <button onclick="cancelarPedido('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-red-50 text-red-600">🚫 Cancelar</button>
+                        <button onclick="eliminarPedido('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-red-50 text-red-600" title="Eliminar definitivamente">🗑️</button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function findPedido(id) {
+            return (appState.pedidos || []).find(p => p.id === id);
+        }
+
+        // ---- Comanda: se imprime igual que un ticket de venta (directo en Electron,
+        // dialogo de impresion en navegador/PWA) pero con formato de cocina/mostrador.
+        function buildComandaLines(pedido) {
+            const lines = [];
+            lines.push({ text: 'Para las ' + (pedido.scheduledTime || '-') + (pedido.scheduledDate ? ' · ' + pedido.scheduledDate : ''), align: 'center', bold: true });
+            if (pedido.customerName) lines.push({ text: 'Cliente: ' + pedido.customerName, align: 'center' });
+            lines.push({ hr: true });
+
+            (pedido.items || []).forEach(item => {
+                lines.push({ left: item.quantity + 'x ' + item.name, right: '$' + formatMoney(item.price * item.quantity) });
+            });
+            if (pedido.items && pedido.items.length > 0) {
+                lines.push({ hr: true });
+                lines.push({ left: 'TOTAL', right: '$' + formatMoney(pedido.total || 0), bold: true });
+            }
+            if (pedido.notes) {
+                lines.push({ hr: true });
+                lines.push({ text: 'NOTAS:', align: 'left', bold: true });
+                lines.push({ text: pedido.notes, align: 'left' });
+            }
+            return lines;
+        }
+
+        function printComanda(pedido) {
+            if (!pedido) return;
+
+            if (window.kioscoDesktop && window.kioscoDesktop.isElectron) {
+                window.kioscoDesktop.print({
+                    header: 'COMANDA / PEDIDO',
+                    lines: buildComandaLines(pedido)
+                }).then(res => {
+                    if (!res || !res.ok) {
+                        showNotification('❌ No se pudo imprimir la comanda: ' + ((res && res.error) || 'error desconocido'), 'error', 8000);
+                    }
+                }).catch(err => {
+                    showNotification('❌ Error al imprimir la comanda: ' + (err && err.message ? err.message : err), 'error', 8000);
+                });
+                return;
+            }
+
+            // Navegador / PWA: ventana con diálogo de impresión (igual que el ticket de venta)
+            const w = window.open('', '_blank');
+            const itemsHtml = (pedido.items || []).map(item => `
+                <div style="display:flex;justify-content:space-between;"><span>${item.quantity}x ${escapeHtml(item.name)}</span><span>$${formatMoney(item.price * item.quantity)}</span></div>
+            `).join('');
+            w.document.write(`
+                <html>
+                <head><title>Comanda</title></head>
+                <body style="font-family: monospace; padding: 20px; max-width: 300px;">
+                    <h2 style="text-align: center;">COMANDA / PEDIDO</h2>
+                    <p style="text-align: center; font-weight: bold;">Para las ${pedido.scheduledTime || '-'} ${pedido.scheduledDate ? '· ' + pedido.scheduledDate : ''}</p>
+                    ${pedido.customerName ? `<p style="text-align: center;">Cliente: ${escapeHtml(pedido.customerName)}</p>` : ''}
+                    <hr>
+                    ${itemsHtml}
+                    ${pedido.items && pedido.items.length > 0 ? `<hr><div style="display:flex;justify-content:space-between;font-weight:bold;"><span>TOTAL</span><span>$${formatMoney(pedido.total || 0)}</span></div>` : ''}
+                    ${pedido.notes ? `<hr><p style="font-weight:bold;">NOTAS:</p><p>${escapeHtml(pedido.notes)}</p>` : ''}
+                </body>
+                </html>
+            `);
+            w.print();
+        }
+
+        // ---- Recordatorio sonoro: beep generado con Web Audio API (sin archivos
+        // externos, anda offline). "urgent" = aviso a la hora exacta (más agudo/largo).
+        function playPedidoBeep(urgent) {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                const ctx = new AudioCtx();
+                const freqs = urgent ? [880, 880, 880] : [660, 660];
+                let t = ctx.currentTime;
+                freqs.forEach(freq => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.0001, t);
+                    gain.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+                    osc.connect(gain).connect(ctx.destination);
+                    osc.start(t);
+                    osc.stop(t + 0.3);
+                    t += 0.35;
+                });
+                setTimeout(() => { try { ctx.close(); } catch (e) {} }, freqs.length * 350 + 500);
+            } catch (e) {
+                console.warn('No se pudo reproducir el aviso sonoro:', e);
+            }
+        }
+
+        // Corre cada 20s: dispara el aviso previo (X minutos antes, configurable por
+        // pedido) y el aviso justo a la hora pactada. Cada uno suena una sola vez
+        // (queda marcado en el pedido) para no repetir el sonido sin parar.
+        function checkPedidoReminders() {
+            if (!Array.isArray(appState.pedidos) || appState.pedidos.length === 0) return;
+            const now = new Date();
+            let changed = false;
+
+            appState.pedidos.forEach(pedido => {
+                if (pedido.status !== 'pendiente') return;
+                if (!pedido.scheduledDate || !pedido.scheduledTime) return;
+                const when = new Date(pedido.scheduledDate + 'T' + pedido.scheduledTime + ':00');
+                if (isNaN(when.getTime())) return;
+
+                const preMinutes = pedido.reminderMinutesBefore != null ? pedido.reminderMinutesBefore : 10;
+                const preTime = new Date(when.getTime() - preMinutes * 60000);
+
+                if (preMinutes > 0 && !pedido.reminderPreFired && now >= preTime && now < when) {
+                    pedido.reminderPreFired = true;
+                    changed = true;
+                    playPedidoBeep(false);
+                    showNotification('🔔 Pedido de ' + (pedido.customerName || 'cliente') + ' en ' + preMinutes + ' min (' + pedido.scheduledTime + ')', 'warning', 12000);
+                }
+
+                if (!pedido.reminderAtTimeFired && now >= when) {
+                    pedido.reminderAtTimeFired = true;
+                    changed = true;
+                    playPedidoBeep(true);
+                    showNotification('⏰ ¡Es la hora! Pedido de ' + (pedido.customerName || 'cliente') + ' (' + pedido.scheduledTime + ')', 'error', 15000);
+                }
+            });
+
+            if (changed) {
+                saveToLocalStorage();
+                renderPedidos();
+            }
         }
 
         // ==================== FACTURA C IMPRIMABLE ====================
@@ -18115,6 +18589,7 @@ Total de productos a comprar: ${shoppingList.length}
                 promotions: [],
                 discountTickets: [],
                 ticketRules: [],
+                pedidos: [],
                 cashCounts: [],
                 cashDifferences: [],
                 users: [],
@@ -18679,7 +19154,11 @@ RESULTADOS:
             try {
                 renderPromotions();
             } catch(e) { console.error('Error en renderPromotions:', e); }
-            
+
+            try {
+                renderPedidos();
+            } catch(e) { console.error('Error en renderPedidos:', e); }
+
             try {
                 renderTicketRules();
             } catch(e) { console.error('Error en renderTicketRules:', e); }
@@ -18900,6 +19379,7 @@ RESULTADOS:
             appState.promotions = Array.isArray(appState.promotions) ? appState.promotions : [];
             appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
             appState.ticketRules = Array.isArray(appState.ticketRules) ? appState.ticketRules : [];
+            appState.pedidos = Array.isArray(appState.pedidos) ? appState.pedidos : [];
             appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
             appState.suppliers = Array.isArray(appState.suppliers) ? appState.suppliers : [];
             appState.businessHours = Array.isArray(appState.businessHours) && appState.businessHours.length === 7
@@ -20763,6 +21243,7 @@ RESULTADOS:
                 main_promotions: 'promotions',
                 main_discountTickets: 'discountTickets',
                 main_ticketRules: 'ticketRules',
+                main_pedidos: 'pedidos',
                 main_cashCounts: 'cashCounts',
                 main_cashDifferences: 'cashDifferences',
                 main_cashMovements: 'cashMovements',
@@ -21644,7 +22125,8 @@ RESULTADOS:
                 appState.reserveMovements = smartMergeArrays(appState.reserveMovements || [], data.reserveMovements || []);
                 appState.shiftCounts = smartMergeArrays(appState.shiftCounts || [], data.shiftCounts || []);
                 appState.foundStock = smartMergeArrays(appState.foundStock || [], data.foundStock || []);
-                
+                appState.pedidos = smartMergeArrays(appState.pedidos || [], data.pedidos || []);
+
                 // Filtrar inversiones eliminadas
                 const deletedInvIdsMaster = new Set((appState.deletedInvestmentIds || []).map(d => d.id).filter(Boolean));
                 appState.investments = appState.investments.filter(i => !deletedInvIdsMaster.has(i.id));
@@ -21728,6 +22210,7 @@ RESULTADOS:
                 
                 appState.discountTickets = smartMergeArrays(appState.discountTickets, data.discountTickets);
                 appState.ticketRules = smartMergeArrays(appState.ticketRules, data.ticketRules);
+                appState.pedidos = smartMergeArrays(appState.pedidos || [], data.pedidos || []);
                 appState.cashCounts = smartMergeArrays(appState.cashCounts || [], data.cashCounts || []);
                 appState.cashDifferences = smartMergeArrays(appState.cashDifferences || [], data.cashDifferences || []);
                 appState.reserveMovements = smartMergeArrays(appState.reserveMovements || [], data.reserveMovements || []);
@@ -22422,6 +22905,7 @@ RESULTADOS:
                     appState.promotions = Array.isArray(appState.promotions) ? appState.promotions : [];
                     appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
                     appState.ticketRules = Array.isArray(appState.ticketRules) ? appState.ticketRules : [];
+                    appState.pedidos = Array.isArray(appState.pedidos) ? appState.pedidos : [];
                     appState.cashCounts = Array.isArray(appState.cashCounts) ? appState.cashCounts : [];
                     appState.cashDifferences = Array.isArray(appState.cashDifferences) ? appState.cashDifferences : [];
                     appState.users = Array.isArray(appState.users) ? appState.users : [];
@@ -22897,6 +23381,60 @@ RESULTADOS:
                     <button onclick="closeExpenseModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
                     <button onclick="saveExpense()" class="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-red-700">Guardar</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PEDIDO MODAL ==================== -->
+    <div id="pedido-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <h3 class="text-xl font-bold mb-4 text-orange-600"><i class="fas fa-bell"></i> Pedido</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Cliente (opcional)</label>
+                    <input type="text" id="pedido-customer" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nombre del cliente">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                        <input type="date" id="pedido-date" class="w-full border rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Hora</label>
+                        <input type="time" id="pedido-time" class="w-full border rounded-lg px-3 py-2 text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Avisar con sonido (minutos antes, además del aviso a la hora)</label>
+                    <input type="number" id="pedido-remind-minutes" class="w-full border rounded-lg px-3 py-2 text-sm" min="0" step="1" value="10">
+                </div>
+
+                <div class="bg-orange-50 rounded-xl p-3 border border-orange-200">
+                    <p class="text-xs font-bold text-orange-700 uppercase mb-2">Productos (opcional)</p>
+                    <div class="flex gap-2">
+                        <div class="flex-1 relative">
+                            <input type="text" id="pedido-product-search" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Buscar producto..." oninput="filterPedidoProducts()" onkeydown="handlePedidoProductKeypress(event)">
+                            <input type="hidden" id="pedido-product-selected-id">
+                            <div id="pedido-product-results" class="absolute z-20 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto hidden"></div>
+                        </div>
+                        <input type="number" id="pedido-product-qty" class="w-20 border rounded-lg px-3 py-2 text-sm" placeholder="Cant" min="0.01" step="1" value="1" onkeydown="if(event.key==='Enter'){event.preventDefault();addPedidoItem();}">
+                        <button type="button" onclick="addPedidoItem()" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-bold">+</button>
+                    </div>
+                    <div id="pedido-items-list" class="space-y-1 mt-2"></div>
+                    <div class="flex justify-between text-sm border-t border-orange-200 pt-2 mt-2">
+                        <span class="text-orange-600">Total:</span>
+                        <span class="font-bold text-orange-800" id="pedido-items-total">$0</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Notas para quien prepara (ej: sin mayonesa)</label>
+                    <textarea id="pedido-notes" class="w-full border rounded-lg px-3 py-2 text-sm" rows="3" placeholder="Aclaraciones del pedido..."></textarea>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-4">
+                <button onclick="closePedidoModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                <button onclick="savePedido()" class="flex-1 bg-orange-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-orange-700">Guardar e imprimir comanda</button>
             </div>
         </div>
     </div>

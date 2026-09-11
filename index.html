@@ -4151,6 +4151,12 @@
             // Tecla ENTER para completar venta (solo en sección vender)
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && !e.repeat) {
+                    // Si hay un modal abierto (pedido, fiado, apertura de caja, etc.) el Enter
+                    // es para ESE modal, no para completar la venta -- si no, apretar Enter
+                    // en cualquier campo del modal de Pedido (que necesita el carrito con
+                    // productos) terminaba completando la venta por atrás sin que se note,
+                    // dejando otro modal invisible/tapado bloqueando toda la pantalla.
+                    if (document.querySelector('.modal.active')) return;
                     const sellSection = document.getElementById('sell');
                     if (!sellSection.classList.contains('hidden') && appState.cart.length > 0) {
                         // Verificar que no estemos en un input de texto (como el barcode)
@@ -7474,6 +7480,33 @@
             receiptWindow.print();
         }
 
+        // Reemplazo de confirm() nativo: usa el modal #app-confirm-modal (ver comentario ahí).
+        // Devuelve una Promise<boolean> -- usar con await en vez de "if (confirm(...))".
+        function showConfirmModal(message) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('app-confirm-modal');
+                const msgEl = document.getElementById('app-confirm-message');
+                const okBtn = document.getElementById('app-confirm-ok-btn');
+                const cancelBtn = document.getElementById('app-confirm-cancel-btn');
+                if (!modal || !msgEl || !okBtn || !cancelBtn) { resolve(window.confirm(message)); return; }
+
+                msgEl.textContent = message;
+                modal.classList.add('active');
+
+                const cleanup = (result) => {
+                    modal.classList.remove('active');
+                    okBtn.removeEventListener('click', onOk);
+                    cancelBtn.removeEventListener('click', onCancel);
+                    resolve(result);
+                };
+                const onOk = () => cleanup(true);
+                const onCancel = () => cleanup(false);
+                okBtn.addEventListener('click', onOk);
+                cancelBtn.addEventListener('click', onCancel);
+                setTimeout(() => okBtn.focus(), 50);
+            });
+        }
+
         // ==================== PEDIDOS (RESERVAS CON COMANDA Y RECORDATORIO) ====================
         let pendingPedidoItems = [];
         let editingPedidoId = null;
@@ -7563,12 +7596,18 @@
                 container.classList.remove('hidden');
                 return;
             }
-            container.innerHTML = results.map(p => `
-                <div class="p-2 hover:bg-orange-50 cursor-pointer text-sm border-b last:border-b-0" onclick="selectPedidoProduct('${p.id}', '${escapeHtml(p.name).replace(/'/g, "\\'")}')">
-                    <div class="font-medium text-gray-800">${escapeHtml(p.name)}</div>
-                    <div class="text-xs text-gray-500">$${formatMoney(p.salePrice)}</div>
+            container.innerHTML = results.map(p => {
+                const stock = getProductStock(p);
+                const noStock = stock <= 0;
+                return `
+                <div class="p-2 hover:bg-orange-50 cursor-pointer text-sm border-b last:border-b-0 flex justify-between items-center ${noStock ? 'opacity-60' : ''}" onclick="selectPedidoProduct('${p.id}', '${escapeHtml(p.name).replace(/'/g, "\\'")}')">
+                    <div>
+                        <div class="font-medium text-gray-800">${escapeHtml(p.name)}</div>
+                        <div class="text-xs ${noStock ? 'text-red-500' : 'text-gray-500'}">${noStock ? 'Sin stock' : 'Stock: ' + stock}</div>
+                    </div>
+                    <div class="text-sm font-bold text-green-600">$${formatMoney(p.salePrice)}</div>
                 </div>
-            `).join('');
+            `;}).join('');
             container.classList.remove('hidden');
         }
 
@@ -7583,6 +7622,7 @@
         function handlePedidoProductKeypress(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
+                e.stopPropagation();
                 addPedidoItem();
             }
         }
@@ -7623,6 +7663,21 @@
             renderPedidoItemsList();
         }
 
+        // Como el carrito de Vender, pero sobre pendingPedidoItems (no toca appState.cart):
+        // así se puede editar la comanda de un cliente sin pisar el carrito que ya tenías
+        // armado en Vender para otro cliente.
+        function updatePedidoItemQty(index, delta) {
+            const item = pendingPedidoItems[index];
+            if (!item) return;
+            const newQty = (item.quantity || 0) + delta;
+            if (newQty <= 0) {
+                pendingPedidoItems.splice(index, 1);
+            } else {
+                item.quantity = newQty;
+            }
+            renderPedidoItemsList();
+        }
+
         function renderPedidoItemsList() {
             const container = document.getElementById('pedido-items-list');
             const totalEl = document.getElementById('pedido-items-total');
@@ -7632,12 +7687,15 @@
                 container.innerHTML = '<p class="text-xs text-gray-400">Sin productos agregados (opcional, alcanza con las notas)</p>';
             } else {
                 container.innerHTML = pendingPedidoItems.map((item, i) => `
-                    <div class="flex justify-between items-center bg-white rounded p-2 border text-sm">
-                        <span>${escapeHtml(item.name)} x${item.quantity}</span>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs text-gray-500">$${formatMoney(item.price * item.quantity)}</span>
-                            <button type="button" onclick="removePedidoItem(${i})" class="text-red-500 hover:text-red-700 text-xs font-bold">✕</button>
+                    <div class="flex justify-between items-center gap-2 bg-white rounded-lg p-2 border text-sm">
+                        <span class="flex-1 font-medium text-gray-800">${escapeHtml(item.name)}</span>
+                        <div class="flex items-center gap-1">
+                            <button type="button" onclick="updatePedidoItemQty(${i}, -1)" class="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs font-bold">−</button>
+                            <span class="w-6 text-center font-bold">${item.quantity}</span>
+                            <button type="button" onclick="updatePedidoItemQty(${i}, 1)" class="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs font-bold">+</button>
                         </div>
+                        <span class="text-xs text-gray-500 w-16 text-right">$${formatMoney(item.price * item.quantity)}</span>
+                        <button type="button" onclick="removePedidoItem(${i})" class="text-red-500 hover:text-red-700 text-xs font-bold">✕</button>
                     </div>
                 `).join('');
             }
@@ -7713,7 +7771,7 @@
             closePedidoModal();
             renderPedidos();
             printComanda(pedido);
-            showNotification(scheduledTime ? '📋 Pedido guardado para las ' + scheduledTime : '🔥 Pedido guardado como PARA YA (prioritario)', 'success');
+            showNotification(scheduledTime ? '📋 Pedido guardado para las ' + scheduledTime : '📋 Pedido guardado como prioritario (Prioridad #' + (getPedidoPriorityNumber(pedido) || '') + ')', 'success');
         }
 
         function marcarPedidoListo(id) {
@@ -7732,8 +7790,62 @@
             renderPedidos();
         }
 
-        function cancelarPedido(id) {
-            if (!confirm('¿Cancelar este pedido?')) return;
+        // ---- Cobrar un pedido con vuelto SIN pasarlo por el carrito de Vender.
+        // Así se puede cobrar a un cliente que encargó (aunque el pedido todavía no
+        // esté listo) mientras el carrito de Vender tiene cargado otro cliente distinto.
+        // No toca stock ni el carrito: es un registro informativo de que ya se cobró
+        // (igual que "Marcar pagado", pero con el cálculo de vuelto de encima).
+        let cobroPedidoId = null;
+
+        function openPedidoCobroModal(id) {
+            const pedido = findPedido(id);
+            if (!pedido) return;
+            if (!pedido.total || pedido.total <= 0) {
+                // Sin productos con precio (solo notas): no hay vuelto que calcular
+                togglePedidoPagado(id);
+                return;
+            }
+            cobroPedidoId = id;
+            document.getElementById('pedido-cobro-total').textContent = '$' + formatMoney(pedido.total);
+            document.getElementById('pedido-cobro-received').value = '';
+            document.getElementById('pedido-cobro-change').textContent = '$0';
+            document.getElementById('pedido-cobro-modal').classList.add('active');
+            setTimeout(() => document.getElementById('pedido-cobro-received').focus(), 100);
+        }
+
+        function closePedidoCobroModal() {
+            document.getElementById('pedido-cobro-modal').classList.remove('active');
+            cobroPedidoId = null;
+        }
+
+        function calculatePedidoChange() {
+            const pedido = findPedido(cobroPedidoId);
+            if (!pedido) return;
+            const received = parseFloat(document.getElementById('pedido-cobro-received').value) || 0;
+            const change = received - (pedido.total || 0);
+            document.getElementById('pedido-cobro-change').textContent = '$' + formatMoney(Math.max(0, change));
+        }
+
+        async function confirmPedidoCobro() {
+            const pedido = findPedido(cobroPedidoId);
+            if (!pedido) return;
+            const received = parseFloat(document.getElementById('pedido-cobro-received').value) || 0;
+            if (received > 0 && received < (pedido.total || 0)) {
+                if (!(await showConfirmModal('El monto recibido es menor al total. ¿Marcar como pagado igual?'))) return;
+            }
+            pedido.paymentStatus = 'pagado';
+            if (received > 0) {
+                pedido.paymentReceived = received;
+                pedido.paymentChange = Math.max(0, received - (pedido.total || 0));
+            }
+            saveToLocalStorage();
+            closePedidoCobroModal();
+            renderPedidos();
+            showNotification('💰 Pedido marcado como pagado', 'success');
+        }
+
+        async function cancelarPedido(id) {
+            if (!(await showConfirmModal('¿Cancelar este pedido?'))) return;
             const pedido = (appState.pedidos || []).find(p => p.id === id);
             if (!pedido) return;
             pedido.status = 'cancelado';
@@ -7741,8 +7853,8 @@
             renderPedidos();
         }
 
-        function eliminarPedido(id) {
-            if (!confirm('¿Eliminar este pedido definitivamente?')) return;
+        async function eliminarPedido(id) {
+            if (!(await showConfirmModal('¿Eliminar este pedido definitivamente?'))) return;
             appState.pedidos = (appState.pedidos || []).filter(p => p.id !== id);
             saveToLocalStorage();
             renderPedidos();
@@ -7750,17 +7862,17 @@
 
         // Pasa los productos del pedido al carrito de Vender para cobrarlo con el
         // flujo normal de venta (stock, pago, factura, ticket -- todo lo ya probado).
-        function cargarPedidoEnVenta(id) {
+        async function cargarPedidoEnVenta(id) {
             const pedido = (appState.pedidos || []).find(p => p.id === id);
             if (!pedido) return;
             if (!pedido.items || pedido.items.length === 0) {
                 showNotification('Este pedido no tiene productos cargados', 'warning');
                 return;
             }
-            if (appState.cart.length > 0 && !confirm('El carrito ya tiene productos cargados. ¿Reemplazarlo con los productos de este pedido?')) {
+            if (appState.cart.length > 0 && !(await showConfirmModal('El carrito ya tiene productos cargados. ¿Reemplazarlo con los productos de este pedido?'))) {
                 return;
             }
-            if (!confirm('¿Pasar este pedido al carrito de venta? Se va a marcar como entregado.')) return;
+            if (!(await showConfirmModal('¿Pasar este pedido al carrito de venta? Se va a marcar como entregado.'))) return;
 
             appState.cart = pedido.items.map(item => {
                 const product = appState.inventory.find(p => p.id === item.productId);
@@ -7780,21 +7892,59 @@
             showNotification('🛒 Pedido cargado en el carrito — completá la venta', 'success');
         }
 
-        function renderPedidos() {
-            const container = document.getElementById('pedidos-list');
-            if (!container) return;
-
-            const pedidos = (appState.pedidos || [])
+        // Pedidos activos (no cancelados), ordenados: primero los prioritarios (sin
+        // hora -- el que se cargó primero va primero), después los que tienen
+        // hora por fecha+hora. Se usa tanto para la lista en pantalla como para
+        // numerar la comanda impresa, así el número es siempre el mismo en los dos lados.
+        function getOrderedPedidos() {
+            return (appState.pedidos || [])
                 .filter(p => p.status !== 'cancelado')
                 .sort((a, b) => {
-                    // Sin hora = "para ya" = prioritario, siempre arriba de los que tienen hora
                     const aUrgent = !a.scheduledTime;
                     const bUrgent = !b.scheduledTime;
                     if (aUrgent !== bUrgent) return aUrgent ? -1 : 1;
+                    if (aUrgent && bUrgent) {
+                        // timestamp es numerico (Date.now()); createdAt es un string ISO,
+                        // hay que parsearlo para poder restar (si no da NaN y el orden queda al azar)
+                        const ta = a.timestamp || new Date(a.createdAt || 0).getTime() || 0;
+                        const tb = b.timestamp || new Date(b.createdAt || 0).getTime() || 0;
+                        return ta - tb;
+                    }
                     const da = (a.scheduledDate || '') + 'T' + (a.scheduledTime || '');
                     const db = (b.scheduledDate || '') + 'T' + (b.scheduledTime || '');
                     return da.localeCompare(db);
                 });
+        }
+
+        // Número de prioridad (1, 2, 3...) entre los pedidos sin hora pendientes,
+        // o null si el pedido tiene hora o no está pendiente.
+        function getPedidoPriorityNumber(pedido) {
+            if (!pedido || pedido.scheduledTime || pedido.status !== 'pendiente') return null;
+            let counter = 0;
+            for (const p of getOrderedPedidos()) {
+                if (!p.scheduledTime && p.status === 'pendiente') {
+                    counter++;
+                    if (p.id === pedido.id) return counter;
+                }
+            }
+            return null;
+        }
+
+        function renderPedidos() {
+            const container = document.getElementById('pedidos-list');
+            if (!container) return;
+
+            const pedidos = getOrderedPedidos();
+
+            // Numera los prioritarios (sin hora) en el orden en que hay que atenderlos
+            let urgentCounter = 0;
+            const urgentNumbers = new Map();
+            pedidos.forEach(p => {
+                if (!p.scheduledTime && p.status === 'pendiente') {
+                    urgentCounter++;
+                    urgentNumbers.set(p.id, urgentCounter);
+                }
+            });
 
             const badge = document.getElementById('pedidos-count-badge');
             const pendCount = pedidos.filter(p => p.status === 'pendiente').length;
@@ -7828,7 +7978,7 @@
                 const cardClass = isUrgent ? 'border-red-500 bg-red-50 animate-pulse' : (statusColors[pedido.status] || 'border-gray-300 bg-gray-50');
                 const whenLabel = pedido.scheduledTime
                     ? `🕐 ${pedido.scheduledTime} · ${pedido.scheduledDate || '-'}`
-                    : `🔥 PARA YA · ${pedido.scheduledDate || '-'}`;
+                    : `PRIORIDAD #${urgentNumbers.get(pedido.id) || ''} · ${pedido.scheduledDate || '-'}`;
                 return `
                 <div class="border-l-4 rounded-lg p-3 ${cardClass}">
                     <div class="flex flex-wrap justify-between items-start gap-2">
@@ -7839,13 +7989,13 @@
                             ${pedido.total > 0 ? `<p class="text-xs font-bold text-purple-700 mt-1">$${formatMoney(pedido.total)}</p>` : ''}
                         </div>
                         <div class="flex flex-col items-end gap-1">
-                            ${isUrgent ? '<span class="text-xs font-bold px-2 py-1 rounded-full bg-red-200 text-red-800">🔥 Prioritario</span>' : `<span class="text-xs font-bold px-2 py-1 rounded-full ${statusBadgeColors[pedido.status] || 'bg-gray-200 text-gray-600'}">${statusLabels[pedido.status] || pedido.status}</span>`}
+                            ${isUrgent ? `<span class="text-xs font-bold px-2 py-1 rounded-full bg-red-200 text-red-800">Prioridad #${urgentNumbers.get(pedido.id) || ''}</span>` : `<span class="text-xs font-bold px-2 py-1 rounded-full ${statusBadgeColors[pedido.status] || 'bg-gray-200 text-gray-600'}">${statusLabels[pedido.status] || pedido.status}</span>`}
                             <span class="text-xs font-bold px-2 py-1 rounded-full ${pedido.paymentStatus === 'pagado' ? 'bg-green-200 text-green-800' : 'bg-red-100 text-red-700'}">${pedido.paymentStatus === 'pagado' ? '💰 Pagado' : '⏳ Sin pagar'}</span>
                         </div>
                     </div>
                     <div class="flex flex-wrap gap-2 mt-2">
                         <button onclick="marcarPedidoListo('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-green-50">${pedido.status === 'listo' ? '↩️ Volver a preparación' : '✅ Marcar como Listo'}</button>
-                        <button onclick="togglePedidoPagado('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-green-50">${pedido.paymentStatus === 'pagado' ? '↩️ Marcar sin pagar' : '💰 Marcar pagado'}</button>
+                        <button onclick="${pedido.paymentStatus === 'pagado' ? `togglePedidoPagado('${pedido.id}')` : `openPedidoCobroModal('${pedido.id}')`}" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-green-50">${pedido.paymentStatus === 'pagado' ? '↩️ Marcar sin pagar' : '💰 Cobrar'}</button>
                         ${pedido.items && pedido.items.length > 0 ? `<button onclick="cargarPedidoEnVenta('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-purple-50">🛒 Pasar a Vender</button>` : ''}
                         <button onclick="printComanda(findPedido('${pedido.id}'))" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-blue-50">🖨️ Reimprimir</button>
                         <button onclick="openPedidoModal('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-yellow-50">✏️ Editar</button>
@@ -7864,9 +8014,10 @@
         // dialogo de impresion en navegador/PWA) pero con formato de cocina/mostrador.
         function buildComandaLines(pedido) {
             const lines = [];
+            const priorityNumber = getPedidoPriorityNumber(pedido);
             const whenText = pedido.scheduledTime
                 ? 'Para las ' + pedido.scheduledTime + (pedido.scheduledDate ? ' · ' + pedido.scheduledDate : '')
-                : '🔥 PRIORITARIO - PARA YA';
+                : 'PRIORIDAD #' + (priorityNumber || '');
             lines.push({ text: whenText, align: 'center', bold: true });
             if (pedido.customerName) lines.push({ text: 'Cliente: ' + pedido.customerName, align: 'center' });
             const now = new Date();
@@ -7907,7 +8058,7 @@
             const w = window.open('', '_blank');
             const whenHtml = pedido.scheduledTime
                 ? `Para las ${pedido.scheduledTime} ${pedido.scheduledDate ? '· ' + pedido.scheduledDate : ''}`
-                : '🔥 PRIORITARIO - PARA YA';
+                : 'PRIORIDAD #' + (getPedidoPriorityNumber(pedido) || '');
             const now = new Date();
             const emitidoHtml = 'Emitido: ' + now.toLocaleDateString('es-AR') + ' ' + now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
             // El precio no importa para la cocina/mostrador: la comanda es solo qué preparar.
@@ -23498,7 +23649,7 @@ RESULTADOS:
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Hora (opcional)</label>
                         <input type="time" id="pedido-time" class="w-full border rounded-lg px-3 py-2 text-sm">
-                        <button type="button" onclick="document.getElementById('pedido-time').value=''" class="text-[11px] text-red-600 hover:underline mt-1">🔥 Vacío = es para ya (prioritario)</button>
+                        <button type="button" onclick="document.getElementById('pedido-time').value=''" class="text-[11px] text-red-600 hover:underline mt-1">Vacío = prioritario (va primero)</button>
                     </div>
                 </div>
                 <div>
@@ -23542,6 +23693,47 @@ RESULTADOS:
             <div class="flex gap-2 mt-4">
                 <button onclick="closePedidoModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
                 <button onclick="savePedido()" class="flex-1 bg-orange-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-orange-700">Guardar e imprimir comanda</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== COBRAR PEDIDO (con vuelto, sin tocar el carrito de Vender) ==================== -->
+    <!-- Para cobrar un pedido ANTES de entregarlo (o mientras el carrito de Vender tiene
+         cargado el pedido de OTRO cliente) sin usar "Pasar a Vender". No toca stock ni
+         appState.cart -- solo registra que se cobró y cuánto vuelto se dio. -->
+    <div id="pedido-cobro-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmPedidoCobro();}">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4">
+            <h3 class="text-xl font-bold mb-4 text-green-600"><i class="fas fa-money-bill-wave"></i> Cobrar pedido</h3>
+            <div class="p-3 bg-gray-50 rounded-xl border mb-4 flex justify-between items-center">
+                <span class="text-sm text-gray-600">Total del pedido</span>
+                <span id="pedido-cobro-total" class="text-xl font-bold text-gray-800">$0</span>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Monto recibido (dejalo vacío si no es en efectivo)</label>
+                <input type="number" id="pedido-cobro-received" class="w-full border-2 border-green-300 rounded-xl px-4 py-3 text-lg font-bold" placeholder="0" oninput="calculatePedidoChange()">
+            </div>
+            <div class="p-4 bg-green-100 rounded-xl mb-4">
+                <p class="text-sm text-green-700 mb-1">Vuelto:</p>
+                <p class="text-3xl font-bold text-green-800" id="pedido-cobro-change">$0</p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="closePedidoCobroModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                <button onclick="confirmPedidoCobro()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700">Confirmar pago</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== CONFIRMACION GENERICA (reemplaza confirm() nativo) ==================== -->
+    <!-- confirm()/alert() nativos en Electron a veces abren la ventana de dialogo DETRAS de la
+         ventana principal (bug conocido de Electron en modo kiosko/sin bordes): la app queda
+         "trabada" porque en realidad está esperando un click en un dialogo que no se ve. Este
+         modal propio siempre se dibuja arriba de todo, dentro de la misma ventana. -->
+    <div id="app-confirm-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('app-confirm-ok-btn').click();}else if(event.key==='Escape'){document.getElementById('app-confirm-cancel-btn').click();}">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4">
+            <p id="app-confirm-message" class="text-gray-800 font-medium mb-6 whitespace-pre-line"></p>
+            <div class="flex gap-2">
+                <button id="app-confirm-cancel-btn" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                <button id="app-confirm-ok-btn" class="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-red-700">Confirmar</button>
             </div>
         </div>
     </div>

@@ -227,20 +227,19 @@
             max-width: 100% !important;
         }
 
-        /* Lista de Compras Sugerida: mostrar los nombres de producto completos
-           (la columna deja de recortar y se agranda; los números quedan compactos) */
-        #shopping-list-content table { table-layout: auto !important; }
-        #shopping-list-content th,
-        #shopping-list-content td {
+        /* Sección Reponer/Inventario: mostrar los nombres de producto completos en
+           TODAS sus tablas (lista de compras, vencimientos, mermas, stock gratis,
+           más vendidos, stock actual) en vez de recortarlos. table-layout: auto
+           hace que las columnas de números/fechas se mantengan angostas solas,
+           sin necesidad de saber en qué columna está el nombre en cada tabla. */
+        #inventory table { table-layout: auto !important; }
+        #inventory th,
+        #inventory td {
             white-space: normal !important;
             overflow: visible !important;
             text-overflow: clip !important;
             word-break: break-word;
         }
-        #shopping-list-content th:first-child,
-        #shopping-list-content td:first-child { min-width: 12rem; }
-        #shopping-list-content td:not(:first-child),
-        #shopping-list-content th:not(:first-child) { white-space: nowrap !important; }
         
         /* Modales por encima de todo */
         .modal {
@@ -7295,7 +7294,6 @@
             if (sale) {
                 printReceipt(sale);
             }
-            closeTicketNotification();
         }
 
         function showSuccessOverlay(amount) {
@@ -7308,7 +7306,69 @@
             }, 1500);
         }
 
+        // Arma el ticket en formato de líneas para la impresora térmica (app de escritorio).
+        // Mismo contenido que la versión imprimible de abajo, pero sin HTML.
+        function buildElectronTicketPayload(sale) {
+            const lines = [];
+            lines.push({ text: (sale.date || '') + ' ' + (sale.time || ''), align: 'center' });
+            lines.push({ hr: true });
+
+            sale.items.forEach(item => {
+                lines.push({ left: item.name + ' x' + item.quantity, right: '$' + formatMoney(item.price * item.quantity) });
+            });
+            lines.push({ hr: true });
+
+            if (sale.discount > 0) {
+                lines.push({ left: 'Subtotal', right: '$' + formatMoney(sale.subtotal) });
+                lines.push({ left: 'Descuento' + (sale.discountLabel ? ' (' + sale.discountLabel + ')' : ''), right: '-$' + formatMoney(sale.discount) });
+            }
+            lines.push({ left: 'TOTAL', right: '$' + formatMoney(sale.total), bold: true });
+
+            if (sale.paymentMethod === 'cash' && sale.received) {
+                lines.push({ hr: true });
+                lines.push({ left: 'EFECTIVO RECIBIDO', right: '$' + formatMoney(sale.received) });
+                lines.push({ left: 'CAMBIO', right: '$' + formatMoney(sale.change || 0), bold: true });
+            } else if (sale.paymentMethod === 'fiado') {
+                lines.push({ hr: true });
+                lines.push({ text: 'FIADO - ' + (sale.customerName || 'Cliente'), align: 'center', bold: true });
+            } else {
+                lines.push({ hr: true });
+                lines.push({ text: 'PAGO CON TARJETA/DÉBITO', align: 'center', bold: true });
+            }
+
+            saleFacturas(sale).forEach(f => {
+                lines.push({ hr: true });
+                lines.push({ text: 'FACTURA ' + arcaCbteLetra(f.cbteTipo) + ' N° ' + String(f.ptoVta).padStart(4, '0') + '-' + String(f.cbteNro).padStart(8, '0'), align: 'center', bold: true });
+                lines.push({ text: 'Importe: $' + formatMoney(f.total !== undefined ? f.total : sale.total), align: 'center' });
+                lines.push({ text: 'CAE: ' + f.cae, align: 'center' });
+                lines.push({ text: 'Vto. CAE: ' + f.caeVencimiento, align: 'center' });
+            });
+
+            lines.push({ hr: true });
+            lines.push({ text: '¡Gracias por su compra!', align: 'center' });
+
+            return {
+                header: 'KIOSCO 47',
+                lines: lines,
+                // Efectivo: abrir el cajón al imprimir el ticket de la venta
+                openDrawer: sale.paymentMethod === 'cash'
+            };
+        }
+
         function printReceipt(sale) {
+            // App de escritorio (Electron): imprime directo a la impresora térmica,
+            // sin diálogo de impresión.
+            if (window.kioscoDesktop && window.kioscoDesktop.isElectron) {
+                window.kioscoDesktop.print(buildElectronTicketPayload(sale)).then(res => {
+                    if (!res || !res.ok) {
+                        showNotification('❌ No se pudo imprimir el ticket: ' + ((res && res.error) || 'error desconocido'), 'error', 8000);
+                    }
+                }).catch(err => {
+                    showNotification('❌ Error al imprimir: ' + (err && err.message ? err.message : err), 'error', 8000);
+                });
+                return;
+            }
+
             const receiptWindow = window.open('', '_blank');
             
             // Información de pago en efectivo
@@ -8596,6 +8656,25 @@
             }
             
             console.log('Valores:', { rawCost, rawStock, unitCost, stockBags, priceValue, totalCost, isComposite, saleByWeight, weightPerUnit });
+
+            // Si el código de barras ya pertenece a un producto existente, NO crear un
+            // duplicado: avisar y mandar al buscador de "Agregar Stock Rápido" (ese sí
+            // le suma stock al producto correcto en vez de crear uno nuevo con stock aparte).
+            const barcodeValue = document.getElementById('inv-barcode').value.trim();
+            if (barcodeValue) {
+                const existingProduct = appState.inventory.find(p => p.barcode && p.barcode === barcodeValue);
+                if (existingProduct) {
+                    showNotification(`⚠️ Ya existe "${existingProduct.name}" con ese código de barras (stock actual: ${getProductStock(existingProduct)}). Usá "Agregar Stock Rápido" arriba para sumarle stock — no crees uno nuevo.`, 'warning', 9000);
+                    const quickSearch = document.getElementById('quick-stock-search');
+                    if (quickSearch) {
+                        quickSearch.value = barcodeValue;
+                        filterQuickStockProducts();
+                        quickSearch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        quickSearch.focus();
+                    }
+                    return;
+                }
+            }
 
             // Validaciones
             if (!document.getElementById('inv-name').value.trim()) {

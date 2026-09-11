@@ -7864,7 +7864,10 @@
         // dialogo de impresion en navegador/PWA) pero con formato de cocina/mostrador.
         function buildComandaLines(pedido) {
             const lines = [];
-            lines.push({ text: 'Para las ' + (pedido.scheduledTime || '-') + (pedido.scheduledDate ? ' · ' + pedido.scheduledDate : ''), align: 'center', bold: true });
+            const whenText = pedido.scheduledTime
+                ? 'Para las ' + pedido.scheduledTime + (pedido.scheduledDate ? ' · ' + pedido.scheduledDate : '')
+                : '🔥 PRIORITARIO - PARA YA';
+            lines.push({ text: whenText, align: 'center', bold: true });
             if (pedido.customerName) lines.push({ text: 'Cliente: ' + pedido.customerName, align: 'center' });
             lines.push({ hr: true });
 
@@ -7889,7 +7892,8 @@
             if (window.kioscoDesktop && window.kioscoDesktop.isElectron) {
                 window.kioscoDesktop.print({
                     header: 'COMANDA / PEDIDO',
-                    lines: buildComandaLines(pedido)
+                    lines: buildComandaLines(pedido),
+                    large: true
                 }).then(res => {
                     if (!res || !res.ok) {
                         showNotification('❌ No se pudo imprimir la comanda: ' + ((res && res.error) || 'error desconocido'), 'error', 8000);
@@ -7902,15 +7906,18 @@
 
             // Navegador / PWA: ventana con diálogo de impresión (igual que el ticket de venta)
             const w = window.open('', '_blank');
+            const whenHtml = pedido.scheduledTime
+                ? `Para las ${pedido.scheduledTime} ${pedido.scheduledDate ? '· ' + pedido.scheduledDate : ''}`
+                : '🔥 PRIORITARIO - PARA YA';
             const itemsHtml = (pedido.items || []).map(item => `
                 <div style="display:flex;justify-content:space-between;"><span>${item.quantity}x ${escapeHtml(item.name)}</span><span>$${formatMoney(item.price * item.quantity)}</span></div>
             `).join('');
             w.document.write(`
                 <html>
                 <head><title>Comanda</title></head>
-                <body style="font-family: monospace; padding: 20px; max-width: 300px;">
-                    <h2 style="text-align: center;">COMANDA / PEDIDO</h2>
-                    <p style="text-align: center; font-weight: bold;">Para las ${pedido.scheduledTime || '-'} ${pedido.scheduledDate ? '· ' + pedido.scheduledDate : ''}</p>
+                <body style="font-family: monospace; font-size: 20px; padding: 20px; max-width: 300px;">
+                    <h2 style="text-align: center; font-size: 26px;">COMANDA / PEDIDO</h2>
+                    <p style="text-align: center; font-weight: bold;">${whenHtml}</p>
                     ${pedido.customerName ? `<p style="text-align: center;">Cliente: ${escapeHtml(pedido.customerName)}</p>` : ''}
                     <hr>
                     ${itemsHtml}

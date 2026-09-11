@@ -1410,6 +1410,9 @@
                         <button onclick="completeSale()" id="btn-complete" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg mt-4 transition disabled:opacity-50" disabled>
                             <i class="fas fa-check-circle"></i> Finalizar Venta
                         </button>
+                        <button onclick="pasarCarritoAPedido()" class="w-full bg-orange-100 hover:bg-orange-200 text-orange-700 py-3 rounded-xl font-bold text-sm shadow mt-2 transition">
+                            <i class="fas fa-bell"></i> Guardar como Pedido (para más tarde)
+                        </button>
                     </div>
                 </div>
             </div>
@@ -7474,9 +7477,40 @@
         // ==================== PEDIDOS (RESERVAS CON COMANDA Y RECORDATORIO) ====================
         let pendingPedidoItems = [];
         let editingPedidoId = null;
+        let pedidoFromCart = false;
 
-        function openPedidoModal(pedidoId) {
+        // Toma lo que hay en el carrito de Vender y lo pasa al modal de Pedido
+        // (para cuando alguien viene a encargar y lo anotás con el mismo buscador
+        // de productos que usás para vender, en vez de cargarlo dos veces).
+        function pasarCarritoAPedido() {
+            if (!appState.cart || appState.cart.length === 0) {
+                showNotification('El carrito está vacío', 'error');
+                return;
+            }
+            const items = appState.cart.map(item => ({
+                productId: item.productId || null,
+                name: item.name,
+                quantity: item.quantity,
+                price: item.price
+            }));
+            openPedidoModal(null, items);
+            showNotification('Completá cliente, fecha y hora para guardar el pedido', 'info', 5000);
+        }
+
+        function setPedidoPaymentStatus(status) {
+            const hidden = document.getElementById('pedido-payment-status');
+            if (hidden) hidden.value = status;
+            const btnPend = document.getElementById('btn-pedido-pago-pendiente');
+            const btnPag = document.getElementById('btn-pedido-pago-pagado');
+            if (!btnPend || !btnPag) return;
+            const base = 'flex-1 py-2 rounded-lg border-2 text-sm font-bold transition ';
+            btnPend.className = base + (status === 'pendiente' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 text-gray-600 hover:border-gray-400');
+            btnPag.className = base + (status === 'pagado' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-600 hover:border-gray-400');
+        }
+
+        function openPedidoModal(pedidoId, presetItems) {
             editingPedidoId = pedidoId || null;
+            pedidoFromCart = !pedidoId && Array.isArray(presetItems) && presetItems.length > 0;
             const modal = document.getElementById('pedido-modal');
             document.getElementById('pedido-customer').value = '';
             document.getElementById('pedido-date').value = formatDateISO(appState.activeDate || new Date());
@@ -7486,7 +7520,8 @@
             document.getElementById('pedido-product-search').value = '';
             document.getElementById('pedido-product-selected-id').value = '';
             document.getElementById('pedido-product-results').classList.add('hidden');
-            pendingPedidoItems = [];
+            setPedidoPaymentStatus('pendiente');
+            pendingPedidoItems = Array.isArray(presetItems) ? JSON.parse(JSON.stringify(presetItems)) : [];
 
             if (pedidoId) {
                 const pedido = (appState.pedidos || []).find(p => p.id === pedidoId);
@@ -7497,6 +7532,7 @@
                     document.getElementById('pedido-remind-minutes').value = pedido.reminderMinutesBefore != null ? pedido.reminderMinutesBefore : 10;
                     document.getElementById('pedido-notes').value = pedido.notes || '';
                     pendingPedidoItems = JSON.parse(JSON.stringify(pedido.items || []));
+                    setPedidoPaymentStatus(pedido.paymentStatus || 'pendiente');
                 }
             }
             renderPedidoItemsList();
@@ -7507,6 +7543,7 @@
         function closePedidoModal() {
             document.getElementById('pedido-modal').classList.remove('active');
             editingPedidoId = null;
+            pedidoFromCart = false;
             pendingPedidoItems = [];
         }
 
@@ -7614,6 +7651,7 @@
             const scheduledTime = document.getElementById('pedido-time').value;
             const reminderMinutesBefore = Math.max(0, parseInt(document.getElementById('pedido-remind-minutes').value) || 0);
             const notes = document.getElementById('pedido-notes').value.trim();
+            const paymentStatus = document.getElementById('pedido-payment-status').value === 'pagado' ? 'pagado' : 'pendiente';
 
             if (!scheduledDate || !scheduledTime) {
                 showNotification('Ingresá la fecha y la hora del pedido', 'error');
@@ -7626,6 +7664,7 @@
 
             const total = pendingPedidoItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
             if (!appState.pedidos) appState.pedidos = [];
+            const wasFromCart = pedidoFromCart;
 
             let pedido;
             if (editingPedidoId) {
@@ -7638,6 +7677,7 @@
                 pedido.notes = notes;
                 pedido.items = JSON.parse(JSON.stringify(pendingPedidoItems));
                 pedido.total = total;
+                pedido.paymentStatus = paymentStatus;
                 // Se reprogramó: dejar que los avisos vuelvan a saltar
                 pedido.reminderPreFired = false;
                 pedido.reminderAtTimeFired = false;
@@ -7653,12 +7693,19 @@
                     items: JSON.parse(JSON.stringify(pendingPedidoItems)),
                     total,
                     status: 'pendiente',
+                    paymentStatus,
                     reminderPreFired: false,
                     reminderAtTimeFired: false,
                     createdAt: new Date().toISOString(),
                     timestamp: Date.now()
                 };
                 appState.pedidos.push(pedido);
+            }
+
+            // Si el pedido vino del carrito de Vender, ese carrito ya cumplió su función
+            if (wasFromCart) {
+                appState.cart = [];
+                if (typeof renderCart === 'function') renderCart();
             }
 
             saveToLocalStorage();
@@ -7672,6 +7719,14 @@
             const pedido = (appState.pedidos || []).find(p => p.id === id);
             if (!pedido) return;
             pedido.status = pedido.status === 'listo' ? 'pendiente' : 'listo';
+            saveToLocalStorage();
+            renderPedidos();
+        }
+
+        function togglePedidoPagado(id) {
+            const pedido = (appState.pedidos || []).find(p => p.id === id);
+            if (!pedido) return;
+            pedido.paymentStatus = pedido.paymentStatus === 'pagado' ? 'pendiente' : 'pagado';
             saveToLocalStorage();
             renderPedidos();
         }
@@ -7773,10 +7828,14 @@
                             ${pedido.notes ? `<p class="text-xs text-gray-500 mt-1">📝 ${escapeHtml(pedido.notes)}</p>` : ''}
                             ${pedido.total > 0 ? `<p class="text-xs font-bold text-purple-700 mt-1">$${formatMoney(pedido.total)}</p>` : ''}
                         </div>
-                        <span class="text-xs font-bold px-2 py-1 rounded-full ${statusBadgeColors[pedido.status] || 'bg-gray-200 text-gray-600'}">${statusLabels[pedido.status] || pedido.status}</span>
+                        <div class="flex flex-col items-end gap-1">
+                            <span class="text-xs font-bold px-2 py-1 rounded-full ${statusBadgeColors[pedido.status] || 'bg-gray-200 text-gray-600'}">${statusLabels[pedido.status] || pedido.status}</span>
+                            <span class="text-xs font-bold px-2 py-1 rounded-full ${pedido.paymentStatus === 'pagado' ? 'bg-green-200 text-green-800' : 'bg-red-100 text-red-700'}">${pedido.paymentStatus === 'pagado' ? '💰 Pagado' : '⏳ Sin pagar'}</span>
+                        </div>
                     </div>
                     <div class="flex flex-wrap gap-2 mt-2">
                         <button onclick="marcarPedidoListo('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-green-50">${pedido.status === 'listo' ? '↩️ Pendiente' : '✅ Listo'}</button>
+                        <button onclick="togglePedidoPagado('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-green-50">${pedido.paymentStatus === 'pagado' ? '↩️ Marcar sin pagar' : '💰 Marcar pagado'}</button>
                         ${pedido.items && pedido.items.length > 0 ? `<button onclick="cargarPedidoEnVenta('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-purple-50">🛒 Pasar a Vender</button>` : ''}
                         <button onclick="printComanda(findPedido('${pedido.id}'))" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-blue-50">🖨️ Reimprimir</button>
                         <button onclick="openPedidoModal('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-yellow-50">✏️ Editar</button>
@@ -7884,6 +7943,17 @@
         // Corre cada 20s: dispara el aviso previo (X minutos antes, configurable por
         // pedido) y el aviso justo a la hora pactada. Cada uno suena una sola vez
         // (queda marcado en el pedido) para no repetir el sonido sin parar.
+        // Si el aviso salta mientras estás en Vender, abre solo el panel de Pedidos
+        // para que se vea ahí mismo (no hace nada si el panel no existe en pantalla).
+        function expandPedidosPanel() {
+            const content = document.getElementById('pedidos-content');
+            const icon = document.getElementById('pedidos-icon');
+            if (content && content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                if (icon) icon.classList.add('rotate-180');
+            }
+        }
+
         function checkPedidoReminders() {
             if (!Array.isArray(appState.pedidos) || appState.pedidos.length === 0) return;
             const now = new Date();
@@ -7903,6 +7973,7 @@
                     changed = true;
                     playPedidoBeep(false);
                     showNotification('🔔 Pedido de ' + (pedido.customerName || 'cliente') + ' en ' + preMinutes + ' min (' + pedido.scheduledTime + ')', 'warning', 12000);
+                    expandPedidosPanel();
                 }
 
                 if (!pedido.reminderAtTimeFired && now >= when) {
@@ -7910,6 +7981,7 @@
                     changed = true;
                     playPedidoBeep(true);
                     showNotification('⏰ ¡Es la hora! Pedido de ' + (pedido.customerName || 'cliente') + ' (' + pedido.scheduledTime + ')', 'error', 15000);
+                    expandPedidosPanel();
                 }
             });
 
@@ -23430,6 +23502,16 @@ RESULTADOS:
                         <span class="text-orange-600">Total:</span>
                         <span class="font-bold text-orange-800" id="pedido-items-total">$0</span>
                     </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Estado de pago</label>
+                    <div class="flex gap-2">
+                        <button type="button" id="btn-pedido-pago-pendiente" onclick="setPedidoPaymentStatus('pendiente')" class="flex-1 py-2 rounded-lg border-2 text-sm font-bold">Sin pagar</button>
+                        <button type="button" id="btn-pedido-pago-pagado" onclick="setPedidoPaymentStatus('pagado')" class="flex-1 py-2 rounded-lg border-2 text-sm font-bold">Ya pagó</button>
+                    </div>
+                    <input type="hidden" id="pedido-payment-status" value="pendiente">
+                    <p class="text-[11px] text-gray-400 mt-1">Es solo una nota para vos (para saber de un vistazo si ya cobraste). El cobro real, con stock y factura, se hace al pasarlo a Vender.</p>
                 </div>
 
                 <div>

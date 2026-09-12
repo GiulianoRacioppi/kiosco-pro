@@ -7615,8 +7615,7 @@
             document.getElementById('pedido-product-search').value = productName;
             document.getElementById('pedido-product-selected-id').value = productId;
             document.getElementById('pedido-product-results').classList.add('hidden');
-            const qtyInput = document.getElementById('pedido-product-qty');
-            if (qtyInput) { qtyInput.value = 1; qtyInput.focus(); qtyInput.select(); }
+            addPedidoItem();
         }
 
         function handlePedidoProductKeypress(e) {
@@ -7627,16 +7626,17 @@
             }
         }
 
+        // Agrega siempre de a 1 (como el buscador de Vender): para más cantidad se usan
+        // los botones +/- del carrito del pedido, así se evita tener que tipear un
+        // número acá (y los valores raros tipo "1,01" que eso generaba).
         function addPedidoItem() {
             const hidden = document.getElementById('pedido-product-selected-id');
             const search = document.getElementById('pedido-product-search');
-            const qtyInput = document.getElementById('pedido-product-qty');
-            if (!hidden || !qtyInput) return;
+            if (!hidden) return;
 
             const productId = hidden.value;
-            const quantity = parseFloat(qtyInput.value);
-            if (!productId || !quantity || quantity <= 0) {
-                showNotification('Seleccioná un producto y una cantidad válida', 'error');
+            if (!productId) {
+                showNotification('Seleccioná un producto de la lista', 'error');
                 return;
             }
 
@@ -7645,14 +7645,13 @@
 
             const existing = pendingPedidoItems.find(i => i.productId === productId);
             if (existing) {
-                existing.quantity += quantity;
+                existing.quantity += 1;
             } else {
-                pendingPedidoItems.push({ productId, name: product.name, quantity, price: product.salePrice || 0 });
+                pendingPedidoItems.push({ productId, name: product.name, quantity: 1, price: product.salePrice || 0 });
             }
 
             hidden.value = '';
-            if (search) search.value = '';
-            qtyInput.value = '1';
+            if (search) { search.value = ''; search.focus(); }
             const resultsDiv = document.getElementById('pedido-product-results');
             if (resultsDiv) resultsDiv.classList.add('hidden');
             renderPedidoItemsList();
@@ -7902,8 +7901,13 @@
             renderPedidos();
         }
 
-        // Pasa los productos del pedido al carrito de Vender para cobrarlo con el
-        // flujo normal de venta (stock, pago, factura, ticket -- todo lo ya probado).
+        // Pasa los productos del pedido al carrito de Vender para registrar la venta real
+        // (stock, factura, ticket -- todo lo ya probado en completeSale()). Si el pedido ya
+        // se cobró antes (con "💰 Cobrar", en cualquier momento: antes de la comanda, después
+        // de la comanda o después de entregado), ya sabemos método de pago y monto -- no tiene
+        // sentido pedirle de nuevo el pago al cajero, así que se completa la venta directo con
+        // esos datos ("Pasar a Facturar"). Si todavía no se cobró, se carga al carrito y el
+        // cajero elige el pago como siempre ("Pasar a Vender").
         async function cargarPedidoEnVenta(id) {
             const pedido = (appState.pedidos || []).find(p => p.id === id);
             if (!pedido) return;
@@ -7914,7 +7918,12 @@
             if (appState.cart.length > 0 && !(await showConfirmModal('El carrito ya tiene productos cargados. ¿Reemplazarlo con los productos de este pedido?'))) {
                 return;
             }
-            if (!(await showConfirmModal('¿Pasar este pedido al carrito de venta? Se va a marcar como entregado.'))) return;
+
+            const yaPagado = pedido.paymentStatus === 'pagado';
+            const confirmMsg = yaPagado
+                ? '¿Facturar este pedido? Ya está cobrado: se va a registrar la venta directamente, sin pedir el pago de nuevo.'
+                : '¿Pasar este pedido al carrito de venta? Se va a marcar como entregado.';
+            if (!(await showConfirmModal(confirmMsg))) return;
 
             appState.cart = pedido.items.map(item => {
                 const product = appState.inventory.find(p => p.id === item.productId);
@@ -7931,7 +7940,19 @@
             showSection('sell');
             if (typeof renderCart === 'function') renderCart();
             renderPedidos();
-            showNotification('🛒 Pedido cargado en el carrito — completá la venta', 'success');
+
+            if (yaPagado) {
+                const method = pedido.paymentMethod === 'debit' ? 'debit' : 'cash';
+                setPaymentMethod(method);
+                if (method === 'cash') {
+                    const receivedInput = document.getElementById('cash-received');
+                    if (receivedInput) receivedInput.value = pedido.paymentReceived || pedido.total || 0;
+                    calculateChange();
+                }
+                completeSale();
+            } else {
+                showNotification('🛒 Pedido cargado en el carrito — completá la venta', 'success');
+            }
         }
 
         // Pedidos activos (no cancelados), ordenados: primero los prioritarios (sin
@@ -8038,7 +8059,7 @@
                     <div class="flex flex-wrap gap-2 mt-2">
                         <button onclick="marcarPedidoListo('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-green-50">${pedido.status === 'listo' ? '↩️ Volver a preparación' : '✅ Marcar como Listo'}</button>
                         <button onclick="${pedido.paymentStatus === 'pagado' ? `togglePedidoPagado('${pedido.id}')` : `openPedidoCobroModal('${pedido.id}')`}" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-green-50">${pedido.paymentStatus === 'pagado' ? '↩️ Marcar sin pagar' : '💰 Cobrar'}</button>
-                        ${pedido.items && pedido.items.length > 0 ? `<button onclick="cargarPedidoEnVenta('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-purple-50">🛒 Pasar a Vender</button>` : ''}
+                        ${pedido.items && pedido.items.length > 0 ? `<button onclick="cargarPedidoEnVenta('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-purple-50">${pedido.paymentStatus === 'pagado' ? '🧾 Pasar a Facturar' : '🛒 Pasar a Vender'}</button>` : ''}
                         <button onclick="printComanda(findPedido('${pedido.id}'))" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-blue-50">🖨️ Reimprimir</button>
                         <button onclick="openPedidoModal('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-yellow-50">✏️ Editar</button>
                         <button onclick="cancelarPedido('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-red-50 text-red-600">🚫 Cancelar</button>
@@ -23549,7 +23570,7 @@ RESULTADOS:
                 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1" id="weight-sale-input-label">Gramos a vender</label>
-                    <input type="number" id="weight-sale-input" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center" placeholder="0" min="0.01" step="0.01" oninput="onWeightSaleInput()">
+                    <input type="number" id="weight-sale-input" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center" placeholder="0" min="0.01" step="0.01" oninput="onWeightSaleInput()" onkeydown="if(event.key==='Enter'){event.preventDefault();addWeightToCart();}">
                 </div>
                 
                 <div class="bg-green-50 rounded-xl p-4 text-center">
@@ -23712,10 +23733,7 @@ RESULTADOS:
                         <input type="hidden" id="pedido-product-selected-id">
                         <div id="pedido-product-results" class="absolute z-20 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto hidden mt-1"></div>
                     </div>
-                    <div class="flex gap-2">
-                        <input type="number" id="pedido-product-qty" class="w-20 border rounded-lg px-3 py-2 text-sm text-center font-bold" placeholder="Cant" min="0.01" step="1" value="1" onkeydown="if(event.key==='Enter'){event.preventDefault();addPedidoItem();}">
-                        <button type="button" onclick="addPedidoItem()" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg text-sm font-bold">+ Agregar</button>
-                    </div>
+                    <button type="button" onclick="addPedidoItem()" class="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg text-sm font-bold">+ Agregar</button>
                 </div>
 
                 <div class="bg-white rounded-xl shadow border p-4">

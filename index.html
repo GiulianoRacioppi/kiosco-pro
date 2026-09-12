@@ -4681,6 +4681,7 @@
                     <div class="sale-item flex justify-between items-center p-3 rounded-lg border cursor-pointer" onclick="showSaleDetail('${sale.id}')">
                         <div>
                             <p class="font-bold text-gray-800">Venta #${sale.id.slice(-4)}</p>
+                            ${sale.fromPedido ? `<p class="text-xs font-bold text-orange-600">📋 Pedido — Comanda #${sale.comandaNumber || '?'}${sale.pedidoCustomerName ? ' — ' + escapeHtml(sale.pedidoCustomerName) : ''}</p>` : ''}
                             <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵 Efectivo' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : '💳 Débito')}</p>
                         </div>
                         <div class="text-right">
@@ -6120,6 +6121,7 @@
             appState.cart = [];
             removeAppliedTicket(false);
             window.comboNotified = false;
+            pendingPedidoSaleInfo = null;
             renderCart();
             showNotification('Carrito vaciado', 'info');
         }
@@ -7145,6 +7147,16 @@
                 pendingFiadoCustomerName = null;
             }
 
+            // Si este carrito vino de un Pedido (cargarPedidoEnVenta), etiquetar la venta
+            // para que el historial de ventas muestre de qué comanda/pedido viene.
+            if (pendingPedidoSaleInfo) {
+                sale.fromPedido = true;
+                sale.pedidoId = pendingPedidoSaleInfo.pedidoId;
+                sale.comandaNumber = pendingPedidoSaleInfo.comandaNumber;
+                sale.pedidoCustomerName = pendingPedidoSaleInfo.customerName;
+                pendingPedidoSaleInfo = null;
+            }
+
             // ========== FASE 2: DESCONTAR STOCK CON SNAPSHOT ==========
             const { snapshot: stockSnapshot, saleWhiteTotal, saleBlackTotal, itemBreakdown } = deductStockWithSnapshot(appState.cart);
             
@@ -7511,6 +7523,10 @@
         let pendingPedidoItems = [];
         let editingPedidoId = null;
         let pedidoFromCart = false;
+        // Cuando el carrito de Vender viene de un pedido, completeSale() lo lee para
+        // etiquetar la venta resultante (así el historial de ventas puede mostrar
+        // "viene del Pedido/Comanda #N"). Se limpia solo al usarse o al vaciar el carrito.
+        let pendingPedidoSaleInfo = null;
 
         // Toma lo que hay en el carrito de Vender y lo pasa al modal de Pedido
         // (para cuando alguien viene a encargar y lo anotás con el mismo buscador
@@ -7744,8 +7760,14 @@
                 pedido.reminderAtTimeFired = false;
                 pedido.updatedAt = new Date().toISOString();
             } else {
+                // Numeración de comanda: la primera que sale en el día es la #1, la
+                // siguiente #2, etc. -- se cuenta por scheduledDate (el día del pedido),
+                // no por hoy, para que un pedido cargado con anticipación para otro día
+                // arranque su propia numeración en ese día.
+                const comandaNumber = appState.pedidos.filter(p => p.scheduledDate === scheduledDate).length + 1;
                 pedido = {
                     id: 'PEDIDO-' + Date.now(),
+                    comandaNumber,
                     customerName,
                     scheduledDate,
                     scheduledTime,
@@ -7941,6 +7963,10 @@
             if (typeof renderCart === 'function') renderCart();
             renderPedidos();
 
+            // Para que completeSale() etiquete la venta con el pedido/comanda de origen
+            // (se consume y se limpia solo ahí, o al vaciar el carrito si no llega a venderse).
+            pendingPedidoSaleInfo = { pedidoId: pedido.id, comandaNumber: pedido.comandaNumber || null, customerName: pedido.customerName || null };
+
             if (yaPagado) {
                 const method = pedido.paymentMethod === 'debit' ? 'debit' : 'cash';
                 setPaymentMethod(method);
@@ -7960,8 +7986,10 @@
         // hora por fecha+hora. Se usa tanto para la lista en pantalla como para
         // numerar la comanda impresa, así el número es siempre el mismo en los dos lados.
         function getOrderedPedidos() {
+            // 'entregado' = ya se facturó/vendió: sale de la lista activa (ya está en el
+            // historial de ventas como la venta real que es, con su número de comanda).
             return (appState.pedidos || [])
-                .filter(p => p.status !== 'cancelado')
+                .filter(p => p.status !== 'cancelado' && p.status !== 'entregado')
                 .sort((a, b) => {
                     const aUrgent = !a.scheduledTime;
                     const bUrgent = !b.scheduledTime;
@@ -8042,11 +8070,12 @@
                 const whenLabel = pedido.scheduledTime
                     ? `🕐 ${pedido.scheduledTime} · ${pedido.scheduledDate || '-'}`
                     : `PRIORIDAD #${urgentNumbers.get(pedido.id) || ''} · ${pedido.scheduledDate || '-'}`;
+                const comandaLabel = pedido.comandaNumber ? `Comanda #${pedido.comandaNumber} — ` : '';
                 return `
                 <div class="border-l-4 rounded-lg p-3 ${cardClass}">
                     <div class="flex flex-wrap justify-between items-start gap-2">
                         <div>
-                            <p class="font-bold ${isUrgent ? 'text-red-700' : 'text-gray-800'}">${whenLabel}${pedido.customerName ? ' — ' + escapeHtml(pedido.customerName) : ''}</p>
+                            <p class="font-bold ${isUrgent ? 'text-red-700' : 'text-gray-800'}">${comandaLabel}${whenLabel}${pedido.customerName ? ' — ' + escapeHtml(pedido.customerName) : ''}</p>
                             ${itemsResumen ? `<p class="text-sm text-gray-600">${escapeHtml(itemsResumen)}</p>` : ''}
                             ${pedido.notes ? `<p class="text-xs text-gray-500 mt-1">📝 ${escapeHtml(pedido.notes)}</p>` : ''}
                             ${pedido.total > 0 ? `<p class="text-xs font-bold text-purple-700 mt-1">$${formatMoney(pedido.total)}</p>` : ''}
@@ -8077,6 +8106,9 @@
         // dialogo de impresion en navegador/PWA) pero con formato de cocina/mostrador.
         function buildComandaLines(pedido) {
             const lines = [];
+            if (pedido.comandaNumber) {
+                lines.push({ text: 'COMANDA #' + pedido.comandaNumber, align: 'center', bold: true });
+            }
             const priorityNumber = getPedidoPriorityNumber(pedido);
             const whenText = pedido.scheduledTime
                 ? 'Para las ' + pedido.scheduledTime + (pedido.scheduledDate ? ' · ' + pedido.scheduledDate : '')
@@ -8133,6 +8165,7 @@
                 <head><title>Comanda</title></head>
                 <body style="font-family: monospace; font-size: 20px; padding: 20px; max-width: 300px;">
                     <h2 style="text-align: center; font-size: 26px;">COMANDA / PEDIDO</h2>
+                    ${pedido.comandaNumber ? `<p style="text-align: center; font-weight: bold; font-size: 24px;">COMANDA #${pedido.comandaNumber}</p>` : ''}
                     <p style="text-align: center; font-weight: bold;">${whenHtml}</p>
                     ${pedido.customerName ? `<p style="text-align: center;">Cliente: ${escapeHtml(pedido.customerName)}</p>` : ''}
                     <p style="text-align: center;">${emitidoHtml}</p>
@@ -11829,6 +11862,7 @@
                 <div class="sale-item flex justify-between items-center p-3 rounded-lg border">
                     <div class="flex-1 cursor-pointer" onclick="showSaleDetail('${sale.id}')">
                         <p class="font-bold text-gray-800">Venta #${sale.id.slice(-4)}</p>
+                        ${sale.fromPedido ? `<p class="text-xs font-bold text-orange-600">📋 Pedido — Comanda #${sale.comandaNumber || '?'}${sale.pedidoCustomerName ? ' — ' + escapeHtml(sale.pedidoCustomerName) : ''}</p>` : ''}
                         <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.isMercadoCredito ? '💳 MercadoCrédito' : '💳 Débito'))}</p>
                     </div>
                     <div class="text-right mr-4">

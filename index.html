@@ -1975,6 +1975,8 @@
                             <option value="name">Ordenar: Nombre (A-Z)</option>
                             <option value="margin-desc">Ordenar: Ganancia % (mayor a menor)</option>
                             <option value="margin-asc">Ordenar: Ganancia % (menor a mayor)</option>
+                            <option value="profit-desc">Ordenar: Ganancia $ (mayor a menor)</option>
+                            <option value="profit-asc">Ordenar: Ganancia $ (menor a mayor)</option>
                         </select>
                         <input type="text" id="search-inventory" placeholder="Buscar..." class="border rounded-lg px-3 py-1 text-sm" onkeyup="renderInventory()">
                     </div>
@@ -10025,6 +10027,13 @@
             return ((price - cost) / cost) * 100;
         }
 
+        // Ganancia en pesos por unidad: venta - costo.
+        function getProductGananciaPesos(p) {
+            const cost = p.isComposite ? calculateCompositeCost(p) : (p.cost || 0);
+            const price = p.salePrice || p.price || 0;
+            return price - cost;
+        }
+
         function renderInventory() {
             const activeInventory = getActiveInventory();
             console.log('renderInventory llamado. Total productos:', activeInventory.length);
@@ -10039,6 +10048,10 @@
                 filtered.sort((a, b) => getProductMarginPct(b) - getProductMarginPct(a));
             } else if (sortMode === 'margin-asc') {
                 filtered.sort((a, b) => getProductMarginPct(a) - getProductMarginPct(b));
+            } else if (sortMode === 'profit-desc') {
+                filtered.sort((a, b) => getProductGananciaPesos(b) - getProductGananciaPesos(a));
+            } else if (sortMode === 'profit-asc') {
+                filtered.sort((a, b) => getProductGananciaPesos(a) - getProductGananciaPesos(b));
             } else if (!search) {
                 filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             }

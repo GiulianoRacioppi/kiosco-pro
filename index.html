@@ -595,6 +595,7 @@
                         <span class="text-purple-600 font-bold">%</span>
                     </div>
                     <p class="text-xs text-gray-500 mt-1">Cambiá el margen para recalcular el precio</p>
+                    <p id="edit-prod-margin-pesos" class="text-sm font-bold text-green-700 mt-1">Ganancia: $0</p>
                 </div>
                 <!-- Sección Venta por Peso en Editar Producto -->
                 <div class="bg-blue-50 rounded-xl p-4 border border-blue-200">
@@ -4598,7 +4599,78 @@
                 }
             });
         }
-        
+
+        // Compara el período actual del Dashboard contra el equivalente anterior, cortado
+        // al mismo punto relativo (misma hora de ayer / mismo día del mes pasado / mismo
+        // día de la semana pasada) para que sea una comparación justa con lo que ya pasó
+        // del período actual -- no contra un mes/semana/año anterior COMPLETO.
+        function getDashboardComparison(period) {
+            if (period === 'all') return null;
+            const now = new Date();
+            const allSales = appState.sales.map(s => ({ ...s, date: saleRevenueDate(s) }));
+            let rangeStart, rangeEnd, label;
+
+            if (period === 'today') {
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                const dateStr = formatDateISO(yesterday);
+                const cutoffMin = now.getHours() * 60 + now.getMinutes();
+                const prevSales = allSales.filter(s => {
+                    if (s.date !== dateStr) return false;
+                    const parts = (s.time || '').split(':');
+                    const mins = parts.length >= 2 ? (parseInt(parts[0]) * 60 + parseInt(parts[1])) : 0;
+                    return mins <= cutoffMin;
+                });
+                return {
+                    label: 'ayer a esta hora',
+                    prevRevenue: prevSales.reduce((s, x) => s + x.total, 0),
+                    prevProfit: prevSales.reduce((s, x) => s + x.profit, 0)
+                };
+            } else if (period === 'week') {
+                const day = now.getDay();
+                const daysSinceMonday = day === 0 ? 6 : day - 1;
+                const thisMonday = new Date(now); thisMonday.setHours(0, 0, 0, 0); thisMonday.setDate(now.getDate() - daysSinceMonday);
+                rangeStart = new Date(thisMonday); rangeStart.setDate(thisMonday.getDate() - 7);
+                rangeEnd = new Date(rangeStart); rangeEnd.setDate(rangeStart.getDate() + daysSinceMonday); rangeEnd.setHours(23, 59, 59, 999);
+                label = 'semana pasada (mismos días)';
+            } else if (period === 'month') {
+                const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                rangeStart = new Date(prevMonth.getFullYear(), prevMonth.getMonth(), 1);
+                rangeEnd = new Date(prevMonth.getFullYear(), prevMonth.getMonth(), now.getDate(), 23, 59, 59, 999);
+                label = 'mes pasado (mismos días)';
+            } else if (period === 'year') {
+                rangeStart = new Date(now.getFullYear() - 1, 0, 1);
+                rangeEnd = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                label = 'año pasado (mismos días)';
+            } else {
+                return null;
+            }
+
+            const prevSales = allSales.filter(s => {
+                const d = new Date(s.date + 'T00:00:00');
+                return d >= rangeStart && d <= rangeEnd;
+            });
+            return {
+                label,
+                prevRevenue: prevSales.reduce((s, x) => s + x.total, 0),
+                prevProfit: prevSales.reduce((s, x) => s + x.profit, 0)
+            };
+        }
+
+        // HTML con flecha/color/porcentaje de cambio. Si no hay referencia del período
+        // anterior (todo 0) no se puede calcular un % real, así que se avisa en vez de
+        // mostrar un "+Infinity%" sin sentido.
+        function formatPctChangeHtml(curr, prev) {
+            if (!prev || prev <= 0) {
+                return curr > 0 ? '<span class="text-blue-500">🆕 sin referencia</span>' : '';
+            }
+            const pct = ((curr - prev) / prev) * 100;
+            const color = pct >= 0 ? 'text-green-600' : 'text-red-600';
+            const arrow = pct >= 0 ? '▲' : '▼';
+            const sign = pct >= 0 ? '+' : '';
+            return `<span class="${color} font-bold">${arrow} ${sign}${pct.toFixed(0)}%</span>`;
+        }
+
         function renderDashboard() {
             // Si no hay usuario logueado, no renderizar
             if (!appState.currentUser) return;
@@ -4669,9 +4741,17 @@
                 if (chartsRow) chartsRow.style.display = 'none';
             } else {
                 // VISTA ADMIN: Todo completo, filtrado por período
+                const comparison = getDashboardComparison(dashboardPeriod);
+                const salesSubtext = comparison
+                    ? `${filteredSales.length} ventas · ${formatPctChangeHtml(periodRevenue, comparison.prevRevenue)} vs ${comparison.label}`
+                    : `${filteredSales.length} ventas`;
+                const profitSubtext = comparison
+                    ? `${formatPctChangeHtml(periodProfit, comparison.prevProfit)} vs ${comparison.label}`
+                    : 'después de costos';
+
                 const kpiDataAll = [
-                    { key: 'sales', title: `Ventas ${periodLabel}`, value: `$${formatMoney(periodRevenue)}`, icon: 'fa-dollar-sign', color: 'purple', subtext: `${filteredSales.length} ventas` },
-                    { key: 'profit', title: `Ganancia Neta ${periodLabel}`, value: `$${formatMoney(periodProfit)}`, icon: 'fa-chart-line', color: 'green', subtext: 'después de costos' },
+                    { key: 'sales', title: `Ventas ${periodLabel}`, value: `$${formatMoney(periodRevenue)}`, icon: 'fa-dollar-sign', color: 'purple', subtext: salesSubtext },
+                    { key: 'profit', title: `Ganancia Neta ${periodLabel}`, value: `$${formatMoney(periodProfit)}`, icon: 'fa-chart-line', color: 'green', subtext: profitSubtext },
                     { key: 'expenses', title: `Gastos ${periodLabel}`, value: `$${formatMoney(periodExpenseAmount)}`, icon: 'fa-receipt', color: 'red', subtext: `${filteredExpenses.length} gastos` },
                     { key: 'investment', title: `Inversión ${periodLabel}`, value: `$${formatMoney(periodInvestmentAmount)}`, icon: 'fa-boxes', color: 'blue', subtext: `${filteredInvestments.length} compras` }
                 ];
@@ -11422,10 +11502,10 @@
             const priceInput = document.getElementById('edit-prod-price');
             const marginInput = document.getElementById('edit-prod-margin');
             const roundCheckbox = document.getElementById('edit-prod-round');
-            
+
             const cost = parseFloat(costInput.value.replace(',', '.')) || 0;
             const margin = parseFloat(marginInput.value.replace(',', '.')) || 0;
-            
+
             if (cost > 0 && margin > 0 && margin < 100) {
                 // Recalcular precio basado en el margen ingresado
                 let price = cost * (1 + margin / 100);
@@ -11435,6 +11515,7 @@
                 }
                 priceInput.value = price.toFixed(2);
             }
+            updateEditGananciaPesos();
             updateEditWeightCalculations();
         }
 
@@ -11442,7 +11523,7 @@
             // Normalizar: reemplazar coma por punto para parseFloat (soporte español)
             const cost = parseFloat(document.getElementById('edit-prod-cost').value.replace(',', '.')) || 0;
             const price = parseFloat(document.getElementById('edit-prod-price').value.replace(',', '.')) || 0;
-            
+
             if (cost > 0 && price > 0) {
                 // Fórmula correcta del margen sobre venta
                 const margin = ((price - cost) / cost) * 100;
@@ -11450,7 +11531,19 @@
             } else {
                 document.getElementById('edit-prod-margin').value = '0';
             }
+            updateEditGananciaPesos();
             updateEditWeightCalculations();
+        }
+
+        // Cuánto queda de ganancia en pesos (venta - costo) por unidad, al lado del margen %.
+        function updateEditGananciaPesos() {
+            const el = document.getElementById('edit-prod-margin-pesos');
+            if (!el) return;
+            const cost = parseFloat(document.getElementById('edit-prod-cost').value.replace(',', '.')) || 0;
+            const price = parseFloat(document.getElementById('edit-prod-price').value.replace(',', '.')) || 0;
+            const ganancia = price - cost;
+            el.textContent = 'Ganancia: $' + formatMoney(ganancia);
+            el.className = 'text-sm font-bold mt-1 ' + (ganancia >= 0 ? 'text-green-700' : 'text-red-600');
         }
 
         function closeEditProductModal() {

@@ -1968,9 +1968,16 @@
 
             <!-- Stock Actual -->
             <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
-                <div class="p-4 border-b flex justify-between items-center">
+                <div class="p-4 border-b flex flex-wrap gap-2 justify-between items-center">
                     <h3 class="font-bold">📦 Stock Actual</h3>
-                    <input type="text" id="search-inventory" placeholder="Buscar..." class="border rounded-lg px-3 py-1 text-sm" onkeyup="renderInventory()">
+                    <div class="flex gap-2">
+                        <select id="inventory-sort" class="border rounded-lg px-2 py-1 text-sm" onchange="renderInventory()">
+                            <option value="name">Ordenar: Nombre (A-Z)</option>
+                            <option value="margin-desc">Ordenar: Margen % (mayor a menor)</option>
+                            <option value="margin-asc">Ordenar: Margen % (menor a mayor)</option>
+                        </select>
+                        <input type="text" id="search-inventory" placeholder="Buscar..." class="border rounded-lg px-3 py-1 text-sm" onkeyup="renderInventory()">
+                    </div>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full">
@@ -1982,6 +1989,7 @@
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Lotes/Vencimientos</th>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Costo</th>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Venta</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500">Margen %</th>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Acciones</th>
                             </tr>
                         </thead>
@@ -7005,7 +7013,7 @@
             return !!(rec && rec.openingAmount !== undefined && rec.openingAmount !== null);
         }
 
-        function completeSale() {
+        async function completeSale() {
             if (appState.cart.length === 0) return;
 
             // ANTES de tocar plata o stock: si todavía no se registró la apertura de caja
@@ -7038,7 +7046,7 @@
             const activeDateStr = formatDateISO(appState.activeDate || new Date());
             const todayStr = formatDateISO(new Date());
             if (activeDateStr !== todayStr) {
-                if (!confirm(`⚠️ ATENCIÓN: Estás por registrar una venta en la fecha ${activeDateStr}, que NO es hoy (${todayStr}).\n\n¿Estás seguro de que querés continuar?`)) {
+                if (!(await showConfirmModal(`⚠️ ATENCIÓN: Estás por registrar una venta en la fecha ${activeDateStr}, que NO es hoy (${todayStr}).\n\n¿Estás seguro de que querés continuar?`))) {
                     return;
                 }
             }
@@ -7585,6 +7593,10 @@
                 }
             }
             renderPedidoItemsList();
+            // "Guardar y Cobrar" solo tiene sentido editando un pedido que ya existe
+            // (para uno nuevo todavía no hay nada que cobrar hasta guardarlo).
+            const btnGuardarCobrar = document.getElementById('btn-pedido-guardar-cobrar');
+            if (btnGuardarCobrar) btnGuardarCobrar.classList.toggle('hidden', !pedidoId);
             modal.classList.add('active');
             setTimeout(() => document.getElementById('pedido-customer').focus(), 100);
         }
@@ -7796,6 +7808,21 @@
             renderPedidos();
             printComanda(pedido);
             showNotification(scheduledTime ? '📋 Pedido guardado para las ' + scheduledTime : '📋 Pedido guardado como prioritario (Prioridad #' + (getPedidoPriorityNumber(pedido) || '') + ')', 'success');
+            return pedido;
+        }
+
+        // Cuando piden agregar algo más a un pedido ya cargado y hay que cobrarlo en el
+        // momento: guarda los cambios (reimprime la comanda con el producto nuevo) y
+        // abre directo el cobro con el total ya actualizado, sin tener que cerrar este
+        // modal y buscar el pedido de nuevo en la lista.
+        function saveAndCobrarPedido() {
+            if (!editingPedidoId) {
+                showNotification('Guardá el pedido primero; después lo cobrás desde la lista', 'info');
+                return;
+            }
+            const id = editingPedidoId;
+            const pedido = savePedido();
+            if (pedido) openPedidoCobroModal(id);
         }
 
         function marcarPedidoListo(id) {
@@ -9970,15 +9997,34 @@
             .map(item => item.product);
         }
 
+        // Margen sobre costo, igual fórmula que en Editar Producto: ((venta - costo) / costo) * 100.
+        // Sin costo cargado no se puede calcular un % real -- se trata como "el más alto"
+        // para que esos productos no se escondan mezclados en el medio de la lista al ordenar.
+        function getProductMarginPct(p) {
+            const cost = p.isComposite ? calculateCompositeCost(p) : (p.cost || 0);
+            const price = p.salePrice || p.price || 0;
+            if (cost <= 0) return price > 0 ? Infinity : 0;
+            return ((price - cost) / cost) * 100;
+        }
+
         function renderInventory() {
             const activeInventory = getActiveInventory();
             console.log('renderInventory llamado. Total productos:', activeInventory.length);
-            
+
             const search = document.getElementById('search-inventory').value;
-            const filtered = search 
+            let filtered = search
                 ? fuzzySearchProducts(search, activeInventory, 100, { sortBySales: true })
-                : activeInventory;
-            
+                : activeInventory.slice();
+
+            const sortMode = document.getElementById('inventory-sort')?.value || 'name';
+            if (sortMode === 'margin-desc') {
+                filtered.sort((a, b) => getProductMarginPct(b) - getProductMarginPct(a));
+            } else if (sortMode === 'margin-asc') {
+                filtered.sort((a, b) => getProductMarginPct(a) - getProductMarginPct(b));
+            } else if (!search) {
+                filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            }
+
             console.log('Productos filtrados para mostrar:', filtered.length);
 
             document.getElementById('inventory-table').innerHTML = filtered.map(p => {
@@ -10060,6 +10106,7 @@
                     <td class="px-3 py-2 text-sm">${batchesHtml}</td>
                     <td class="px-3 py-2 text-sm text-gray-600">$${formatMoney((p.cost || 0))}</td>
                     <td class="px-3 py-2 text-sm font-bold text-green-600">$${formatMoney((p.salePrice || p.price || 0))}</td>
+                    <td class="px-3 py-2 text-sm text-right font-bold ${(() => { const m = getProductMarginPct(p); return m >= 50 ? 'text-green-600' : m >= 20 ? 'text-orange-600' : 'text-red-600'; })()}">${(() => { const m = getProductMarginPct(p); return m === Infinity ? '—' : m.toFixed(0) + '%'; })()}</td>
                     <td class="px-3 py-2">
                         <button onclick="openAddStockModal('${p.id}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Agregar stock">
                             <i class="fas fa-plus-circle"></i>
@@ -23800,6 +23847,9 @@ RESULTADOS:
                 <button onclick="closePedidoModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
                 <button onclick="savePedido()" class="flex-1 bg-orange-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-orange-700">Guardar e imprimir comanda</button>
             </div>
+            <button type="button" onclick="saveAndCobrarPedido()" id="btn-pedido-guardar-cobrar" class="w-full mt-2 bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg hidden">
+                <i class="fas fa-money-bill-wave"></i> Guardar y Cobrar
+            </button>
         </div>
     </div>
 

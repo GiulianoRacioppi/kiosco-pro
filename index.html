@@ -1973,8 +1973,8 @@
                     <div class="flex gap-2">
                         <select id="inventory-sort" class="border rounded-lg px-2 py-1 text-sm" onchange="renderInventory()">
                             <option value="name">Ordenar: Nombre (A-Z)</option>
-                            <option value="margin-desc">Ordenar: Margen % (mayor a menor)</option>
-                            <option value="margin-asc">Ordenar: Margen % (menor a mayor)</option>
+                            <option value="margin-desc">Ordenar: Ganancia % (mayor a menor)</option>
+                            <option value="margin-asc">Ordenar: Ganancia % (menor a mayor)</option>
                         </select>
                         <input type="text" id="search-inventory" placeholder="Buscar..." class="border rounded-lg px-3 py-1 text-sm" onkeyup="renderInventory()">
                     </div>
@@ -1984,12 +1984,12 @@
                         <thead class="bg-gray-50">
                             <tr>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
-                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Código</th>
                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500">Stock Total</th>
-                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Lotes/Vencimientos</th>
-                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Costo</th>
-                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Venta</th>
-                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500">Margen %</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Vencimientos</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500">Costo</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500">Venta</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500">Ganancia $</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500">Ganancia %</th>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Acciones</th>
                             </tr>
                         </thead>
@@ -10063,42 +10063,26 @@
                         }).join('')}
                     </div>`;
                 } else if (p.batches && p.batches.length > 0) {
+                    // Simplificado: solo "Lote N: Xd" (o "sin venc."), sin stock/badges por lote
                     batchesHtml = p.batches.map((b, i) => {
-                        const daysUntil = b.expiry ? Math.ceil((new Date(b.expiry) - new Date()) / (1000 * 60 * 60 * 24)) : null;
-                        let expiryClass = 'text-gray-500';
-                        let expiryText = 'Sin venc.';
-                        
+                        let expiryClass = 'text-gray-400';
+                        let expiryText = 'sin venc.';
                         if (b.expiry) {
+                            const daysUntil = Math.ceil((new Date(b.expiry) - new Date()) / (1000 * 60 * 60 * 24));
                             if (daysUntil <= 7) expiryClass = 'text-red-600 font-bold';
                             else if (daysUntil <= 15) expiryClass = 'text-orange-600';
                             else expiryClass = 'text-green-600';
-                            expiryText = `${b.expiry} (${daysUntil}d)`;
+                            expiryText = `${daysUntil}d`;
                         }
-                        
-                        // El primer lote es el que se está vendiendo (FIFO)
-                        const isFirst = i === 0;
-                        const badge = isFirst ? '<span class="text-xs bg-blue-100 text-blue-700 px-1 rounded mr-1">VENDER PRIMERO</span>' : '';
-                        const invoiceBadge = b.invoiceType === 'white' 
-                            ? '<span class="text-[10px] bg-blue-100 text-blue-600 px-1 rounded mr-1" title="Facturado">B</span>' 
-                            : '<span class="text-[10px] bg-gray-200 text-gray-600 px-1 rounded mr-1" title="Sin factura">N</span>';
-                        
-                        const batchGrams = p.saleByWeight && p.weightPerUnit ? Math.round(b.stock * p.weightPerUnit) : null;
-                        const batchDisplay = batchGrams !== null ? `${batchGrams}g` : `${b.stock}u`;
-                        return `<div class="text-xs flex justify-between items-center py-0.5 ${isFirst ? 'bg-blue-50 rounded px-1' : ''}">
-                            <span>${badge}${invoiceBadge}<strong>${batchDisplay}</strong></span>
-                            <span class="${expiryClass}">${expiryText}</span>
-                        </div>`;
+                        return `<div class="text-xs"><span class="text-gray-500">Lote ${i + 1}:</span> <span class="${expiryClass}">${expiryText}</span></div>`;
                     }).join('');
                 } else if (p.expiry) {
                     // Compatibilidad con productos antiguos
                     const daysUntil = Math.ceil((new Date(p.expiry) - new Date()) / (1000 * 60 * 60 * 24));
                     let expiryClass = daysUntil <= 7 ? 'text-red-600 font-bold' : daysUntil <= 15 ? 'text-orange-600' : 'text-green-600';
-                    batchesHtml = `<div class="text-xs flex justify-between py-0.5 bg-blue-50 rounded px-1">
-                        <span><span class="text-xs bg-blue-100 text-blue-700 px-1 rounded mr-1">VENDER PRIMERO</span><strong>${p.saleByWeight && p.weightPerUnit ? Math.round(totalStock * p.weightPerUnit) + 'g' : totalStock + 'u'}</strong></span>
-                        <span class="${expiryClass}">${p.expiry} (${daysUntil}d)</span>
-                    </div>`;
+                    batchesHtml = `<div class="text-xs"><span class="text-gray-500">Lote 1:</span> <span class="${expiryClass}">${daysUntil}d</span></div>`;
                 } else {
-                    batchesHtml = `<div class="text-xs text-gray-500">Sin vencimiento registrado</div>`;
+                    batchesHtml = `<div class="text-xs text-gray-400">Sin venc.</div>`;
                 }
                 
                 // Estado del stock
@@ -10110,21 +10094,28 @@
                 const weightBadge = p.saleByWeight ? '<span class="text-[10px] bg-blue-100 text-blue-700 px-1 rounded mr-1">⚖️</span>' : '';
                 const hiddenBadge = p.hiddenFromSale ? '<span class="text-[10px] bg-gray-200 text-gray-600 px-1 rounded mr-1" title="Oculto de la venta">🙈</span>' : '';
                 const weightInfo = p.saleByWeight && p.weightPerUnit ? `<span class="text-xs text-blue-600">(${Math.round(totalStock * p.weightPerUnit)}g)</span>` : '';
-                
+
+                const displayCost = isComposite ? calculateCompositeCost(p) : (p.cost || 0);
+                const displayPrice = p.salePrice || p.price || 0;
+                const gananciaPesos = displayPrice - displayCost;
+                const marginPct = getProductMarginPct(p);
+                const marginColor = marginPct >= 50 ? 'text-green-600' : marginPct >= 20 ? 'text-orange-600' : 'text-red-600';
+                const marginText = marginPct === Infinity ? '—' : marginPct.toFixed(0) + '%';
+
                 return `
                 <tr class="hover:bg-gray-50">
                     <td class="px-3 py-2">
                         <div class="font-medium text-gray-900">${compositeBadge}${weightBadge}${hiddenBadge}${escapeHtml(p.name)}</div>
                         <div class="text-xs text-gray-500">${p.category || 'Sin cat.'} ${weightInfo}</div>
                     </td>
-                    <td class="px-3 py-2 text-sm font-mono text-gray-600">${p.barcode}</td>
                     <td class="px-3 py-2 text-center">
                         <span class="px-2 py-1 rounded-full text-xs font-bold ${statusClass}">${p.saleByWeight && p.weightPerUnit ? Math.round(totalStock * p.weightPerUnit) + 'g' : totalStock}</span>
                     </td>
-                    <td class="px-3 py-2 text-sm">${batchesHtml}</td>
-                    <td class="px-3 py-2 text-sm text-gray-600">$${formatMoney((p.cost || 0))}</td>
-                    <td class="px-3 py-2 text-sm font-bold text-green-600">$${formatMoney((p.salePrice || p.price || 0))}</td>
-                    <td class="px-3 py-2 text-sm text-right font-bold ${(() => { const m = getProductMarginPct(p); return m >= 50 ? 'text-green-600' : m >= 20 ? 'text-orange-600' : 'text-red-600'; })()}">${(() => { const m = getProductMarginPct(p); return m === Infinity ? '—' : m.toFixed(0) + '%'; })()}</td>
+                    <td class="px-3 py-2">${batchesHtml}</td>
+                    <td class="px-3 py-2 text-sm text-right text-gray-600">$${formatMoney(displayCost)}</td>
+                    <td class="px-3 py-2 text-sm text-right font-bold text-green-600">$${formatMoney(displayPrice)}</td>
+                    <td class="px-3 py-2 text-sm text-right font-bold ${marginColor}">$${formatMoney(gananciaPesos)}</td>
+                    <td class="px-3 py-2 text-sm text-right font-bold ${marginColor}">${marginText}</td>
                     <td class="px-3 py-2">
                         <button onclick="openAddStockModal('${p.id}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Agregar stock">
                             <i class="fas fa-plus-circle"></i>

@@ -4388,6 +4388,24 @@
                 addStockMinimized = false;
                 addStockReturnSection = null;
             }
+
+            // Cualquier otro modal que haya quedado abierto (ej: cobrar pedido, confirmación
+            // genérica) al navegar a otra sección: si no se cierra, como es un overlay fijo
+            // de pantalla completa queda tapando TODO lo de la sección nueva -- incluida
+            // "Editar Producto" -- sin que se note por qué no responde a los clics/tipeo.
+            if (sectionId !== currentSection) {
+                const strayConfirm = document.getElementById('app-confirm-modal');
+                if (strayConfirm && strayConfirm.classList.contains('active')) {
+                    // Resolver como "cancelar" en vez de solo ocultarlo, para no dejar colgada
+                    // la Promise de showConfirmModal() que algo puede estar esperando con await.
+                    const cancelBtn = document.getElementById('app-confirm-cancel-btn');
+                    if (cancelBtn) cancelBtn.click();
+                }
+                document.querySelectorAll('.modal.active').forEach(m => {
+                    if (m.id !== 'add-stock-modal') m.classList.remove('active');
+                });
+            }
+
             currentSection = sectionId;
             document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
             document.getElementById(sectionId).classList.remove('hidden');

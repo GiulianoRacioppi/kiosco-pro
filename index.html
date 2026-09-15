@@ -7765,12 +7765,6 @@
                 }
             }
             renderPedidoItemsList();
-            // "Guardar y Cobrar" aparece al editar un pedido que ya existe, o al armarlo
-            // desde el carrito de Vender (pedidoFromCart) -- ahí ya hay productos y total
-            // para cobrar en el momento, sin tener que guardarlo primero y volver a buscarlo
-            // en la lista para recién ahí cobrarlo.
-            const btnGuardarCobrar = document.getElementById('btn-pedido-guardar-cobrar');
-            if (btnGuardarCobrar) btnGuardarCobrar.classList.toggle('hidden', !pedidoId && !pedidoFromCart);
             modal.classList.add('active');
             setTimeout(() => document.getElementById('pedido-customer').focus(), 100);
         }
@@ -7982,16 +7976,16 @@
             renderPedidos();
             printComanda(pedido);
             showNotification(scheduledTime ? '📋 Pedido guardado para las ' + scheduledTime : '📋 Pedido guardado como prioritario (Prioridad #' + (getPedidoPriorityNumber(pedido) || '') + ')', 'success');
-            return pedido;
-        }
 
-        // Guarda el pedido (nuevo o editado -- reimprime la comanda) y abre directo el
-        // cobro con el total ya actualizado. Así, si armaste el carrito y tocaste
-        // "Guardar como Pedido" y ya querés cobrarlo, lo hacés todo en el mismo modal
-        // sin tener que guardarlo primero y volver a buscarlo en la lista para cobrar.
-        function saveAndCobrarPedido() {
-            const pedido = savePedido();
-            if (pedido) openPedidoCobroModal(pedido.id);
+            // Si marcaste "Ya pagó" antes de guardar, es porque querés cobrarlo ya mismo:
+            // se abre el cobro (efectivo con vuelto, débito, QR o fiado) para dejar el
+            // método y el monto reales, en vez de quedar marcado pagado a ciegas. Si dejaste
+            // "Sin pagar" no pasa nada más -- queda solo guardado e impresa la comanda.
+            if (paymentStatus === 'pagado') {
+                openPedidoCobroModal(pedido.id);
+            }
+
+            return pedido;
         }
 
         function marcarPedidoListo(id) {
@@ -8022,8 +8016,10 @@
             const pedido = findPedido(id);
             if (!pedido) return;
             if (!pedido.total || pedido.total <= 0) {
-                // Sin productos con precio (solo notas): no hay vuelto que calcular
-                togglePedidoPagado(id);
+                // Sin productos con precio (solo notas): no hay vuelto que calcular.
+                // Si ya estaba marcado pagado (ej: se tildó "Ya pagó" antes de guardar),
+                // no hay que des-marcarlo -- alternar solo si todavía estaba sin pagar.
+                if (pedido.paymentStatus !== 'pagado') togglePedidoPagado(id);
                 return;
             }
             cobroPedidoId = id;
@@ -24022,7 +24018,7 @@ RESULTADOS:
                         <button type="button" id="btn-pedido-pago-pagado" onclick="setPedidoPaymentStatus('pagado')" class="flex-1 py-2 rounded-lg border-2 text-sm font-bold">Ya pagó</button>
                     </div>
                     <input type="hidden" id="pedido-payment-status" value="pendiente">
-                    <p class="text-[11px] text-gray-400 mt-1">Es solo una nota para vos (para saber de un vistazo si ya cobraste). El cobro real, con stock y factura, se hace al pasarlo a Vender.</p>
+                    <p class="text-[11px] text-gray-400 mt-1">"Ya pagó": al guardar se abre el cobro (elegís efectivo/débito/QR/fiado y se calcula el vuelto). "Sin pagar": se guarda e imprime la comanda nomás, sin pedir el pago. El descuento real de stock y la factura se hacen al pasarlo a Vender.</p>
                 </div>
 
                 <div>
@@ -24034,9 +24030,6 @@ RESULTADOS:
                 <button onclick="closePedidoModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
                 <button onclick="savePedido()" class="flex-1 bg-orange-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-orange-700">Guardar e imprimir comanda</button>
             </div>
-            <button type="button" onclick="saveAndCobrarPedido()" id="btn-pedido-guardar-cobrar" class="w-full mt-2 bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg hidden">
-                <i class="fas fa-money-bill-wave"></i> Guardar y Cobrar
-            </button>
         </div>
     </div>
 

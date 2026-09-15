@@ -7909,6 +7909,11 @@
             const notes = document.getElementById('pedido-notes').value.trim();
             const paymentStatus = document.getElementById('pedido-payment-status').value === 'pagado' ? 'pagado' : 'pendiente';
 
+            if (!customerName) {
+                showNotification('Ingresá el nombre del cliente', 'error');
+                document.getElementById('pedido-customer').focus();
+                return;
+            }
             // La hora es opcional: sin hora significa "para ya" (prioritario, va primero en la lista)
             if (!scheduledDate) {
                 showNotification('Ingresá la fecha del pedido', 'error');
@@ -8026,6 +8031,7 @@
             document.getElementById('pedido-cobro-total').textContent = '$' + formatMoney(pedido.total);
             document.getElementById('pedido-cobro-received').value = '';
             document.getElementById('pedido-cobro-change').textContent = '$0';
+            document.getElementById('pedido-cobro-fiado-name').value = pedido.customerName || '';
             setPedidoCobroMethod('cash');
             document.getElementById('pedido-cobro-modal').classList.add('active');
             setTimeout(() => document.getElementById('pedido-cobro-received').focus(), 100);
@@ -8042,6 +8048,11 @@
             cobroPedidoMethod = method;
             const cashDetails = document.getElementById('pedido-cobro-cash-details');
             if (cashDetails) cashDetails.classList.toggle('hidden', method !== 'cash');
+            const fiadoDetails = document.getElementById('pedido-cobro-fiado-details');
+            if (fiadoDetails) fiadoDetails.classList.toggle('hidden', method !== 'fiado');
+            if (method === 'fiado') {
+                setTimeout(() => document.getElementById('pedido-cobro-fiado-name')?.focus(), 50);
+            }
 
             const btnFiado = document.getElementById('pedido-cobro-btn-fiado');
             const btnCash = document.getElementById('pedido-cobro-btn-cash');
@@ -8072,14 +8083,22 @@
             const pedido = findPedido(cobroPedidoId);
             if (!pedido) return;
 
-            // Fiado = paga después: no se marca como pagado, solo se anota el medio elegido
+            // Fiado = paga después: no se marca como pagado, solo se anota el medio elegido.
+            // Necesita el nombre del cliente para saber a quién reclamarle después.
             if (cobroPedidoMethod === 'fiado') {
+                const fiadoName = document.getElementById('pedido-cobro-fiado-name').value.trim();
+                if (!fiadoName) {
+                    showNotification('Ingresá a nombre de quién queda el fiado', 'error');
+                    document.getElementById('pedido-cobro-fiado-name').focus();
+                    return;
+                }
+                pedido.customerName = fiadoName;
                 pedido.paymentMethod = 'fiado';
                 pedido.paymentStatus = 'pendiente';
                 saveToLocalStorage();
                 closePedidoCobroModal();
                 renderPedidos();
-                showNotification('🤝 Pedido anotado como fiado (paga después)', 'info');
+                showNotification('🤝 Pedido anotado como fiado de ' + fiadoName + ' (paga después)', 'info');
                 return;
             }
 
@@ -23965,7 +23984,7 @@ RESULTADOS:
             <h3 class="text-xl font-bold mb-4 text-orange-600"><i class="fas fa-bell"></i> Pedido</h3>
             <div class="space-y-3">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Cliente (opcional)</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Cliente</label>
                     <input type="text" id="pedido-customer" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nombre del cliente">
                 </div>
                 <div class="grid grid-cols-2 gap-3">
@@ -24108,6 +24127,11 @@ RESULTADOS:
                     <p class="text-sm text-green-700 mb-1">Vuelto:</p>
                     <p class="text-3xl font-bold text-green-800" id="pedido-cobro-change">$0</p>
                 </div>
+            </div>
+
+            <div id="pedido-cobro-fiado-details" class="hidden mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nombre del cliente (fiado)</label>
+                <input type="text" id="pedido-cobro-fiado-name" class="w-full border-2 border-amber-300 rounded-xl px-4 py-3 text-lg font-bold" placeholder="¿A nombre de quién?">
             </div>
 
             <div class="flex gap-2">

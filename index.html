@@ -1383,6 +1383,15 @@
                                     <p class="text-sm text-gray-500">Transferencia/Tarjeta</p>
                                 </div>
                             </button>
+                            <button onclick="setPaymentMethod('qr')" id="btn-qr" class="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-purple-400 text-left flex items-center gap-3 transition">
+                                <div class="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center text-white">
+                                    <i class="fas fa-qrcode"></i>
+                                </div>
+                                <div>
+                                    <p class="font-bold text-gray-800">QR</p>
+                                    <p class="text-sm text-gray-500">Va a la cuenta, con comisión</p>
+                                </div>
+                            </button>
                         </div>
 
                         <div id="mercado-credito-check" class="hidden bg-blue-50 rounded-xl p-3 border border-blue-200">
@@ -1391,6 +1400,21 @@
                                 <span class="text-sm font-bold text-blue-800">Es MercadoCrédito</span>
                             </label>
                             <p class="text-xs text-blue-600 mt-1" id="mercado-fee-text">Comisión: 0%</p>
+                        </div>
+
+                        <div id="qr-fee-info" class="hidden bg-purple-50 rounded-xl p-3 border border-purple-200">
+                            <div class="flex justify-between text-sm">
+                                <span class="text-purple-700">Total cobrado:</span>
+                                <span class="font-bold text-purple-800" id="qr-total">$0</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-purple-700">Comisión QR (<span id="qr-fee-pct">0%</span>):</span>
+                                <span class="font-bold text-red-600" id="qr-fee">-$0</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-t border-purple-200 pt-1 mt-1">
+                                <span class="text-purple-700 font-bold">Neto a la cuenta:</span>
+                                <span class="font-bold text-green-700" id="qr-neto">$0</span>
+                            </div>
                         </div>
 
                         <div id="cash-details" class="space-y-3">
@@ -2967,6 +2991,26 @@
                     </div>
                 </div>
 
+                <!-- Pago con QR -->
+                <div class="bg-white rounded-2xl p-6 shadow-lg">
+                    <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-purple-600">
+                        <i class="fas fa-qrcode"></i> Pago con QR
+                    </h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Comisión por venta (%)</label>
+                            <div class="relative">
+                                <input type="number" id="settings-qr-fee" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-2xl font-bold text-center" value="0" min="0" max="99" step="0.1" onkeydown="if(event.key==='Enter'){event.preventDefault();saveQrFeeFromSettings();}">
+                                <span class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">%</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2">Al cobrar con QR, este % se descuenta antes de acreditar el resto a la Cuenta.</p>
+                        </div>
+                        <button onclick="saveQrFeeFromSettings()" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold shadow-lg">
+                            <i class="fas fa-save"></i> Guardar Comisión
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Stock y Compras -->
                 <div class="bg-white rounded-2xl p-6 shadow-lg">
                     <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-orange-600">
@@ -3963,6 +4007,8 @@
             },
             // Configuración MercadoCrédito
             mercadoCreditoFee: 5,
+            // Configuración pago con QR (comisión %, se descuenta antes de acreditar a la cuenta)
+            qrFee: 0,
             // Configuración de stock
             stockTargetDays: 7,
             // Proveedores
@@ -4071,8 +4117,9 @@
             setInterval(checkPedidoReminders, 20000);
             setTimeout(checkPedidoReminders, 5000);
 
-            // Recuperar la carpeta de respaldo en la PC (si fue configurada)
-            initBackupFolder();
+            // Recuperar la carpeta de respaldo en la PC (si fue configurada). Al terminar,
+            // si no quedó activo, se muestra el cartel obligatorio (ver checkBackupRequired).
+            initBackupFolder().then(() => checkBackupRequired());
             
             // Inicializar display de margen en formulario
             const marginDisplay = document.getElementById('inv-margin-display');
@@ -4781,7 +4828,7 @@
                         <div>
                             <p class="font-bold text-gray-800">Venta #${sale.id.slice(-4)}</p>
                             ${sale.fromPedido ? `<p class="text-xs font-bold text-orange-600">📋 Pedido — Comanda #${sale.comandaNumber || '?'}${sale.pedidoCustomerName ? ' — ' + escapeHtml(sale.pedidoCustomerName) : ''}</p>` : ''}
-                            <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵 Efectivo' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : '💳 Débito')}</p>
+                            <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵 Efectivo' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.paymentMethod === 'qr' ? '📱 QR' : '💳 Débito'))}</p>
                         </div>
                         <div class="text-right">
                             <p class="font-bold text-lg text-green-600">$${formatMoney(sale.total)}</p>
@@ -6474,7 +6521,18 @@
                     mcSummary.classList.add('hidden');
                 }
             }
-            
+
+            // Resumen de comisión QR (siempre se aplica en este método, no tiene checkbox)
+            if (appState.paymentMethod === 'qr') {
+                const qrFeePct = appState.qrFee || 0;
+                const qrFeeAmount = finalTotal * (qrFeePct / 100);
+                const qrNeto = finalTotal - qrFeeAmount;
+                document.getElementById('qr-total').textContent = `$${formatMoney(finalTotal)}`;
+                document.getElementById('qr-fee-pct').textContent = `${qrFeePct}%`;
+                document.getElementById('qr-fee').textContent = `-$${formatMoney(qrFeeAmount)}`;
+                document.getElementById('qr-neto').textContent = `$${formatMoney(qrNeto)}`;
+            }
+
             calculateChange();
         }
         
@@ -6579,41 +6637,47 @@
         function paymentMethodLabel(s) {
             if (s.paymentMethod === 'cash') return 'Efectivo';
             if (s.paymentMethod === 'fiado') return s.fiadoPaid ? 'Fiado (pagado)' : 'Fiado';
+            if (s.paymentMethod === 'qr') return 'QR';
             return 'Débito';
         }
 
         function setPaymentMethod(method) {
             appState.paymentMethod = method;
-            
-            document.getElementById('btn-cash').className = method === 'cash' 
+
+            document.getElementById('btn-cash').className = method === 'cash'
                 ? 'w-full p-4 rounded-xl border-2 border-green-500 bg-green-50 text-left flex items-center gap-3 transition'
                 : 'w-full p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 text-left flex items-center gap-3 transition';
-            
+
             document.getElementById('btn-debit').className = method === 'debit'
                 ? 'w-full p-4 rounded-xl border-2 border-blue-500 bg-blue-50 text-left flex items-center gap-3 transition'
                 : 'w-full p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 text-left flex items-center gap-3 transition';
+
+            document.getElementById('btn-qr').className = method === 'qr'
+                ? 'w-full p-4 rounded-xl border-2 border-purple-500 bg-purple-50 text-left flex items-center gap-3 transition'
+                : 'w-full p-4 rounded-xl border-2 border-gray-200 hover:border-purple-400 text-left flex items-center gap-3 transition';
 
             document.getElementById('btn-fiado').className = method === 'fiado'
                 ? 'w-full py-2 rounded-lg border border-amber-500 bg-amber-400 text-white text-xs font-bold transition flex items-center justify-center gap-2'
                 : 'w-full py-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition flex items-center justify-center gap-2';
 
-            // Fiado no pide vuelto ni MercadoCrédito: ambos paneles quedan ocultos
+            // Fiado no pide vuelto ni comisiones: todos los paneles de abajo quedan ocultos
             document.getElementById('cash-details').classList.toggle('hidden', method !== 'cash');
             document.getElementById('mercado-credito-check').classList.toggle('hidden', method !== 'debit');
-            
+            document.getElementById('qr-fee-info').classList.toggle('hidden', method !== 'qr');
+
             // Actualizar texto de comisión
             const feeEl = document.getElementById('mercado-fee-text');
             if (feeEl) {
                 feeEl.textContent = `Comisión: ${appState.mercadoCreditoFee || 5}%`;
             }
-            
+
             if (method === 'cash') {
                 calculateChange();
                 setTimeout(() => {
                     document.getElementById('cash-received').focus();
                 }, 100);
             }
-            
+
             updateCartTotals();
         }
 
@@ -7107,6 +7171,13 @@
         async function completeSale() {
             if (appState.cart.length === 0) return;
 
+            // El respaldo automático en carpeta es obligatorio para poder vender: si no
+            // está activo, se muestra el cartel grande (checkBackupRequired) y se frena
+            // la venta acá, antes de tocar plata o stock.
+            if (!checkBackupRequired()) {
+                return;
+            }
+
             // ANTES de tocar plata o stock: si todavía no se registró la apertura de caja
             // de hoy, abrirla primero (con los saldos ACTUALES, sin esta venta) y frenar la
             // venta. Al guardar la apertura, la venta se reanuda sola. Así el saldo de
@@ -7212,7 +7283,13 @@
             const isMercadoCredito = appState.paymentMethod === 'debit' && document.getElementById('check-mercado-credito')?.checked;
             const mercadoFeePct = isMercadoCredito ? (appState.mercadoCreditoFee || 5) : 0;
             const mercadoFeeAmount = isMercadoCredito ? (finalTotal * (mercadoFeePct / 100)) : 0;
-            
+
+            // QR: va a la cuenta igual que débito, pero con su propia comisión (configurable
+            // en Configuración) independiente de la de MercadoCrédito.
+            const isQr = appState.paymentMethod === 'qr';
+            const qrFeePct = isQr ? (appState.qrFee || 0) : 0;
+            const qrFeeAmount = isQr ? (finalTotal * (qrFeePct / 100)) : 0;
+
             const sale = {
                 id: 'SALE-' + Date.now(),
                 date: formatDateISO(appState.activeDate),
@@ -7232,6 +7309,8 @@
                 isMercadoCredito: isMercadoCredito,
                 mercadoCreditoFee: mercadoFeeAmount,
                 mercadoCreditoFeePct: mercadoFeePct,
+                qrFee: qrFeeAmount,
+                qrFeePct: qrFeePct,
                 user: appState.currentUser ? appState.currentUser.name : null,
                 timestamp: Date.now()
             };
@@ -7285,17 +7364,19 @@
             } else if (appState.paymentMethod === 'debit') {
                 const neto = isMercadoCredito ? (finalTotal - mercadoFeeAmount) : finalTotal;
                 appState.bank += neto;
+            } else if (appState.paymentMethod === 'qr') {
+                appState.bank += (finalTotal - qrFeeAmount);
             }
 
             appState.sales.push(sale);
-            
+
             // Tracking de facturación blanco/negro
             if (!appState.invoiceTracking) {
                 appState.invoiceTracking = { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 };
             }
             appState.invoiceTracking.soldWhite += sale.invoiceBreakdown.white;
             appState.invoiceTracking.soldBlack += sale.invoiceBreakdown.black;
-            if (appState.paymentMethod === 'debit') {
+            if (appState.paymentMethod === 'debit' || appState.paymentMethod === 'qr') {
                 appState.invoiceTracking.soldDebit += finalTotal;
             }
             
@@ -7972,12 +8053,15 @@
             const btnFiado = document.getElementById('pedido-cobro-btn-fiado');
             const btnCash = document.getElementById('pedido-cobro-btn-cash');
             const btnDebit = document.getElementById('pedido-cobro-btn-debit');
+            const btnQr = document.getElementById('pedido-cobro-btn-qr');
             if (btnFiado) btnFiado.className = 'w-full py-2 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-2 ' +
                 (method === 'fiado' ? 'border-amber-500 bg-amber-100 text-amber-800' : 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100');
             if (btnCash) btnCash.className = 'w-full p-4 rounded-xl border-2 text-left flex items-center gap-3 transition ' +
                 (method === 'cash' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-green-400');
             if (btnDebit) btnDebit.className = 'w-full p-4 rounded-xl border-2 text-left flex items-center gap-3 transition ' +
                 (method === 'debit' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-400');
+            if (btnQr) btnQr.className = 'w-full p-4 rounded-xl border-2 text-left flex items-center gap-3 transition ' +
+                (method === 'qr' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-purple-400');
 
             const confirmBtn = document.getElementById('pedido-cobro-confirm-btn');
             if (confirmBtn) confirmBtn.textContent = method === 'fiado' ? 'Anotar como fiado' : 'Confirmar pago';
@@ -12015,7 +12099,7 @@
                     <div class="flex-1 cursor-pointer" onclick="showSaleDetail('${sale.id}')">
                         <p class="font-bold text-gray-800">Venta #${sale.id.slice(-4)}</p>
                         ${sale.fromPedido ? `<p class="text-xs font-bold text-orange-600">📋 Pedido — Comanda #${sale.comandaNumber || '?'}${sale.pedidoCustomerName ? ' — ' + escapeHtml(sale.pedidoCustomerName) : ''}</p>` : ''}
-                        <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.isMercadoCredito ? '💳 MercadoCrédito' : '💳 Débito'))}</p>
+                        <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.paymentMethod === 'qr' ? '📱 QR' : (sale.isMercadoCredito ? '💳 MercadoCrédito' : '💳 Débito')))}</p>
                     </div>
                     <div class="text-right mr-4">
                         <p class="font-bold text-green-600">+$${formatMoney(sale.total)}</p>
@@ -12132,6 +12216,8 @@
             } else if (sale.paymentMethod === 'debit') {
                 const neto = sale.isMercadoCredito ? (sale.total - (sale.mercadoCreditoFee || 0)) : sale.total;
                 appState.bank -= neto;
+            } else if (sale.paymentMethod === 'qr') {
+                appState.bank -= (sale.total - (sale.qrFee || 0));
             } else if (sale.paymentMethod === 'fiado' && sale.fiadoPaid) {
                 // Fiado ya cobrado: devolver la plata según cómo se cobró (fiado sin cobrar no movió plata)
                 if (sale.fiadoPaidMethod === 'cash') {
@@ -12429,6 +12515,8 @@
             } else if (sale.paymentMethod === 'debit') {
                 const neto = sale.isMercadoCredito ? (sale.total - (sale.mercadoCreditoFee || 0)) : sale.total;
                 appState.bank -= neto;
+            } else if (sale.paymentMethod === 'qr') {
+                appState.bank -= (sale.total - (sale.qrFee || 0));
             } else if (sale.paymentMethod === 'fiado' && sale.fiadoPaid) {
                 // Fiado ya cobrado: devolver la plata según cómo se cobró (fiado sin cobrar no movió plata)
                 if (sale.fiadoPaidMethod === 'cash') {
@@ -12579,9 +12667,19 @@
                         <span>$${formatMoney((sale.total - (sale.mercadoCreditoFee || 0)))}</span>
                     </div>
                     ` : ''}
+                    ${sale.paymentMethod === 'qr' && sale.qrFee ? `
+                    <div class="flex justify-between text-sm text-purple-600 font-bold">
+                        <span>Comisión QR (${sale.qrFeePct || 0}%):</span>
+                        <span>-$${formatMoney((sale.qrFee || 0))}</span>
+                    </div>
+                    <div class="flex justify-between text-sm text-green-700 font-bold">
+                        <span>Neto a la cuenta:</span>
+                        <span>$${formatMoney((sale.total - (sale.qrFee || 0)))}</span>
+                    </div>
+                    ` : ''}
                     <div class="flex justify-between text-sm text-gray-500">
                         <span>Método:</span>
-                        <span>${sale.paymentMethod === 'cash' ? 'Efectivo' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.isMercadoCredito ? '💳 Débito (MercadoCrédito)' : '💳 Débito'))}</span>
+                        <span>${sale.paymentMethod === 'cash' ? 'Efectivo' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.paymentMethod === 'qr' ? '📱 QR' : (sale.isMercadoCredito ? '💳 Débito (MercadoCrédito)' : '💳 Débito')))}</span>
                     </div>
                     ${sale.paymentMethod === 'fiado' ? `
                     <div class="flex justify-between text-sm ${sale.fiadoPaid ? 'text-green-600' : 'text-amber-600'} font-bold">
@@ -12768,7 +12866,7 @@
                         '<tbody class="divide-y divide-gray-200">' +
                         todaySales.slice().reverse().map(s => {
                             const bd = s.invoiceBreakdown || { white: 0, black: 0 };
-                            const payIcon = s.paymentMethod === 'cash' ? '💵 Efectivo' : s.paymentMethod === 'debit' ? '💳 Débito' : s.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(s) : '💳 Otro';
+                            const payIcon = s.paymentMethod === 'cash' ? '💵 Efectivo' : s.paymentMethod === 'debit' ? '💳 Débito' : s.paymentMethod === 'qr' ? '📱 QR' : s.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(s) : '💳 Otro';
                             return '<tr class="hover:bg-gray-50">' +
                                 '<td class="px-3 py-2 text-gray-600">' + s.time + '</td>' +
                                 '<td class="px-3 py-2 text-right font-bold">$' + formatMoney(s.total) + '</td>' +
@@ -13588,16 +13686,16 @@
         function renderBankMovements() {
             const today = formatDateISO(appState.activeDate);
             
-            // Obtener ventas con débito de hoy
+            // Obtener ventas con débito o QR de hoy (ambas van a la cuenta)
             const todayBankSales = appState.sales
-                .filter(s => s.date === today && s.paymentMethod === 'debit')
+                .filter(s => s.date === today && (s.paymentMethod === 'debit' || s.paymentMethod === 'qr'))
                 .map(s => ({
                     type: 'income',
-                    concept: `Venta #${s.id.slice(-4)}${s.isMercadoCredito ? ' (MC)' : ''}`,
-                    amount: s.isMercadoCredito ? (s.total - (s.mercadoCreditoFee || 0)) : s.total,
+                    concept: `Venta #${s.id.slice(-4)}${s.isMercadoCredito ? ' (MC)' : ''}${s.paymentMethod === 'qr' ? ' (QR)' : ''}`,
+                    amount: s.isMercadoCredito ? (s.total - (s.mercadoCreditoFee || 0)) : (s.paymentMethod === 'qr' ? (s.total - (s.qrFee || 0)) : s.total),
                     time: s.time,
                     isMercadoCredito: s.isMercadoCredito,
-                    fee: s.mercadoCreditoFee || 0
+                    fee: s.paymentMethod === 'qr' ? (s.qrFee || 0) : (s.mercadoCreditoFee || 0)
                 }));
             
             // Cobros de fiados a cuenta de hoy (cuentan el día del cobro)
@@ -14859,7 +14957,7 @@
             const bankFiados = appState.sales.filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid && s.fiadoPaidDate === today && s.fiadoPaidMethod === 'debit').reduce((sum, s) => sum + s.total, 0);
             
             // Transacciones de cuenta (banco/débito)
-            const bankSales = appState.sales.filter(s => s.date === today && s.paymentMethod === 'debit').reduce((sum, s) => sum + (s.total - (s.mercadoCreditoFee || 0)), 0);
+            const bankSales = appState.sales.filter(s => s.date === today && (s.paymentMethod === 'debit' || s.paymentMethod === 'qr')).reduce((sum, s) => sum + (s.total - (s.mercadoCreditoFee || 0) - (s.qrFee || 0)), 0);
             const bankExpenses = appState.expenses.filter(e => e.date === today && e.source === 'bank').reduce((sum, e) => sum + e.amount, 0);
             const bankInvestments = appState.investments.filter(i => i.date === today && i.source === 'bank').reduce((sum, i) => sum + i.amount, 0);
             const bankReturns = appState.returns ? appState.returns.filter(r => r.date === today && r.paymentMethod === 'debit').reduce((sum, r) => sum + r.amount, 0) : 0;
@@ -14934,7 +15032,7 @@
                 const todayCashExpenses = appState.expenses.filter(e => e.date === today && e.source === 'cash' && !(e.id && e.id.startsWith('EXP-SHORTAGE-'))).reduce((sum, e) => sum + e.amount, 0);
                 const todayCashInvestments = appState.investments.filter(i => i.date === today && i.source === 'cash').reduce((sum, i) => sum + i.amount, 0);
                 
-                const todayBankSales = appState.sales.filter(s => s.date === today && s.paymentMethod === 'debit').reduce((sum, s) => sum + (s.total - (s.mercadoCreditoFee || 0)), 0);
+                const todayBankSales = appState.sales.filter(s => s.date === today && (s.paymentMethod === 'debit' || s.paymentMethod === 'qr')).reduce((sum, s) => sum + (s.total - (s.mercadoCreditoFee || 0) - (s.qrFee || 0)), 0);
                 const todayBankExpenses = appState.expenses.filter(e => e.date === today && e.source === 'bank').reduce((sum, e) => sum + e.amount, 0);
                 const todayBankInvestments = appState.investments.filter(i => i.date === today && i.source === 'bank').reduce((sum, i) => sum + i.amount, 0);
                 
@@ -18378,6 +18476,7 @@ Total de productos a comprar: ${shoppingList.length}
             document.getElementById('settings-reserve').value = appState.reserve || 0;
             document.getElementById('settings-initial-capital').value = appState.initialCapital || 0;
             document.getElementById('settings-mercado-fee').value = appState.mercadoCreditoFee || 5;
+            document.getElementById('settings-qr-fee').value = appState.qrFee || 0;
             document.getElementById('settings-stock-days').value = appState.stockTargetDays || 7;
             const fontScaleEl = document.getElementById('settings-font-scale');
             if (fontScaleEl) fontScaleEl.value = String(appState.fontScale || 100);
@@ -18808,6 +18907,17 @@ Total de productos a comprar: ${shoppingList.length}
             }
         }
 
+        function saveQrFeeFromSettings() {
+            const fee = parseFloat(document.getElementById('settings-qr-fee').value);
+            if (fee >= 0 && fee <= 99) {
+                appState.qrFee = fee;
+                saveToLocalStorage();
+                showNotification(`Comisión QR actualizada a ${fee}%`, 'success');
+            } else {
+                showNotification('La comisión debe estar entre 0% y 99%', 'error');
+            }
+        }
+
         function saveStockDaysFromSettings() {
             const days = parseInt(document.getElementById('settings-stock-days').value);
             if (days >= 1 && days <= 90) {
@@ -18930,6 +19040,7 @@ Total de productos a comprar: ${shoppingList.length}
                             initialCapital: 0,
                             defaultMargin: 30,
                             mercadoCreditoFee: 5,
+                            qrFee: 0,
                             stockTargetDays: 7,
                             balancesUpdatedAt: 0,
                             cashFlowSettings: { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
@@ -19808,6 +19919,7 @@ RESULTADOS:
             appState.defaultMargin = parseFloat(appState.defaultMargin) || 30;
             appState.initialCapital = parseFloat(appState.initialCapital) || 0;
             appState.mercadoCreditoFee = parseFloat(appState.mercadoCreditoFee) || 5;
+            appState.qrFee = parseFloat(appState.qrFee) || 0;
             appState.stockTargetDays = parseInt(appState.stockTargetDays) || 7;
             appState.cashFlowSettings.projectionDays = parseInt(appState.cashFlowSettings.projectionDays) || 30;
             appState.cashFlowSettings.estimatedDailyIncome = appState.cashFlowSettings.estimatedDailyIncome === null ? null : (parseFloat(appState.cashFlowSettings.estimatedDailyIncome) || null);
@@ -21678,6 +21790,7 @@ RESULTADOS:
                 initialCapital: parseFloat(appState.initialCapital) || 0,
                 defaultMargin: parseFloat(appState.defaultMargin) || 30,
                 mercadoCreditoFee: parseFloat(appState.mercadoCreditoFee) || 5,
+                qrFee: parseFloat(appState.qrFee) || 0,
                 stockTargetDays: parseInt(appState.stockTargetDays) || 7,
                 balancesUpdatedAt: appState.balancesUpdatedAt || 0,
                 cashFlowSettings: appState.cashFlowSettings || { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
@@ -21802,7 +21915,7 @@ RESULTADOS:
         function normalizeFirebaseData(downloaded) {
             const normalized = {};
             const main = downloaded && (downloaded.main || downloaded);
-            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
+            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','qrFee','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
             for (const f of baseFields) {
                 if (main && main[f] !== undefined) normalized[f] = main[f];
             }
@@ -22207,6 +22320,8 @@ RESULTADOS:
                         } else {
                             bank += total;
                         }
+                    } else if (sale.paymentMethod === 'qr') {
+                        bank += total - (parseFloat(sale.qrFee) || 0);
                     }
                 }
                 
@@ -22492,6 +22607,7 @@ RESULTADOS:
                     if (data.defaultMargin !== undefined) appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
                     if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
                     if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
+                    if (data.qrFee !== undefined) appState.qrFee = parseFloat(data.qrFee) || 0;
                     if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
                     if (data.cashFlowSettings && typeof data.cashFlowSettings === 'object') {
                         appState.cashFlowSettings = {
@@ -22635,6 +22751,7 @@ RESULTADOS:
                     if (data.defaultMargin !== undefined) appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
                     if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
                     if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
+                    if (data.qrFee !== undefined) appState.qrFee = parseFloat(data.qrFee) || 0;
                     if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
                     if (data.cashFlowSettings && typeof data.cashFlowSettings === 'object') {
                         appState.cashFlowSettings = {
@@ -23163,7 +23280,62 @@ RESULTADOS:
             return 'sin-carpeta';
         }
 
+        // En dispositivos que no soportan el respaldo en carpeta (ej: celular), no tiene
+        // sentido tapar la pantalla en cada venta -- se avisa una vez por sesión y se deja pasar.
+        let backupUnsupportedAcknowledged = false;
+
+        // Cartel obligatorio: si el respaldo en carpeta no está activo, tapa la pantalla
+        // hasta que se elija carpeta o se renueve el permiso. Se llama al abrir la app y
+        // antes de cada venta (completeSale) para que nunca se siga vendiendo sin respaldo.
+        // Devuelve true si está todo OK (no hace falta el cartel), false si lo muestra.
+        function checkBackupRequired() {
+            const modal = document.getElementById('backup-required-modal');
+            if (!modal) return true;
+            const estado = estadoBackupCarpeta();
+
+            if (estado === 'activo' || (estado === 'no-soportado' && backupUnsupportedAcknowledged)) {
+                modal.classList.remove('active');
+                return true;
+            }
+
+            const detailEl = document.getElementById('backup-required-detail');
+            const btn = document.getElementById('backup-required-btn');
+            const btnSkip = document.getElementById('backup-required-btn-skip');
+
+            if (estado === 'necesita-permiso') {
+                detailEl.textContent = 'El navegador necesita que confirmes de nuevo el permiso de la carpeta de respaldo (pasa al reabrir la app). Tocá el botón para reactivarlo.';
+                btn.textContent = '🔄 Reactivar respaldo';
+                btn.onclick = () => reactivarCarpetaBackup().then(checkBackupRequired);
+                btn.classList.remove('hidden');
+                btnSkip.classList.add('hidden');
+            } else if (estado === 'sin-carpeta') {
+                detailEl.textContent = 'Todavía no elegiste una carpeta de la PC para guardar el respaldo automático. Elegí una (por ejemplo Documentos) para poder seguir vendiendo.';
+                btn.textContent = '📁 Elegir carpeta de respaldo';
+                btn.onclick = () => elegirCarpetaBackup().then(checkBackupRequired);
+                btn.classList.remove('hidden');
+                btnSkip.classList.add('hidden');
+            } else {
+                // 'no-soportado': no se puede pedir carpeta en este navegador/dispositivo.
+                // Se deja una salida para no bloquear por completo un dispositivo que
+                // nunca va a poder cumplir esto (ej: celular).
+                detailEl.textContent = 'Este dispositivo/navegador no soporta el respaldo en carpeta (funciona en Chrome o Edge de PC). Usá la PC principal para tener el respaldo activo.';
+                btn.classList.add('hidden');
+                btnSkip.classList.remove('hidden');
+            }
+
+            modal.classList.add('active');
+            return false;
+        }
+
+        function closeBackupRequiredModal() {
+            // Este botón solo existe (visible) en el caso 'no-soportado' -- lo marcamos
+            // reconocido para no taparle la pantalla en cada venta en ese dispositivo.
+            backupUnsupportedAcknowledged = true;
+            document.getElementById('backup-required-modal').classList.remove('active');
+        }
+
         function renderFolderBackupUI() {
+            checkBackupRequired();
             const statusEl = document.getElementById('folder-backup-status');
             if (!statusEl) return;
             const detailEl = document.getElementById('folder-backup-detail');
@@ -23871,6 +24043,27 @@ RESULTADOS:
         </div>
     </div>
 
+    <!-- ==================== RESPALDO EN CARPETA OBLIGATORIO ==================== -->
+    <!-- Cartel grande, sin botón de "cerrar": si el respaldo automático en carpeta de la
+         PC no está activo, esto tapa la pantalla hasta que el usuario elija una carpeta
+         (o renueve el permiso). completeSale() llama a checkBackupRequired() antes de
+         cobrar una venta, así nunca se sigue vendiendo con el respaldo apagado. -->
+    <div id="backup-required-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4 text-center">
+            <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-triangle-exclamation text-3xl text-red-600"></i>
+            </div>
+            <h3 class="text-xl font-bold mb-2 text-gray-800">Activá el respaldo automático</h3>
+            <p id="backup-required-detail" class="text-sm text-gray-600 mb-5">-</p>
+            <button type="button" id="backup-required-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg">
+                📁 Elegir carpeta de respaldo
+            </button>
+            <button type="button" id="backup-required-btn-skip" onclick="closeBackupRequiredModal()" class="w-full mt-2 text-xs text-gray-400 hover:text-gray-600 underline hidden">
+                Continuar sin respaldo (no recomendado)
+            </button>
+        </div>
+    </div>
+
     <!-- ==================== COBRAR PEDIDO (con vuelto, sin tocar el carrito de Vender) ==================== -->
     <!-- Para cobrar un pedido ANTES de entregarlo (o mientras el carrito de Vender tiene
          cargado el pedido de OTRO cliente) sin usar "Pasar a Vender". No toca stock ni
@@ -23903,6 +24096,15 @@ RESULTADOS:
                     <div>
                         <p class="font-bold text-gray-800">Débito</p>
                         <p class="text-sm text-gray-500">Transferencia/Tarjeta</p>
+                    </div>
+                </button>
+                <button type="button" onclick="setPedidoCobroMethod('qr')" id="pedido-cobro-btn-qr" class="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-purple-400 text-left flex items-center gap-3 transition">
+                    <div class="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center text-white">
+                        <i class="fas fa-qrcode"></i>
+                    </div>
+                    <div>
+                        <p class="font-bold text-gray-800">QR</p>
+                        <p class="text-sm text-gray-500">Va a la cuenta, con comisión</p>
                     </div>
                 </button>
             </div>

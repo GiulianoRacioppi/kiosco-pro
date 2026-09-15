@@ -7765,10 +7765,12 @@
                 }
             }
             renderPedidoItemsList();
-            // "Guardar y Cobrar" solo tiene sentido editando un pedido que ya existe
-            // (para uno nuevo todavía no hay nada que cobrar hasta guardarlo).
+            // "Guardar y Cobrar" aparece al editar un pedido que ya existe, o al armarlo
+            // desde el carrito de Vender (pedidoFromCart) -- ahí ya hay productos y total
+            // para cobrar en el momento, sin tener que guardarlo primero y volver a buscarlo
+            // en la lista para recién ahí cobrarlo.
             const btnGuardarCobrar = document.getElementById('btn-pedido-guardar-cobrar');
-            if (btnGuardarCobrar) btnGuardarCobrar.classList.toggle('hidden', !pedidoId);
+            if (btnGuardarCobrar) btnGuardarCobrar.classList.toggle('hidden', !pedidoId && !pedidoFromCart);
             modal.classList.add('active');
             setTimeout(() => document.getElementById('pedido-customer').focus(), 100);
         }
@@ -7983,18 +7985,13 @@
             return pedido;
         }
 
-        // Cuando piden agregar algo más a un pedido ya cargado y hay que cobrarlo en el
-        // momento: guarda los cambios (reimprime la comanda con el producto nuevo) y
-        // abre directo el cobro con el total ya actualizado, sin tener que cerrar este
-        // modal y buscar el pedido de nuevo en la lista.
+        // Guarda el pedido (nuevo o editado -- reimprime la comanda) y abre directo el
+        // cobro con el total ya actualizado. Así, si armaste el carrito y tocaste
+        // "Guardar como Pedido" y ya querés cobrarlo, lo hacés todo en el mismo modal
+        // sin tener que guardarlo primero y volver a buscarlo en la lista para cobrar.
         function saveAndCobrarPedido() {
-            if (!editingPedidoId) {
-                showNotification('Guardá el pedido primero; después lo cobrás desde la lista', 'info');
-                return;
-            }
-            const id = editingPedidoId;
             const pedido = savePedido();
-            if (pedido) openPedidoCobroModal(id);
+            if (pedido) openPedidoCobroModal(pedido.id);
         }
 
         function marcarPedidoListo(id) {

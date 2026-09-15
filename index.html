@@ -973,65 +973,77 @@
             <button onclick="showSection('dashboard')" id="nav-dashboard" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="dashboard">
                 <i class="fas fa-home w-4 text-xs"></i> Inicio
             </button>
-            
+
+            <p class="px-3 pt-3 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ventas</p>
+
             <!-- VENDER: Pantalla principal -->
             <button onclick="showSection('sell')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-purple-700 font-medium bg-purple-50 text-sm" data-section="sell">
                 <i class="fas fa-cash-register w-4 text-xs"></i> Vender
                 <span class="ml-auto bg-green-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center hidden text-[10px]" id="cart-badge">0</span>
             </button>
-            
+
             <!-- HISTORIAL: Calendario de ventas - Solo admin -->
             <button onclick="showSection('sales-calendar')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm sidebar-admin-only" data-section="sales-calendar">
                 <i class="fas fa-calendar-alt w-4 text-xs"></i> Historial
             </button>
-            
-            <!-- FIADOS: Ventas a crédito (todos los roles: colaboradores también venden/cobran fiados) -->
-            <button onclick="showSection('fiados')" id="nav-fiados" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="fiados">
-                <i class="fas fa-hand-holding-usd w-4 text-xs"></i> Fiados
-            </button>
+
+            <p class="px-3 pt-3 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Inventario</p>
 
             <!-- REPONER: Inventario + alertas -->
             <button onclick="showSection('inventory')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="inventory">
                 <i class="fas fa-boxes w-4 text-xs"></i> Reponer
                 <span id="restock-badge" class="ml-auto bg-orange-500 text-white text-xs rounded-full px-1.5 hidden text-[10px]">0</span>
             </button>
-            
-            <!-- FINANZAS: Solo admin -->
+
+            <p class="px-3 pt-3 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Finanzas</p>
+
+            <!-- FIADOS: Ventas a crédito (todos los roles: colaboradores también venden/cobran fiados) -->
+            <button onclick="showSection('fiados')" id="nav-fiados" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="fiados">
+                <i class="fas fa-hand-holding-usd w-4 text-xs"></i> Fiados
+            </button>
+
+            <!-- FINANZAS (caja/cuenta/arqueo): Solo admin -->
             <button onclick="showSection('cashflow')" id="nav-cashflow" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="cashflow">
                 <i class="fas fa-chart-line w-4 text-xs"></i> Finanzas
             </button>
-            
-            <!-- FLUJO DE CAJA: Solo admin -->
+
+            <!-- FLUJO DE CAJA (proyección): Solo admin -->
             <button onclick="showSection('cashflow-projection')" id="nav-cashflow-projection" class="nav-btn sidebar-admin-only w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="cashflow-projection">
                 <i class="fas fa-water w-4 text-xs"></i> Flujo de Caja
             </button>
-            
-            <!-- REPORTES: Solo admin -->
-            <button onclick="showSection('reports')" id="nav-reports" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="reports">
-                <i class="fas fa-chart-pie w-4 text-xs"></i> Reportes
-            </button>
-            
+
             <!-- FACTURACIÓN: Solo admin -->
             <button onclick="showSection('billing')" id="nav-billing" class="nav-btn sidebar-admin-only w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="billing">
                 <i class="fas fa-file-invoice-dollar w-4 text-xs"></i> Facturación
             </button>
-            
+
+            <p class="px-3 pt-3 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Marketing</p>
+
             <!-- PROMOCIONES: Solo admin -->
             <button onclick="showSection('promotions')" id="nav-promotions" class="nav-btn sidebar-admin-only w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="promotions">
                 <i class="fas fa-tags w-4 text-xs"></i> Promociones
             </button>
-            
+
             <!-- TICKETS DE DESCUENTO -->
             <button onclick="showSection('discount-tickets')" id="nav-discount-tickets" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="discount-tickets">
                 <i class="fas fa-ticket-alt w-4 text-xs"></i> Tickets Descuento
                 <span id="ticket-badge" class="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden text-[10px]">0</span>
             </button>
-            
+
+            <p class="px-3 pt-3 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Reportes</p>
+
+            <!-- REPORTES: Solo admin -->
+            <button onclick="showSection('reports')" id="nav-reports" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="reports">
+                <i class="fas fa-chart-pie w-4 text-xs"></i> Reportes
+            </button>
+
+            <div class="border-t my-2"></div>
+
             <!-- CONFIGURACIÓN: Solo admin -->
             <button onclick="showSection('settings')" id="nav-settings" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="settings">
                 <i class="fas fa-cog w-4 text-xs"></i> Configuración
             </button>
-            
+
             <!-- CERRAR SESIÓN -->
             <button onclick="logout()" class="w-full text-left px-3 py-2 rounded-xl hover:bg-red-50 transition flex items-center gap-2 text-red-600 text-sm mt-4">
                 <i class="fas fa-sign-out-alt w-4 text-xs"></i> Cerrar Sesión
@@ -2005,6 +2017,12 @@
         <!-- Cashflow -->
         <!-- CASHFLOW - Gestión de Caja Simplificada -->
         <div id="cashflow" class="section hidden space-y-6 fade-in">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <i class="fas fa-chart-line text-green-600"></i> Finanzas
+                </h2>
+                <p class="text-sm text-gray-500">Plata que tenés ahora mismo: caja y cuenta bancaria, más el arqueo del día</p>
+            </div>
             <!-- Tarjetas Principales: Caja y Cuenta -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
@@ -2464,36 +2482,6 @@
                     </div>
                 </div>
                 <p class="text-xs text-gray-500 mt-3">Se calcula como: Gastos fijos ÷ Margen de ganancia promedio. No incluye el costo de la mercadería porque ya está descontado en el margen.</p>
-            </div>
-        </div>
-
-        <!-- Control de Stock (redirigido a Inventario) -->
-        <div id="predictions" class="section hidden space-y-6 fade-in">
-            <!-- Contenido movido a Gestión de Inventario -->
-        </div>
-
-        <!-- Alerts -->
-        <div id="alerts" class="section hidden space-y-6 fade-in">
-            <div class="bg-white rounded-2xl p-6 shadow-lg">
-                <h3 class="text-xl font-bold mb-6 flex items-center gap-2">
-                    <i class="fas fa-bell text-red-500"></i> Centro de Alertas
-                </h3>
-                
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <button onclick="filterAlerts('all')" class="alert-filter active bg-purple-600 text-white px-4 py-2 rounded-lg font-bold" data-filter="all">
-                        Todas
-                    </button>
-                    <button onclick="filterAlerts('stock')" class="alert-filter bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold" data-filter="stock">
-                        Stock Bajo
-                    </button>
-                    <button onclick="filterAlerts('expiry')" class="alert-filter bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold" data-filter="expiry">
-                        Por Vencer
-                    </button>
-                </div>
-
-                <div id="alerts-list" class="space-y-3">
-                    <!-- Generated by JS -->
-                </div>
             </div>
         </div>
 
@@ -4423,18 +4411,22 @@
                 }
             });
 
+            // Ojo: estos nombres tienen que coincidir con la etiqueta del botón del menú
+            // (antes "cashflow" decía "Flujo de Caja" arriba pero el botón del menú para
+            // esa sección dice "Finanzas" -- estaban al revés respecto a "cashflow-projection").
             const titles = {
                 'dashboard': 'Dashboard',
                 'sell': 'Nueva Venta',
                 'sales-calendar': 'Historial de Ventas',
                 'inventory': 'Gestión de Inventario',
-                'cashflow': 'Flujo de Caja',
-                'cashflow-projection': 'Proyección de Caja',
-                'predictions': 'Control de Stock',
-                'alerts': 'Alertas',
+                'cashflow': 'Finanzas',
+                'cashflow-projection': 'Flujo de Caja',
                 'reports': 'Reportes',
                 'billing': 'Facturación',
-                'fiados': 'Fiados'
+                'fiados': 'Fiados',
+                'promotions': 'Promociones',
+                'discount-tickets': 'Tickets de Descuento',
+                'settings': 'Configuración'
             };
             document.getElementById('page-title').textContent = titles[sectionId] || 'KioscoPro';
 
@@ -4478,7 +4470,6 @@
                 showSection('inventory');
                 return;
             }
-            if (sectionId === 'alerts') renderAlerts();
             if (sectionId === 'reports') renderReports();
             if (sectionId === 'billing') renderBilling();
             if (sectionId === 'fiados') renderFiados();
@@ -9815,14 +9806,14 @@
             const isComposite = appState.pendingPurchase.isComposite || false;
             
             // Solo descontar dinero si NO es producto compuesto (los compuestos usan subproductos ya existentes)
+            // Se permite que quede en negativo (ej: cargando facturas atrasadas de días cuyas
+            // ventas no se registraron): se avisa pero no se bloquea la compra.
             if (!isComposite) {
                 if (method === 'cash' && totalCost > currentCash) {
-                    showNotification(`Fondos insuficientes en caja. Necesitas: $${formatMoney(totalCost)}, Tienes: $${formatMoney(currentCash)}`, 'error');
-                    return;
+                    showNotification(`⚠️ Caja queda en negativo: -$${formatMoney(totalCost - currentCash)}`, 'warning', 6000);
                 }
                 if (method === 'bank' && totalCost > currentBank) {
-                    showNotification(`Fondos insuficientes en cuenta. Necesitas: $${formatMoney(totalCost)}, Tienes: $${formatMoney(currentBank)}`, 'error');
-                    return;
+                    showNotification(`⚠️ Cuenta queda en negativo: -$${formatMoney(totalCost - currentBank)}`, 'warning', 6000);
                 }
 
                 if (method === 'cash') {
@@ -11125,14 +11116,13 @@
             const newPriceInput = document.getElementById('add-stock-new-price').value;
             const newPrice = newPriceInput ? parseFloat(newPriceInput) : null;
             
-            // Verificar fondos
+            // Se permite que la compra deje caja/cuenta en negativo (ej: cargando facturas
+            // atrasadas de días cuyas ventas no se registraron): se avisa pero no se bloquea.
             if (addStockPaymentMethod === 'cash' && totalCost > appState.cash) {
-                showNotification(`Fondos insuficientes en caja. Necesitas: $${formatMoney(totalCost)}`, 'error');
-                return;
+                showNotification(`⚠️ Caja queda en negativo: -$${formatMoney(totalCost - appState.cash)}`, 'warning', 6000);
             }
             if (addStockPaymentMethod === 'bank' && totalCost > appState.bank) {
-                showNotification(`Fondos insuficientes en cuenta. Necesitas: $${formatMoney(totalCost)}`, 'error');
-                return;
+                showNotification(`⚠️ Cuenta queda en negativo: -$${formatMoney(totalCost - appState.bank)}`, 'warning', 6000);
             }
             
             // Actualizar costo del producto si cambió
@@ -18367,89 +18357,6 @@ Total de productos a comprar: ${shoppingList.length}
             showNotification('📋 Lista de compras exportada', 'success');
         }
 
-        // ==================== ALERTS ====================
-        function renderAlerts() {
-            const alerts = [];
-            const today = new Date();
-            const activeInv = getActiveInventory();
-            
-            activeInv.forEach(p => {
-                const stock = getProductStock(p);
-                if (stock <= 3) {
-                    alerts.push({
-                        type: 'stock',
-                        priority: stock === 0 ? 'critical' : 'high',
-                        product: p,
-                        message: stock === 0 ? `SIN STOCK: ${p.name}` : `Stock bajo: ${p.name} (${stock})`
-                    });
-                }
-                
-                // Verificar vencimiento del primer lote (FIFO)
-                let earliestExpiry = null;
-                let earliestDays = null;
-                
-                if (p.batches && p.batches.length > 0) {
-                    const sortedBatches = [...p.batches].sort((a, b) => {
-                        if (!a.expiry) return 1;
-                        if (!b.expiry) return -1;
-                        return new Date(a.expiry) - new Date(b.expiry);
-                    });
-                    if (sortedBatches[0].expiry) {
-                        earliestExpiry = sortedBatches[0].expiry;
-                        earliestDays = Math.ceil((new Date(earliestExpiry) - today) / (1000 * 60 * 60 * 24));
-                    }
-                } else if (p.expiry) {
-                    earliestExpiry = p.expiry;
-                    earliestDays = Math.ceil((new Date(earliestExpiry) - today) / (1000 * 60 * 60 * 24));
-                }
-                
-                if (earliestDays !== null && earliestDays <= 7 && earliestDays > 0) {
-                    alerts.push({
-                        type: 'expiry',
-                        priority: earliestDays <= 3 ? 'critical' : 'medium',
-                        product: p,
-                        message: `Vence en ${earliestDays} días: ${p.name}`
-                    });
-                }
-            });
-
-            appState.alerts = alerts;
-            updateAlertBadge();
-
-            const filter = document.querySelector('.alert-filter.active')?.dataset.filter || 'all';
-            const filtered = filter === 'all' ? alerts : alerts.filter(a => a.type === filter);
-
-            document.getElementById('alerts-list').innerHTML = filtered.map(alert => `
-                <div class="flex items-center gap-4 p-4 rounded-xl border-l-4 ${alert.priority === 'critical' ? 'bg-red-50 border-red-500' : alert.priority === 'high' ? 'bg-orange-50 border-orange-500' : 'bg-yellow-50 border-yellow-500'}">
-                    <div class="flex-1">
-                        <p class="font-bold ${alert.priority === 'critical' ? 'text-red-700' : 'text-gray-800'}">${alert.message}</p>
-                        ${alert.product.supplier ? `<p class="text-sm text-gray-500">Proveedor: ${alert.product.supplier} ${alert.product.supplierPhone ? `📞 ${alert.product.supplierPhone}` : ''}</p>` : ''}
-                    </div>
-                    <button onclick="openAddStockModal('${alert.product.id}')" class="bg-white px-4 py-2 rounded-lg shadow hover:shadow-md text-sm font-bold ${alert.priority === 'critical' ? 'text-red-600' : 'text-blue-600'}">
-                        Reponer
-                    </button>
-                </div>
-            `).join('') || '<p class="text-center text-gray-400 py-8">No hay alertas activas</p>';
-        }
-
-        function filterAlerts(type) {
-            document.querySelectorAll('.alert-filter').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.filter === type);
-                btn.classList.toggle('bg-purple-600', btn.dataset.filter === type);
-                btn.classList.toggle('text-white', btn.dataset.filter === type);
-                btn.classList.toggle('bg-gray-200', btn.dataset.filter !== type);
-                btn.classList.toggle('text-gray-700', btn.dataset.filter !== type);
-            });
-            renderAlerts();
-        }
-
-        function updateAlertBadge() {
-            const critical = appState.alerts.filter(a => a.priority === 'critical').length;
-            const badge = document.getElementById('alert-badge');
-            badge.textContent = critical;
-            badge.classList.toggle('hidden', critical === 0);
-        }
-
         // ==================== SETTINGS ====================
         function renderReports() {
             // Establecer fechas por defecto (último mes)
@@ -19680,10 +19587,6 @@ RESULTADOS:
             try {
                 renderBilling();
             } catch(e) { console.error('Error en renderBilling:', e); }
-            
-            try {
-                renderAlerts();
-            } catch(e) { console.error('Error en renderAlerts:', e); }
             
             try {
                 renderPredictions();

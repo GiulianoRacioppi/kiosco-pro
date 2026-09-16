@@ -223,6 +223,14 @@
             white-space: nowrap !important;
         }
 
+        /* Excepción: celdas con varias líneas de info (notas de vencimiento, bulto,
+           ahorro, histórico semanal) necesitan mostrarse completas, no cortadas */
+        .main-content td.cell-notes {
+            overflow: visible !important;
+            text-overflow: unset !important;
+            white-space: normal !important;
+        }
+
         .main-content .grid {
             max-width: 100% !important;
         }
@@ -18470,7 +18478,7 @@
                         }
                         return `
                         <tr class="hover:bg-gray-50 border-l-4 ${item.priority === 'CRÍTICO' ? 'border-red-500' : item.priority === 'ALTA' ? 'border-orange-500' : item.priority === 'MEDIA' ? 'border-yellow-500' : 'border-green-500'}">
-                            <td class="px-4 py-3">
+                            <td class="px-4 py-3 cell-notes">
                                 <div class="font-medium text-gray-900">${item.product.name}</div>
                                 ${item.nextBuyDay !== null ? `<div class="text-xs text-gray-500">Próx.compra: ${item.buyDayName}</div>` : ''}
                             </td>
@@ -18480,14 +18488,14 @@
                             <td class="px-4 py-3 text-center">
                                 <span class="text-gray-500">${minStock}</span>
                             </td>
-                            <td class="px-4 py-3 text-center">
+                            <td class="px-4 py-3 text-center cell-notes">
                                 <span class="font-bold text-blue-600">${buyDisplay}</span>
                                 ${shelfLifeNote}
                             </td>
                             <td class="px-4 py-3 text-center">
                                 <span class="text-sm text-gray-600">${avgDailyDisplay}</span>
                             </td>
-                            <td class="px-4 py-3 text-center">
+                            <td class="px-4 py-3 text-center cell-notes">
                                 ${item.weeklyPeak > 0 || item.weeklyAvgHistorical > 0
                                     ? `<span class="text-xs text-gray-600">Pico: <b>${fmtNumber(item.weeklyPeak, 0)}</b> · Prom: <b>${fmtNumber(item.weeklyAvgHistorical, 1)}</b></span>`
                                     : '<span class="text-xs text-gray-400">-</span>'}
@@ -18930,7 +18938,7 @@ Total de productos a comprar: ${shoppingList.length}
                 : '';
             return `
             <tr id="wholesale-row-${row.productId}" class="hover:bg-gray-50 border-b">
-                <td class="px-3 py-2">
+                <td class="px-3 py-2 cell-notes">
                     <div class="font-medium text-gray-900">${escapeHtml(row.productName)}</div>
                     ${weeklyNote}
                     ${bulkNote}

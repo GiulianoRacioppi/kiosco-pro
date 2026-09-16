@@ -712,6 +712,11 @@
                     <label class="block text-sm font-medium text-gray-700 mb-2">Viene en bulto de (unidades, opcional)</label>
                     <input type="number" id="edit-prod-bulk-size" class="w-full border rounded-lg px-3 py-2" min="0" placeholder="Ej: 30">
                     <p class="text-xs text-gray-500 mt-1">Si el proveedor lo vende en cajas/bultos cerrados de X unidades, la Lista de Compras te va a decir si ese bulto entra dentro de lo que podés vender antes de que venza.</p>
+                    <label class="flex items-center gap-2 mt-2 text-sm text-gray-700">
+                        <input type="checkbox" id="edit-prod-bulk-only" class="w-4 h-4">
+                        Este producto solo se consigue en bulto (no se compra por unidad suelta)
+                    </label>
+                    <p id="edit-prod-bulk-discount-info" class="text-xs mt-2 hidden"></p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Proveedor</label>
@@ -11465,6 +11470,7 @@
                 updatedAt: new Date().toISOString()
             });
             logExpiryHistory(product.id, editOriginalBatchDate || formatDateISO(appState.activeDate), newExpiry);
+            recordBulkDiscountIfApplicable(product, qtyBags, newUnitCost, oldCost);
 
             // Ordenar lotes por fecha de creación (FIFO - el primero en entrar, primero en salir)
             product.batches.sort((a, b) => {
@@ -11704,6 +11710,18 @@
             document.getElementById('edit-prod-min').value = product.min || 10;
             document.getElementById('edit-prod-shelf-life').value = product.shelfLifeDays || '';
             document.getElementById('edit-prod-bulk-size').value = product.bulkPackSize || '';
+            document.getElementById('edit-prod-bulk-only').checked = !!product.bulkOnly;
+            const bulkInfoEl = document.getElementById('edit-prod-bulk-discount-info');
+            if (bulkInfoEl) {
+                if (product.bulkDiscountInfo && product.bulkDiscountInfo.discountPct > 0) {
+                    const info = product.bulkDiscountInfo;
+                    bulkInfoEl.className = 'text-xs mt-2 text-green-700 font-medium';
+                    bulkInfoEl.textContent = `💰 Última compra en bulto (${parseDateLocal(info.date).toLocaleDateString('es-ES')}): ${info.bulkQty} u. a $${formatMoney(info.costPerUnitBulk)}/u — ahorraste ${info.discountPct.toFixed(1)}% ($${formatMoney(info.savingsPerUnit)}/u, $${formatMoney(info.totalSavings)} en total) vs. el costo anterior de $${formatMoney(info.previousUnitCost)}/u.`;
+                    bulkInfoEl.classList.remove('hidden');
+                } else {
+                    bulkInfoEl.classList.add('hidden');
+                }
+            }
             populateSupplierSelects();
             document.getElementById('edit-prod-supplier').value = product.supplier || '';
             onEditSupplierChange();
@@ -11851,6 +11869,7 @@
                 product.min = parseInt(document.getElementById('edit-prod-min').value) || 10;
                 product.shelfLifeDays = parseInt(document.getElementById('edit-prod-shelf-life').value) || null;
                 product.bulkPackSize = parseInt(document.getElementById('edit-prod-bulk-size').value) || null;
+                product.bulkOnly = document.getElementById('edit-prod-bulk-only').checked;
                 product.supplier = document.getElementById('edit-prod-supplier').value.trim();
                 product.supplierPhone = document.getElementById('edit-prod-supplier-phone').value.trim();
                 product.buyDays = getSelectedBuyDays('edit');
@@ -17815,6 +17834,25 @@
             return Math.round(min + (max - min) * 0.3);
         }
 
+        // Si la cantidad comprada llega a un bulto completo (product.bulkPackSize) y el
+        // costo por unidad salió más barato que la referencia anterior (product.cost antes
+        // de esta compra), guarda el % de descuento y el ahorro real -- para la próxima vez
+        // que aparezca en la Lista de Compras, mostrar si conviene repetir la compra en bulto.
+        function recordBulkDiscountIfApplicable(product, qty, unitCost, previousUnitCost) {
+            if (!product || !product.bulkPackSize || !qty || qty < product.bulkPackSize) return;
+            if (!previousUnitCost || unitCost >= previousUnitCost) return;
+            const savingsPerUnit = previousUnitCost - unitCost;
+            product.bulkDiscountInfo = {
+                date: formatDateISO(appState.activeDate || new Date()),
+                bulkQty: qty,
+                costPerUnitBulk: unitCost,
+                previousUnitCost: previousUnitCost,
+                discountPct: (savingsPerUnit / previousUnitCost) * 100,
+                savingsPerUnit: savingsPerUnit,
+                totalSavings: savingsPerUnit * qty
+            };
+        }
+
         function generateShoppingList() {
             const list = [];
             const today = new Date();
@@ -18388,10 +18426,14 @@
                         let shelfLifeNote = '';
                         if (sli) {
                             const fuente = sli.learned ? '(aprendida de compras anteriores)' : '(cargada a mano)';
+                            const bdi = item.product.bulkDiscountInfo;
+                            const discountNote = (bdi && bdi.discountPct > 0)
+                                ? `<div class="text-[11px] text-green-700 mt-0.5">💰 En bulto ahorrás ~${bdi.discountPct.toFixed(0)}% ($${formatMoney(bdi.savingsPerUnit)}/u) según tu última compra así</div>`
+                                : '';
                             const bulkNote = sli.bulkPackSize > 0
                                 ? (sli.bulkFits
-                                    ? `<div class="text-[11px] text-green-700 mt-0.5">📦 El bulto de ${sli.bulkPackSize} u. entra bien — se vendería a tiempo</div>`
-                                    : `<div class="text-[11px] text-red-600 font-bold mt-0.5">📦 El bulto de ${sli.bulkPackSize} u. NO entra: sobraría y vencería</div>`)
+                                    ? `<div class="text-[11px] text-green-700 mt-0.5">📦 El bulto de ${sli.bulkPackSize} u. entra bien — se vendería a tiempo</div>${discountNote}`
+                                    : `<div class="text-[11px] text-red-600 font-bold mt-0.5">📦 El bulto de ${sli.bulkPackSize} u. NO entra: sobraría y vencería</div>${discountNote}`)
                                 : '';
                             shelfLifeNote = sli.type === 'bulk'
                                 ? `<div class="text-[11px] text-green-600 font-medium mt-0.5">💡 Podés llegar a ${sli.maxSafeQty} u. sin riesgo — vida útil ${sli.shelfLifeDays}d ${fuente}</div>${bulkNote}`
@@ -18803,15 +18845,26 @@ Total de productos a comprar: ${shoppingList.length}
 
             wholesalePurchaseItems = shoppingList.map(item => {
                 const prev = previous.get(item.product.id);
-                return prev || {
+                if (prev) return prev;
+                const bulkPackSize = item.product.bulkPackSize || 0;
+                const bulkOnly = !!item.product.bulkOnly;
+                // Si solo se consigue en bulto, arrancar ya redondeado hacia arriba al múltiplo del bulto
+                let qty = item.suggestedQty;
+                if (bulkOnly && bulkPackSize > 0 && qty > 0) {
+                    qty = Math.ceil(qty / bulkPackSize) * bulkPackSize;
+                }
+                return {
                     productId: item.product.id,
                     productName: item.product.name,
                     suggestedQty: item.suggestedQty,
                     avgDaily: item.avgDaily,
                     currentStock: item.currentStock,
-                    qty: item.suggestedQty,
+                    qty: qty,
                     cost: item.product.cost || 0,
-                    expiry: ''
+                    expiry: '',
+                    bulkPackSize: bulkPackSize,
+                    bulkOnly: bulkOnly,
+                    bulkDiscountInfo: item.product.bulkDiscountInfo || null
                 };
             });
 
@@ -18827,14 +18880,22 @@ Total de productos a comprar: ${shoppingList.length}
         }
 
         function renderWholesaleRow(row) {
+            const bulkNote = row.bulkPackSize > 0
+                ? `<div class="text-xs ${row.bulkOnly ? 'text-purple-600 font-bold' : 'text-gray-400'}">📦 Bulto de ${row.bulkPackSize}${row.bulkOnly ? ' (solo se compra así)' : ''}</div>`
+                : '';
+            const discountNote = row.bulkDiscountInfo && row.bulkDiscountInfo.discountPct > 0
+                ? `<div class="text-xs text-green-600" title="Comprando de a ${row.bulkDiscountInfo.bulkQty} pagaste $${formatMoney(row.bulkDiscountInfo.costPerUnitBulk)}/u la última vez, contra $${formatMoney(row.bulkDiscountInfo.previousUnitCost)}/u antes">💰 En bulto ahorrás ~${row.bulkDiscountInfo.discountPct.toFixed(0)}%</div>`
+                : '';
             return `
             <tr id="wholesale-row-${row.productId}" class="hover:bg-gray-50 border-b">
                 <td class="px-3 py-2">
                     <div class="font-medium text-gray-900">${escapeHtml(row.productName)}</div>
+                    ${bulkNote}
+                    ${discountNote}
                 </td>
                 <td class="px-3 py-2 text-center text-sm text-gray-500">${row.suggestedQty} u.</td>
                 <td class="px-3 py-2 text-center">
-                    <input type="number" min="0" value="${row.qty}" class="w-20 border rounded-lg px-2 py-1 text-center" onchange="updateWholesaleRow('${row.productId}', 'qty', this.value)">
+                    <input type="number" min="0" step="${row.bulkOnly && row.bulkPackSize > 0 ? row.bulkPackSize : 1}" value="${row.qty}" class="w-20 border rounded-lg px-2 py-1 text-center" onchange="updateWholesaleRow('${row.productId}', 'qty', this.value)">
                 </td>
                 <td class="px-3 py-2 text-center">
                     <input type="number" min="0" step="0.01" value="${row.cost}" class="w-24 border rounded-lg px-2 py-1 text-center" onchange="updateWholesaleRow('${row.productId}', 'cost', this.value)">
@@ -18877,7 +18938,17 @@ Total de productos a comprar: ${shoppingList.length}
         function updateWholesaleRow(productId, field, value) {
             const row = wholesalePurchaseItems.find(i => i.productId === productId);
             if (!row) return;
-            if (field === 'qty') row.qty = Math.max(0, parseFloat(value) || 0);
+            if (field === 'qty') {
+                let qty = Math.max(0, parseFloat(value) || 0);
+                // Solo se consigue en bulto: redondear siempre hacia arriba al múltiplo del bulto
+                if (row.bulkOnly && row.bulkPackSize > 0 && qty > 0) {
+                    qty = Math.ceil(qty / row.bulkPackSize) * row.bulkPackSize;
+                }
+                row.qty = qty;
+                const rowEl = document.getElementById('wholesale-row-' + productId);
+                const qtyInput = rowEl ? rowEl.querySelector('input[type="number"]') : null;
+                if (qtyInput) qtyInput.value = qty;
+            }
             else if (field === 'cost') row.cost = Math.max(0, parseFloat(value) || 0);
             else if (field === 'expiry') row.expiry = value || '';
 
@@ -18919,6 +18990,7 @@ Total de productos a comprar: ${shoppingList.length}
 
                 const batchId = 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
                 if (!Array.isArray(product.batches)) product.batches = [];
+                const previousUnitCost = product.cost || 0;
                 product.batches.push({
                     id: batchId,
                     stock: row.qty,
@@ -18955,6 +19027,7 @@ Total de productos a comprar: ${shoppingList.length}
                 }
 
                 logExpiryHistory(product.id, today, row.expiry);
+                recordBulkDiscountIfApplicable(product, row.qty, row.cost, previousUnitCost);
             });
 
             saveToLocalStorage();

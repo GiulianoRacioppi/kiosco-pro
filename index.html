@@ -2064,6 +2064,12 @@
 
             <div class="bg-white rounded-2xl shadow-lg p-4 flex flex-wrap justify-between items-center gap-3">
                 <div class="flex items-center gap-2">
+                    <label class="text-sm font-medium text-gray-700">Estoy comprando en:</label>
+                    <select id="wholesale-supplier-filter" onchange="renderWholesalePurchase()" class="border-2 border-orange-200 rounded-lg px-3 py-2 font-bold text-orange-700">
+                        <option value="">Todos</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2">
                     <label class="text-sm font-medium text-gray-700">Pagar con:</label>
                     <select id="wholesale-payment-source" class="border-2 border-orange-200 rounded-lg px-3 py-2 font-bold text-orange-700">
                         <option value="cash">💵 Caja</option>
@@ -3107,6 +3113,10 @@
                             <div class="flex gap-2">
                                 <input type="text" id="new-supplier-name" class="flex-1 border-2 border-teal-200 rounded-xl px-4 py-2" placeholder="Nombre del proveedor" onkeydown="if(event.key==='Enter'){event.preventDefault();addSupplier();}">
                                 <input type="text" id="new-supplier-phone" class="w-40 border-2 border-teal-200 rounded-xl px-4 py-2" placeholder="WhatsApp (opcional)" onkeydown="if(event.key==='Enter'){event.preventDefault();addSupplier();}">
+                                <select id="new-supplier-type" class="border-2 border-teal-200 rounded-xl px-3 py-2">
+                                    <option value="proveedor">Proveedor</option>
+                                    <option value="mayorista">Mayorista</option>
+                                </select>
                                 <button onclick="addSupplier()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl font-bold">
                                     <i class="fas fa-plus"></i>
                                 </button>
@@ -17831,11 +17841,13 @@
                 // (a su propio ritmo de venta) + un margen por si hay un pico (aprox. 1 día más
                 // de venta promedio, nunca menos de 1 unidad). Ya no es un "5" fijo para todos:
                 // un producto que vende rápido necesita más, uno que casi no se vende necesita
-                // menos. Si el mínimo manual del producto es más alto que este cálculo, se
-                // respeta ese (puede haber una razón puntual, como una demora de entrega larga).
+                // menos. IMPORTANTE: se ignora a propósito el "Stock Mínimo" manual del producto
+                // acá -- casi todos los productos quedaron con un "5" viejo puesto por defecto
+                // al crearlos, y si lo respetáramos como piso, tapa el cálculo real (todo
+                // termina en 5 igual). El campo manual sigue funcionando para las alertas de
+                // "Stock Bajo" en otras pantallas, pero la Lista de Compras usa solo lo calculado.
                 const spikeMargin = avgDaily > 0 ? Math.max(1, Math.ceil(avgDaily)) : 1;
-                const calculatedMinStock = Math.ceil(avgPeriodDemand) + spikeMargin;
-                const minStock = Math.max(parseInt(product.min) || 0, calculatedMinStock);
+                const minStock = Math.ceil(avgPeriodDemand) + spikeMargin;
 
                 const targetStock = minStock;
                 let suggestedQty = Math.max(0, targetStock - currentStock);
@@ -18771,7 +18783,22 @@ Total de productos a comprar: ${shoppingList.length}
         let wholesalePurchaseItems = [];
 
         function renderWholesalePurchase() {
-            const shoppingList = generateShoppingList();
+            // Selector "Estoy comprando en": se repuebla cada vez (por si se agregó un
+            // proveedor nuevo) pero se conserva la selección actual.
+            const filterEl = document.getElementById('wholesale-supplier-filter');
+            const currentFilter = filterEl ? filterEl.value : '';
+            if (filterEl) {
+                const suppliers = (appState.suppliers || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                filterEl.innerHTML = '<option value="">Todos</option>' + suppliers.map(s =>
+                    `<option value="${escapeHtml(s.name)}" ${s.name === currentFilter ? 'selected' : ''}>${s.type === 'mayorista' ? '🏭' : '🚚'} ${escapeHtml(s.name)}</option>`
+                ).join('');
+            }
+            const selectedSupplier = filterEl ? filterEl.value : '';
+
+            let shoppingList = generateShoppingList();
+            if (selectedSupplier) {
+                shoppingList = shoppingList.filter(item => item.supplier === selectedSupplier);
+            }
             const previous = new Map(wholesalePurchaseItems.map(i => [i.productId, i]));
 
             wholesalePurchaseItems = shoppingList.map(item => {
@@ -18791,7 +18818,8 @@ Total de productos a comprar: ${shoppingList.length}
             const tbody = document.getElementById('wholesale-purchase-table');
             if (!tbody) return;
             if (wholesalePurchaseItems.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400"><i class="fas fa-check-circle text-4xl mb-2"></i><br>No hay productos pendientes en la Lista de Compras</td></tr>';
+                const msg = selectedSupplier ? `No hay productos pendientes de "${escapeHtml(selectedSupplier)}" en la Lista de Compras` : 'No hay productos pendientes en la Lista de Compras';
+                tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-gray-400"><i class="fas fa-check-circle text-4xl mb-2"></i><br>${msg}</td></tr>`;
             } else {
                 tbody.innerHTML = wholesalePurchaseItems.map(renderWholesaleRow).join('');
             }
@@ -19717,8 +19745,10 @@ Total de productos a comprar: ${shoppingList.length}
         function addSupplier() {
             const nameInput = document.getElementById('new-supplier-name');
             const phoneInput = document.getElementById('new-supplier-phone');
+            const typeInput = document.getElementById('new-supplier-type');
             const name = (nameInput?.value || '').trim();
             const phone = (phoneInput?.value || '').trim();
+            const type = typeInput?.value === 'mayorista' ? 'mayorista' : 'proveedor';
             if (!name) {
                 showNotification('Ingresá el nombre del proveedor', 'error');
                 return;
@@ -19733,6 +19763,7 @@ Total de productos a comprar: ${shoppingList.length}
                 id: 'SUP-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
                 name: name,
                 phone: phone,
+                type: type,
                 categories: []
             });
             if (nameInput) nameInput.value = '';
@@ -19741,6 +19772,17 @@ Total de productos a comprar: ${shoppingList.length}
             renderSuppliersList();
             populateSupplierSelects();
             showNotification('Proveedor agregado', 'success');
+        }
+
+        function setSupplierType(supplierId, type) {
+            const supplier = (appState.suppliers || []).find(s => s.id === supplierId);
+            if (!supplier) return;
+            supplier.type = type === 'mayorista' ? 'mayorista' : 'proveedor';
+            saveToLocalStorage();
+            renderSuppliersList();
+            if (typeof renderWholesalePurchase === 'function' && !document.getElementById('wholesale-purchase')?.classList.contains('hidden')) {
+                renderWholesalePurchase();
+            }
         }
 
         function deleteSupplier(supplierId) {
@@ -19767,9 +19809,15 @@ Total de productos a comprar: ${shoppingList.length}
                         ${s.phone ? `<p class="text-xs text-gray-500"><i class="fab fa-whatsapp text-green-600"></i> ${escapeHtml(s.phone)}</p>` : ''}
                         ${s.categories && s.categories.length > 0 ? `<p class="text-xs text-gray-500">Categorías: ${s.categories.map(c => `<span class="inline-block bg-white rounded px-1.5 py-0.5 border border-gray-200 ml-1">${escapeHtml(c)}</span>`).join('')}</p>` : ''}
                     </div>
-                    <button onclick="deleteSupplier('${s.id}')" class="text-red-500 hover:text-red-700 p-2 hover:bg-red-100 rounded-lg" title="Eliminar proveedor">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <select onchange="setSupplierType('${s.id}', this.value)" class="text-xs border rounded-lg px-2 py-1 ${s.type === 'mayorista' ? 'bg-orange-50 border-orange-300 text-orange-700' : 'bg-white border-gray-300 text-gray-600'}">
+                            <option value="proveedor" ${s.type !== 'mayorista' ? 'selected' : ''}>Proveedor</option>
+                            <option value="mayorista" ${s.type === 'mayorista' ? 'selected' : ''}>Mayorista</option>
+                        </select>
+                        <button onclick="deleteSupplier('${s.id}')" class="text-red-500 hover:text-red-700 p-2 hover:bg-red-100 rounded-lg" title="Eliminar proveedor">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
                 </div>
             `).join('');
         }

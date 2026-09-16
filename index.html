@@ -1878,6 +1878,7 @@
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Stock Mínimo</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Comprar</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Prom/Día</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase" title="Referencia histórica por semana, para productos de poca venta donde igual querés mantener un mínimo">Pico/Prom Semanal</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Días Stock</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Prioridad</th>
                                     </tr>
@@ -2677,6 +2678,15 @@
                         <button onclick="setBillingPeriod('all')" id="btn-billing-all" class="px-4 py-2 text-xs font-bold rounded bg-white text-gray-800 shadow-sm transition">Todo</button>
                     </div>
                 </div>
+                <div id="billing-month-nav" class="flex justify-center items-center gap-3 mt-2 hidden">
+                    <button onclick="changeBillingMonth(-1)" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span class="text-xs text-gray-500">Ver otros meses</span>
+                    <button onclick="changeBillingMonth(1)" id="btn-billing-month-next" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
                 <p id="billing-period-caption" class="text-center text-sm font-bold text-purple-600 mb-6">-</p>
                 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -3115,14 +3125,14 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Nuevo proveedor</label>
-                            <div class="flex gap-2">
-                                <input type="text" id="new-supplier-name" class="flex-1 border-2 border-teal-200 rounded-xl px-4 py-2" placeholder="Nombre del proveedor" onkeydown="if(event.key==='Enter'){event.preventDefault();addSupplier();}">
-                                <input type="text" id="new-supplier-phone" class="w-40 border-2 border-teal-200 rounded-xl px-4 py-2" placeholder="WhatsApp (opcional)" onkeydown="if(event.key==='Enter'){event.preventDefault();addSupplier();}">
-                                <select id="new-supplier-type" class="border-2 border-teal-200 rounded-xl px-3 py-2">
+                            <div class="flex flex-wrap gap-2">
+                                <input type="text" id="new-supplier-name" class="flex-1 min-w-[140px] border-2 border-teal-200 rounded-xl px-4 py-2" placeholder="Nombre del proveedor" onkeydown="if(event.key==='Enter'){event.preventDefault();addSupplier();}">
+                                <input type="text" id="new-supplier-phone" class="flex-1 min-w-[120px] border-2 border-teal-200 rounded-xl px-4 py-2" placeholder="WhatsApp (opcional)" onkeydown="if(event.key==='Enter'){event.preventDefault();addSupplier();}">
+                                <select id="new-supplier-type" class="flex-1 min-w-[110px] border-2 border-teal-200 rounded-xl px-3 py-2">
                                     <option value="proveedor">Proveedor</option>
                                     <option value="mayorista">Mayorista</option>
                                 </select>
-                                <button onclick="addSupplier()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl font-bold">
+                                <button onclick="addSupplier()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl font-bold shrink-0">
                                     <i class="fas fa-plus"></i>
                                 </button>
                             </div>
@@ -10804,7 +10814,7 @@
             const isWeight = product.saleByWeight && product.weightPerUnit > 0;
             const weightInfo = isWeight ? `<span class="text-sm text-blue-600">⚖️ Venta por peso • ${product.weightPerUnit}g por unidad</span>` : '';
             const currentGrams = isWeight ? Math.round(totalStock * product.weightPerUnit) : null;
-            
+
             document.getElementById('add-stock-product-info').innerHTML = `
                 <p class="font-bold text-gray-800">${isComposite ? '🧩 ' : ''}${product.name}</p>
                 <p class="text-sm text-gray-500">Stock total: <strong>${isWeight ? currentGrams + 'g' : totalStock}</strong> ${isWeight ? '' : 'unidades'}${isComposite ? ' (calculado por componentes)' : ''}</p>
@@ -17678,6 +17688,22 @@
             return { periods: periodTotals, avg: avg };
         }
 
+        // Pico y promedio de venta semanal histórico (siempre semanas de 7 días, sin importar
+        // el "período objetivo" configurado en Reponer) -- sirve como referencia manual para
+        // productos de poca venta donde igual se quiere mantener un mínimo por si preguntan
+        // (ej: "siempre tengo 5 aunque casi no se venda"), mostrando el techo real que tuvo.
+        function getWeeklyHistoricalStats(productId) {
+            const productSales = appState.sales.filter(s =>
+                s.items && s.items.some(i => i.productId === productId)
+            );
+            if (productSales.length === 0) return { weeklyAvg: 0, weeklyPeak: 0 };
+            const { periods } = calculatePeriodDemand(productId, productSales, 7);
+            if (!periods || periods.length === 0) return { weeklyAvg: 0, weeklyPeak: 0 };
+            const weeklyAvg = periods.reduce((a, b) => a + b, 0) / periods.length;
+            const weeklyPeak = Math.max(...periods);
+            return { weeklyAvg, weeklyPeak };
+        }
+
         function predictDemand(productId, daysAhead = 7) {
             const stats = calculateProductStats(productId);
             if (!stats) return null;
@@ -17964,11 +17990,14 @@
                 
                 const supplierName = getSupplierName(product);
                 const supplierObj = getSupplierByName(product.supplier);
-                
+                const weeklyHistorical = getWeeklyHistoricalStats(product.id);
+
                 list.push({
                     product: product,
                     currentStock: currentStock,
                     weeklyDemand: avgPeriodDemand,
+                    weeklyPeak: weeklyHistorical.weeklyPeak,
+                    weeklyAvgHistorical: weeklyHistorical.weeklyAvg,
                     minStock: minStock,
                     suggestedQty: suggestedQty,
                     daysUntilStockout: daysUntilStockout,
@@ -18274,7 +18303,7 @@
                 
                 const shoppingContainer = document.getElementById('auto-shopping-list');
                 if (shoppingContainer) {
-                    shoppingContainer.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-400">No hay productos en el inventario</td></tr>';
+                    shoppingContainer.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">No hay productos en el inventario</td></tr>';
                 }
                 
                 const topProductsContainer = document.getElementById('top-products-analysis');
@@ -18396,7 +18425,7 @@
             const shoppingContainer = document.getElementById('auto-shopping-list');
             if (shoppingContainer) {
                 if (shoppingList.length === 0) {
-                    shoppingContainer.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400"><i class="fas fa-check-circle text-4xl mb-2"></i><br>No hay productos que requieran reposición</td></tr>';
+                    shoppingContainer.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400"><i class="fas fa-check-circle text-4xl mb-2"></i><br>No hay productos que requieran reposición</td></tr>';
                 } else {
                     const criticalItems = shoppingList.filter(i => i.priority === 'CRÍTICO' || i.priority === 'ALTA');
                     const normalItems = shoppingList.filter(i => i.priority === 'MEDIA' || i.priority === 'BAJA');
@@ -18457,6 +18486,11 @@
                             </td>
                             <td class="px-4 py-3 text-center">
                                 <span class="text-sm text-gray-600">${avgDailyDisplay}</span>
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                ${item.weeklyPeak > 0 || item.weeklyAvgHistorical > 0
+                                    ? `<span class="text-xs text-gray-600">Pico: <b>${fmtNumber(item.weeklyPeak, 0)}</b> · Prom: <b>${fmtNumber(item.weeklyAvgHistorical, 1)}</b></span>`
+                                    : '<span class="text-xs text-gray-400">-</span>'}
                             </td>
                             <td class="px-4 py-3 text-center">
                                 <span class="text-xs ${item.daysUntilStockout <= 3 ? 'text-red-500 font-bold' : 'text-gray-400'}">${item.daysUntilStockout} días</span>
@@ -18775,6 +18809,9 @@ Total de productos a comprar: ${shoppingList.length}
                     text += `   ├── Promedio diario: ${fmtNumber(item.avgDaily, 2)} unidades/día\n`;
                     text += `   ├── Días de stock restantes: ${item.daysUntilStockout}\n`;
                     text += `   ├── Demanda/semana: ${fmtNumber(item.weeklyDemand, 1)}\n`;
+                    if (item.weeklyPeak > 0 || item.weeklyAvgHistorical > 0) {
+                        text += `   ├── Histórico semanal: pico ${fmtNumber(item.weeklyPeak, 0)}u · promedio ${fmtNumber(item.weeklyAvgHistorical, 1)}u\n`;
+                    }
                     text += `   ├── Vencimiento ideal: ${item.optimalExpiryDays} días (${item.optimalExpiryDate})\n`;
                     if (item.shelfLifeInfo) {
                         const sli = item.shelfLifeInfo;
@@ -18864,7 +18901,9 @@ Total de productos a comprar: ${shoppingList.length}
                     expiry: '',
                     bulkPackSize: bulkPackSize,
                     bulkOnly: bulkOnly,
-                    bulkDiscountInfo: item.product.bulkDiscountInfo || null
+                    bulkDiscountInfo: item.product.bulkDiscountInfo || null,
+                    weeklyPeak: item.weeklyPeak,
+                    weeklyAvgHistorical: item.weeklyAvgHistorical
                 };
             });
 
@@ -18886,10 +18925,14 @@ Total de productos a comprar: ${shoppingList.length}
             const discountNote = row.bulkDiscountInfo && row.bulkDiscountInfo.discountPct > 0
                 ? `<div class="text-xs text-green-600" title="Comprando de a ${row.bulkDiscountInfo.bulkQty} pagaste $${formatMoney(row.bulkDiscountInfo.costPerUnitBulk)}/u la última vez, contra $${formatMoney(row.bulkDiscountInfo.previousUnitCost)}/u antes">💰 En bulto ahorrás ~${row.bulkDiscountInfo.discountPct.toFixed(0)}%</div>`
                 : '';
+            const weeklyNote = (row.weeklyPeak > 0 || row.weeklyAvgHistorical > 0)
+                ? `<div class="text-xs text-gray-400">Semanal — pico: ${fmtNumber(row.weeklyPeak, 0)} · prom: ${fmtNumber(row.weeklyAvgHistorical, 1)}</div>`
+                : '';
             return `
             <tr id="wholesale-row-${row.productId}" class="hover:bg-gray-50 border-b">
                 <td class="px-3 py-2">
                     <div class="font-medium text-gray-900">${escapeHtml(row.productName)}</div>
+                    ${weeklyNote}
                     ${bulkNote}
                     ${discountNote}
                 </td>
@@ -19178,10 +19221,12 @@ Total de productos a comprar: ${shoppingList.length}
         }
 
         let billingPeriod = 'all'; // 'today' | 'week' | 'month' | 'all'
+        let billingMonthOffset = 0; // 0 = mes actual, -1 = mes anterior, etc. (solo aplica con period === 'month')
         let dashboardPeriod = 'today'; // 'today' | 'week' | 'month' | 'year' | 'all'
 
         function setBillingPeriod(period) {
             billingPeriod = period;
+            if (period === 'month') billingMonthOffset = 0; // clic directo en "Este mes" siempre arranca en el mes actual
             const buttons = ['today','week','month','all'];
             buttons.forEach(p => {
                 const btn = document.getElementById('btn-billing-' + p);
@@ -19191,6 +19236,13 @@ Total de productos a comprar: ${shoppingList.length}
                         : 'px-4 py-2 text-xs font-bold rounded text-gray-600 hover:bg-white transition';
                 }
             });
+            renderBilling();
+        }
+
+        // Navega a otro mes calendario dentro del período "Este mes" (no permite ir al futuro)
+        function changeBillingMonth(delta) {
+            if (billingMonthOffset + delta > 0) return;
+            billingMonthOffset += delta;
             renderBilling();
         }
 
@@ -19212,7 +19264,8 @@ Total de productos a comprar: ${shoppingList.length}
             const today = formatDateISO(appState.activeDate);
             const now = new Date(today);
             let startDate = null;
-            
+            let endDate = null;
+
             if (period === 'today') {
                 startDate = today;
             } else if (period === 'week') {
@@ -19222,10 +19275,14 @@ Total de productos a comprar: ${shoppingList.length}
                 d.setDate(d.getDate() - dow);
                 startDate = formatDateISO(d);
             } else if (period === 'month') {
-                // Este mes calendario: desde el 1° (la facturación se hace por mes)
-                startDate = today.slice(0, 8) + '01';
+                // Mes calendario elegido (billingMonthOffset: 0 = actual, -1 = anterior, etc.)
+                const target = new Date(now.getFullYear(), now.getMonth() + billingMonthOffset, 1);
+                startDate = formatDateISO(target);
+                const monthEnd = new Date(target.getFullYear(), target.getMonth() + 1, 0);
+                endDate = formatDateISO(monthEnd);
+                if (endDate > today) endDate = today; // nunca contar días futuros
             }
-            
+
             // Hoja en blanco desde la integración con ARCA: nada anterior a la primera factura cuenta
             const arcaStart = arcaIntegrationStart();
             if (arcaStart && (!startDate || startDate < arcaStart)) {
@@ -19235,12 +19292,12 @@ Total de productos a comprar: ${shoppingList.length}
             // Calcular compras por período (desde lotes)
             let purchasedWhite = 0;
             let purchasedBlack = 0;
-            
+
             const activeInv = getActiveInventory();
             activeInv.forEach(product => {
                 if (product.batches && Array.isArray(product.batches)) {
                     product.batches.forEach(batch => {
-                        if (!startDate || batch.dateAdded >= startDate) {
+                        if ((!startDate || batch.dateAdded >= startDate) && (!endDate || batch.dateAdded <= endDate)) {
                             const cost = (product.cost || 0) * (batch.initialStock || batch.stock || 0);
                             if (batch.invoiceType === 'white') {
                                 purchasedWhite += cost;
@@ -19251,15 +19308,15 @@ Total de productos a comprar: ${shoppingList.length}
                     });
                 }
             });
-            
+
             // Calcular ventas por período
             let soldWhite = 0;
             let soldBlack = 0;
             let soldDebit = 0;
             let filteredSales = [];
-            
+
             appState.sales.forEach(sale => {
-                if (!startDate || sale.date >= startDate) {
+                if ((!startDate || sale.date >= startDate) && (!endDate || sale.date <= endDate)) {
                     const bd = sale.invoiceBreakdown || { white: 0, black: 0 };
                     soldWhite += bd.white;
                     soldBlack += bd.black;
@@ -19269,8 +19326,8 @@ Total de productos a comprar: ${shoppingList.length}
                     filteredSales.push(sale);
                 }
             });
-            
-            return { purchasedWhite, purchasedBlack, soldWhite, soldBlack, soldDebit, filteredSales, startDate };
+
+            return { purchasedWhite, purchasedBlack, soldWhite, soldBlack, soldDebit, filteredSales, startDate, endDate };
         }
 
         // Texto amigable del período: "Hoy — sábado 9 de agosto", "Esta semana — del 4 al 9 de agosto", "Agosto de 2026"
@@ -19285,8 +19342,9 @@ Total de productos a comprar: ${shoppingList.length}
                     ' al ' + hoy.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
             }
             if (period === 'month') {
-                const mes = hoy.toLocaleDateString('es-ES', { month: 'long' });
-                return mes.charAt(0).toUpperCase() + mes.slice(1) + ' de ' + hoy.getFullYear();
+                const target = new Date(hoy.getFullYear(), hoy.getMonth() + billingMonthOffset, 1);
+                const mes = target.toLocaleDateString('es-ES', { month: 'long' });
+                return mes.charAt(0).toUpperCase() + mes.slice(1) + ' de ' + target.getFullYear();
             }
             // "Todo" = desde la integración con ARCA (hoja en blanco)
             const arcaStart = arcaIntegrationStart();
@@ -19298,11 +19356,12 @@ Total de productos a comprar: ${shoppingList.length}
         }
 
         // Comprobantes ARCA emitidos en el período (facturas y notas de crédito)
-        function getFacturasPeriodo(startDate) {
+        function getFacturasPeriodo(startDate, endDate) {
             const comprobantes = [];
             const ventas = appState.sales.concat(appState.salesAnuladas || []);
             ventas.forEach(sale => {
                 if (startDate && sale.date < startDate) return;
+                if (endDate && sale.date > endDate) return;
                 saleFacturas(sale).forEach(f => {
                     if (!f.cae) return;
                     comprobantes.push({
@@ -19338,8 +19397,8 @@ Total de productos a comprar: ${shoppingList.length}
             if (list) list.classList.toggle('hidden');
         }
 
-        function renderBillingArca(startDate, period) {
-            const comprobantes = getFacturasPeriodo(startDate);
+        function renderBillingArca(startDate, endDate, period) {
+            const comprobantes = getFacturasPeriodo(startDate, endDate);
             const facturas = comprobantes.filter(c => c.tipo === 'factura');
             const ncs = comprobantes.filter(c => c.tipo === 'nc');
             const gross = facturas.reduce((s, c) => s + c.total, 0);
@@ -19355,7 +19414,7 @@ Total de productos a comprar: ${shoppingList.length}
             // Vendido sin facturar: todo lo vendido en el período que no entró a ARCA
             let totalVendido = 0;
             appState.sales.forEach(sale => {
-                if (!startDate || sale.date >= startDate) totalVendido += sale.total || 0;
+                if ((!startDate || sale.date >= startDate) && (!endDate || sale.date <= endDate)) totalVendido += sale.total || 0;
             });
             const sinFacturar = Math.max(0, totalVendido - gross);
             document.getElementById('billing-arca-unbilled').textContent = '$' + formatMoney(sinFacturar);
@@ -19382,14 +19441,22 @@ Total de productos a comprar: ${shoppingList.length}
         function renderBilling() {
             const data = getBillingPeriodData(billingPeriod);
 
-            // Etiquetas del período: el botón de mes muestra el nombre ("Agosto") y un caption describe el rango
+            // Etiquetas del período: el botón de mes muestra el nombre del mes elegido y un caption describe el rango
             const hoy = parseDateLocal(formatDateISO(appState.activeDate));
-            const mesNombre = hoy.toLocaleDateString('es-ES', { month: 'long' });
+            const targetMonth = new Date(hoy.getFullYear(), hoy.getMonth() + billingMonthOffset, 1);
+            const mesNombre = targetMonth.toLocaleDateString('es-ES', { month: 'long' });
             const btnMonth = document.getElementById('btn-billing-month');
-            if (btnMonth) btnMonth.textContent = mesNombre.charAt(0).toUpperCase() + mesNombre.slice(1);
+            if (btnMonth) btnMonth.textContent = mesNombre.charAt(0).toUpperCase() + mesNombre.slice(1) + (billingMonthOffset !== 0 ? ' ' + targetMonth.getFullYear() : '');
+
+            // La navegación de mes (flechas) solo se muestra dentro del período "Este mes"
+            const monthNav = document.getElementById('billing-month-nav');
+            if (monthNav) monthNav.classList.toggle('hidden', billingPeriod !== 'month');
+            const nextMonthBtn = document.getElementById('btn-billing-month-next');
+            if (nextMonthBtn) nextMonthBtn.disabled = billingMonthOffset >= 0;
+
             const captionEl = document.getElementById('billing-period-caption');
             if (captionEl) captionEl.textContent = '📅 ' + billingPeriodCaption(billingPeriod, data.startDate);
-            renderBillingArca(data.startDate, billingPeriod);
+            renderBillingArca(data.startDate, data.endDate, billingPeriod);
             
             document.getElementById('billing-purchased-white').textContent = '$' + formatMoney(data.purchasedWhite);
             document.getElementById('billing-purchased-black').textContent = '$' + formatMoney(data.purchasedBlack);

@@ -704,6 +704,16 @@
                     <input type="number" id="edit-prod-min" class="w-full border rounded-lg px-3 py-2" min="0">
                 </div>
                 <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Vida útil típica al llegar (días, opcional)</label>
+                    <input type="number" id="edit-prod-shelf-life" class="w-full border rounded-lg px-3 py-2" min="0" placeholder="Ej: 30">
+                    <p class="text-xs text-gray-500 mt-1">Solo se usa hasta que haya historial real de compras (la app aprende sola cuánto dura cada vez que cargás un vencimiento). Con esto, la Lista de Compras te avisa si podés comprar de más para aprovechar un descuento por bulto, o si comprar mucho arriesga a que venza sin venderse.</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Viene en bulto de (unidades, opcional)</label>
+                    <input type="number" id="edit-prod-bulk-size" class="w-full border rounded-lg px-3 py-2" min="0" placeholder="Ej: 30">
+                    <p class="text-xs text-gray-500 mt-1">Si el proveedor lo vende en cajas/bultos cerrados de X unidades, la Lista de Compras te va a decir si ese bulto entra dentro de lo que podés vender antes de que venza.</p>
+                </div>
+                <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Proveedor</label>
                     <select id="edit-prod-supplier" class="w-full border rounded-lg px-3 py-2" onchange="onEditSupplierChange()">
                         <option value="">Sin proveedor</option>
@@ -993,6 +1003,11 @@
             <button onclick="showSection('inventory')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="inventory">
                 <i class="fas fa-boxes w-4 text-xs"></i> Reponer
                 <span id="restock-badge" class="ml-auto bg-orange-500 text-white text-xs rounded-full px-1.5 hidden text-[10px]">0</span>
+            </button>
+
+            <!-- COMPRA MAYORISTA: cargar una compra grande con vencimientos reales -->
+            <button onclick="showSection('wholesale-purchase')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="wholesale-purchase">
+                <i class="fas fa-truck-loading w-4 text-xs"></i> Compra Mayorista
             </button>
 
             <p class="px-3 pt-3 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Finanzas</p>
@@ -2034,6 +2049,56 @@
                         </thead>
                         <tbody id="inventory-table" class="divide-y divide-gray-200"></tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Compra Mayorista -->
+        <div id="wholesale-purchase" class="section hidden space-y-6 fade-in">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <i class="fas fa-truck-loading text-orange-600"></i> Compra Mayorista
+                </h2>
+                <p class="text-sm text-gray-500">Cargá lo que vas comprando (cantidad y el vencimiento real que trae el bulto) y te dice si se va a vender a tiempo, antes de confirmar la compra. Parte de la Lista de Compras Sugerida de Reponer.</p>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-lg p-4 flex flex-wrap justify-between items-center gap-3">
+                <div class="flex items-center gap-2">
+                    <label class="text-sm font-medium text-gray-700">Pagar con:</label>
+                    <select id="wholesale-payment-source" class="border-2 border-orange-200 rounded-lg px-3 py-2 font-bold text-orange-700">
+                        <option value="cash">💵 Caja</option>
+                        <option value="bank">🏦 Cuenta</option>
+                    </select>
+                </div>
+                <div class="text-right">
+                    <p class="text-xs text-gray-500">Total a gastar</p>
+                    <p class="text-2xl font-bold text-orange-600" id="wholesale-grand-total">$0</p>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-orange-50">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-orange-600 uppercase">Producto</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase">Sugerido</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase">Cantidad a comprar</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase">Costo unitario</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase">Vencimiento del bulto</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase">Subtotal</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase">¿Se vende a tiempo?</th>
+                            </tr>
+                        </thead>
+                        <tbody id="wholesale-purchase-table">
+                            <!-- Generated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="p-4 flex justify-end border-t">
+                    <button onclick="confirmWholesalePurchase()" class="bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg">
+                        <i class="fas fa-check-circle"></i> Confirmar Compras Cargadas
+                    </button>
                 </div>
             </div>
         </div>
@@ -3975,6 +4040,8 @@
             ticketRules: [],
             // Pedidos reservados por clientes (comanda impresa + recordatorio sonoro)
             pedidos: [],
+            // Historial de vencimientos reales por producto (para aprender la vida útil típica)
+            expiryHistory: [],
             // Arqueo de caja
             cashCounts: [],
             // Sobrantes y faltantes de caja
@@ -4466,6 +4533,7 @@
                 'sell': 'Nueva Venta',
                 'sales-calendar': 'Historial de Ventas',
                 'inventory': 'Gestión de Inventario',
+                'wholesale-purchase': 'Compra Mayorista',
                 'cashflow': 'Finanzas',
                 'cashflow-projection': 'Flujo de Caja',
                 'reports': 'Reportes',
@@ -4505,6 +4573,9 @@
                 renderExpiryList();
                 renderLossesHistory();
                 renderTopProductsAnalysis();
+            }
+            if (sectionId === 'wholesale-purchase') {
+                renderWholesalePurchase();
             }
             if (sectionId === 'cashflow') {
                 renderCashflow();
@@ -8239,7 +8310,7 @@
         // se cobró antes (con "💰 Cobrar", en cualquier momento: antes de la comanda, después
         // de la comanda o después de entregado), ya sabemos método de pago y monto -- no tiene
         // sentido pedirle de nuevo el pago al cajero, así que se completa la venta directo con
-        // esos datos ("Pasar a Facturar"). Si todavía no se cobró, se carga al carrito y el
+        // esos datos ("Finalizar y Facturar"). Si todavía no se cobró, se carga al carrito y el
         // cajero elige el pago como siempre ("Pasar a Vender").
         async function cargarPedidoEnVenta(id) {
             const pedido = (appState.pedidos || []).find(p => p.id === id);
@@ -8276,7 +8347,7 @@
             pendingPedidoSaleInfo = { pedidoId: pedido.id, comandaNumber: pedido.comandaNumber || null, customerName: pedido.customerName || null };
 
             if (yaPagado) {
-                // "Pasar a Facturar": todo resuelto, se termina la venta ahí mismo -- no se
+                // "Finalizar y Facturar": todo resuelto, se termina la venta ahí mismo -- no se
                 // navega a Vender ni se muestra el carrito, para no interrumpir al cajero
                 // si está atendiendo a otro cliente en esa pantalla.
                 const method = (pedido.paymentMethod === 'debit' || pedido.paymentMethod === 'qr' || pedido.paymentMethod === 'fiado')
@@ -8416,7 +8487,7 @@
                     <div class="flex flex-wrap gap-2 mt-2">
                         <button onclick="marcarPedidoListo('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-green-50">${pedido.status === 'listo' ? '↩️ Volver a preparación' : '✅ Marcar como Listo'}</button>
                         <button onclick="${pedido.paymentStatus === 'pagado' ? `togglePedidoPagado('${pedido.id}')` : `openPedidoCobroModal('${pedido.id}')`}" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-green-50">${pedido.paymentStatus === 'pagado' ? '↩️ Marcar sin pagar' : '💰 Cobrar'}</button>
-                        ${pedido.items && pedido.items.length > 0 ? `<button onclick="cargarPedidoEnVenta('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-purple-50">${pedidoPagoResuelto(pedido) ? '🧾 Pasar a Facturar' : '🛒 Pasar a Vender'}</button>` : ''}
+                        ${pedido.items && pedido.items.length > 0 ? `<button onclick="cargarPedidoEnVenta('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-purple-50">${pedidoPagoResuelto(pedido) ? '🧾 Finalizar y Facturar' : '🛒 Pasar a Vender'}</button>` : ''}
                         <button onclick="printComanda(findPedido('${pedido.id}'))" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-blue-50">🖨️ Reimprimir</button>
                         <button onclick="openPedidoModal('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-yellow-50">✏️ Editar</button>
                         <button onclick="cancelarPedido('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-red-50 text-red-600">🚫 Cancelar</button>
@@ -10082,8 +10153,9 @@
                     updatedAt: new Date().toISOString()
                 }];
                 product.purchaseBatchId = batchId; // Referencia para poder deshacer la compra
+                logExpiryHistory(product.id, formatDateISO(appState.activeDate), appState.pendingPurchase.expiry);
             }
-            
+
             console.log('Producto creado:', product);
             console.log('Inventario antes:', appState.inventory.length, 'productos');
 
@@ -11382,7 +11454,8 @@
                 cost: newUnitCost,
                 updatedAt: new Date().toISOString()
             });
-            
+            logExpiryHistory(product.id, editOriginalBatchDate || formatDateISO(appState.activeDate), newExpiry);
+
             // Ordenar lotes por fecha de creación (FIFO - el primero en entrar, primero en salir)
             product.batches.sort((a, b) => {
                 const dateA = a.dateAdded ? new Date(a.dateAdded).getTime() : 0;
@@ -11619,6 +11692,8 @@
             renderEditProdBatches(product);
             
             document.getElementById('edit-prod-min').value = product.min || 10;
+            document.getElementById('edit-prod-shelf-life').value = product.shelfLifeDays || '';
+            document.getElementById('edit-prod-bulk-size').value = product.bulkPackSize || '';
             populateSupplierSelects();
             document.getElementById('edit-prod-supplier').value = product.supplier || '';
             onEditSupplierChange();
@@ -11764,6 +11839,8 @@
                 product.salePrice = parseFloat(document.getElementById('edit-prod-price').value) || 0;
                 product.category = document.getElementById('edit-prod-category').value;
                 product.min = parseInt(document.getElementById('edit-prod-min').value) || 10;
+                product.shelfLifeDays = parseInt(document.getElementById('edit-prod-shelf-life').value) || null;
+                product.bulkPackSize = parseInt(document.getElementById('edit-prod-bulk-size').value) || null;
                 product.supplier = document.getElementById('edit-prod-supplier').value.trim();
                 product.supplierPhone = document.getElementById('edit-prod-supplier-phone').value.trim();
                 product.buyDays = getSelectedBuyDays('edit');
@@ -17686,6 +17763,48 @@
             }
         }
 
+        // ==================== HISTORIAL DE VENCIMIENTOS (aprender vida útil real) ====================
+        // A diferencia de product.batches (que se borra cuando el lote se agota), este
+        // historial queda para siempre: es lo único que permite calcular, con el tiempo,
+        // cuántos días suele durar cada producto desde que lo compramos.
+        function logExpiryHistory(productId, dateAddedStr, expiryStr) {
+            if (!productId || !expiryStr || !dateAddedStr) return;
+            const dateAdded = new Date(dateAddedStr + 'T00:00:00');
+            const expiry = new Date(expiryStr + 'T00:00:00');
+            const daysUntilExpiry = Math.round((expiry - dateAdded) / (1000 * 60 * 60 * 24));
+            if (!isFinite(daysUntilExpiry) || daysUntilExpiry <= 0) return; // dato raro: no sirve para aprender
+
+            if (!Array.isArray(appState.expiryHistory)) appState.expiryHistory = [];
+            appState.expiryHistory.push({
+                id: 'EXPHIST-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+                productId,
+                dateAdded: dateAddedStr,
+                expiry: expiryStr,
+                daysUntilExpiry,
+                timestamp: Date.now()
+            });
+
+            // Como mucho los últimos 20 registros por producto, para no crecer sin límite
+            const forThis = appState.expiryHistory.filter(h => h.productId === productId);
+            if (forThis.length > 20) {
+                const idsToKeep = new Set(forThis.slice(-20).map(h => h.id));
+                appState.expiryHistory = appState.expiryHistory.filter(h => h.productId !== productId || idsToKeep.has(h.id));
+            }
+        }
+
+        // Vida útil "aprendida" de un producto: la base es el caso más ajustado que tuvo
+        // (conservador -- el proveedor puede volver a traerlo al límite), pero si alguna vez
+        // hubo más margen, sube el límite un poco hacia ese mejor caso (30% del camino),
+        // asumiendo un poco de riesgo en vez de quedarse siempre con el peor caso.
+        function getLearnedShelfLifeDays(productId) {
+            const history = (appState.expiryHistory || []).filter(h => h.productId === productId);
+            if (history.length === 0) return null;
+            const days = history.map(h => h.daysUntilExpiry);
+            const min = Math.min(...days);
+            const max = Math.max(...days);
+            return Math.round(min + (max - min) * 0.3);
+        }
+
         function generateShoppingList() {
             const list = [];
             const today = new Date();
@@ -17707,11 +17826,18 @@
                 // Demanda diaria real (por día abierto) para calcular días hasta agotarse
                 const avgDaily = targetDays > 0 ? (avgPeriodDemand / targetDays) : (prediction.stats.avgDaily || 0);
                 const currentStock = getProductStock(product);
-                const minStock = parseInt(product.min) || 5;
-                
-                // Calcular cuánto necesito para el período de stock deseado + stock mínimo de seguridad
-                const targetDemand = avgPeriodDemand;
-                const targetStock = Math.ceil(targetDemand + minStock);
+
+                // Mínimo recomendado = lo que hace falta para bancarse TODO el período elegido
+                // (a su propio ritmo de venta) + un margen por si hay un pico (aprox. 1 día más
+                // de venta promedio, nunca menos de 1 unidad). Ya no es un "5" fijo para todos:
+                // un producto que vende rápido necesita más, uno que casi no se vende necesita
+                // menos. Si el mínimo manual del producto es más alto que este cálculo, se
+                // respeta ese (puede haber una razón puntual, como una demora de entrega larga).
+                const spikeMargin = avgDaily > 0 ? Math.max(1, Math.ceil(avgDaily)) : 1;
+                const calculatedMinStock = Math.ceil(avgPeriodDemand) + spikeMargin;
+                const minStock = Math.max(parseInt(product.min) || 0, calculatedMinStock);
+
+                const targetStock = minStock;
                 let suggestedQty = Math.max(0, targetStock - currentStock);
                 
                 // Para productos por peso, sugerir compra en bolsas enteras
@@ -17722,8 +17848,33 @@
                 }
                 
                 if (suggestedQty <= 0) return;
-                
-                const daysUntilStockout = avgDaily > 0 ? 
+
+                // Vida útil a usar: preferí la aprendida del historial real de compras (más
+                // confiable, ya vivida con ese proveedor); si todavía no hay historial, usar
+                // la cargada a mano en el producto.
+                const learnedShelfLife = getLearnedShelfLifeDays(product.id);
+                const effectiveShelfLifeDays = learnedShelfLife || product.shelfLifeDays || 0;
+
+                // Compara contra lo que realmente se va a poder vender antes de que venza:
+                // - si la vida útil aguanta más que lo sugerido, hay margen para comprar de
+                //   más y aprovechar un descuento por bulto sin riesgo de que sobre y venza.
+                // - si la vida útil es más corta que lo sugerido, avisar que esa cantidad
+                //   arriesga a que quede stock sin vender cuando venza (no se recorta sola
+                //   la sugerencia: podría dejar sin stock antes de la próxima compra).
+                let shelfLifeInfo = null;
+                if (effectiveShelfLifeDays > 0 && avgDaily > 0) {
+                    const maxSafeQty = Math.floor(avgDaily * effectiveShelfLifeDays * 0.9); // 10% de margen
+                    const bulkPackSize = parseInt(product.bulkPackSize) || 0;
+                    // Si viene en bultos, ¿ese bulto entra dentro de lo que se puede vender a tiempo?
+                    const bulkFits = bulkPackSize > 0 ? (currentStock + bulkPackSize) <= maxSafeQty : null;
+                    if (maxSafeQty > suggestedQty) {
+                        shelfLifeInfo = { type: 'bulk', maxSafeQty, extra: maxSafeQty - suggestedQty, learned: !!learnedShelfLife, bulkPackSize, bulkFits, shelfLifeDays: effectiveShelfLifeDays };
+                    } else if (maxSafeQty < suggestedQty) {
+                        shelfLifeInfo = { type: 'risk', maxSafeQty, excess: suggestedQty - maxSafeQty, learned: !!learnedShelfLife, bulkPackSize, bulkFits, shelfLifeDays: effectiveShelfLifeDays };
+                    }
+                }
+
+                const daysUntilStockout = avgDaily > 0 ?
                     Math.floor(currentStock / avgDaily) : 999;
                 
                 // Calcular próximo día de compra (solo días abiertos)
@@ -17768,6 +17919,7 @@
                     product: product,
                     currentStock: currentStock,
                     weeklyDemand: avgPeriodDemand,
+                    minStock: minStock,
                     suggestedQty: suggestedQty,
                     daysUntilStockout: daysUntilStockout,
                     nextBuyDay: nextBuyDay,
@@ -17775,6 +17927,7 @@
                     buyDayName: nextBuyDay !== null ? getDayName(nextBuyDay) : 'Sin definir',
                     optimalExpiryDays: optimalExpiryDays,
                     optimalExpiryDate: formatDateISO(optimalExpiryDate),
+                    shelfLifeInfo: shelfLifeInfo,
                     priority: priority,
                     trend: prediction.stats.trend || 0,
                     avgDaily: avgDaily,
@@ -18215,10 +18368,23 @@
                     }
                     
                     function renderItemRow(item) {
-                        const minStock = parseInt(item.product.min) || 5;
+                        const minStock = item.minStock;
                         const avgDailyDisplay = item.avgDaily > 0 ? fmtNumber(item.avgDaily, 2) : '-';
                         const stockDisplay = item.product.saleByWeight && item.product.weightPerUnit ? Math.round(item.currentStock * item.product.weightPerUnit) + 'g' : item.currentStock;
                         const buyDisplay = item.product.saleByWeight && item.product.weightPerUnit ? Math.round(item.suggestedQty * item.product.weightPerUnit) + 'g' : item.suggestedQty + ' u.';
+                        const sli = item.shelfLifeInfo;
+                        let shelfLifeNote = '';
+                        if (sli) {
+                            const fuente = sli.learned ? '(aprendida de compras anteriores)' : '(cargada a mano)';
+                            const bulkNote = sli.bulkPackSize > 0
+                                ? (sli.bulkFits
+                                    ? `<div class="text-[11px] text-green-700 mt-0.5">📦 El bulto de ${sli.bulkPackSize} u. entra bien — se vendería a tiempo</div>`
+                                    : `<div class="text-[11px] text-red-600 font-bold mt-0.5">📦 El bulto de ${sli.bulkPackSize} u. NO entra: sobraría y vencería</div>`)
+                                : '';
+                            shelfLifeNote = sli.type === 'bulk'
+                                ? `<div class="text-[11px] text-green-600 font-medium mt-0.5">💡 Podés llegar a ${sli.maxSafeQty} u. sin riesgo — vida útil ${sli.shelfLifeDays}d ${fuente}</div>${bulkNote}`
+                                : `<div class="text-[11px] text-orange-600 font-medium mt-0.5">⚠️ Vida útil corta (${sli.shelfLifeDays}d ${fuente}): arriba de ${sli.maxSafeQty} u. puede sobrar y vencer</div>${bulkNote}`;
+                        }
                         return `
                         <tr class="hover:bg-gray-50 border-l-4 ${item.priority === 'CRÍTICO' ? 'border-red-500' : item.priority === 'ALTA' ? 'border-orange-500' : item.priority === 'MEDIA' ? 'border-yellow-500' : 'border-green-500'}">
                             <td class="px-4 py-3">
@@ -18233,6 +18399,7 @@
                             </td>
                             <td class="px-4 py-3 text-center">
                                 <span class="font-bold text-blue-600">${buyDisplay}</span>
+                                ${shelfLifeNote}
                             </td>
                             <td class="px-4 py-3 text-center">
                                 <span class="text-sm text-gray-600">${avgDailyDisplay}</span>
@@ -18550,10 +18717,23 @@ Total de productos a comprar: ${shoppingList.length}
                     text += `   ├── Stock actual: ${stockDisplay}\n`;
                     text += `   ├── COMPRAR: ${buyDisplay}\n`;
                     text += `   ├── Prioridad: ${item.priority}\n`;
+                    text += `   ├── Mínimo recomendado (según venta + margen por pico): ${item.minStock}u\n`;
                     text += `   ├── Promedio diario: ${fmtNumber(item.avgDaily, 2)} unidades/día\n`;
                     text += `   ├── Días de stock restantes: ${item.daysUntilStockout}\n`;
                     text += `   ├── Demanda/semana: ${fmtNumber(item.weeklyDemand, 1)}\n`;
                     text += `   ├── Vencimiento ideal: ${item.optimalExpiryDays} días (${item.optimalExpiryDate})\n`;
+                    if (item.shelfLifeInfo) {
+                        const sli = item.shelfLifeInfo;
+                        const fuente = sli.learned ? 'aprendida' : 'a mano';
+                        text += sli.type === 'bulk'
+                            ? `   ├── 💡 Vida útil ${sli.shelfLifeDays}d (${fuente}): podés llegar a ${sli.maxSafeQty}u sin riesgo (bulto/descuento)\n`
+                            : `   ├── ⚠️ Vida útil ${sli.shelfLifeDays}d (${fuente}): arriba de ${sli.maxSafeQty}u puede sobrar y vencer\n`;
+                        if (sli.bulkPackSize > 0) {
+                            text += sli.bulkFits
+                                ? `   ├── 📦 El bulto de ${sli.bulkPackSize}u entra bien\n`
+                                : `   ├── 📦 El bulto de ${sli.bulkPackSize}u NO entra: sobraría y vencería\n`;
+                        }
+                    }
                     text += `   └── Precio costo: $${formatMoney(product.cost)} c/u = $${formatMoney((product.cost * item.suggestedQty))}\n`;
                     text += `\n`;
                 });
@@ -18581,6 +18761,178 @@ Total de productos a comprar: ${shoppingList.length}
             
             downloadFile(text, `lista_compra_${formatDateISO(new Date())}.txt`, 'text/plain');
             showNotification('📋 Lista de compras exportada', 'success');
+        }
+
+        // ==================== COMPRA MAYORISTA ====================
+        // Vas cargando lo que compraste de la Lista de Compras (cantidad + vencimiento
+        // real del bulto) y te avisa, por producto, si con tu demanda actual se va a
+        // vender a tiempo o no -- antes de confirmar la compra de una. No usa el modal de
+        // "Agregar Stock" (pensado para un producto a la vez): acá se cargan varios juntos.
+        let wholesalePurchaseItems = [];
+
+        function renderWholesalePurchase() {
+            const shoppingList = generateShoppingList();
+            const previous = new Map(wholesalePurchaseItems.map(i => [i.productId, i]));
+
+            wholesalePurchaseItems = shoppingList.map(item => {
+                const prev = previous.get(item.product.id);
+                return prev || {
+                    productId: item.product.id,
+                    productName: item.product.name,
+                    suggestedQty: item.suggestedQty,
+                    avgDaily: item.avgDaily,
+                    currentStock: item.currentStock,
+                    qty: item.suggestedQty,
+                    cost: item.product.cost || 0,
+                    expiry: ''
+                };
+            });
+
+            const tbody = document.getElementById('wholesale-purchase-table');
+            if (!tbody) return;
+            if (wholesalePurchaseItems.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400"><i class="fas fa-check-circle text-4xl mb-2"></i><br>No hay productos pendientes en la Lista de Compras</td></tr>';
+            } else {
+                tbody.innerHTML = wholesalePurchaseItems.map(renderWholesaleRow).join('');
+            }
+            updateWholesaleGrandTotal();
+        }
+
+        function renderWholesaleRow(row) {
+            return `
+            <tr id="wholesale-row-${row.productId}" class="hover:bg-gray-50 border-b">
+                <td class="px-3 py-2">
+                    <div class="font-medium text-gray-900">${escapeHtml(row.productName)}</div>
+                </td>
+                <td class="px-3 py-2 text-center text-sm text-gray-500">${row.suggestedQty} u.</td>
+                <td class="px-3 py-2 text-center">
+                    <input type="number" min="0" value="${row.qty}" class="w-20 border rounded-lg px-2 py-1 text-center" onchange="updateWholesaleRow('${row.productId}', 'qty', this.value)">
+                </td>
+                <td class="px-3 py-2 text-center">
+                    <input type="number" min="0" step="0.01" value="${row.cost}" class="w-24 border rounded-lg px-2 py-1 text-center" onchange="updateWholesaleRow('${row.productId}', 'cost', this.value)">
+                </td>
+                <td class="px-3 py-2 text-center">
+                    <input type="date" value="${row.expiry}" class="border rounded-lg px-2 py-1" onchange="updateWholesaleRow('${row.productId}', 'expiry', this.value)">
+                </td>
+                <td class="px-3 py-2 text-center font-bold text-gray-700" id="wholesale-subtotal-${row.productId}">$${formatMoney(row.qty * row.cost)}</td>
+                <td class="px-3 py-2 text-center" id="wholesale-status-${row.productId}">${wholesaleStatusBadge(row)}</td>
+            </tr>
+            `;
+        }
+
+        // "¿Se vende a tiempo?": lo que ya tenés en stock + lo que estás comprando ahora,
+        // comparado contra lo que tu demanda real puede consumir antes de esa fecha de
+        // vencimiento (con 10% de margen, igual criterio que en la Lista de Compras).
+        function wholesaleStatusBadge(row) {
+            if (!row.qty || row.qty <= 0) {
+                return '<span class="text-xs text-gray-400">-</span>';
+            }
+            if (!row.expiry) {
+                return '<span class="px-2 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">Sin vencimiento</span>';
+            }
+            const daysUntilExpiry = Math.ceil((new Date(row.expiry + 'T00:00:00') - new Date()) / (1000 * 60 * 60 * 24));
+            if (daysUntilExpiry <= 0) {
+                return '<span class="px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">⚠️ Vencimiento inválido</span>';
+            }
+            if (!row.avgDaily || row.avgDaily <= 0) {
+                return '<span class="px-2 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">Sin datos de venta</span>';
+            }
+            const sellableByExpiry = Math.floor(row.avgDaily * daysUntilExpiry * 0.9);
+            const totalAfterPurchase = row.currentStock + row.qty;
+            if (sellableByExpiry >= totalAfterPurchase) {
+                return `<span class="px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">✅ Se vende a tiempo</span>`;
+            }
+            const excess = totalAfterPurchase - sellableByExpiry;
+            return `<span class="px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700" title="Podrían sobrar y vencer ~${excess} u.">⚠️ Riesgo: sobrarían ~${excess} u.</span>`;
+        }
+
+        function updateWholesaleRow(productId, field, value) {
+            const row = wholesalePurchaseItems.find(i => i.productId === productId);
+            if (!row) return;
+            if (field === 'qty') row.qty = Math.max(0, parseFloat(value) || 0);
+            else if (field === 'cost') row.cost = Math.max(0, parseFloat(value) || 0);
+            else if (field === 'expiry') row.expiry = value || '';
+
+            const subtotalEl = document.getElementById('wholesale-subtotal-' + productId);
+            if (subtotalEl) subtotalEl.textContent = '$' + formatMoney(row.qty * row.cost);
+            const statusEl = document.getElementById('wholesale-status-' + productId);
+            if (statusEl) statusEl.innerHTML = wholesaleStatusBadge(row);
+            updateWholesaleGrandTotal();
+        }
+
+        function updateWholesaleGrandTotal() {
+            const total = wholesalePurchaseItems.reduce((sum, r) => sum + (r.qty * r.cost), 0);
+            const el = document.getElementById('wholesale-grand-total');
+            if (el) el.textContent = '$' + formatMoney(total);
+        }
+
+        async function confirmWholesalePurchase() {
+            const source = document.getElementById('wholesale-payment-source').value === 'bank' ? 'bank' : 'cash';
+            const toBuy = wholesalePurchaseItems.filter(r => r.qty > 0);
+            if (toBuy.length === 0) {
+                showNotification('Cargá alguna cantidad primero', 'error');
+                return;
+            }
+            const totalCost = toBuy.reduce((sum, r) => sum + (r.qty * r.cost), 0);
+            const available = source === 'cash' ? appState.cash : appState.bank;
+            if (totalCost > available) {
+                if (!(await showConfirmModal(`⚠️ Esta compra ($${formatMoney(totalCost)}) deja ${source === 'cash' ? 'la caja' : 'la cuenta'} en negativo (tenés $${formatMoney(available)}). ¿Confirmar igual?`))) return;
+            } else {
+                if (!(await showConfirmModal(`¿Confirmar la compra de ${toBuy.length} producto${toBuy.length > 1 ? 's' : ''} por $${formatMoney(totalCost)}?`))) return;
+            }
+
+            const today = formatDateISO(appState.activeDate || new Date());
+            if (!appState.investments) appState.investments = [];
+            if (!appState.invoiceTracking) appState.invoiceTracking = { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 };
+
+            toBuy.forEach(row => {
+                const product = appState.inventory.find(p => p.id === row.productId);
+                if (!product) return;
+
+                const batchId = 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+                if (!Array.isArray(product.batches)) product.batches = [];
+                product.batches.push({
+                    id: batchId,
+                    stock: row.qty,
+                    initialStock: row.qty,
+                    expiry: row.expiry || '',
+                    dateAdded: today,
+                    invoiceType: product.batches[0]?.invoiceType || 'white',
+                    source: source,
+                    cost: row.cost,
+                    updatedAt: new Date().toISOString()
+                });
+                product.cost = row.cost; // el costo más reciente pasa a ser el de referencia
+                product.stock = getProductStock(product);
+
+                if (source === 'cash') appState.cash -= row.qty * row.cost;
+                else appState.bank -= row.qty * row.cost;
+
+                appState.investments.push({
+                    id: 'PURCHASE-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                    date: today,
+                    concept: `Compra mayorista: ${product.name} (${row.qty} unidades)`,
+                    amount: row.qty * row.cost,
+                    source: source,
+                    type: 'purchase',
+                    productId: product.id,
+                    batchId: batchId,
+                    timestamp: Date.now()
+                });
+
+                if (product.batches[product.batches.length - 1].invoiceType === 'white') {
+                    appState.invoiceTracking.purchasedWhite += row.qty * row.cost;
+                } else {
+                    appState.invoiceTracking.purchasedBlack += row.qty * row.cost;
+                }
+
+                logExpiryHistory(product.id, today, row.expiry);
+            });
+
+            saveToLocalStorage();
+            showNotification(`✅ Compra mayorista registrada: $${formatMoney(totalCost)} en ${toBuy.length} producto${toBuy.length > 1 ? 's' : ''}`, 'success');
+            renderAll();
+            renderWholesalePurchase();
         }
 
         // ==================== SETTINGS ====================
@@ -19242,6 +19594,7 @@ Total de productos a comprar: ${shoppingList.length}
                 discountTickets: [],
                 ticketRules: [],
                 pedidos: [],
+                expiryHistory: [],
                 cashCounts: [],
                 cashDifferences: [],
                 users: [],
@@ -20028,6 +20381,7 @@ RESULTADOS:
             appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
             appState.ticketRules = Array.isArray(appState.ticketRules) ? appState.ticketRules : [];
             appState.pedidos = Array.isArray(appState.pedidos) ? appState.pedidos : [];
+            appState.expiryHistory = Array.isArray(appState.expiryHistory) ? appState.expiryHistory : [];
             appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
             appState.suppliers = Array.isArray(appState.suppliers) ? appState.suppliers : [];
             appState.businessHours = Array.isArray(appState.businessHours) && appState.businessHours.length === 7
@@ -21893,6 +22247,7 @@ RESULTADOS:
                 main_discountTickets: 'discountTickets',
                 main_ticketRules: 'ticketRules',
                 main_pedidos: 'pedidos',
+                main_expiryHistory: 'expiryHistory',
                 main_cashCounts: 'cashCounts',
                 main_cashDifferences: 'cashDifferences',
                 main_cashMovements: 'cashMovements',
@@ -22779,6 +23134,7 @@ RESULTADOS:
                 appState.shiftCounts = smartMergeArrays(appState.shiftCounts || [], data.shiftCounts || []);
                 appState.foundStock = smartMergeArrays(appState.foundStock || [], data.foundStock || []);
                 appState.pedidos = smartMergeArrays(appState.pedidos || [], data.pedidos || []);
+                appState.expiryHistory = smartMergeArrays(appState.expiryHistory || [], data.expiryHistory || []);
 
                 // Filtrar inversiones eliminadas
                 const deletedInvIdsMaster = new Set((appState.deletedInvestmentIds || []).map(d => d.id).filter(Boolean));
@@ -22864,6 +23220,7 @@ RESULTADOS:
                 appState.discountTickets = smartMergeArrays(appState.discountTickets, data.discountTickets);
                 appState.ticketRules = smartMergeArrays(appState.ticketRules, data.ticketRules);
                 appState.pedidos = smartMergeArrays(appState.pedidos || [], data.pedidos || []);
+                appState.expiryHistory = smartMergeArrays(appState.expiryHistory || [], data.expiryHistory || []);
                 appState.cashCounts = smartMergeArrays(appState.cashCounts || [], data.cashCounts || []);
                 appState.cashDifferences = smartMergeArrays(appState.cashDifferences || [], data.cashDifferences || []);
                 appState.reserveMovements = smartMergeArrays(appState.reserveMovements || [], data.reserveMovements || []);
@@ -23615,6 +23972,7 @@ RESULTADOS:
                     appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
                     appState.ticketRules = Array.isArray(appState.ticketRules) ? appState.ticketRules : [];
                     appState.pedidos = Array.isArray(appState.pedidos) ? appState.pedidos : [];
+            appState.expiryHistory = Array.isArray(appState.expiryHistory) ? appState.expiryHistory : [];
                     appState.cashCounts = Array.isArray(appState.cashCounts) ? appState.cashCounts : [];
                     appState.cashDifferences = Array.isArray(appState.cashDifferences) ? appState.cashDifferences : [];
                     appState.users = Array.isArray(appState.users) ? appState.users : [];

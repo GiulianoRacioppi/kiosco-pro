@@ -225,7 +225,8 @@
 
         /* Excepción: celdas con varias líneas de info (notas de vencimiento, bulto,
            ahorro, histórico semanal) necesitan mostrarse completas, no cortadas */
-        .main-content td.cell-notes {
+        .main-content td.cell-notes,
+        .main-content th.cell-notes {
             overflow: visible !important;
             text-overflow: unset !important;
             white-space: normal !important;
@@ -1021,6 +1022,12 @@
             <!-- COMPRA MAYORISTA: cargar una compra grande con vencimientos reales -->
             <button onclick="showSection('wholesale-purchase')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="wholesale-purchase">
                 <i class="fas fa-truck-loading w-4 text-xs"></i> Compra Mayorista
+            </button>
+
+            <!-- REVISAR COMPRAS DEL CELULAR: cola de compras cargadas desde la app aparte -->
+            <button onclick="showSection('purchase-review')" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="purchase-review">
+                <i class="fas fa-mobile-screen-button w-4 text-xs"></i> Revisar Compras del Celular
+                <span id="purchase-review-badge" class="ml-auto bg-teal-500 text-white text-xs rounded-full px-1.5 hidden text-[10px]">0</span>
             </button>
 
             <p class="px-3 pt-3 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Finanzas</p>
@@ -2102,12 +2109,12 @@
                         <thead class="bg-orange-50">
                             <tr>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-orange-600 uppercase">Producto</th>
-                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase">Sugerido</th>
-                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase">Cantidad a comprar</th>
-                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase">Costo unitario</th>
-                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase">Vencimiento del bulto</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase cell-notes">Sugerido</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase cell-notes">Cantidad a comprar</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase cell-notes">Costo unitario</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase cell-notes">Vencimiento del bulto</th>
                                 <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase">Subtotal</th>
-                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase">¿Se vende a tiempo?</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase cell-notes">¿Se vende a tiempo?</th>
                             </tr>
                         </thead>
                         <tbody id="wholesale-purchase-table">
@@ -2120,6 +2127,34 @@
                         <i class="fas fa-check-circle"></i> Confirmar Compras Cargadas
                     </button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Revisar Compras del Celular -->
+        <div id="purchase-review" class="section hidden space-y-6 fade-in">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <i class="fas fa-mobile-screen-button text-teal-600"></i> Revisar Compras del Celular
+                </h2>
+                <p class="text-sm text-gray-500">Lo que se cargó desde la app de compras del celular llega acá. Compará contra la factura física, corregí precio/IVA si hace falta, y confirmá uno por uno. Podés arrastrar las filas para ordenarlas como en la factura.</p>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-lg p-4 flex flex-wrap justify-between items-center gap-3">
+                <div class="flex items-center gap-2">
+                    <label class="text-sm font-medium text-gray-700">Pagar con:</label>
+                    <select id="purchase-review-payment-source" class="border-2 border-teal-200 rounded-lg px-3 py-2 font-bold text-teal-700">
+                        <option value="cash">💵 Caja</option>
+                        <option value="bank">🏦 Cuenta</option>
+                    </select>
+                </div>
+                <button onclick="loadPurchaseReviewItems()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl font-bold shadow">
+                    <i class="fas fa-sync"></i> Actualizar
+                </button>
+                <span id="purchase-review-count" class="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">0 pendientes</span>
+            </div>
+
+            <div id="purchase-review-list" class="space-y-3">
+                <!-- Generated by JS -->
             </div>
         </div>
 
@@ -4567,6 +4602,7 @@
                 'sales-calendar': 'Historial de Ventas',
                 'inventory': 'Gestión de Inventario',
                 'wholesale-purchase': 'Compra Mayorista',
+                'purchase-review': 'Revisar Compras del Celular',
                 'cashflow': 'Finanzas',
                 'cashflow-projection': 'Flujo de Caja',
                 'reports': 'Reportes',
@@ -4609,6 +4645,9 @@
             }
             if (sectionId === 'wholesale-purchase') {
                 renderWholesalePurchase();
+            }
+            if (sectionId === 'purchase-review') {
+                loadPurchaseReviewItems();
             }
             if (sectionId === 'cashflow') {
                 renderCashflow();
@@ -7904,7 +7943,8 @@
         }
 
         function calculatePedidoInlineChange() {
-            const total = pendingPedidoItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+            const subtotal = pendingPedidoItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+            const total = subtotal - calculateActivePromoDiscount(subtotal, pendingPedidoItems).discount;
             const received = parseFloat(document.getElementById('pedido-inline-received').value) || 0;
             const change = received - total;
             document.getElementById('pedido-inline-change').textContent = '$' + formatMoney(Math.max(0, change));
@@ -8074,7 +8114,23 @@
             }
             const totalItems = pendingPedidoItems.reduce((sum, i) => sum + (i.quantity || 0), 0);
             if (countEl) countEl.textContent = `(${totalItems} items)`;
-            const total = pendingPedidoItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+
+            const subtotal = pendingPedidoItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+            const promoResult = calculateActivePromoDiscount(subtotal, pendingPedidoItems);
+            const total = subtotal - promoResult.discount;
+
+            const subtotalEl = document.getElementById('pedido-items-subtotal');
+            const discountRowEl = document.getElementById('pedido-items-discount-row');
+            const promoLabelEl = document.getElementById('pedido-items-promo-label');
+            const discountEl = document.getElementById('pedido-items-discount');
+            if (subtotalEl) subtotalEl.textContent = '$' + formatMoney(subtotal);
+            if (promoResult.discount > 0) {
+                if (discountRowEl) discountRowEl.classList.remove('hidden');
+                if (promoLabelEl) promoLabelEl.textContent = promoResult.label + ':';
+                if (discountEl) discountEl.textContent = '-$' + formatMoney(promoResult.discount);
+            } else if (discountRowEl) {
+                discountRowEl.classList.add('hidden');
+            }
             if (totalEl) totalEl.textContent = '$' + formatMoney(total);
         }
 
@@ -8101,7 +8157,9 @@
                 return;
             }
 
-            const total = pendingPedidoItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+            const pedidoSubtotal = pendingPedidoItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+            const pedidoPromoResult = calculateActivePromoDiscount(pedidoSubtotal, pendingPedidoItems);
+            const total = pedidoSubtotal - pedidoPromoResult.discount;
 
             // Si vas a guardar como "Ya pagó", el método/monto/vuelto ya se resuelven acá
             // mismo (elegidos en el propio modal) -- antes de tocar nada del pedido, para
@@ -8134,6 +8192,8 @@
                 pedido.notes = notes;
                 pedido.items = JSON.parse(JSON.stringify(pendingPedidoItems));
                 pedido.total = total;
+                pedido.promoDiscount = pedidoPromoResult.discount || 0;
+                pedido.promoLabel = pedidoPromoResult.label || null;
                 pedido.paymentStatus = paymentStatus;
                 if (paymentStatus === 'pagado') {
                     pedido.paymentMethod = paymentMethod;
@@ -8162,6 +8222,8 @@
                     notes,
                     items: JSON.parse(JSON.stringify(pendingPedidoItems)),
                     total,
+                    promoDiscount: pedidoPromoResult.discount || 0,
+                    promoLabel: pedidoPromoResult.label || null,
                     status: 'pendiente',
                     paymentStatus,
                     reminderPreFired: false,
@@ -8372,6 +8434,12 @@
                     quantity: item.quantity
                 };
             });
+            // Recalcular subtotal/descuento/total para ESTOS items ahora mismo: si no se
+            // hace acá, completeSale() usa los valores en caché de la última vez que se
+            // renderizó el carrito de Vender (de otro cliente, o viejos) y las promociones
+            // activas no quedan reflejadas -- sobre todo en el camino "ya pagado" de abajo,
+            // que a propósito no navega a Vender ni llama a renderCart().
+            updateCartTotals();
             pedido.status = 'entregado';
             saveToLocalStorage();
 
@@ -8388,7 +8456,7 @@
                 setPaymentMethod(method);
                 if (method === 'cash') {
                     const receivedInput = document.getElementById('cash-received');
-                    if (receivedInput) receivedInput.value = pedido.paymentReceived || pedido.total || 0;
+                    if (receivedInput) receivedInput.value = pedido.paymentReceived || appState.cartFinalTotal || pedido.total || 0;
                     calculateChange();
                 } else if (method === 'fiado') {
                     // Ya se anotó el nombre al marcarlo como fiado: no volver a pedirlo.
@@ -18044,6 +18112,29 @@
             return days[dayIndex] || 'Desconocido';
         }
 
+        // Versión liviana de la Lista de Compras para subir a la nube: la usa la app
+        // aparte de Compra Mayorista (celular) para mostrar los sugeridos sin tener que
+        // bajarse todo el historial de ventas (pesa muchísimo más y gasta datos móviles).
+        // Solo números ya calculados, nada de ventas crudas.
+        function buildShoppingListSnapshot() {
+            return generateShoppingList().map(item => ({
+                productId: item.product.id,
+                productName: item.product.name,
+                currentStock: item.currentStock,
+                suggestedQty: item.suggestedQty,
+                avgDaily: item.avgDaily,
+                weeklyPeak: item.weeklyPeak,
+                weeklyAvgHistorical: item.weeklyAvgHistorical,
+                supplier: item.supplier || '',
+                cost: item.product.cost || 0,
+                bulkPackSize: item.product.bulkPackSize || 0,
+                bulkOnly: !!item.product.bulkOnly,
+                bulkDiscountInfo: item.product.bulkDiscountInfo || null,
+                saleByWeight: !!item.product.saleByWeight,
+                weightPerUnit: item.product.weightPerUnit || null
+            }));
+        }
+
         function renderExpiryList() {
             const tbody = document.getElementById('expiry-list-body');
             const countEl = document.getElementById('expiry-list-count');
@@ -18927,19 +19018,21 @@ Total de productos a comprar: ${shoppingList.length}
         }
 
         function renderWholesaleRow(row) {
+            const stockNote = `<div class="text-xs text-gray-500">📊 Stock actual: <b>${row.currentStock} u.</b></div>`;
             const bulkNote = row.bulkPackSize > 0
-                ? `<div class="text-xs ${row.bulkOnly ? 'text-purple-600 font-bold' : 'text-gray-400'}">📦 Bulto de ${row.bulkPackSize}${row.bulkOnly ? ' (solo se compra así)' : ''}</div>`
+                ? `<div class="text-xs ${row.bulkOnly ? 'text-purple-600 font-bold' : 'text-gray-400'}">📦 Bulto de ${row.bulkPackSize} u.${row.bulkOnly ? ' (solo se compra así)' : ''}</div>`
                 : '';
             const discountNote = row.bulkDiscountInfo && row.bulkDiscountInfo.discountPct > 0
-                ? `<div class="text-xs text-green-600" title="Comprando de a ${row.bulkDiscountInfo.bulkQty} pagaste $${formatMoney(row.bulkDiscountInfo.costPerUnitBulk)}/u la última vez, contra $${formatMoney(row.bulkDiscountInfo.previousUnitCost)}/u antes">💰 En bulto ahorrás ~${row.bulkDiscountInfo.discountPct.toFixed(0)}%</div>`
+                ? `<div class="text-xs text-green-600" title="Comprando de a ${row.bulkDiscountInfo.bulkQty} pagaste $${formatMoney(row.bulkDiscountInfo.costPerUnitBulk)}/u la última vez, contra $${formatMoney(row.bulkDiscountInfo.previousUnitCost)}/u antes">💰 Ahorro comprando en bulto: ~${row.bulkDiscountInfo.discountPct.toFixed(0)}%</div>`
                 : '';
             const weeklyNote = (row.weeklyPeak > 0 || row.weeklyAvgHistorical > 0)
-                ? `<div class="text-xs text-gray-400">Semanal — pico: ${fmtNumber(row.weeklyPeak, 0)} · prom: ${fmtNumber(row.weeklyAvgHistorical, 1)}</div>`
+                ? `<div class="text-xs text-gray-400">📈 Venta semanal — pico: <b>${fmtNumber(row.weeklyPeak, 0)} u.</b> · promedio: <b>${fmtNumber(row.weeklyAvgHistorical, 1)} u.</b></div>`
                 : '';
             return `
             <tr id="wholesale-row-${row.productId}" class="hover:bg-gray-50 border-b">
                 <td class="px-3 py-2 cell-notes">
                     <div class="font-medium text-gray-900">${escapeHtml(row.productName)}</div>
+                    ${stockNote}
                     ${weeklyNote}
                     ${bulkNote}
                     ${discountNote}
@@ -18955,7 +19048,7 @@ Total de productos a comprar: ${shoppingList.length}
                     <input type="date" value="${row.expiry}" class="border rounded-lg px-2 py-1" onchange="updateWholesaleRow('${row.productId}', 'expiry', this.value)">
                 </td>
                 <td class="px-3 py-2 text-center font-bold text-gray-700" id="wholesale-subtotal-${row.productId}">$${formatMoney(row.qty * row.cost)}</td>
-                <td class="px-3 py-2 text-center" id="wholesale-status-${row.productId}">${wholesaleStatusBadge(row)}</td>
+                <td class="px-3 py-2 text-center cell-notes" id="wholesale-status-${row.productId}">${wholesaleStatusBadge(row)}</td>
             </tr>
             `;
         }
@@ -19016,6 +19109,58 @@ Total de productos a comprar: ${shoppingList.length}
             if (el) el.textContent = '$' + formatMoney(total);
         }
 
+        // Aplica UNA línea de compra ya confirmada: crea el lote, descuenta plata, registra
+        // la inversión y actualiza facturación/historial de vencimientos/descuento por bulto.
+        // La usan tanto Compra Mayorista (carga en bloque) como la Revisión de Compras del
+        // Celular (una por una, comparando contra la factura física).
+        function applyPurchaseLine({ product, qty, cost, expiry, source, invoiceType, conceptPrefix }) {
+            const today = formatDateISO(appState.activeDate || new Date());
+            if (!appState.investments) appState.investments = [];
+            if (!appState.invoiceTracking) appState.invoiceTracking = { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 };
+
+            const batchId = 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+            if (!Array.isArray(product.batches)) product.batches = [];
+            const previousUnitCost = product.cost || 0;
+            const resolvedInvoiceType = invoiceType || product.batches[0]?.invoiceType || 'white';
+            product.batches.push({
+                id: batchId,
+                stock: qty,
+                initialStock: qty,
+                expiry: expiry || '',
+                dateAdded: today,
+                invoiceType: resolvedInvoiceType,
+                source: source,
+                cost: cost,
+                updatedAt: new Date().toISOString()
+            });
+            product.cost = cost; // el costo más reciente pasa a ser el de referencia
+            product.stock = getProductStock(product);
+
+            if (source === 'cash') appState.cash -= qty * cost;
+            else appState.bank -= qty * cost;
+
+            appState.investments.push({
+                id: 'PURCHASE-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                date: today,
+                concept: `${conceptPrefix || 'Compra'}: ${product.name} (${qty} unidades)`,
+                amount: qty * cost,
+                source: source,
+                type: 'purchase',
+                productId: product.id,
+                batchId: batchId,
+                timestamp: Date.now()
+            });
+
+            if (resolvedInvoiceType === 'white') {
+                appState.invoiceTracking.purchasedWhite += qty * cost;
+            } else {
+                appState.invoiceTracking.purchasedBlack += qty * cost;
+            }
+
+            logExpiryHistory(product.id, today, expiry);
+            recordBulkDiscountIfApplicable(product, qty, cost, previousUnitCost);
+        }
+
         async function confirmWholesalePurchase() {
             const source = document.getElementById('wholesale-payment-source').value === 'bank' ? 'bank' : 'cash';
             const toBuy = wholesalePurchaseItems.filter(r => r.qty > 0);
@@ -19031,60 +19176,246 @@ Total de productos a comprar: ${shoppingList.length}
                 if (!(await showConfirmModal(`¿Confirmar la compra de ${toBuy.length} producto${toBuy.length > 1 ? 's' : ''} por $${formatMoney(totalCost)}?`))) return;
             }
 
-            const today = formatDateISO(appState.activeDate || new Date());
-            if (!appState.investments) appState.investments = [];
-            if (!appState.invoiceTracking) appState.invoiceTracking = { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 };
-
             toBuy.forEach(row => {
                 const product = appState.inventory.find(p => p.id === row.productId);
                 if (!product) return;
-
-                const batchId = 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
-                if (!Array.isArray(product.batches)) product.batches = [];
-                const previousUnitCost = product.cost || 0;
-                product.batches.push({
-                    id: batchId,
-                    stock: row.qty,
-                    initialStock: row.qty,
-                    expiry: row.expiry || '',
-                    dateAdded: today,
-                    invoiceType: product.batches[0]?.invoiceType || 'white',
-                    source: source,
-                    cost: row.cost,
-                    updatedAt: new Date().toISOString()
-                });
-                product.cost = row.cost; // el costo más reciente pasa a ser el de referencia
-                product.stock = getProductStock(product);
-
-                if (source === 'cash') appState.cash -= row.qty * row.cost;
-                else appState.bank -= row.qty * row.cost;
-
-                appState.investments.push({
-                    id: 'PURCHASE-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-                    date: today,
-                    concept: `Compra mayorista: ${product.name} (${row.qty} unidades)`,
-                    amount: row.qty * row.cost,
-                    source: source,
-                    type: 'purchase',
-                    productId: product.id,
-                    batchId: batchId,
-                    timestamp: Date.now()
-                });
-
-                if (product.batches[product.batches.length - 1].invoiceType === 'white') {
-                    appState.invoiceTracking.purchasedWhite += row.qty * row.cost;
-                } else {
-                    appState.invoiceTracking.purchasedBlack += row.qty * row.cost;
-                }
-
-                logExpiryHistory(product.id, today, row.expiry);
-                recordBulkDiscountIfApplicable(product, row.qty, row.cost, previousUnitCost);
+                applyPurchaseLine({ product, qty: row.qty, cost: row.cost, expiry: row.expiry, source, conceptPrefix: 'Compra mayorista' });
             });
 
             saveToLocalStorage();
             showNotification(`✅ Compra mayorista registrada: $${formatMoney(totalCost)} en ${toBuy.length} producto${toBuy.length > 1 ? 's' : ''}`, 'success');
             renderAll();
             renderWholesalePurchase();
+        }
+
+        // ==================== REVISAR COMPRAS DEL CELULAR ====================
+        // Cola de compras cargadas desde la app aparte de Compra Mayorista (pensada para
+        // usar en el celular, en el mayorista). Cada documento de la colección
+        // "comprasPendientes" es UNA línea que todavía no se aplicó a los datos reales --
+        // se revisa acá contra la factura física (precio, IVA) y se confirma o descarta
+        // una por una. Se pueden arrastrar para ordenarlas como en la factura.
+        let pendingReviewItems = [];
+        let purchaseReviewListener = null;
+        let purchaseReviewDragId = null;
+
+        // Combina lo que ya tenemos localmente (con ediciones/orden hechos en pantalla)
+        // con lo que hay en la nube: agrega los nuevos al final, y saca los que ya no
+        // están (confirmados o descartados, acá o desde otro dispositivo).
+        function mergePurchaseReviewSnapshot(docs) {
+            const remoteIds = new Set(docs.map(d => d.id));
+            pendingReviewItems = pendingReviewItems.filter(i => remoteIds.has(i.id));
+            const existingIds = new Set(pendingReviewItems.map(i => i.id));
+            docs.forEach(d => {
+                if (existingIds.has(d.id)) return; // ya lo tenemos, no pisar lo que se esté editando
+                const data = d.data();
+                pendingReviewItems.push({
+                    id: d.id,
+                    productId: data.productId || '',
+                    productName: data.productName || '(producto)',
+                    qty: parseFloat(data.qty) || 0,
+                    cost: parseFloat(data.cost) || 0,
+                    expiry: data.expiry || '',
+                    supplier: data.supplier || '',
+                    deviceLabel: data.deviceLabel || '',
+                    saleByWeight: !!data.saleByWeight,
+                    weightPerUnit: data.weightPerUnit || null,
+                    createdAt: data.createdAt || 0,
+                    invoiceType: 'white',
+                    vatApplied: false
+                });
+            });
+        }
+
+        async function startPurchaseReviewListener() {
+            if (!window.db || purchaseReviewListener) return;
+            try {
+                const { collection, onSnapshot } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                purchaseReviewListener = onSnapshot(collection(window.db, 'comprasPendientes'), (snap) => {
+                    mergePurchaseReviewSnapshot(snap.docs);
+                    updatePurchaseReviewBadge();
+                    const section = document.getElementById('purchase-review');
+                    if (section && !section.classList.contains('hidden')) renderPurchaseReviewList();
+                }, (err) => console.warn('Error escuchando comprasPendientes:', err));
+            } catch (e) {
+                console.warn('No se pudo iniciar el listener de compras pendientes:', e);
+            }
+        }
+
+        async function loadPurchaseReviewItems() {
+            if (window.db) {
+                try {
+                    const { collection, getDocs } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                    const snap = await getDocs(collection(window.db, 'comprasPendientes'));
+                    mergePurchaseReviewSnapshot(snap.docs);
+                } catch (e) {
+                    console.warn('No se pudieron cargar las compras pendientes:', e);
+                }
+            }
+            updatePurchaseReviewBadge();
+            renderPurchaseReviewList();
+            if (!purchaseReviewListener) startPurchaseReviewListener();
+        }
+
+        function updatePurchaseReviewBadge() {
+            const badge = document.getElementById('purchase-review-badge');
+            if (!badge) return;
+            const n = pendingReviewItems.length;
+            badge.textContent = n;
+            badge.classList.toggle('hidden', n === 0);
+        }
+
+        function renderPurchaseReviewList() {
+            const countEl = document.getElementById('purchase-review-count');
+            if (countEl) countEl.textContent = pendingReviewItems.length + ' pendiente' + (pendingReviewItems.length === 1 ? '' : 's');
+            const container = document.getElementById('purchase-review-list');
+            if (!container) return;
+            if (pendingReviewItems.length === 0) {
+                container.innerHTML = '<div class="bg-white rounded-2xl shadow-lg p-8 text-center text-gray-400"><i class="fas fa-check-circle text-4xl mb-2"></i><br>No hay compras pendientes de revisar</div>';
+                return;
+            }
+            container.innerHTML = pendingReviewItems.map(renderPurchaseReviewCard).join('');
+        }
+
+        function renderPurchaseReviewCard(item) {
+            const subtotal = (item.qty || 0) * (item.cost || 0);
+            const originLabel = [item.supplier ? '🚚 ' + escapeHtml(item.supplier) : '', item.deviceLabel ? '📱 ' + escapeHtml(item.deviceLabel) : ''].filter(Boolean).join(' · ');
+            return `
+            <div class="bg-white rounded-2xl shadow-lg p-4 flex flex-wrap items-center gap-4" draggable="true"
+                 data-review-id="${item.id}"
+                 ondragstart="purchaseReviewDragStart(event, '${item.id}')"
+                 ondragover="purchaseReviewDragOver(event)"
+                 ondrop="purchaseReviewDrop(event, '${item.id}')"
+                 ondragend="purchaseReviewDragEnd(event)">
+                <div class="text-gray-300 cursor-grab select-none px-1" title="Arrastrar para reordenar"><i class="fas fa-grip-vertical text-lg"></i></div>
+                <div class="flex-1 min-w-[160px]">
+                    <p class="font-bold text-gray-800">${escapeHtml(item.productName)}</p>
+                    ${originLabel ? `<p class="text-xs text-gray-400">${originLabel}</p>` : ''}
+                </div>
+                <div>
+                    <label class="block text-[10px] text-gray-400 uppercase">Cantidad</label>
+                    <input type="number" min="0" value="${item.qty}" class="w-20 border rounded-lg px-2 py-1 text-center" onchange="updatePurchaseReviewField('${item.id}', 'qty', this.value)">
+                </div>
+                <div>
+                    <label class="block text-[10px] text-gray-400 uppercase">Costo unit.</label>
+                    <input type="number" min="0" step="0.01" value="${item.cost}" class="w-24 border rounded-lg px-2 py-1 text-center" onchange="updatePurchaseReviewField('${item.id}', 'cost', this.value)">
+                </div>
+                <div>
+                    <label class="block text-[10px] text-gray-400 uppercase">Vencimiento</label>
+                    <input type="date" value="${item.expiry}" class="border rounded-lg px-2 py-1" onchange="updatePurchaseReviewField('${item.id}', 'expiry', this.value)">
+                </div>
+                <div>
+                    <label class="block text-[10px] text-gray-400 uppercase mb-1">Factura</label>
+                    <div class="flex gap-1">
+                        <button type="button" onclick="setPurchaseReviewInvoiceType('${item.id}', 'white')" class="px-2 py-1 rounded-lg border-2 text-xs font-medium ${item.invoiceType === 'white' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-400'}" title="Facturado"><i class="fas fa-file-invoice"></i></button>
+                        <button type="button" onclick="setPurchaseReviewInvoiceType('${item.id}', 'black')" class="px-2 py-1 rounded-lg border-2 text-xs font-medium ${item.invoiceType === 'black' ? 'border-gray-500 bg-gray-100 text-gray-700' : 'border-gray-200 text-gray-400'}" title="Sin factura"><i class="fas fa-eye-slash"></i></button>
+                    </div>
+                    <label class="flex items-center gap-1 mt-1 text-[10px] text-gray-500 cursor-pointer">
+                        <input type="checkbox" ${item.vatApplied ? 'checked' : ''} onchange="togglePurchaseReviewVat('${item.id}')"> +IVA 21%
+                    </label>
+                </div>
+                <div class="text-right">
+                    <p class="text-[10px] text-gray-400 uppercase">Subtotal</p>
+                    <p class="font-bold text-gray-700">$${formatMoney(subtotal)}</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="confirmPurchaseReviewItem('${item.id}')" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl font-bold text-sm"><i class="fas fa-check"></i> Confirmar</button>
+                    <button onclick="discardPurchaseReviewItem('${item.id}')" class="bg-gray-100 hover:bg-gray-200 text-gray-500 px-3 py-2 rounded-xl text-sm" title="Descartar"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>
+            `;
+        }
+
+        function purchaseReviewDragStart(ev, id) {
+            purchaseReviewDragId = id;
+            ev.dataTransfer.effectAllowed = 'move';
+            ev.currentTarget.classList.add('opacity-40');
+        }
+
+        function purchaseReviewDragOver(ev) {
+            ev.preventDefault();
+        }
+
+        function purchaseReviewDrop(ev, targetId) {
+            ev.preventDefault();
+            if (!purchaseReviewDragId || purchaseReviewDragId === targetId) return;
+            const fromIdx = pendingReviewItems.findIndex(i => i.id === purchaseReviewDragId);
+            const toIdx = pendingReviewItems.findIndex(i => i.id === targetId);
+            if (fromIdx === -1 || toIdx === -1) return;
+            const [moved] = pendingReviewItems.splice(fromIdx, 1);
+            pendingReviewItems.splice(toIdx, 0, moved);
+            renderPurchaseReviewList();
+        }
+
+        function purchaseReviewDragEnd(ev) {
+            ev.currentTarget.classList.remove('opacity-40');
+            purchaseReviewDragId = null;
+        }
+
+        function updatePurchaseReviewField(id, field, value) {
+            const item = pendingReviewItems.find(i => i.id === id);
+            if (!item) return;
+            if (field === 'qty' || field === 'cost') item[field] = Math.max(0, parseFloat(value) || 0);
+            else item[field] = value || '';
+            renderPurchaseReviewList();
+        }
+
+        function setPurchaseReviewInvoiceType(id, type) {
+            const item = pendingReviewItems.find(i => i.id === id);
+            if (!item) return;
+            item.invoiceType = type;
+            renderPurchaseReviewList();
+        }
+
+        // Igual que el checkbox "+ IVA 21%" de Agregar Stock: multiplica/divide el costo
+        // unitario ya cargado, no lo suma aparte.
+        function togglePurchaseReviewVat(id) {
+            const item = pendingReviewItems.find(i => i.id === id);
+            if (!item) return;
+            item.cost = item.vatApplied ? (item.cost / 1.21) : (item.cost * 1.21);
+            item.vatApplied = !item.vatApplied;
+            renderPurchaseReviewList();
+        }
+
+        async function deletePurchaseReviewDoc(id) {
+            pendingReviewItems = pendingReviewItems.filter(i => i.id !== id);
+            updatePurchaseReviewBadge();
+            renderPurchaseReviewList();
+            if (!window.db) return;
+            try {
+                const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                await deleteDoc(doc(window.db, 'comprasPendientes', id));
+            } catch (e) {
+                console.warn('No se pudo borrar la compra pendiente en la nube:', e);
+            }
+        }
+
+        async function confirmPurchaseReviewItem(id) {
+            const item = pendingReviewItems.find(i => i.id === id);
+            if (!item) return;
+            if (!item.qty || item.qty <= 0) { showNotification('Cantidad inválida', 'error'); return; }
+            const product = appState.inventory.find(p => p.id === item.productId);
+            if (!product) {
+                showNotification('⚠️ Ese producto ya no existe en el inventario. Descartalo.', 'error');
+                return;
+            }
+            const sourceSelect = document.getElementById('purchase-review-payment-source');
+            const source = sourceSelect && sourceSelect.value === 'bank' ? 'bank' : 'cash';
+            const totalCost = item.qty * item.cost;
+            const available = source === 'cash' ? appState.cash : appState.bank;
+            if (totalCost > available) {
+                if (!(await showConfirmModal(`⚠️ Esta compra ($${formatMoney(totalCost)}) deja ${source === 'cash' ? 'la caja' : 'la cuenta'} en negativo (tenés $${formatMoney(available)}). ¿Confirmar igual?`))) return;
+            }
+            applyPurchaseLine({ product, qty: item.qty, cost: item.cost, expiry: item.expiry, source, invoiceType: item.invoiceType, conceptPrefix: 'Compra (revisada del celular)' });
+            saveToLocalStorage();
+            renderAll();
+            await deletePurchaseReviewDoc(id);
+            showNotification(`✅ ${product.name}: compra confirmada`, 'success');
+        }
+
+        async function discardPurchaseReviewItem(id) {
+            if (!(await showConfirmModal('¿Descartar esta compra pendiente? No se va a aplicar a los datos.'))) return;
+            await deletePurchaseReviewDoc(id);
+            showNotification('🗑️ Descartado', 'info');
         }
 
         // ==================== SETTINGS ====================
@@ -20918,19 +21249,23 @@ RESULTADOS:
             return true;
         }
 
-        function calculateActivePromoDiscount(subtotal) {
+        // items es opcional: por defecto usa el carrito real de Vender (appState.cart),
+        // pero se le puede pasar cualquier otra lista de {productId, price, quantity}
+        // -- por ejemplo pendingPedidoItems, para que un Pedido también refleje las
+        // promociones activas antes de convertirse en una venta real.
+        function calculateActivePromoDiscount(subtotal, items) {
             let maxDiscount = 0;
             let bestLabel = '';
             let bestPromoId = null;
-            
+
             // Todas las promociones activas aplican en la venta actual
-            const activePromos = (appState.promotions || []).filter(p => 
+            const activePromos = (appState.promotions || []).filter(p =>
                 p.active && isPromoApplicableNow(p)
             );
-            
+
             for (const promo of activePromos) {
                 let discount = 0;
-                const cartItems = appState.cart || [];
+                const cartItems = items || appState.cart || [];
                 
                 // Filtrar items que aplican a esta promo
                 const applicableItems = promo.productIds && promo.productIds.length > 0
@@ -22533,6 +22868,15 @@ RESULTADOS:
             }
             payload.main = buildFirebaseBaseDoc(extraBaseFields);
             payload.main.chunkCounts = chunkCounts;
+
+            // Snapshot liviano de la Lista de Compras, para que la app de Compra Mayorista
+            // del celular pueda mostrar los sugeridos sin descargar todo el historial de ventas.
+            try {
+                payload.shoppingListSnapshot = { data: buildShoppingListSnapshot(), updatedAt: new Date().toISOString() };
+            } catch (e) {
+                console.warn('No se pudo generar el snapshot de lista de compras:', e);
+            }
+
             return payload;
         }
 
@@ -23962,8 +24306,9 @@ RESULTADOS:
         }
 
         // En dispositivos que no soportan el respaldo en carpeta (ej: celular), no tiene
-        // sentido tapar la pantalla en cada venta -- se avisa una vez por sesión y se deja pasar.
-        let backupUnsupportedAcknowledged = false;
+        // sentido tapar la pantalla cada vez que se abre -- se avisa una vez y se guarda en
+        // localStorage (por dispositivo/navegador) para no volver a preguntar.
+        let backupUnsupportedAcknowledged = localStorage.getItem('kioscopro-backup-unsupported-ack') === '1';
 
         // Cartel obligatorio: si el respaldo en carpeta no está activo, tapa la pantalla
         // hasta que se elija carpeta o se renueve el permiso. Se llama al abrir la app y
@@ -24010,8 +24355,10 @@ RESULTADOS:
 
         function closeBackupRequiredModal() {
             // Este botón solo existe (visible) en el caso 'no-soportado' -- lo marcamos
-            // reconocido para no taparle la pantalla en cada venta en ese dispositivo.
+            // reconocido para no taparle la pantalla nunca más en ese dispositivo (queda
+            // guardado en localStorage, no solo en esta sesión).
             backupUnsupportedAcknowledged = true;
+            try { localStorage.setItem('kioscopro-backup-unsupported-ack', '1'); } catch (_) {}
             document.getElementById('backup-required-modal').classList.remove('active');
         }
 
@@ -24317,6 +24664,7 @@ RESULTADOS:
             // Iniciar listener de Firebase después de cargar datos locales
             setTimeout(() => {
                 startFirebaseListener();
+                startPurchaseReviewListener();
             }, 1000);
 
             // === EXPONER FUNCIONES AL WINDOW PARA ONCLICK HANDLERS ===
@@ -24694,7 +25042,15 @@ RESULTADOS:
                         <i class="fas fa-shopping-cart text-orange-600"></i> Carrito del pedido <span class="text-xs font-normal text-gray-500" id="pedido-items-count">(0 items)</span>
                     </h4>
                     <div id="pedido-items-list" class="space-y-1 max-h-40 overflow-y-auto"></div>
-                    <div class="flex justify-between text-sm border-t pt-2 mt-2">
+                    <div class="flex justify-between text-sm mt-2">
+                        <span class="text-gray-600">Subtotal:</span>
+                        <span class="text-gray-700" id="pedido-items-subtotal">$0</span>
+                    </div>
+                    <div id="pedido-items-discount-row" class="flex justify-between text-sm text-green-600 hidden">
+                        <span id="pedido-items-promo-label">Promoción:</span>
+                        <span class="font-bold" id="pedido-items-discount">-$0</span>
+                    </div>
+                    <div class="flex justify-between text-sm border-t pt-2 mt-1">
                         <span class="text-gray-600">Total:</span>
                         <span class="font-bold text-orange-700" id="pedido-items-total">$0</span>
                     </div>

@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Compras Mayorista - KioscoPro</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    body { -webkit-tap-highlight-color: transparent; }
+    .card { background: white; border-radius: 1rem; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+    input[type=number], input[type=text], input[type=date], select { font-size: 16px; } /* evita zoom automático en iOS */
+</style>
+</head>
+<body class="bg-gray-50 text-gray-800 pb-24">
+
+    <div class="bg-teal-600 text-white p-4 sticky top-0 z-10 shadow-lg">
+        <h1 class="text-lg font-bold flex items-center gap-2">🛒 Compras Mayorista</h1>
+        <p id="sync-status" class="text-xs text-teal-100">Cargando datos...</p>
+    </div>
+
+    <div class="p-3 space-y-3">
+
+        <!-- Identificación (opcional) y proveedor -->
+        <div class="card p-3 space-y-2">
+            <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Tu nombre (opcional, para identificar en la PC)</label>
+                <input type="text" id="device-label" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2" placeholder="Ej: Giuliano">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Estoy comprando en</label>
+                <select id="supplier-filter" class="w-full border-2 border-teal-200 rounded-xl px-3 py-2 font-bold text-teal-700">
+                    <option value="">Todos / sin filtrar</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Buscador libre -->
+        <div class="card p-3">
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Buscar producto</label>
+            <input type="text" id="product-search" class="w-full border-2 border-teal-200 rounded-xl px-3 py-2" placeholder="Escribí el nombre..." oninput="renderSearchResults()">
+            <div id="search-results" class="mt-2 space-y-1 max-h-64 overflow-y-auto"></div>
+        </div>
+
+        <!-- Sugeridos -->
+        <div class="card p-3">
+            <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-gray-500 uppercase">Sugeridos para reponer</label>
+                <span id="suggested-count" class="text-xs text-gray-400">0</span>
+            </div>
+            <div id="suggested-list" class="space-y-2 max-h-96 overflow-y-auto"></div>
+        </div>
+
+        <!-- Lista que se está armando -->
+        <div class="card p-3">
+            <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-gray-500 uppercase">Tu lista</label>
+                <span class="text-sm font-bold text-teal-700">Total: $<span id="cart-total">0</span></span>
+            </div>
+            <div id="cart-list" class="space-y-2">
+                <p class="text-center text-gray-400 py-4 text-sm">Todavía no agregaste nada</p>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-3 shadow-lg flex gap-2">
+        <button onclick="sendAllPending()" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-3 rounded-xl font-bold shadow-lg">
+            ☁️ Enviar al kiosco (<span id="pending-count">0</span>)
+        </button>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBqYqLew5sf41zrQGr_GLm8d22hanNtWvg",
+            authDomain: "kioscopro.firebaseapp.com",
+            projectId: "kioscopro",
+            storageBucket: "kioscopro.firebasestorage.app",
+            messagingSenderId: "334703637356",
+            appId: "1:334703637356:web:cfd74b2143e56f09903949",
+            measurementId: "G-6QX394HCSR"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        window.db = db;
+        window.fbDoc = doc;
+        window.fbGetDoc = getDoc;
+        window.fbSetDoc = setDoc;
+
+        window.dispatchEvent(new Event('firebase-ready'));
+    </script>
+
+    <script>
+        // ==================== UTILIDADES (copiadas de la app principal) ====================
+        function formatMoney(amount, decimals) {
+            if (decimals === undefined) decimals = 2;
+            if (typeof amount !== 'number' || isNaN(amount)) amount = 0;
+            return amount.toLocaleString('es-AR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+        }
+        function fmtNumber(amount, decimals) {
+            if (decimals === undefined) decimals = 2;
+            if (typeof amount !== 'number' || isNaN(amount)) amount = 0;
+            return amount.toLocaleString('es-AR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+        }
+        function escapeHtml(text) {
+            if (typeof text !== 'string') return text;
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        function normalizeText(text) {
+            if (!text) return '';
+            return text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+        }
+        function statusText(s) {
+            const el = document.getElementById('sync-status');
+            if (el) el.textContent = s;
+        }
+
+        // ==================== ESTADO ====================
+        let suppliers = [];           // [{name, type}]
+        let suggestedItems = [];      // del snapshot liviano
+        let fullInventory = [];       // catálogo completo (para buscador libre)
+        let cartItems = [];           // lo que se va armando: {localId, productId, productName, qty, cost, expiry, supplier, sent, error}
+
+        function loadDeviceLabel() {
+            const saved = localStorage.getItem('compras-mayorista-device-label');
+            if (saved) document.getElementById('device-label').value = saved;
+        }
+        document.getElementById('device-label').addEventListener('change', (e) => {
+            localStorage.setItem('compras-mayorista-device-label', e.target.value);
+        });
+        loadDeviceLabel();
+
+        // ==================== CARGA DE DATOS DESDE FIREBASE ====================
+        window.addEventListener('firebase-ready', async () => {
+            statusText('Descargando datos del kiosco...');
+            try {
+                await loadMainDoc();
+                await loadShoppingListSnapshot();
+                await loadInventory();
+                statusText('Listo · datos al ' + new Date().toLocaleString('es-AR'));
+            } catch (e) {
+                console.error(e);
+                statusText('⚠️ No se pudieron descargar los datos (revisá la conexión) — tocá para reintentar');
+                document.getElementById('sync-status').onclick = () => location.reload();
+            }
+            renderSuggestedList();
+            renderSearchResults();
+        });
+
+        async function loadMainDoc() {
+            const snap = await window.fbGetDoc(window.fbDoc(window.db, 'kioscos', 'main'));
+            if (!snap.exists()) return;
+            const data = snap.data();
+            suppliers = Array.isArray(data.suppliers) ? data.suppliers : [];
+            const sel = document.getElementById('supplier-filter');
+            const current = sel.value;
+            sel.innerHTML = '<option value="">Todos / sin filtrar</option>' + suppliers
+                .slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                .map(s => `<option value="${escapeHtml(s.name)}" ${s.name === current ? 'selected' : ''}>${s.type === 'mayorista' ? '🏭' : '🚚'} ${escapeHtml(s.name)}</option>`)
+                .join('');
+            window._mainDoc = data;
+        }
+
+        async function loadShoppingListSnapshot() {
+            const snap = await window.fbGetDoc(window.fbDoc(window.db, 'kioscos', 'shoppingListSnapshot'));
+            suggestedItems = (snap.exists() && Array.isArray(snap.data().data)) ? snap.data().data : [];
+        }
+
+        async function loadInventory() {
+            const chunkCounts = (window._mainDoc && window._mainDoc.chunkCounts) || {};
+            const count = chunkCounts.main_inventory || 0;
+            fullInventory = [];
+            if (count === 0) return;
+            const names = [];
+            for (let i = 0; i < count; i++) names.push('main_inventory_chunk_' + i);
+            const snaps = await Promise.all(names.map(n => window.fbGetDoc(window.fbDoc(window.db, 'kioscos', n))));
+            snaps.forEach(s => {
+                if (s.exists() && Array.isArray(s.data().data)) fullInventory = fullInventory.concat(s.data().data);
+            });
+            // Sacar compuestos (no se compran directo) y borrados
+            fullInventory = fullInventory.filter(p => p && p.id && !p.isComposite);
+        }
+
+        // ==================== RENDER: SUGERIDOS ====================
+        function renderSuggestedList() {
+            const supplierSel = document.getElementById('supplier-filter').value;
+            let items = suggestedItems;
+            if (supplierSel) items = items.filter(i => i.supplier === supplierSel);
+            document.getElementById('suggested-count').textContent = items.length;
+            const container = document.getElementById('suggested-list');
+            if (items.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-400 py-4 text-sm">No hay sugeridos para este proveedor</p>';
+                return;
+            }
+            container.innerHTML = items.map(item => {
+                const bulkNote = item.bulkPackSize > 0 ? `📦 Bulto de ${item.bulkPackSize} u.${item.bulkOnly ? ' (solo así)' : ''}` : '';
+                const discountNote = (item.bulkDiscountInfo && item.bulkDiscountInfo.discountPct > 0) ? `💰 Ahorro en bulto: ~${item.bulkDiscountInfo.discountPct.toFixed(0)}%` : '';
+                const weeklyNote = (item.weeklyPeak > 0 || item.weeklyAvgHistorical > 0) ? `📈 Semanal — pico: ${fmtNumber(item.weeklyPeak, 0)} · prom: ${fmtNumber(item.weeklyAvgHistorical, 1)}` : '';
+                const notes = [`📊 Stock actual: ${item.currentStock} u.`, weeklyNote, bulkNote, discountNote].filter(Boolean).join(' &nbsp;·&nbsp; ');
+                return `
+                <div class="border rounded-xl p-2 flex justify-between items-center gap-2">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-bold text-sm">${escapeHtml(item.productName)}</p>
+                        <p class="text-[11px] text-gray-400">${notes}</p>
+                        <p class="text-xs text-blue-600 font-bold">Sugerido: ${item.suggestedQty} u.</p>
+                    </div>
+                    <button onclick='addToCart(${JSON.stringify({ productId: item.productId, productName: item.productName, qty: item.suggestedQty, cost: item.cost, supplier: item.supplier }).replace(/'/g, "&apos;")})' class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg font-bold text-sm shrink-0">+ Agregar</button>
+                </div>`;
+            }).join('');
+        }
+        document.getElementById('supplier-filter').addEventListener('change', renderSuggestedList);
+
+        // ==================== RENDER: BUSCADOR LIBRE ====================
+        function renderSearchResults() {
+            const q = normalizeText(document.getElementById('product-search').value.trim());
+            const container = document.getElementById('search-results');
+            if (!q) { container.innerHTML = ''; return; }
+            const matches = fullInventory
+                .filter(p => normalizeText(p.name || '').includes(q))
+                .slice(0, 20);
+            if (matches.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-400 py-2 text-sm">Sin resultados</p>';
+                return;
+            }
+            container.innerHTML = matches.map(p => `
+                <div class="flex justify-between items-center gap-2 p-2 border rounded-lg">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-medium text-sm">${escapeHtml(p.name)}</p>
+                        <p class="text-[11px] text-gray-400">Stock actual: ${p.stock ?? 0} u. · Último costo: $${formatMoney(p.cost || 0)}</p>
+                    </div>
+                    <button onclick='addToCart(${JSON.stringify({ productId: p.id, productName: p.name, qty: 1, cost: p.cost || 0, supplier: p.supplier || "" }).replace(/'/g, "&apos;")})' class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg font-bold text-sm shrink-0">+ Agregar</button>
+                </div>
+            `).join('');
+        }
+
+        // ==================== CARRITO / LISTA A ENVIAR ====================
+        function addToCart(info) {
+            cartItems.push({
+                localId: 'L' + Date.now() + Math.random().toString(36).slice(2, 6),
+                productId: info.productId,
+                productName: info.productName,
+                qty: info.qty || 1,
+                cost: info.cost || 0,
+                expiry: '',
+                supplier: info.supplier || '',
+                sent: false,
+                error: false
+            });
+            renderCart();
+        }
+
+        function removeFromCart(localId) {
+            cartItems = cartItems.filter(i => i.localId !== localId);
+            renderCart();
+        }
+
+        function updateCartField(localId, field, value) {
+            const item = cartItems.find(i => i.localId === localId);
+            if (!item) return;
+            if (field === 'qty' || field === 'cost') item[field] = Math.max(0, parseFloat(value) || 0);
+            else item[field] = value || '';
+            item.sent = false; // si se edita después de enviado, se vuelve a mandar corregido
+            renderCart();
+        }
+
+        function renderCart() {
+            const container = document.getElementById('cart-list');
+            const pending = cartItems.filter(i => !i.sent).length;
+            document.getElementById('pending-count').textContent = pending;
+            const total = cartItems.reduce((s, i) => s + (i.qty * i.cost), 0);
+            document.getElementById('cart-total').textContent = formatMoney(total);
+
+            if (cartItems.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-400 py-4 text-sm">Todavía no agregaste nada</p>';
+                return;
+            }
+            container.innerHTML = cartItems.map(item => `
+                <div class="border rounded-xl p-2 ${item.sent ? 'bg-green-50 border-green-200' : (item.error ? 'bg-red-50 border-red-200' : '')}">
+                    <div class="flex justify-between items-center gap-2 mb-1">
+                        <p class="font-bold text-sm flex-1 min-w-0">${escapeHtml(item.productName)}</p>
+                        <span class="text-xs font-bold ${item.sent ? 'text-green-600' : (item.error ? 'text-red-600' : 'text-gray-400')}">${item.sent ? '✅ Enviado' : (item.error ? '⚠️ Error' : '⏳ Sin enviar')}</span>
+                        <button onclick="removeFromCart('${item.localId}')" class="text-gray-400 px-2">✕</button>
+                    </div>
+                    <div class="flex gap-2">
+                        <div class="flex-1">
+                            <label class="block text-[10px] text-gray-400 uppercase">Cantidad</label>
+                            <input type="number" min="0" value="${item.qty}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateCartField('${item.localId}', 'qty', this.value)">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-[10px] text-gray-400 uppercase">Costo unit.</label>
+                            <input type="number" min="0" step="0.01" value="${item.cost}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateCartField('${item.localId}', 'cost', this.value)">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-[10px] text-gray-400 uppercase">Vencim.</label>
+                            <input type="date" value="${item.expiry}" class="w-full border rounded-lg px-2 py-1" onchange="updateCartField('${item.localId}', 'expiry', this.value)">
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ==================== ENVIAR A LA COLA (comprasPendientes) ====================
+        async function sendAllPending() {
+            const toSend = cartItems.filter(i => !i.sent);
+            if (toSend.length === 0) { statusText('No hay nada nuevo para enviar'); return; }
+            statusText('Enviando ' + toSend.length + '...');
+            const deviceLabel = document.getElementById('device-label').value.trim();
+            let okCount = 0;
+            for (const item of toSend) {
+                try {
+                    const docId = 'PEND-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+                    await window.fbSetDoc(window.fbDoc(window.db, 'comprasPendientes', docId), {
+                        productId: item.productId,
+                        productName: item.productName,
+                        qty: item.qty,
+                        cost: item.cost,
+                        expiry: item.expiry || '',
+                        supplier: item.supplier || '',
+                        deviceLabel: deviceLabel,
+                        createdAt: Date.now()
+                    });
+                    item.sent = true;
+                    item.error = false;
+                    okCount++;
+                } catch (e) {
+                    console.error('Error enviando item:', e);
+                    item.error = true;
+                }
+            }
+            renderCart();
+            statusText(okCount === toSend.length ? `✅ Se enviaron ${okCount} producto(s) al kiosco` : `⚠️ Se enviaron ${okCount}/${toSend.length} — reintentá los que quedaron en rojo`);
+        }
+
+        // Reintentar automáticamente los que fallaron al volver a tener señal
+        window.addEventListener('online', () => {
+            if (cartItems.some(i => !i.sent)) {
+                statusText('Conexión recuperada, reintentando envío...');
+                sendAllPending();
+            }
+        });
+
+        window.addToCart = addToCart;
+        window.removeFromCart = removeFromCart;
+        window.updateCartField = updateCartField;
+        window.renderSearchResults = renderSearchResults;
+        window.sendAllPending = sendAllPending;
+    </script>
+</body>
+</html>

@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>Compras Mayorista - KioscoPro</title>
+<link rel="manifest" href="compras-manifest.json">
+<meta name="theme-color" content="#0d9488">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Compras">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
     body { -webkit-tap-highlight-color: transparent; }
@@ -13,6 +21,18 @@
 </head>
 <body class="bg-gray-50 text-gray-800 pb-24">
 
+    <!-- Pantalla de bloqueo: se muestra si kioscos/main trae una contraseña configurada -->
+    <div id="lock-screen" class="fixed inset-0 bg-teal-700 flex items-center justify-center p-6 z-50 hidden">
+        <div class="card p-6 w-full max-w-sm text-center">
+            <p class="text-4xl mb-2">🔒</p>
+            <h2 class="text-lg font-bold mb-4">Compras Mayorista</h2>
+            <input type="password" id="lock-password" class="w-full border-2 border-teal-200 rounded-xl px-3 py-3 text-center text-lg mb-2" placeholder="Contraseña" onkeydown="if(event.key==='Enter') checkLockPassword()">
+            <p id="lock-error" class="text-red-500 text-xs mb-3 hidden">Contraseña incorrecta</p>
+            <button onclick="checkLockPassword()" class="w-full bg-teal-600 hover:bg-teal-700 text-white py-3 rounded-xl font-bold">Entrar</button>
+        </div>
+    </div>
+
+    <div id="app-content" class="hidden">
     <div class="bg-teal-600 text-white p-4 sticky top-0 z-10 shadow-lg">
         <h1 class="text-lg font-bold flex items-center gap-2">🛒 Compras Mayorista</h1>
         <p id="sync-status" class="text-xs text-teal-100">Cargando datos...</p>
@@ -68,6 +88,7 @@
             ☁️ Enviar al kiosco (<span id="pending-count">0</span>)
         </button>
     </div>
+    </div><!-- /app-content -->
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
@@ -137,9 +158,34 @@
 
         // ==================== CARGA DE DATOS DESDE FIREBASE ====================
         window.addEventListener('firebase-ready', async () => {
-            statusText('Descargando datos del kiosco...');
+            statusText('Conectando...');
             try {
                 await loadMainDoc();
+            } catch (e) {
+                console.error(e);
+                statusText('⚠️ No se pudo conectar (revisá la conexión) — tocá para reintentar');
+                document.getElementById('sync-status').onclick = () => location.reload();
+                return;
+            }
+
+            // Si hay contraseña configurada (Configuración > Sincronización, en la PC) y
+            // este dispositivo no la tiene guardada de una vez anterior, se frena acá --
+            // no se descarga nada más (inventario, sugeridos) hasta desbloquear.
+            const requiredPassword = (window._mainDoc && window._mainDoc.comprasAppPassword) || '';
+            window._requiredPassword = requiredPassword;
+            if (requiredPassword && localStorage.getItem('compras-mayorista-auth') !== requiredPassword) {
+                document.getElementById('lock-screen').classList.remove('hidden');
+                document.getElementById('lock-password').focus();
+                return;
+            }
+            await unlockAndLoadRest();
+        });
+
+        async function unlockAndLoadRest() {
+            document.getElementById('lock-screen').classList.add('hidden');
+            document.getElementById('app-content').classList.remove('hidden');
+            statusText('Descargando datos del kiosco...');
+            try {
                 await loadShoppingListSnapshot();
                 await loadInventory();
                 statusText('Listo · datos al ' + new Date().toLocaleString('es-AR'));
@@ -150,7 +196,20 @@
             }
             renderSuggestedList();
             renderSearchResults();
-        });
+        }
+
+        function checkLockPassword() {
+            const entered = document.getElementById('lock-password').value;
+            const errorEl = document.getElementById('lock-error');
+            if (entered && entered === window._requiredPassword) {
+                localStorage.setItem('compras-mayorista-auth', entered);
+                errorEl.classList.add('hidden');
+                unlockAndLoadRest();
+            } else {
+                errorEl.classList.remove('hidden');
+            }
+        }
+        window.checkLockPassword = checkLockPassword;
 
         async function loadMainDoc() {
             const snap = await window.fbGetDoc(window.fbDoc(window.db, 'kioscos', 'main'));
@@ -349,6 +408,14 @@
         window.updateCartField = updateCartField;
         window.renderSearchResults = renderSearchResults;
         window.sendAllPending = sendAllPending;
+
+        // Mismo service worker que usa index.html (comparte caché en el mismo sitio):
+        // permite instalar esta página como app aparte y que abra sin conexión.
+        if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+            navigator.serviceWorker.register('sw.js').catch(function (e) {
+                console.warn('SW no registrado:', e);
+            });
+        }
     </script>
 </body>
 </html>

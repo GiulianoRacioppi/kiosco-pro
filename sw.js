@@ -4,7 +4,7 @@
 // - Firebase/API: nunca se cachea (va siempre a la red)
 const CACHE_NAME = 'kioscopro-v1';
 
-const PRECACHE = ['./', './index.html', './manifest.webmanifest'];
+const PRECACHE = ['./', './index.html', './manifest.webmanifest', './compras-mayorista.html', './compras-manifest.json'];
 
 const CDN_HOSTS = [
     'cdn.tailwindcss.com',
@@ -16,9 +16,14 @@ const CDN_HOSTS = [
 ];
 
 self.addEventListener('install', (event) => {
+    // cache.addAll() falla TODO si un solo archivo de la lista no existe todavía
+    // (ej: se subió este sw.js antes que compras-mayorista.html) -- se cachea cada
+    // uno por separado para que uno faltante no rompa el precache del resto.
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then((cache) => cache.addAll(PRECACHE))
+            .then((cache) => Promise.all(PRECACHE.map((url) =>
+                cache.add(url).catch((e) => console.warn('No se pudo precachear', url, e))
+            )))
             .then(() => self.skipWaiting())
     );
 });

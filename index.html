@@ -3260,6 +3260,14 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-2">Marcá esto solo en la PC. El celular quedará como secundario y bajará productos/stock/saldos desde la PC.</p>
                         </div>
+                        <div class="bg-gray-50 rounded-xl p-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">🔒 Contraseña de la app de Compras (celular)</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="settings-compras-app-password" class="flex-1 border rounded-lg px-3 py-2" placeholder="Dejar vacío = sin contraseña">
+                                <button onclick="saveComprasAppPassword()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm">Guardar</button>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2">La pide compras-mayorista.html antes de dejar cargar nada. Se guarda en el celular después de ponerla bien una vez.</p>
+                        </div>
                         <button onclick="forceSync()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg">
                             <i class="fas fa-sync"></i> Sincronizar Ahora
                         </button>
@@ -4144,6 +4152,8 @@
             mercadoCreditoFee: 5,
             // Configuración pago con QR (comisión %, se descuenta antes de acreditar a la cuenta)
             qrFee: 0,
+            // Contraseña para entrar a la app aparte de Compra Mayorista (celular). Vacío = sin contraseña.
+            comprasAppPassword: 'admin123',
             // Configuración de stock
             stockTargetDays: 7,
             // Proveedores
@@ -19535,7 +19545,9 @@ Total de productos a comprar: ${shoppingList.length}
             if (masterCheckbox) {
                 masterCheckbox.checked = isMasterDevice();
             }
-            
+            const comprasPassInput = document.getElementById('settings-compras-app-password');
+            if (comprasPassInput) comprasPassInput.value = appState.comprasAppPassword || '';
+
             // Renderizar proveedores y horarios
             populateSupplierSelects();
             renderSuppliersList();
@@ -20028,6 +20040,7 @@ Total de productos a comprar: ${shoppingList.length}
                             defaultMargin: 30,
                             mercadoCreditoFee: 5,
                             qrFee: 0,
+                            comprasAppPassword: 'admin123',
                             stockTargetDays: 7,
                             balancesUpdatedAt: 0,
                             cashFlowSettings: { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
@@ -22805,6 +22818,7 @@ RESULTADOS:
                 defaultMargin: parseFloat(appState.defaultMargin) || 30,
                 mercadoCreditoFee: parseFloat(appState.mercadoCreditoFee) || 5,
                 qrFee: parseFloat(appState.qrFee) || 0,
+                comprasAppPassword: appState.comprasAppPassword || '',
                 stockTargetDays: parseInt(appState.stockTargetDays) || 7,
                 balancesUpdatedAt: appState.balancesUpdatedAt || 0,
                 cashFlowSettings: appState.cashFlowSettings || { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
@@ -23631,6 +23645,7 @@ RESULTADOS:
                     if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
                     if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
                     if (data.qrFee !== undefined) appState.qrFee = parseFloat(data.qrFee) || 0;
+                    if (data.comprasAppPassword !== undefined) appState.comprasAppPassword = data.comprasAppPassword || '';
                     if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
                     if (data.cashFlowSettings && typeof data.cashFlowSettings === 'object') {
                         appState.cashFlowSettings = {
@@ -23777,6 +23792,7 @@ RESULTADOS:
                     if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
                     if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
                     if (data.qrFee !== undefined) appState.qrFee = parseFloat(data.qrFee) || 0;
+                    if (data.comprasAppPassword !== undefined) appState.comprasAppPassword = data.comprasAppPassword || '';
                     if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
                     if (data.cashFlowSettings && typeof data.cashFlowSettings === 'object') {
                         appState.cashFlowSettings = {
@@ -23962,6 +23978,16 @@ RESULTADOS:
         
         function isMasterDevice() {
             return localStorage.getItem('kioscopro-is-master') === '1';
+        }
+
+        // Guarda la contraseña que va a pedir compras-mayorista.html. Viaja dentro del
+        // documento base (kioscos/main) -- no es seguridad real (las reglas de Firestore
+        // siguen abiertas), solo evita que alguien que encuentre la URL cargue cosas ahí.
+        function saveComprasAppPassword() {
+            const input = document.getElementById('settings-compras-app-password');
+            appState.comprasAppPassword = input ? input.value.trim() : '';
+            saveToLocalStorage();
+            showNotification(appState.comprasAppPassword ? '🔒 Contraseña guardada' : 'Contraseña quitada: la app de compras queda sin pedirla', 'success');
         }
         
                 async function downloadFromCloud() {

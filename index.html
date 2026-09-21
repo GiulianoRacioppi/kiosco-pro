@@ -3066,6 +3066,11 @@
                             <p class="text-xs text-gray-500 mt-1">Si la venta es mixta, se facturan solo los ítems que cumplen la regla (factura parcial).</p>
                             <p class="text-xs text-gray-500">Con demora, la factura sale cuando se cumple el plazo (con la app abierta). Si borrás la venta antes, no se factura.</p>
                             <p class="text-xs text-orange-600 mt-1">⚠️ Las facturas automáticas son REALES.</p>
+                            <label class="flex items-center gap-2 mt-3 text-sm text-gray-700 cursor-pointer">
+                                <input type="checkbox" id="arca-auto-alternate">
+                                Alternar: de las que cumplen la regla de arriba, facturar automáticamente 1 de cada 2 y dejar la otra pendiente
+                            </label>
+                            <p class="text-xs text-gray-500 mt-1">Pensado como respaldo: si la conexión con ARCA falla, no depende todo de un solo canal — la mitad queda pendiente para cargarla vos por otro medio. Las que quedan pendientes aparecen igual que cualquier venta sin facturar (Facturación, o el botón "Facturar" en el detalle de la venta).</p>
                         </div>
 
                         <div>
@@ -6991,7 +6996,7 @@
             try {
                 const saleParaReglas = { ...sale, paymentMethod: method };
                 const reglasIdx = saleItemsFacturables(saleParaReglas);
-                if (reglasIdx.length > 0) {
+                if (reglasIdx.length > 0 && passesAutoAlternateGate()) {
                     const delayMin = (appState.arcaConfig || {}).autoDelayMin || 0;
                     if (delayMin > 0) {
                         programarFactura(sale.id, reglasIdx.length === sale.items.length ? null : reglasIdx, delayMin);
@@ -7604,7 +7609,7 @@
             if (sale.paymentMethod !== 'fiado') {
                 try {
                     const reglasIdx = saleItemsFacturables(sale);
-                    if (reglasIdx.length > 0) {
+                    if (reglasIdx.length > 0 && passesAutoAlternateGate()) {
                         const delayMin = (appState.arcaConfig || {}).autoDelayMin || 0;
                         if (delayMin > 0) {
                             programarFactura(sale.id, reglasIdx.length === sale.items.length ? null : reglasIdx, delayMin);
@@ -9069,6 +9074,8 @@
                 autoStock: document.getElementById('arca-auto-stock').value || 'off',
                 autoPay: document.getElementById('arca-auto-pay').value || 'both',
                 autoDelayMin: parseInt(document.getElementById('arca-auto-delay').value) || 0,
+                autoAlternate: document.getElementById('arca-auto-alternate').checked,
+                autoAlternateCounter: (appState.arcaConfig || {}).autoAlternateCounter || 0,
                 autoNC: document.getElementById('arca-auto-nc').value === 'si',
                 categoria: document.getElementById('arca-categoria').value || '',
                 facturadoPrevio: parseFloat(document.getElementById('arca-facturado-previo').value) || 0,
@@ -9196,6 +9203,19 @@
                 const product = appState.inventory.find(p => p.id === item.productId);
                 return (product && product.invoiceType === 'black') ? 'black' : 'white';
             });
+        }
+
+        // Compuerta de "Alternar" (respaldo por si falla la conexión con ARCA): de las
+        // ventas que YA cumplen la regla de auto-facturación, deja pasar 1 de cada 2 y
+        // frena la otra (queda pendiente, como cualquier venta sin facturar). Se llama
+        // UNA sola vez por venta recién completada -- nunca desde una consulta de estado,
+        // porque lleva un contador persistente que avanza en cada llamada.
+        function passesAutoAlternateGate() {
+            if (!appState.arcaConfig) appState.arcaConfig = {};
+            const cfg = appState.arcaConfig;
+            if (!cfg.autoAlternate) return true;
+            cfg.autoAlternateCounter = (cfg.autoAlternateCounter || 0) + 1;
+            return cfg.autoAlternateCounter % 2 === 1;
         }
 
         // Índices de los ítems de la venta que entran en la facturación según
@@ -19711,6 +19731,8 @@ Total de productos a comprar: ${shoppingList.length}
             if (arcaAutoPayEl) arcaAutoPayEl.value = arcaReglasCfg.pay;
             const arcaAutoDelayEl = document.getElementById('arca-auto-delay');
             if (arcaAutoDelayEl) arcaAutoDelayEl.value = String(arcaCfg.autoDelayMin || 0);
+            const arcaAutoAlternateEl = document.getElementById('arca-auto-alternate');
+            if (arcaAutoAlternateEl) arcaAutoAlternateEl.checked = !!arcaCfg.autoAlternate;
             const arcaAutoNcEl = document.getElementById('arca-auto-nc');
             if (arcaAutoNcEl) arcaAutoNcEl.value = arcaCfg.autoNC ? 'si' : 'no';
             const arcaCatEl = document.getElementById('arca-categoria');

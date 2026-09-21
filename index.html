@@ -2442,15 +2442,33 @@
 
             <!-- Tabla de Gastos -->
             <div class="bg-white rounded-2xl shadow-lg p-6">
-                <h3 class="text-lg font-bold mb-4"><i class="fas fa-list text-gray-600"></i> <span id="expenses-table-title">Detalle de Gastos</span></h3>
-                <div class="relative mb-4">
+                <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                    <h3 class="text-lg font-bold"><i class="fas fa-list text-gray-600"></i> <span id="expenses-table-title">Detalle de Gastos</span></h3>
+                    <div id="expenses-month-nav" class="flex items-center gap-1">
+                        <button onclick="changeExpensesMonth(-1)" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600" title="Mes anterior">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <button onclick="changeExpensesMonth(1)" id="btn-expenses-month-next" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed" title="Mes siguiente">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="relative mb-3">
                     <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
                     <input type="text" id="expenses-search" class="w-full border-2 border-gray-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:border-purple-400 focus:outline-none" placeholder="Buscar gasto por concepto (ej: sueldo, luz, proveedor...)" oninput="renderExpensesTable()">
+                </div>
+                <div id="expenses-selection-summary" class="hidden mb-3 bg-purple-50 border border-purple-200 rounded-xl px-4 py-2 flex items-center justify-between text-sm">
+                    <span class="text-purple-700 font-medium"><span id="expenses-selection-count">0</span> gasto(s) seleccionado(s)</span>
+                    <div class="flex items-center gap-3">
+                        <span class="font-bold text-purple-800">Total: $<span id="expenses-selection-total">0</span></span>
+                        <button onclick="clearExpenseSelection()" class="text-xs text-purple-500 hover:text-purple-700 underline">Limpiar selección</button>
+                    </div>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full">
                         <thead class="bg-gray-50">
                             <tr>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 w-8"><i class="fas fa-check-square"></i></th>
                                 <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Fecha</th>
                                 <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Concepto</th>
                                 <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Origen</th>
@@ -13058,8 +13076,44 @@
         // ==================== CASHFLOW ====================
         let cashflowViewMode = 'invoice'; // 'category' | 'invoice'
 
-        // Detalle de gastos: sin texto en el buscador muestra el mes activo;
-        // con texto busca en TODOS los gastos por concepto
+        // Navegación de mes del Detalle de Gastos: 0 = mes activo, -1 = anterior, etc.
+        // Se ignora mientras haya una búsqueda activa (esa busca en todos los meses).
+        let expensesMonthOffset = 0;
+        let selectedExpenses = new Map(); // id -> monto, para ir sumando gastos elegidos a mano
+
+        function changeExpensesMonth(delta) {
+            if (expensesMonthOffset + delta > 0) return; // no se puede ir a un mes futuro
+            expensesMonthOffset += delta;
+            renderExpensesTable();
+        }
+
+        function toggleExpenseSelection(id, checked, amount) {
+            if (checked) selectedExpenses.set(id, amount);
+            else selectedExpenses.delete(id);
+            updateExpensesSelectionSummary();
+        }
+
+        function clearExpenseSelection() {
+            selectedExpenses.clear();
+            renderExpensesTable();
+        }
+
+        function updateExpensesSelectionSummary() {
+            const bar = document.getElementById('expenses-selection-summary');
+            if (!bar) return;
+            if (selectedExpenses.size === 0) {
+                bar.classList.add('hidden');
+                return;
+            }
+            let total = 0;
+            selectedExpenses.forEach(amount => { total += amount; });
+            bar.classList.remove('hidden');
+            document.getElementById('expenses-selection-count').textContent = selectedExpenses.size;
+            document.getElementById('expenses-selection-total').textContent = formatMoney(total);
+        }
+
+        // Detalle de gastos: sin texto en el buscador muestra el mes elegido (con las
+        // flechitas); con texto busca en TODOS los gastos por concepto, sin importar el mes.
         function renderExpensesTable() {
             const tableEl = document.getElementById('expenses-table');
             if (!tableEl) return;
@@ -13067,6 +13121,7 @@
             const query = (searchInput ? searchInput.value : '').trim().toLowerCase();
             const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
             const titleEl = document.getElementById('expenses-table-title');
+            const monthNavEl = document.getElementById('expenses-month-nav');
 
             // Las mermas también aparecen acá: su costo es plata perdida.
             // No son editables desde esta tabla (se gestionan desde Stock → Mermas).
@@ -13082,13 +13137,19 @@
 
             let list, emptyMsg;
             if (query) {
+                if (monthNavEl) monthNavEl.classList.add('hidden');
                 list = appState.expenses.concat(lossesAsExpenses)
                     .filter(e => (e.concept || '').toLowerCase().includes(query))
                     .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                 if (titleEl) titleEl.textContent = 'Resultados para "' + query + '" (' + list.length + ')';
                 emptyMsg = 'No hay gastos que coincidan con "' + query + '"';
             } else {
-                const currentMonth = formatDateISO(appState.activeDate).slice(0, 7);
+                if (monthNavEl) monthNavEl.classList.remove('hidden');
+                const baseDate = appState.activeDate ? new Date(appState.activeDate) : new Date();
+                const targetDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + expensesMonthOffset, 1);
+                const currentMonth = formatDateISO(targetDate).slice(0, 7);
+                const nextMonthBtn = document.getElementById('btn-expenses-month-next');
+                if (nextMonthBtn) nextMonthBtn.disabled = expensesMonthOffset >= 0;
                 list = appState.expenses.concat(lossesAsExpenses)
                     .filter(e => e.date && e.date.startsWith(currentMonth))
                     .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
@@ -13099,8 +13160,13 @@
                 emptyMsg = 'No hay gastos registrados este mes';
             }
 
+            updateExpensesSelectionSummary();
+
             tableEl.innerHTML = list.map(e => `
                 <tr class="hover:bg-gray-50">
+                    <td class="px-3 py-2 text-center">
+                        <input type="checkbox" ${selectedExpenses.has(e.id) ? 'checked' : ''} onchange="toggleExpenseSelection('${e.id}', this.checked, ${e.amount})">
+                    </td>
                     <td class="px-4 py-2 text-sm">${e.date}</td>
                     <td class="px-4 py-2 text-sm font-medium">${e.concept}</td>
                     <td class="px-4 py-2 text-sm">
@@ -13119,7 +13185,7 @@
                         </button>`}
                     </td>
                 </tr>
-            `).join('') || '<tr><td colspan="5" class="text-center py-4 text-gray-400">' + emptyMsg + '</td></tr>';
+            `).join('') || '<tr><td colspan="6" class="text-center py-4 text-gray-400">' + emptyMsg + '</td></tr>';
         }
 
         function setCashflowView(mode) {

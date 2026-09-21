@@ -1676,6 +1676,15 @@
                 </div>
             </div>
 
+            <!-- Recordatorios de ajustes automáticos (vendiste algo sin stock cargado) -->
+            <div id="auto-adjust-reminders" class="hidden bg-amber-50 border-2 border-amber-300 rounded-2xl p-4">
+                <h3 class="text-sm font-bold text-amber-800 mb-1 flex items-center gap-2">
+                    <i class="fas fa-bell"></i> Pendiente de reconciliar con la compra real
+                </h3>
+                <p class="text-xs text-amber-700 mb-3">Estos productos se vendieron sin stock suficiente cargado: se completaron solos como Stock Gratis con el costo que tenía guardado en ese momento. Cuando cargues la compra real, confirmalos acá para corregir el costo y sumar el resto de las unidades sin duplicar.</p>
+                <div id="auto-adjust-reminders-list" class="space-y-2"></div>
+            </div>
+
             <!-- Botones de acción rápida -->
             <div class="flex gap-3 flex-wrap">
                 <button onclick="openLossModal()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow">
@@ -5728,48 +5737,43 @@
             showNotification(`${currentWeightProduct.name} ${formatMoney(grams)}g agregado`, 'success');
         }
 
-        function addToCartFromSearch(productId, qty = 1) {
+        async function addToCartFromSearch(productId, qty = 1) {
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
             if (product.hiddenFromSale) {
                 showNotification('🙈 "' + product.name + '" está oculto de la venta', 'warning', 4000);
                 return;
             }
-            
+
             qty = Math.max(1, parseInt(qty) || 1);
-            
-            const availableStock = getProductStock(product);
-            if (availableStock <= 0) {
-                showNotification('Sin stock disponible', 'error');
-                return;
-            }
-            
-            // Si es venta por peso, abrir modal especial (solo permite 1 unidad)
+
+            // Si es venta por peso, abrir modal especial (solo permite 1 unidad) -- ese
+            // modal maneja su propio aviso de stock, no se toca acá.
             if (product.saleByWeight && product.weightPerUnit > 0) {
                 openWeightSaleModal(product);
                 document.getElementById('sell-search-input').value = '';
                 document.getElementById('sell-search-results').classList.add('hidden');
                 return;
             }
-            
+
             // Verificar si ya está en el carrito
             const existingItem = appState.cart.find(item => item.productId === productId);
+            const totalNeeded = (existingItem ? existingItem.quantity : 0) + qty;
+
+            // Si no alcanza el stock cargado, ofrece completarlo como Stock Gratis
+            // (para vender algo que existe de verdad pero no se cargó todavía).
+            const canSell = await ensureStockForSale(product, totalNeeded);
+            if (!canSell) return;
+
             if (existingItem) {
-                const newQty = existingItem.quantity + qty;
-                if (newQty <= availableStock) {
-                    existingItem.quantity = newQty;
-                } else {
-                    showNotification('Stock máximo alcanzado', 'warning');
-                    return;
-                }
+                existingItem.quantity = totalNeeded;
             } else {
-                const finalQty = Math.min(qty, availableStock);
                 appState.cart.push({
                     productId: product.id,
                     name: product.name,
                     price: product.salePrice,
                     cost: product.isComposite ? calculateCompositeCost(product) : product.cost,
-                    quantity: finalQty
+                    quantity: qty
                 });
             }
             
@@ -5893,7 +5897,7 @@
             }
         }
 
-        function addToCartByBarcode(barcode) {
+        async function addToCartByBarcode(barcode) {
             const activeInv = getActiveInventory();
             const product = activeInv.find(p => p.barcode === barcode);
             if (!product) {
@@ -5904,12 +5908,7 @@
                 showNotification('🙈 "' + product.name + '" está oculto de la venta', 'warning', 4000);
                 return;
             }
-            const availableStock = getProductStock(product);
-            if (availableStock <= 0) {
-                showNotification('Sin stock disponible', 'error');
-                return;
-            }
-            
+
             // Si es venta por peso, abrir modal especial
             if (product.saleByWeight && product.weightPerUnit > 0) {
                 openWeightSaleModal(product);
@@ -5917,13 +5916,13 @@
             }
 
             const existingItem = appState.cart.find(item => item.productId === product.id);
+            const totalNeeded = (existingItem ? existingItem.quantity : 0) + 1;
+
+            const canSell = await ensureStockForSale(product, totalNeeded);
+            if (!canSell) return;
+
             if (existingItem) {
-                if (existingItem.quantity < availableStock) {
-                    existingItem.quantity++;
-                } else {
-                    showNotification('Stock máximo alcanzado', 'warning');
-                    return;
-                }
+                existingItem.quantity = totalNeeded;
             } else {
                 appState.cart.push({
                     productId: product.id,
@@ -6344,10 +6343,10 @@
             return div.innerHTML;
         }
 
-        function updateCartQuantity(index, delta) {
+        async function updateCartQuantity(index, delta) {
             const item = appState.cart[index];
             const product = appState.inventory.find(p => p.id === item.productId);
-            
+
             // Ítems manuales no tienen límite de stock
             if (!item.productId || item.isManual) {
                 item.quantity += delta;
@@ -6357,36 +6356,31 @@
                 renderCart();
                 return;
             }
-            
+
             // No permitir modificar cantidad de productos por peso con +/-
             if (product && product.saleByWeight) {
                 showNotification('Usá el ícono de papelera para quitar productos por peso', 'warning');
                 return;
             }
-            
-            const availableStock = getProductStock(product);
-            
+
             if (delta > 0) {
-                const currentInCart = item.quantity;
-                if (currentInCart + delta > availableStock) {
-                    showNotification('Stock máximo alcanzado', 'warning');
-                    return;
-                }
+                const canSell = await ensureStockForSale(product, item.quantity + delta);
+                if (!canSell) return;
             }
-            
+
             item.quantity += delta;
-            
+
             if (item.quantity <= 0) {
                 appState.cart.splice(index, 1);
             }
-            
+
             renderCart();
         }
 
-        function setCartQuantity(index, newQty) {
+        async function setCartQuantity(index, newQty) {
             const item = appState.cart[index];
             const product = appState.inventory.find(p => p.id === item.productId);
-            
+
             // Ítems manuales no tienen límite de stock
             if (!item.productId || item.isManual) {
                 const qty = parseInt(newQty);
@@ -6399,30 +6393,28 @@
                 renderCart();
                 return;
             }
-            
+
             // No permitir modificar cantidad de productos por peso manualmente
             if (product && product.saleByWeight) {
                 showNotification('La cantidad de productos por peso se define en gramos al agregarlos', 'warning');
                 renderCart();
                 return;
             }
-            
+
             const qty = parseInt(newQty);
             if (isNaN(qty) || qty < 1) {
                 showNotification('Cantidad inválida', 'error');
                 renderCart();
                 return;
             }
-            
-            const availableStock = getProductStock(product);
-            
-            if (qty > availableStock) {
-                showNotification(`Stock máximo disponible: ${availableStock}`, 'warning');
-                item.quantity = availableStock;
-            } else {
-                item.quantity = qty;
+
+            const canSell = await ensureStockForSale(product, qty);
+            if (!canSell) {
+                renderCart(); // vuelve a mostrar la cantidad anterior
+                return;
             }
-            
+            item.quantity = qty;
+
             renderCart();
         }
 
@@ -9208,14 +9200,19 @@
 
         // Índices de los ítems de la venta que entran en la facturación según
         // las reglas configuradas (mercadería blanco/negro × medio de pago).
+        // Los ítems de Venta Manual quedan siempre afuera: no se facturan por la app.
         function saleItemsFacturables(sale, rules) {
             rules = rules || arcaRules();
             if (rules.stock === 'off') return [];
             if (rules.pay === 'cash' && sale.paymentMethod !== 'cash') return [];
             if (rules.pay === 'debit' && sale.paymentMethod !== 'debit') return [];
-            if (rules.stock === 'both') return sale.items.map((_, i) => i);
+            const isFacturableItem = (i) => {
+                const item = sale.items[i];
+                return !!(item && item.productId && !item.isManual);
+            };
+            if (rules.stock === 'both') return sale.items.map((_, i) => i).filter(isFacturableItem);
             const types = saleItemInvoiceTypes(sale);
-            return sale.items.map((_, i) => i).filter(i => types[i] === rules.stock);
+            return sale.items.map((_, i) => i).filter(i => isFacturableItem(i) && types[i] === rules.stock);
         }
 
         function renderArcaStatus() {
@@ -10521,6 +10518,7 @@
         function renderInventory() {
             const activeInventory = getActiveInventory();
             console.log('renderInventory llamado. Total productos:', activeInventory.length);
+            renderAutoAdjustReminders();
 
             const search = document.getElementById('search-inventory').value;
             let filtered = search
@@ -16790,6 +16788,210 @@
             });
         }
 
+        // Agrega stock a un producto sin que sea una compra real (regalo, encontrado, o
+        // para completar una venta cuando el stock cargado no alcanza) y deja el registro
+        // en Stock Gratis para que quede contemplado en las cuentas del día/mes.
+        function applyFoundStock(product, units, cost, reason, notes, grams) {
+            if (!product || !(units > 0)) return;
+            if (Array.isArray(product.batches)) {
+                if (product.batches.length > 0) {
+                    product.batches[0].stock += units;
+                } else {
+                    product.batches.push({
+                        id: 'BATCH-FOUND-' + Date.now(),
+                        stock: units,
+                        cost: units > 0 ? Math.round(((cost || 0) / units) * 100) / 100 : 0,
+                        invoiceType: 'black', // stock gratis/encontrado: nunca viene con factura
+                        dateAdded: formatDateISO(appState.activeDate || new Date()),
+                        expiry: null
+                    });
+                }
+                product.stock = product.batches.reduce((sum, b) => sum + (b.stock || 0), 0);
+            } else {
+                product.stock = (product.stock || 0) + units;
+            }
+
+            if (!appState.foundStock) appState.foundStock = [];
+            const entry = {
+                id: 'FOUND-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                date: formatDateISO(appState.activeDate || new Date()),
+                productId: product.id,
+                productName: product.name,
+                quantity: units,
+                grams: grams != null ? grams : null,
+                reason: reason || 'other',
+                cost: cost || 0,
+                notes: notes || '',
+                timestamp: Date.now()
+            };
+            // Los ajustes automáticos (venta sin stock cargado) quedan marcados como
+            // pendientes hasta que se confirmen contra la compra real -- ahí se corrige
+            // el costo (calculado con lo que tenía guardado en ese momento, no el real)
+            // y se suman las unidades que falten sin duplicar lo ya cubierto acá.
+            if (reason === 'auto-sale') entry.reconciled = false;
+            appState.foundStock.push(entry);
+        }
+
+        // Si no alcanza el stock cargado para vender lo pedido, ofrece completar la
+        // diferencia como Stock Gratis (para el caso de "esto lo tengo pero no lo cargué
+        // todavía"). Devuelve true si ya se puede vender (había stock, o se completó
+        // ahora), false si se canceló.
+        //
+        // OJO al usarlo: si más adelante cargás la compra real de ese producto, acordate
+        // de restar las unidades que ya se cubrieron acá -- si compraste 4 y vendiste 1
+        // con este ajuste antes de cargar la compra, cargá 3 (no 4), porque ese 1 ya
+        // quedó sumado al stock por este mecanismo. Sino el sistema termina mostrando
+        // una unidad de más de la que hay en realidad.
+        async function ensureStockForSale(product, neededQty) {
+            const availableStock = getProductStock(product);
+            const shortfall = neededQty - availableStock;
+            if (shortfall <= 0) return true;
+
+            const ok = await showConfirmModal(
+                `⚠️ "${product.name}" no tiene stock suficiente cargado (hay ${availableStock}, necesitás ${neededQty}).\n\n` +
+                `¿Vender igual? Se va a agregar ${shortfall} unidad${shortfall > 1 ? 'es' : ''} como Stock Gratis para completar la venta, y va a quedar un recordatorio en Reponer para confirmarlo contra la compra real después (y corregir el costo si hace falta).`
+            );
+            if (!ok) return false;
+
+            const unitCost = product.isComposite ? calculateCompositeCost(product) : (product.cost || 0);
+            applyFoundStock(product, shortfall, Math.round(unitCost * shortfall * 100) / 100, 'auto-sale', 'Ajuste automático: venta sin stock suficiente cargado');
+            saveToLocalStorage();
+            return true;
+        }
+
+        // ==================== RECORDATORIOS DE AJUSTES AUTOMÁTICOS ====================
+        // Lista, en Reponer, los ajustes de Stock Gratis creados por vender sin stock
+        // cargado que todavía no se confirmaron contra la compra real.
+        function renderAutoAdjustReminders() {
+            const card = document.getElementById('auto-adjust-reminders');
+            const list = document.getElementById('auto-adjust-reminders-list');
+            if (!card || !list) return;
+
+            const pending = (appState.foundStock || []).filter(f => f.reason === 'auto-sale' && f.reconciled === false);
+            if (pending.length === 0) {
+                card.classList.add('hidden');
+                return;
+            }
+            card.classList.remove('hidden');
+            list.innerHTML = pending.map(f => {
+                const unitCost = f.quantity > 0 ? f.cost / f.quantity : 0;
+                return `
+                <div class="bg-white rounded-xl p-3 border border-amber-200 flex flex-wrap justify-between items-center gap-2">
+                    <div>
+                        <p class="font-bold text-gray-800">${escapeHtml(f.productName)}</p>
+                        <p class="text-xs text-gray-500">${f.date} · ${f.quantity} unidad${f.quantity > 1 ? 'es' : ''} vendida${f.quantity > 1 ? 's' : ''} sin stock cargado · costo usado: $${formatMoney(unitCost)}/u</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="openReconcileFoundStockModal('${f.id}')" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg font-bold text-xs">
+                            <i class="fas fa-check"></i> Confirmar compra real
+                        </button>
+                        <button onclick="dismissAutoAdjustReminder('${f.id}')" class="bg-gray-100 hover:bg-gray-200 text-gray-500 px-3 py-2 rounded-lg text-xs" title="No hace falta reconciliar esto">
+                            Descartar
+                        </button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function dismissAutoAdjustReminder(foundId) {
+            const entry = (appState.foundStock || []).find(f => f.id === foundId);
+            if (!entry) return;
+            entry.reconciled = true;
+            saveToLocalStorage();
+            renderAutoAdjustReminders();
+        }
+
+        let reconcileFsId = null;
+        let reconcileFsInvoiceType = 'white';
+        let reconcileFsPaymentSource = 'cash';
+
+        function openReconcileFoundStockModal(foundId) {
+            const entry = (appState.foundStock || []).find(f => f.id === foundId);
+            if (!entry) return;
+            reconcileFsId = foundId;
+            setReconcileFsInvoiceType('white');
+            setReconcileFsPayment('cash');
+
+            const unitCost = entry.quantity > 0 ? entry.cost / entry.quantity : 0;
+            document.getElementById('reconcile-fs-summary').textContent =
+                `${entry.productName}: ya se vendió ${entry.quantity} unidad${entry.quantity > 1 ? 'es' : ''} usando un costo estimado de $${formatMoney(unitCost)}/u.`;
+            document.getElementById('reconcile-fs-total-qty').value = entry.quantity;
+            document.getElementById('reconcile-fs-qty-hint').textContent =
+                `Ya se cubrieron y vendieron ${entry.quantity} con el ajuste automático. Si compraste más en esa entrega, poné el total acá (ej: compraste 4 → poné 4, y se agregan solo las 3 que faltan).`;
+            document.getElementById('reconcile-fs-cost').value = unitCost.toFixed(2);
+            document.getElementById('reconcile-found-stock-modal').classList.add('active');
+        }
+
+        function closeReconcileFoundStockModal() {
+            document.getElementById('reconcile-found-stock-modal').classList.remove('active');
+            reconcileFsId = null;
+        }
+
+        function setReconcileFsInvoiceType(type) {
+            reconcileFsInvoiceType = type;
+            const btnWhite = document.getElementById('btn-reconcile-fs-white');
+            const btnBlack = document.getElementById('btn-reconcile-fs-black');
+            if (btnWhite) btnWhite.className = 'flex-1 py-2 rounded-lg border-2 text-sm font-medium ' + (type === 'white' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500');
+            if (btnBlack) btnBlack.className = 'flex-1 py-2 rounded-lg border-2 text-sm font-medium ' + (type === 'black' ? 'border-gray-500 bg-gray-100 text-gray-700' : 'border-gray-200 text-gray-500');
+        }
+
+        function setReconcileFsPayment(source) {
+            reconcileFsPaymentSource = source;
+            const btnCash = document.getElementById('btn-reconcile-fs-cash');
+            const btnBank = document.getElementById('btn-reconcile-fs-bank');
+            if (btnCash) btnCash.className = 'flex-1 py-2 rounded-lg border-2 text-sm font-medium ' + (source === 'cash' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-500');
+            if (btnBank) btnBank.className = 'flex-1 py-2 rounded-lg border-2 text-sm font-medium ' + (source === 'bank' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500');
+        }
+
+        // Confirma el ajuste automático contra la compra real: corrige el costo (el
+        // ajuste automático usó el costo que el producto tenía guardado en ese momento,
+        // que puede estar desactualizado) y agrega SOLO las unidades que falten -- las
+        // que ya se sumaron y vendieron con el ajuste no se vuelven a cargar.
+        async function confirmReconcileFoundStock() {
+            const entry = (appState.foundStock || []).find(f => f.id === reconcileFsId);
+            if (!entry) { closeReconcileFoundStockModal(); return; }
+            const product = appState.inventory.find(p => p.id === entry.productId);
+            if (!product) {
+                showNotification('Ese producto ya no existe', 'error');
+                closeReconcileFoundStockModal();
+                return;
+            }
+
+            const totalQty = parseInt(document.getElementById('reconcile-fs-total-qty').value) || 0;
+            const realCost = parseFloat(document.getElementById('reconcile-fs-cost').value) || 0;
+            if (totalQty < entry.quantity) {
+                showNotification(`La cantidad total no puede ser menor a las ${entry.quantity} que ya se cubrieron con el ajuste`, 'error');
+                return;
+            }
+            if (realCost <= 0) {
+                showNotification('Ingresá el costo unitario real', 'error');
+                return;
+            }
+
+            // Corrige el valor de lo que ya se sumó (afecta la ganancia "stock gratis"
+            // mostrada en Dashboard/Finanzas, calculada a partir de este monto).
+            entry.cost = Math.round(realCost * entry.quantity * 100) / 100;
+            entry.reconciled = true;
+
+            const remainingQty = totalQty - entry.quantity;
+            if (remainingQty > 0) {
+                const totalCost = remainingQty * realCost;
+                const available = reconcileFsPaymentSource === 'cash' ? appState.cash : appState.bank;
+                if (totalCost > available) {
+                    if (!(await showConfirmModal(`⚠️ Esto ($${formatMoney(totalCost)}) deja ${reconcileFsPaymentSource === 'cash' ? 'la caja' : 'la cuenta'} en negativo (tenés $${formatMoney(available)}). ¿Confirmar igual?`))) return;
+                }
+                applyPurchaseLine({ product, qty: remainingQty, cost: realCost, expiry: null, source: reconcileFsPaymentSource, invoiceType: reconcileFsInvoiceType, conceptPrefix: 'Compra real (reconciliada)' });
+            } else {
+                // No hay unidades extra: solo se corrige el costo de referencia del producto.
+                product.cost = realCost;
+            }
+
+            saveToLocalStorage();
+            renderAll();
+            closeReconcileFoundStockModal();
+            showNotification(`✅ ${product.name}: reconciliado${remainingQty > 0 ? ` (+${remainingQty} unidades agregadas)` : ''}`, 'success');
+        }
+
         function saveFoundStock() {
             const productId = document.getElementById('found-stock-product').value;
             const qtyInput = document.getElementById('found-stock-quantity');
@@ -16835,38 +17037,8 @@
             // Agregar stock al producto. Si maneja lotes, sumar al primero; si el
             // array quedó vacío (se consumieron todos), crear un lote nuevo —
             // getProductStock suma lotes e ignoraría un stock suelto.
-            if (Array.isArray(product.batches)) {
-                if (product.batches.length > 0) {
-                    product.batches[0].stock += units;
-                } else {
-                    product.batches.push({
-                        id: 'BATCH-FOUND-' + Date.now(),
-                        stock: units,
-                        cost: units > 0 ? Math.round((estimatedCost / units) * 100) / 100 : 0,
-                        invoiceType: 'black', // stock gratis/encontrado: nunca viene con factura
-                        dateAdded: formatDateISO(appState.activeDate || new Date()),
-                        expiry: null
-                    });
-                }
-                product.stock = product.batches.reduce((sum, b) => sum + (b.stock || 0), 0);
-            } else {
-                product.stock = (product.stock || 0) + units;
-            }
-            
-            if (!appState.foundStock) appState.foundStock = [];
-            appState.foundStock.push({
-                id: 'FOUND-' + Date.now(),
-                date: formatDateISO(appState.activeDate || new Date()),
-                productId: productId,
-                productName: product.name,
-                quantity: units,
-                grams: isWeight ? grams : null,
-                reason: foundStockReason,
-                cost: estimatedCost,
-                notes: notes,
-                timestamp: Date.now()
-            });
-            
+            applyFoundStock(product, units, estimatedCost, foundStockReason, notes, isWeight ? grams : null);
+
             saveToLocalStorage();
             renderAll();
             closeFoundStockModal();
@@ -25340,6 +25512,44 @@ RESULTADOS:
                 <div class="flex gap-2">
                     <button onclick="closeFoundStockModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
                     <button onclick="saveFoundStock()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== RECONCILIAR AJUSTE AUTOMÁTICO ==================== -->
+    <div id="reconcile-found-stock-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-2 text-amber-600"><i class="fas fa-check-double"></i> Confirmar compra real</h3>
+            <p id="reconcile-fs-summary" class="text-sm text-gray-600 mb-4"></p>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Cantidad total que compraste en esa entrega (contando la que ya se vendió)</label>
+                    <input type="number" id="reconcile-fs-total-qty" class="w-full border-2 border-amber-200 rounded-xl px-4 py-3 text-xl font-bold text-center" min="1" step="1">
+                    <p id="reconcile-fs-qty-hint" class="text-xs text-gray-500 mt-1"></p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Costo unitario real</label>
+                    <input type="number" id="reconcile-fs-cost" class="w-full border-2 border-amber-200 rounded-xl px-4 py-3 text-xl font-bold text-center" min="0" step="0.01">
+                    <p class="text-xs text-gray-500 mt-1">Corrige el costo con el que se calculó la ganancia de lo que ya se vendió.</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Tipo de compra</label>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="setReconcileFsInvoiceType('white')" id="btn-reconcile-fs-white" class="flex-1 py-2 rounded-lg border-2 border-blue-500 bg-blue-50 text-blue-700 text-sm font-medium"><i class="fas fa-file-invoice"></i> Facturado</button>
+                        <button type="button" onclick="setReconcileFsInvoiceType('black')" id="btn-reconcile-fs-black" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-500 text-sm font-medium"><i class="fas fa-eye-slash"></i> Sin factura</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Pagar con</label>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="setReconcileFsPayment('cash')" id="btn-reconcile-fs-cash" class="flex-1 py-2 rounded-lg border-2 border-green-500 bg-green-50 text-green-700 text-sm font-medium">💵 Caja</button>
+                        <button type="button" onclick="setReconcileFsPayment('bank')" id="btn-reconcile-fs-bank" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-500 text-sm font-medium">🏦 Cuenta</button>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="closeReconcileFoundStockModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                    <button onclick="confirmReconcileFoundStock()" class="flex-1 bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-amber-700">Confirmar</button>
                 </div>
             </div>
         </div>

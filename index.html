@@ -2059,6 +2059,8 @@
                             <option value="margin-asc">Ordenar: Ganancia % (menor a mayor)</option>
                             <option value="profit-desc">Ordenar: Ganancia $ (mayor a menor)</option>
                             <option value="profit-asc">Ordenar: Ganancia $ (menor a mayor)</option>
+                            <option value="category">Ordenar: Categoría (A-Z)</option>
+                            <option value="supplier">Ordenar: Proveedor (A-Z)</option>
                         </select>
                         <input type="text" id="search-inventory" placeholder="Buscar..." class="border rounded-lg px-3 py-1 text-sm" onkeyup="renderInventory()">
                     </div>
@@ -5523,6 +5525,7 @@
 
         let currentWeightProduct = null;
         let currentWeightMode = 'grams';
+        let currentWeightDestination = 'cart'; // 'cart' (Vender) | 'pedido' (armar pedido)
         
         function toggleWeightSection() {
             const checked = document.getElementById('inv-sale-by-weight')?.checked || false;
@@ -5604,10 +5607,11 @@
             updateEditPricePerGram();
         }
         
-        function openWeightSaleModal(product) {
+        function openWeightSaleModal(product, destination) {
             if (!product || !product.saleByWeight) return;
             currentWeightProduct = product;
             currentWeightMode = 'grams';
+            currentWeightDestination = destination || 'cart';
             
             const stockUnits = getProductStock(product);
             const stockGrams = stockUnits * (product.weightPerUnit || 1);
@@ -5694,14 +5698,14 @@
         
         function addWeightToCart() {
             if (!currentWeightProduct) return;
-            
+
             const input = parseFloat(document.getElementById('weight-sale-input').value) || 0;
             const weightPerUnit = currentWeightProduct.weightPerUnit || 1;
             const salePrice = currentWeightProduct.salePrice || 0;
             const stockUnits = getProductStock(currentWeightProduct);
-            
+
             let quantity, grams, price;
-            
+
             if (currentWeightMode === 'grams') {
                 grams = input;
                 quantity = grams / weightPerUnit;
@@ -5711,17 +5715,40 @@
                 quantity = price / salePrice;
                 grams = quantity * weightPerUnit;
             }
-            
+
             if (quantity <= 0) {
                 showNotification('Ingresá un valor mayor a 0', 'error');
                 return;
             }
-            
-            if (quantity > stockUnits) {
+
+            // En Vender es una venta real: bloquea si no alcanza el stock. En un Pedido
+            // todavía no se descuenta nada (recién se descuenta al pasarlo a Vender), así
+            // que se deja cargar igual que cualquier otro producto del pedido.
+            if (currentWeightDestination === 'cart' && quantity > stockUnits) {
                 showNotification('No hay stock suficiente', 'error');
                 return;
             }
-            
+
+            if (currentWeightDestination === 'pedido') {
+                const existingItem = pendingPedidoItems.find(i => i.productId === currentWeightProduct.id);
+                if (existingItem) {
+                    existingItem.quantity += quantity;
+                    existingItem.weightGrams = (existingItem.weightGrams || 0) + grams;
+                } else {
+                    pendingPedidoItems.push({
+                        productId: currentWeightProduct.id,
+                        name: currentWeightProduct.name,
+                        price: salePrice,
+                        quantity: quantity,
+                        weightGrams: grams
+                    });
+                }
+                closeWeightSaleModal();
+                renderPedidoItemsList();
+                showNotification(`${currentWeightProduct.name} ${formatMoney(grams)}g agregado al pedido`, 'success');
+                return;
+            }
+
             const existingItem = appState.cart.find(item => item.productId === currentWeightProduct.id);
             if (existingItem) {
                 existingItem.quantity += quantity;
@@ -5736,7 +5763,7 @@
                     weightGrams: grams
                 });
             }
-            
+
             closeWeightSaleModal();
             renderCart();
             showNotification(`${currentWeightProduct.name} ${formatMoney(grams)}g agregado`, 'success');
@@ -7729,13 +7756,21 @@
 
         // Arma el ticket en formato de líneas para la impresora térmica (app de escritorio).
         // Mismo contenido que la versión imprimible de abajo, pero sin HTML.
+        // Para tickets/comandas: "x2" en productos normales, o los gramos reales en
+        // productos por peso (en vez de la cantidad en "unidades" fraccionadas tipo
+        // "x1.3165717727116255", que no significa nada para el cliente).
+        function saleItemQtyLabel(item) {
+            if (item.weightGrams != null) return Math.round(item.weightGrams) + 'g';
+            return 'x' + item.quantity;
+        }
+
         function buildElectronTicketPayload(sale) {
             const lines = [];
             lines.push({ text: (sale.date || '') + ' ' + (sale.time || ''), align: 'center' });
             lines.push({ hr: true });
 
             sale.items.forEach(item => {
-                lines.push({ left: item.name + ' x' + item.quantity, right: '$' + formatMoney(item.price * item.quantity) });
+                lines.push({ left: item.name + ' ' + saleItemQtyLabel(item), right: '$' + formatMoney(item.price * item.quantity) });
             });
             lines.push({ hr: true });
 
@@ -7832,7 +7867,7 @@
                     <hr>
                     ${sale.items.map(item => `
                         <div style="display: flex; justify-content: space-between;">
-                            <span>${item.name} x${item.quantity}</span>
+                            <span>${item.name} ${saleItemQtyLabel(item)}</span>
                             <span>$${formatMoney((item.price * item.quantity))}</span>
                         </div>
                     `).join('')}
@@ -8081,6 +8116,18 @@
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
 
+            hidden.value = '';
+            if (search) { search.value = ''; search.focus(); }
+            const resultsDiv = document.getElementById('pedido-product-results');
+            if (resultsDiv) resultsDiv.classList.add('hidden');
+
+            // Producto por peso: se carga en gramos con el mismo modal que usa Vender,
+            // no de a "1 unidad" como el resto.
+            if (product.saleByWeight && product.weightPerUnit > 0) {
+                openWeightSaleModal(product, 'pedido');
+                return;
+            }
+
             const existing = pendingPedidoItems.find(i => i.productId === productId);
             if (existing) {
                 existing.quantity += 1;
@@ -8088,10 +8135,6 @@
                 pendingPedidoItems.push({ productId, name: product.name, quantity: 1, price: product.salePrice || 0 });
             }
 
-            hidden.value = '';
-            if (search) { search.value = ''; search.focus(); }
-            const resultsDiv = document.getElementById('pedido-product-results');
-            if (resultsDiv) resultsDiv.classList.add('hidden');
             renderPedidoItemsList();
         }
 
@@ -8124,18 +8167,24 @@
             if (pendingPedidoItems.length === 0) {
                 container.innerHTML = '<p class="text-center text-xs text-gray-400 py-4">Buscá productos para agregar (opcional, alcanza con las notas)</p>';
             } else {
-                container.innerHTML = pendingPedidoItems.map((item, i) => `
-                    <div class="flex justify-between items-center gap-2 bg-gray-50 rounded-lg p-2 border text-sm">
-                        <span class="flex-1 font-medium text-gray-800">${escapeHtml(item.name)}</span>
-                        <div class="flex items-center gap-1">
+                container.innerHTML = pendingPedidoItems.map((item, i) => {
+                    const isWeight = item.weightGrams != null;
+                    const qtyControl = isWeight
+                        ? `<span class="text-xs font-bold text-blue-600">⚖️ ${formatMoney(item.weightGrams)}g</span>`
+                        : `<div class="flex items-center gap-1">
                             <button type="button" onclick="updatePedidoItemQty(${i}, -1)" class="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs font-bold">−</button>
                             <span class="w-6 text-center font-bold">${item.quantity}</span>
                             <button type="button" onclick="updatePedidoItemQty(${i}, 1)" class="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs font-bold">+</button>
-                        </div>
+                        </div>`;
+                    return `
+                    <div class="flex justify-between items-center gap-2 bg-gray-50 rounded-lg p-2 border text-sm">
+                        <span class="flex-1 font-medium text-gray-800">${escapeHtml(item.name)}</span>
+                        ${qtyControl}
                         <span class="text-xs text-gray-500 w-16 text-right">$${formatMoney(item.price * item.quantity)}</span>
                         <button type="button" onclick="removePedidoItem(${i})" class="text-red-500 hover:text-red-700 text-xs font-bold">✕</button>
                     </div>
-                `).join('');
+                `;
+                }).join('');
             }
             const totalItems = pendingPedidoItems.reduce((sum, i) => sum + (i.quantity || 0), 0);
             if (countEl) countEl.textContent = `(${totalItems} items)`;
@@ -8451,13 +8500,15 @@
 
             appState.cart = pedido.items.map(item => {
                 const product = appState.inventory.find(p => p.id === item.productId);
-                return {
+                const cartItem = {
                     productId: item.productId,
                     name: item.name,
                     price: item.price,
                     cost: product ? (product.isComposite ? calculateCompositeCost(product) : (product.cost || 0)) : 0,
                     quantity: item.quantity
                 };
+                if (item.weightGrams != null) cartItem.weightGrams = item.weightGrams;
+                return cartItem;
             });
             // Recalcular subtotal/descuento/total para ESTOS items ahora mismo: si no se
             // hace acá, completeSale() usa los valores en caché de la última vez que se
@@ -8644,10 +8695,14 @@
             lines.push({ text: 'Emitido: ' + now.toLocaleDateString('es-AR') + ' ' + now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }), align: 'center' });
             lines.push({ hr: true });
 
-            // El precio no importa para la cocina/mostrador: la comanda es solo qué preparar.
             (pedido.items || []).forEach(item => {
-                lines.push({ text: item.quantity + 'x ' + item.name, align: 'left' });
+                const cantidadTexto = item.weightGrams != null ? Math.round(item.weightGrams) + 'g' : item.quantity + 'x';
+                lines.push({ left: cantidadTexto + ' ' + item.name, right: '$' + formatMoney(item.price * item.quantity) });
             });
+            if (pedido.items && pedido.items.length > 0) {
+                lines.push({ hr: true });
+                lines.push({ left: 'TOTAL', right: '$' + formatMoney(pedido.total || 0), bold: true });
+            }
             if (pedido.notes) {
                 lines.push({ hr: true });
                 lines.push({ text: 'NOTAS:', align: 'left', bold: true });
@@ -8681,10 +8736,13 @@
                 : 'PRIORIDAD #' + (getPedidoPriorityNumber(pedido) || '');
             const now = new Date();
             const emitidoHtml = 'Emitido: ' + now.toLocaleDateString('es-AR') + ' ' + now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
-            // El precio no importa para la cocina/mostrador: la comanda es solo qué preparar.
-            const itemsHtml = (pedido.items || []).map(item => `
-                <div>${item.quantity}x ${escapeHtml(item.name)}</div>
-            `).join('');
+            const itemsHtml = (pedido.items || []).map(item => {
+                const cantidadTexto = item.weightGrams != null ? Math.round(item.weightGrams) + 'g' : item.quantity + 'x';
+                return `<div style="display:flex; justify-content:space-between;"><span>${cantidadTexto} ${escapeHtml(item.name)}</span><span>$${formatMoney(item.price * item.quantity)}</span></div>`;
+            }).join('');
+            const totalHtml = (pedido.items && pedido.items.length > 0)
+                ? `<hr><div style="display:flex; justify-content:space-between; font-weight:bold;"><span>TOTAL</span><span>$${formatMoney(pedido.total || 0)}</span></div>`
+                : '';
             w.document.write(`
                 <html>
                 <head><title>Comanda</title></head>
@@ -8696,6 +8754,7 @@
                     <p style="text-align: center;">${emitidoHtml}</p>
                     <hr>
                     ${itemsHtml}
+                    ${totalHtml}
                     ${pedido.notes ? `<hr><p style="font-weight:bold;">NOTAS:</p><p>${escapeHtml(pedido.notes)}</p>` : ''}
                 </body>
                 </html>
@@ -10535,10 +10594,53 @@
             return price - cost;
         }
 
+        // Mismas categorías que el select de Editar Producto -- se reutiliza acá para
+        // el desplegable rápido de la lista de Stock Actual.
+        const INVENTORY_CATEGORIES = [
+            { value: 'snacks', label: 'Snacks' },
+            { value: 'subproductos', label: 'Subproductos' },
+            { value: 'bebidas', label: 'Bebidas' },
+            { value: 'cervezas', label: 'Cervezas' },
+            { value: 'golosinas', label: 'Golosinas' },
+            { value: 'galletitas', label: 'Galletitas' },
+            { value: 'alfajores', label: 'Alfajores' },
+            { value: 'despensa', label: 'Despensa' },
+            { value: 'lacteos', label: 'Lácteos' },
+            { value: 'comidas', label: 'Comidas' },
+            { value: 'caramelos', label: 'Caramelos' },
+            { value: 'basicos', label: 'Básicos' },
+            { value: 'limpieza', label: 'Limpieza' },
+            { value: 'combos', label: 'Combos' }
+        ];
+
+        // Edición rápida desde la lista de Stock Actual (sin abrir el modal completo).
+        function updateInventoryField(productId, field, value) {
+            const product = appState.inventory.find(p => p.id === productId);
+            if (!product) return;
+            if (field === 'cost' || field === 'salePrice') {
+                const num = parseFloat(value);
+                if (isNaN(num) || num < 0) {
+                    showNotification('Valor inválido', 'error');
+                    renderInventory();
+                    return;
+                }
+                product[field] = num;
+            } else if (field === 'category' || field === 'supplier') {
+                product[field] = value || '';
+            } else {
+                return;
+            }
+            product.updatedAt = new Date().toISOString();
+            saveToLocalStorage();
+            renderInventory();
+        }
+
         function renderInventory() {
             const activeInventory = getActiveInventory();
             console.log('renderInventory llamado. Total productos:', activeInventory.length);
             renderAutoAdjustReminders();
+
+            const sortedSuppliersForInventory = (appState.suppliers || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
             const search = document.getElementById('search-inventory').value;
             let filtered = search
@@ -10554,6 +10656,10 @@
                 filtered.sort((a, b) => getProductGananciaPesos(b) - getProductGananciaPesos(a));
             } else if (sortMode === 'profit-asc') {
                 filtered.sort((a, b) => getProductGananciaPesos(a) - getProductGananciaPesos(b));
+            } else if (sortMode === 'category') {
+                filtered.sort((a, b) => (a.category || 'zzz').localeCompare(b.category || 'zzz') || (a.name || '').localeCompare(b.name || ''));
+            } else if (sortMode === 'supplier') {
+                filtered.sort((a, b) => getSupplierName(a).localeCompare(getSupplierName(b)) || (a.name || '').localeCompare(b.name || ''));
             } else if (!search) {
                 filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             }
@@ -10617,18 +10723,37 @@
                 const marginColor = marginPct >= 50 ? 'text-green-600' : marginPct >= 20 ? 'text-orange-600' : 'text-red-600';
                 const marginText = marginPct === Infinity ? '—' : marginPct.toFixed(0) + '%';
 
+                const categoryOptions = INVENTORY_CATEGORIES.map(c =>
+                    `<option value="${c.value}" ${p.category === c.value ? 'selected' : ''}>${c.label}</option>`
+                ).join('');
+                const supplierOptions = '<option value="">Sin proveedor</option>' + sortedSuppliersForInventory.map(s =>
+                    `<option value="${escapeHtml(s.name)}" ${p.supplier === s.name ? 'selected' : ''}>${escapeHtml(s.name)}</option>`
+                ).join('');
+
                 return `
                 <tr class="hover:bg-gray-50">
                     <td class="px-3 py-2">
                         <div class="font-medium text-gray-900">${compositeBadge}${weightBadge}${hiddenBadge}${escapeHtml(p.name)}</div>
-                        <div class="text-xs text-gray-500">${p.category || 'Sin cat.'} ${weightInfo}</div>
+                        ${weightInfo ? `<div class="text-xs text-gray-500 mb-1">${weightInfo}</div>` : ''}
+                        <div class="flex flex-col gap-1 mt-1">
+                            <select class="text-xs border rounded px-1 py-0.5 text-gray-600" onchange="updateInventoryField('${p.id}', 'category', this.value)" title="Categoría">
+                                ${categoryOptions}
+                            </select>
+                            <select class="text-xs border rounded px-1 py-0.5 text-gray-600" onchange="updateInventoryField('${p.id}', 'supplier', this.value)" title="Proveedor">
+                                ${supplierOptions}
+                            </select>
+                        </div>
                     </td>
                     <td class="px-3 py-2 text-center">
                         <span class="px-2 py-1 rounded-full text-xs font-bold ${statusClass}">${p.saleByWeight && p.weightPerUnit ? Math.round(totalStock * p.weightPerUnit) + 'g' : totalStock}</span>
                     </td>
                     <td class="px-3 py-2">${batchesHtml}</td>
-                    <td class="px-3 py-2 text-sm text-right text-gray-600">$${formatMoney(displayCost)}</td>
-                    <td class="px-3 py-2 text-sm text-right font-bold text-green-600">$${formatMoney(displayPrice)}</td>
+                    <td class="px-3 py-2 text-sm text-right text-gray-600">
+                        ${isComposite ? `$${formatMoney(displayCost)}` : `<input type="number" min="0" step="0.01" value="${displayCost}" class="w-20 border rounded px-1 py-0.5 text-right" onchange="updateInventoryField('${p.id}', 'cost', this.value)">`}
+                    </td>
+                    <td class="px-3 py-2 text-sm text-right font-bold text-green-600">
+                        <input type="number" min="0" step="0.01" value="${displayPrice}" class="w-20 border rounded px-1 py-0.5 text-right font-bold text-green-600" onchange="updateInventoryField('${p.id}', 'salePrice', this.value)">
+                    </td>
                     <td class="px-3 py-2 text-sm text-right font-bold ${marginColor}">$${formatMoney(gananciaPesos)}</td>
                     <td class="px-3 py-2 text-sm text-right font-bold ${marginColor}">${marginText}</td>
                     <td class="px-3 py-2">

@@ -746,16 +746,8 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">📅 Días de Compra del Proveedor</label>
-                    <div class="flex gap-1 flex-wrap" id="edit-buy-days">
-                        <button type="button" onclick="toggleBuyDay('edit', 1)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="1">Lun</button>
-                        <button type="button" onclick="toggleBuyDay('edit', 2)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="2">Mar</button>
-                        <button type="button" onclick="toggleBuyDay('edit', 3)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="3">Mié</button>
-                        <button type="button" onclick="toggleBuyDay('edit', 4)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="4">Jue</button>
-                        <button type="button" onclick="toggleBuyDay('edit', 5)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="5">Vie</button>
-                        <button type="button" onclick="toggleBuyDay('edit', 6)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="6">Sáb</button>
-                        <button type="button" onclick="toggleBuyDay('edit', 0)" class="buy-day-btn px-2 py-1 text-xs rounded border border-gray-300 hover:bg-purple-100" data-day="0">Dom</button>
-                    </div>
-                    <p class="text-xs text-gray-500 mt-1">Seleccioná los días que el proveedor pasa</p>
+                    <p id="edit-prod-buy-days-info" class="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">Sin proveedor asignado</p>
+                    <p class="text-xs text-gray-500 mt-1">Se editan una sola vez por proveedor en Configuración → Proveedores (así todos sus productos lo heredan, sin repetirlo en cada uno).</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">WhatsApp Proveedor</label>
@@ -2087,7 +2079,7 @@
                         <option value="unitsPerDisplay">Unidades por display</option>
                         <option value="displaysPerBulk">Displays por bulto</option>
                     </select>
-                    <span class="text-xs text-gray-400">Elegí qué campo querés corregir y te aparece editable en cada fila.</span>
+                    <span class="text-xs text-gray-400">Elegí qué campo querés corregir y te aparece editable en cada fila. Los días de compra se editan por proveedor en Configuración.</span>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full">
@@ -10859,14 +10851,15 @@
 
         // Calcular días hasta la próxima compra posible según buyDays del proveedor (solo días abiertos)
         function getDaysUntilNextBuy(product) {
-            if (!product.buyDays || product.buyDays.length === 0) return null;
-            
+            const buyDays = getSupplierBuyDays(product);
+            if (!buyDays || buyDays.length === 0) return null;
+
             const today = new Date();
             const todayDayOfWeek = today.getDay();
-            
+
             for (let i = 0; i <= 14; i++) {
                 const checkDay = (todayDayOfWeek + i) % 7;
-                if (isOpenDay(checkDay) && product.buyDays.includes(checkDay)) {
+                if (isOpenDay(checkDay) && buyDays.includes(checkDay)) {
                     return i; // 0 = hoy, 1 = mañana, etc.
                 }
             }
@@ -12026,10 +12019,7 @@
             populateSupplierSelects();
             document.getElementById('edit-prod-supplier').value = product.supplier || '';
             onEditSupplierChange();
-            
-            // Cargar días de compra
-            setBuyDays('edit', product.buyDays || []);
-            
+
             // Cargar componentes si es producto compuesto
             editProdComponents = []; // Limpiar estado residual
             const isCompositeCheckbox = document.getElementById('edit-prod-is-composite');
@@ -12175,8 +12165,7 @@
                 product.displaysPerBulk = parseInt(document.getElementById('edit-prod-displays-per-bulk').value) || null;
                 product.supplier = document.getElementById('edit-prod-supplier').value.trim();
                 product.supplierPhone = document.getElementById('edit-prod-supplier-phone').value.trim();
-                product.buyDays = getSelectedBuyDays('edit');
-                
+
                 // Procesar lotes del DOM
                 const batchRows = document.querySelectorAll('#edit-prod-batches .batch-row');
                 const newBatches = [];
@@ -18486,11 +18475,12 @@
                 let nextBuyDay = null;
                 let daysUntilBuy = null;
                 
-                if (product.buyDays && product.buyDays.length > 0) {
+                const productBuyDays = getSupplierBuyDays(product);
+                if (productBuyDays.length > 0) {
                     // Encontrar el próximo día de compra abierto
                     for (let i = 0; i <= 14; i++) {
                         const checkDay = (todayDayOfWeek + i) % 7;
-                        if (isOpenDay(checkDay) && product.buyDays.includes(checkDay)) {
+                        if (isOpenDay(checkDay) && productBuyDays.includes(checkDay)) {
                             nextBuyDay = checkDay;
                             daysUntilBuy = i;
                             break;
@@ -20680,6 +20670,24 @@ Total de productos a comprar: ${shoppingList.length}
             if (!select || !phoneInput) return;
             const supplier = getSupplierByName(select.value);
             phoneInput.value = supplier ? (supplier.phone || '') : '';
+            renderEditProdBuyDaysInfo(select.value);
+        }
+
+        // Muestra (de solo lectura) los días que pasa el proveedor elegido -- se editan
+        // en Configuración → Proveedores, no acá.
+        function renderEditProdBuyDaysInfo(supplierName) {
+            const el = document.getElementById('edit-prod-buy-days-info');
+            if (!el) return;
+            const dayNames = { 1: 'Lun', 2: 'Mar', 3: 'Mié', 4: 'Jue', 5: 'Vie', 6: 'Sáb', 0: 'Dom' };
+            const supplier = getSupplierByName(supplierName);
+            if (!supplier) {
+                el.textContent = 'Sin proveedor asignado';
+                return;
+            }
+            const days = Array.isArray(supplier.buyDays) ? supplier.buyDays : [];
+            el.textContent = days.length > 0
+                ? days.map(d => dayNames[d]).join(', ')
+                : `${supplier.name}: todavía no tiene días configurados`;
         }
 
         function addSupplier() {
@@ -20704,7 +20712,8 @@ Total de productos a comprar: ${shoppingList.length}
                 name: name,
                 phone: phone,
                 type: type,
-                categories: []
+                categories: [],
+                buyDays: []
             });
             if (nameInput) nameInput.value = '';
             if (phoneInput) phoneInput.value = '';
@@ -20725,6 +20734,31 @@ Total de productos a comprar: ${shoppingList.length}
             }
         }
 
+        // Días que pasa/entrega el proveedor: se edita acá (una vez por proveedor) en vez
+        // de repetirlo en cada producto -- todos los productos de ese proveedor lo heredan.
+        function toggleSupplierBuyDay(supplierId, day) {
+            const supplier = (appState.suppliers || []).find(s => s.id === supplierId);
+            if (!supplier) return;
+            if (!Array.isArray(supplier.buyDays)) supplier.buyDays = [];
+            const idx = supplier.buyDays.indexOf(day);
+            if (idx >= 0) supplier.buyDays.splice(idx, 1);
+            else supplier.buyDays.push(day);
+            saveToLocalStorage();
+            renderSuppliersList();
+        }
+
+        // Días de compra que aplican a un producto: los del proveedor asignado si ya los
+        // configuró; si no, se usa lo que el producto tenía cargado antes de este cambio
+        // (compatibilidad con datos viejos, cuando el día se cargaba por producto).
+        function getSupplierBuyDays(product) {
+            if (!product) return [];
+            const supplier = getSupplierByName(product.supplier);
+            if (supplier && Array.isArray(supplier.buyDays) && supplier.buyDays.length > 0) {
+                return supplier.buyDays;
+            }
+            return Array.isArray(product.buyDays) ? product.buyDays : [];
+        }
+
         function deleteSupplier(supplierId) {
             if (!confirm('¿Eliminar este proveedor? Los productos asociados mantendrán el nombre pero no se vincularán más.')) return;
             appState.suppliers = (appState.suppliers || []).filter(s => s.id !== supplierId);
@@ -20742,12 +20776,23 @@ Total de productos a comprar: ${shoppingList.length}
                 listEl.innerHTML = '<p class="text-gray-400 text-center py-4">No hay proveedores registrados</p>';
                 return;
             }
-            listEl.innerHTML = suppliers.map(s => `
+            const dayLabels = [['1', 'L'], ['2', 'M'], ['3', 'X'], ['4', 'J'], ['5', 'V'], ['6', 'S'], ['0', 'D']];
+            listEl.innerHTML = suppliers.map(s => {
+                const buyDays = Array.isArray(s.buyDays) ? s.buyDays : [];
+                const dayButtons = dayLabels.map(([day, label]) => {
+                    const active = buyDays.includes(parseInt(day));
+                    return `<button type="button" onclick="toggleSupplierBuyDay('${s.id}', ${day})" class="w-6 h-6 text-[10px] rounded ${active ? 'bg-purple-500 text-white' : 'bg-white border border-gray-300 text-gray-500'} font-bold">${label}</button>`;
+                }).join('');
+                return `
                 <div class="flex justify-between items-center p-3 rounded-lg border border-teal-100 bg-teal-50/30">
                     <div>
                         <p class="font-bold text-gray-800">${escapeHtml(s.name)}</p>
                         ${s.phone ? `<p class="text-xs text-gray-500"><i class="fab fa-whatsapp text-green-600"></i> ${escapeHtml(s.phone)}</p>` : ''}
                         ${s.categories && s.categories.length > 0 ? `<p class="text-xs text-gray-500">Categorías: ${s.categories.map(c => `<span class="inline-block bg-white rounded px-1.5 py-0.5 border border-gray-200 ml-1">${escapeHtml(c)}</span>`).join('')}</p>` : ''}
+                        <div class="flex items-center gap-1 mt-1">
+                            <span class="text-[10px] text-gray-400 mr-1">📅 Días que pasa:</span>
+                            ${dayButtons}
+                        </div>
                     </div>
                     <div class="flex items-center gap-2">
                         <select onchange="setSupplierType('${s.id}', this.value)" class="text-xs border rounded-lg px-2 py-1 ${s.type === 'mayorista' ? 'bg-orange-50 border-orange-300 text-orange-700' : 'bg-white border-gray-300 text-gray-600'}">
@@ -20759,7 +20804,8 @@ Total de productos a comprar: ${shoppingList.length}
                         </button>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         function addCategoryToSupplier() {

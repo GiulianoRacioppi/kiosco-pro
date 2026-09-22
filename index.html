@@ -2775,6 +2775,15 @@
                         <i class="fas fa-chevron-right"></i>
                     </button>
                 </div>
+                <div id="billing-day-nav" class="flex justify-center items-center gap-3 mt-2 hidden">
+                    <button onclick="changeBillingDay(-1)" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span class="text-xs text-gray-500">Ver otros días</span>
+                    <button onclick="changeBillingDay(1)" id="btn-billing-day-next" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
                 <p id="billing-period-caption" class="text-center text-sm font-bold text-purple-600 mb-6">-</p>
                 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -20008,11 +20017,13 @@ Total de productos a comprar: ${shoppingList.length}
 
         let billingPeriod = 'all'; // 'today' | 'week' | 'month' | 'all'
         let billingMonthOffset = 0; // 0 = mes actual, -1 = mes anterior, etc. (solo aplica con period === 'month')
+        let billingDayOffset = 0; // 0 = hoy, -1 = ayer, etc. (solo aplica con period === 'today')
         let dashboardPeriod = 'today'; // 'today' | 'week' | 'month' | 'year' | 'all'
 
         function setBillingPeriod(period) {
             billingPeriod = period;
             if (period === 'month') billingMonthOffset = 0; // clic directo en "Este mes" siempre arranca en el mes actual
+            if (period === 'today') billingDayOffset = 0; // clic directo en "Hoy" siempre arranca en hoy
             const buttons = ['today','week','month','all'];
             buttons.forEach(p => {
                 const btn = document.getElementById('btn-billing-' + p);
@@ -20029,6 +20040,13 @@ Total de productos a comprar: ${shoppingList.length}
         function changeBillingMonth(delta) {
             if (billingMonthOffset + delta > 0) return;
             billingMonthOffset += delta;
+            renderBilling();
+        }
+
+        // Navega a otro día dentro del período "Hoy" (no permite ir al futuro)
+        function changeBillingDay(delta) {
+            if (billingDayOffset + delta > 0) return;
+            billingDayOffset += delta;
             renderBilling();
         }
 
@@ -20053,7 +20071,10 @@ Total de productos a comprar: ${shoppingList.length}
             let endDate = null;
 
             if (period === 'today') {
-                startDate = today;
+                // Día elegido (billingDayOffset: 0 = hoy, -1 = ayer, etc.)
+                const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + billingDayOffset);
+                startDate = formatDateISO(target);
+                endDate = startDate;
             } else if (period === 'week') {
                 // Esta semana calendario: desde el lunes
                 const d = new Date(now);
@@ -20123,7 +20144,9 @@ Total de productos a comprar: ${shoppingList.length}
         function billingPeriodCaption(period, startDate) {
             const hoy = parseDateLocal(formatDateISO(appState.activeDate));
             if (period === 'today') {
-                return 'Hoy — ' + hoy.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                const target = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + billingDayOffset);
+                const prefijo = billingDayOffset === 0 ? 'Hoy' : (billingDayOffset === -1 ? 'Ayer' : target.toLocaleDateString('es-ES', { weekday: 'long' }));
+                return (prefijo.charAt(0).toUpperCase() + prefijo.slice(1)) + ' — ' + target.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
             }
             if (period === 'week') {
                 const lunes = parseDateLocal(startDate);
@@ -20237,11 +20260,20 @@ Total de productos a comprar: ${shoppingList.length}
             const btnMonth = document.getElementById('btn-billing-month');
             if (btnMonth) btnMonth.textContent = mesNombre.charAt(0).toUpperCase() + mesNombre.slice(1) + (billingMonthOffset !== 0 ? ' ' + targetMonth.getFullYear() : '');
 
-            // La navegación de mes (flechas) solo se muestra dentro del período "Este mes"
+            const targetDay = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + billingDayOffset);
+            const btnToday = document.getElementById('btn-billing-today');
+            if (btnToday) btnToday.textContent = billingDayOffset === 0 ? 'Hoy' : targetDay.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+
+            // La navegación de mes/día (flechas) solo se muestra dentro de su período
             const monthNav = document.getElementById('billing-month-nav');
             if (monthNav) monthNav.classList.toggle('hidden', billingPeriod !== 'month');
             const nextMonthBtn = document.getElementById('btn-billing-month-next');
             if (nextMonthBtn) nextMonthBtn.disabled = billingMonthOffset >= 0;
+
+            const dayNav = document.getElementById('billing-day-nav');
+            if (dayNav) dayNav.classList.toggle('hidden', billingPeriod !== 'today');
+            const nextDayBtn = document.getElementById('btn-billing-day-next');
+            if (nextDayBtn) nextDayBtn.disabled = billingDayOffset >= 0;
 
             const captionEl = document.getElementById('billing-period-caption');
             if (captionEl) captionEl.textContent = '📅 ' + billingPeriodCaption(billingPeriod, data.startDate);

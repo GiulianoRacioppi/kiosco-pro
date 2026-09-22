@@ -728,6 +728,16 @@
                     <p id="edit-prod-bulk-discount-info" class="text-xs mt-2 hidden"></p>
                 </div>
                 <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Unidades por display (opcional)</label>
+                    <input type="number" id="edit-prod-units-per-display" class="w-full border rounded-lg px-3 py-2" min="0" placeholder="Ej: 24">
+                    <p class="text-xs text-gray-500 mt-1">Si el producto viene en cajitas/displays chicos de X unidades (entre la unidad suelta y el bulto grande).</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Displays por bulto (opcional)</label>
+                    <input type="number" id="edit-prod-displays-per-bulk" class="w-full border rounded-lg px-3 py-2" min="0" placeholder="Ej: 12">
+                    <p class="text-xs text-gray-500 mt-1">Cuántos displays trae el bulto/caja grande del proveedor.</p>
+                </div>
+                <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Proveedor</label>
                     <select id="edit-prod-supplier" class="w-full border rounded-lg px-3 py-2" onchange="onEditSupplierChange()">
                         <option value="">Sin proveedor</option>
@@ -2064,6 +2074,20 @@
                         </select>
                         <input type="text" id="search-inventory" placeholder="Buscar..." class="border rounded-lg px-3 py-1 text-sm" onkeyup="renderInventory()">
                     </div>
+                </div>
+                <div class="px-4 py-2 border-b bg-gray-50 flex items-center gap-2">
+                    <label class="text-sm text-gray-600">✏️ Editar rápido:</label>
+                    <select id="inventory-edit-field" class="border rounded-lg px-2 py-1 text-sm" onchange="setInventoryEditField(this.value)">
+                        <option value="none">No editar (solo ver)</option>
+                        <option value="category">Categoría</option>
+                        <option value="supplier">Proveedor</option>
+                        <option value="cost">Costo</option>
+                        <option value="salePrice">Precio de venta</option>
+                        <option value="bulkPackSize">Viene en bulto de (unidades)</option>
+                        <option value="unitsPerDisplay">Unidades por display</option>
+                        <option value="displaysPerBulk">Displays por bulto</option>
+                    </select>
+                    <span class="text-xs text-gray-400">Elegí qué campo querés corregir y te aparece editable en cada fila.</span>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full">
@@ -10613,6 +10637,16 @@
             { value: 'combos', label: 'Combos' }
         ];
 
+        // Campo elegido en "✏️ Editar rápido" de Stock Actual -- mientras esté en 'none'
+        // (por defecto) las filas se ven de solo lectura, como siempre. Al elegir un
+        // campo, aparece la casilla editable de ESE campo en cada fila, nada más.
+        let inventoryEditField = 'none';
+
+        function setInventoryEditField(field) {
+            inventoryEditField = field || 'none';
+            renderInventory();
+        }
+
         // Edición rápida desde la lista de Stock Actual (sin abrir el modal completo).
         function updateInventoryField(productId, field, value) {
             const product = appState.inventory.find(p => p.id === productId);
@@ -10627,6 +10661,9 @@
                 product[field] = num;
             } else if (field === 'category' || field === 'supplier') {
                 product[field] = value || '';
+            } else if (field === 'bulkPackSize' || field === 'unitsPerDisplay' || field === 'displaysPerBulk') {
+                const num = parseInt(value);
+                product[field] = (!isNaN(num) && num > 0) ? num : null;
             } else {
                 return;
             }
@@ -10723,36 +10760,41 @@
                 const marginColor = marginPct >= 50 ? 'text-green-600' : marginPct >= 20 ? 'text-orange-600' : 'text-red-600';
                 const marginText = marginPct === Infinity ? '—' : marginPct.toFixed(0) + '%';
 
-                const categoryOptions = INVENTORY_CATEGORIES.map(c =>
-                    `<option value="${c.value}" ${p.category === c.value ? 'selected' : ''}>${c.label}</option>`
-                ).join('');
-                const supplierOptions = '<option value="">Sin proveedor</option>' + sortedSuppliersForInventory.map(s =>
-                    `<option value="${escapeHtml(s.name)}" ${p.supplier === s.name ? 'selected' : ''}>${escapeHtml(s.name)}</option>`
-                ).join('');
+                // Solo se arma la casilla editable del campo elegido arriba en "✏️ Editar
+                // rápido" -- el resto de las filas se ven de solo lectura como siempre.
+                let inlinePackagingEdit = '';
+                if (inventoryEditField === 'category') {
+                    const categoryOptions = INVENTORY_CATEGORIES.map(c =>
+                        `<option value="${c.value}" ${p.category === c.value ? 'selected' : ''}>${c.label}</option>`
+                    ).join('');
+                    inlinePackagingEdit = `<select class="text-xs border rounded px-1 py-0.5 text-gray-600 mt-1" onchange="updateInventoryField('${p.id}', 'category', this.value)">${categoryOptions}</select>`;
+                } else if (inventoryEditField === 'supplier') {
+                    const supplierOptions = '<option value="">Sin proveedor</option>' + sortedSuppliersForInventory.map(s =>
+                        `<option value="${escapeHtml(s.name)}" ${p.supplier === s.name ? 'selected' : ''}>${escapeHtml(s.name)}</option>`
+                    ).join('');
+                    inlinePackagingEdit = `<select class="text-xs border rounded px-1 py-0.5 text-gray-600 mt-1" onchange="updateInventoryField('${p.id}', 'supplier', this.value)">${supplierOptions}</select>`;
+                } else if (inventoryEditField === 'bulkPackSize' || inventoryEditField === 'unitsPerDisplay' || inventoryEditField === 'displaysPerBulk') {
+                    inlinePackagingEdit = `<input type="number" min="0" step="1" value="${p[inventoryEditField] || ''}" class="text-xs border rounded px-1 py-0.5 w-24 mt-1" onchange="updateInventoryField('${p.id}', '${inventoryEditField}', this.value)">`;
+                }
+                const categoryLine = inventoryEditField === 'category' ? '' : `<div class="text-xs text-gray-500">${p.category ? (INVENTORY_CATEGORIES.find(c => c.value === p.category) || {}).label || p.category : 'Sin cat.'}</div>`;
 
                 return `
                 <tr class="hover:bg-gray-50">
                     <td class="px-3 py-2">
                         <div class="font-medium text-gray-900">${compositeBadge}${weightBadge}${hiddenBadge}${escapeHtml(p.name)}</div>
+                        ${categoryLine}
                         ${weightInfo ? `<div class="text-xs text-gray-500 mb-1">${weightInfo}</div>` : ''}
-                        <div class="flex flex-col gap-1 mt-1">
-                            <select class="text-xs border rounded px-1 py-0.5 text-gray-600" onchange="updateInventoryField('${p.id}', 'category', this.value)" title="Categoría">
-                                ${categoryOptions}
-                            </select>
-                            <select class="text-xs border rounded px-1 py-0.5 text-gray-600" onchange="updateInventoryField('${p.id}', 'supplier', this.value)" title="Proveedor">
-                                ${supplierOptions}
-                            </select>
-                        </div>
+                        ${inlinePackagingEdit}
                     </td>
                     <td class="px-3 py-2 text-center">
                         <span class="px-2 py-1 rounded-full text-xs font-bold ${statusClass}">${p.saleByWeight && p.weightPerUnit ? Math.round(totalStock * p.weightPerUnit) + 'g' : totalStock}</span>
                     </td>
                     <td class="px-3 py-2">${batchesHtml}</td>
                     <td class="px-3 py-2 text-sm text-right text-gray-600">
-                        ${isComposite ? `$${formatMoney(displayCost)}` : `<input type="number" min="0" step="0.01" value="${displayCost}" class="w-20 border rounded px-1 py-0.5 text-right" onchange="updateInventoryField('${p.id}', 'cost', this.value)">`}
+                        ${inventoryEditField === 'cost' && !isComposite ? `<input type="number" min="0" step="0.01" value="${displayCost}" class="w-20 border rounded px-1 py-0.5 text-right" onchange="updateInventoryField('${p.id}', 'cost', this.value)">` : `$${formatMoney(displayCost)}`}
                     </td>
                     <td class="px-3 py-2 text-sm text-right font-bold text-green-600">
-                        <input type="number" min="0" step="0.01" value="${displayPrice}" class="w-20 border rounded px-1 py-0.5 text-right font-bold text-green-600" onchange="updateInventoryField('${p.id}', 'salePrice', this.value)">
+                        ${inventoryEditField === 'salePrice' ? `<input type="number" min="0" step="0.01" value="${displayPrice}" class="w-20 border rounded px-1 py-0.5 text-right font-bold text-green-600" onchange="updateInventoryField('${p.id}', 'salePrice', this.value)">` : `$${formatMoney(displayPrice)}`}
                     </td>
                     <td class="px-3 py-2 text-sm text-right font-bold ${marginColor}">$${formatMoney(gananciaPesos)}</td>
                     <td class="px-3 py-2 text-sm text-right font-bold ${marginColor}">${marginText}</td>
@@ -11968,6 +12010,8 @@
             document.getElementById('edit-prod-shelf-life').value = product.shelfLifeDays || '';
             document.getElementById('edit-prod-bulk-size').value = product.bulkPackSize || '';
             document.getElementById('edit-prod-bulk-only').checked = !!product.bulkOnly;
+            document.getElementById('edit-prod-units-per-display').value = product.unitsPerDisplay || '';
+            document.getElementById('edit-prod-displays-per-bulk').value = product.displaysPerBulk || '';
             const bulkInfoEl = document.getElementById('edit-prod-bulk-discount-info');
             if (bulkInfoEl) {
                 if (product.bulkDiscountInfo && product.bulkDiscountInfo.discountPct > 0) {
@@ -12127,6 +12171,8 @@
                 product.shelfLifeDays = parseInt(document.getElementById('edit-prod-shelf-life').value) || null;
                 product.bulkPackSize = parseInt(document.getElementById('edit-prod-bulk-size').value) || null;
                 product.bulkOnly = document.getElementById('edit-prod-bulk-only').checked;
+                product.unitsPerDisplay = parseInt(document.getElementById('edit-prod-units-per-display').value) || null;
+                product.displaysPerBulk = parseInt(document.getElementById('edit-prod-displays-per-bulk').value) || null;
                 product.supplier = document.getElementById('edit-prod-supplier').value.trim();
                 product.supplierPhone = document.getElementById('edit-prod-supplier-phone').value.trim();
                 product.buyDays = getSelectedBuyDays('edit');

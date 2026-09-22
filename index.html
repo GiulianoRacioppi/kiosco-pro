@@ -22142,6 +22142,58 @@ RESULTADOS:
 
         // ==================== RENDER PROMOTIONS ====================
 
+        // Cuánto deja de ganancia una promo, comparando el costo real de lo que incluye
+        // contra el precio fijo de la promo. Solo se puede calcular con certeza en
+        // "Combo Fijo" (bundle, productos y cantidades conocidas) y "Pack" (productos
+        // elegibles conocidos) -- en 2x1/Lleva-Paga/% descuento/por monto el producto
+        // que termina aplicando varía venta a venta, así que no hay un costo único.
+        function calculatePromoMarginInfo(promo) {
+            const inv = appState.inventory;
+            const getCost = (id) => {
+                const p = inv.find(pr => pr.id === id);
+                if (!p) return null;
+                return p.isComposite ? calculateCompositeCost(p) : (p.cost || 0);
+            };
+            const getPrice = (id) => {
+                const p = inv.find(pr => pr.id === id);
+                return p ? (p.salePrice || 0) : null;
+            };
+
+            if (promo.type === 'bundle' && Array.isArray(promo.bundleItems) && promo.bundleItems.length > 0) {
+                let cost = 0;
+                let allKnown = true;
+                promo.bundleItems.forEach(bi => {
+                    const qty = bi.qty || 1;
+                    const ids = bi.productIds || [bi.productId];
+                    // Igual criterio que al aplicar el descuento real: se toma la opción más cara del grupo
+                    let bestCost = null, bestPrice = -Infinity;
+                    ids.forEach(id => {
+                        const c = getCost(id);
+                        const pr = getPrice(id);
+                        if (c == null || pr == null) return;
+                        if (pr > bestPrice) { bestPrice = pr; bestCost = c; }
+                    });
+                    if (bestCost == null) { allKnown = false; return; }
+                    cost += bestCost * qty;
+                });
+                if (!allKnown) return null;
+                const price = promo.bundlePrice || promo.discount || 0;
+                return { cost, price, profit: price - cost, marginPct: cost > 0 ? ((price - cost) / cost) * 100 : null };
+            }
+
+            if (promo.type === 'pack' && Array.isArray(promo.productIds) && promo.productIds.length > 0) {
+                const costs = promo.productIds.map(getCost).filter(c => c != null);
+                if (costs.length === 0) return null;
+                const avgCost = costs.reduce((a, b) => a + b, 0) / costs.length;
+                const qty = promo.packQty || 2;
+                const cost = avgCost * qty;
+                const price = promo.packPrice || 0;
+                return { cost, price, profit: price - cost, marginPct: cost > 0 ? ((price - cost) / cost) * 100 : null };
+            }
+
+            return null;
+        }
+
         function renderPromotions() {
             const list = document.getElementById('promotions-list');
             if (!list) return;
@@ -22193,7 +22245,8 @@ RESULTADOS:
                         productCount = `${p.productIds.length} productos`;
                     }
                     const useCount = usageCounts[p.id] || 0;
-                    
+                    const marginInfo = calculatePromoMarginInfo(p);
+
                     return `
                         <div class="p-4 flex items-start gap-4 hover:bg-gray-50 transition">
                             <div class="flex-1 min-w-0">
@@ -22202,6 +22255,7 @@ RESULTADOS:
                                     <span class="text-xs px-2 py-0.5 rounded-full ${statusColor}">${statusText}</span>
                                     ${isNow ? `<span class="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">✅ Aplica ahora</span>` : ''}
                                     <span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700"><i class="fas fa-chart-bar"></i> ${useCount} usos</span>
+                                    ${marginInfo ? `<span class="text-xs px-2 py-0.5 rounded-full font-bold ${marginInfo.profit >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}" title="Costo: $${formatMoney(marginInfo.cost)} · Precio promo: $${formatMoney(marginInfo.price)}">💰 $${formatMoney(marginInfo.profit)}${marginInfo.marginPct != null ? ' (' + marginInfo.marginPct.toFixed(0) + '%)' : ''}</span>` : ''}
                                 </div>
                                 <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                                     <span><i class="fas fa-tag text-purple-400"></i> ${typeLabel}</span>

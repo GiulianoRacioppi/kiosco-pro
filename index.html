@@ -1044,6 +1044,11 @@
                 <i class="fas fa-chart-line w-4 text-xs"></i> Finanzas
             </button>
 
+            <!-- ANÁLISIS (ganancia del negocio, ROI, punto de equilibrio, tendencias): Solo admin -->
+            <button onclick="showSection('analysis')" id="nav-analysis" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="analysis">
+                <i class="fas fa-chart-pie w-4 text-xs"></i> Análisis
+            </button>
+
             <!-- FLUJO DE CAJA (proyección): Solo admin -->
             <button onclick="showSection('cashflow-projection')" id="nav-cashflow-projection" class="nav-btn sidebar-admin-only w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="cashflow-projection">
                 <i class="fas fa-water w-4 text-xs"></i> Flujo de Caja
@@ -1457,8 +1462,8 @@
                         <div id="cash-details" class="space-y-3">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Monto recibido</label>
-                                <input type="number" id="cash-received" class="w-full border-2 border-green-300 rounded-xl px-4 py-3 text-lg font-bold" 
-                                    placeholder="0" oninput="calculateChange()">
+                                <input type="number" id="cash-received" class="w-full border-2 border-green-300 rounded-xl px-4 py-3 text-lg font-bold"
+                                    placeholder="0" oninput="calculateChange()" onkeydown="if(event.key==='Enter'){event.preventDefault();completeSale();}">
                             </div>
                             <div class="p-4 bg-green-100 rounded-xl">
                                 <p class="text-sm text-green-700 mb-1">Vuelto:</p>
@@ -1638,7 +1643,17 @@
                         <i class="fas fa-boxes"></i> Inversiones <span id="day-investment-count" class="bg-blue-500 text-white text-xs rounded-full px-2 py-0.5 ml-1">0</span>
                     </button>
                 </div>
-                
+
+                <div class="flex items-center gap-2 mb-2">
+                    <label class="text-xs text-gray-500">Facturación:</label>
+                    <select id="day-sales-invoice-filter" onchange="showDayDetail(selectedCalendarDate)" class="border rounded-lg px-2 py-1 text-xs">
+                        <option value="">Todas</option>
+                        <option value="white">🧾 Solo Blanco</option>
+                        <option value="black">🙈 Solo Negro</option>
+                        <option value="mixed">🔀 Mixta</option>
+                    </select>
+                </div>
+
                 <div id="day-sales-list" class="space-y-2 max-h-96 overflow-y-auto"></div>
                 <div id="day-products-list" class="space-y-2 max-h-96 overflow-y-auto hidden"></div>
                 <div id="day-expenses-list" class="space-y-2 max-h-96 overflow-y-auto hidden"></div>
@@ -2064,6 +2079,12 @@
                             <option value="category">Ordenar: Categoría (A-Z)</option>
                             <option value="supplier">Ordenar: Proveedor (A-Z)</option>
                         </select>
+                        <select id="inventory-invoice-filter" class="border rounded-lg px-2 py-1 text-sm" onchange="renderInventory()">
+                            <option value="">Facturación: Todos</option>
+                            <option value="white">🧾 Solo Blanco</option>
+                            <option value="black">🙈 Solo Negro</option>
+                            <option value="mixed">🔀 Mixto (blanco y negro)</option>
+                        </select>
                         <input type="text" id="search-inventory" placeholder="Buscar..." class="border rounded-lg px-3 py-1 text-sm" onkeyup="renderInventory()">
                     </div>
                 </div>
@@ -2350,89 +2371,6 @@
                 </div>
             </div>
 
-            <!-- Resumen Financiero Simple -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="bg-blue-50 rounded-xl p-4 border border-blue-200">
-                    <p class="text-blue-600 text-xs font-bold uppercase">💰 Capital Total</p>
-                    <p class="text-2xl font-bold text-blue-800" id="metric-capital-injected">$0</p>
-                    <p class="text-xs text-blue-500 mt-1">Caja + Cuenta + Stock</p>
-                </div>
-                <div class="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
-                    <p class="text-emerald-600 text-xs font-bold uppercase">💵 Ganancia del Negocio</p>
-                    <div class="flex items-center gap-2">
-                        <p class="text-2xl font-bold text-emerald-800" id="metric-net-profit">$0</p>
-                        <span class="text-sm font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full" id="metric-avg-margin">0%</span>
-                    </div>
-                    <p class="text-xs text-emerald-500 mt-1">Con gastos operativos descontados. No incluye lo que retiraste como dueño (ver abajo).</p>
-                    <p class="text-[10px] text-emerald-600 mt-1 font-mono" id="metric-net-profit-breakdown">-</p>
-                </div>
-                <div class="bg-amber-50 rounded-xl p-4 border border-amber-200">
-                    <p class="text-amber-600 text-xs font-bold uppercase">⚖️ Punto de Equilibrio</p>
-                    <p class="text-2xl font-bold text-amber-800" id="metric-breakeven">-</p>
-                    <p class="text-xs text-amber-500 mt-1" id="metric-breakeven-detail">Cargá gastos para calcularlo</p>
-                    <p class="text-[10px] text-amber-600 mt-1">Cuánto tenés que facturar por mes para cubrir los gastos</p>
-                </div>
-                <div class="bg-purple-50 rounded-xl p-4 border border-purple-200">
-                    <p class="text-purple-600 text-xs font-bold uppercase">📈 Retorno de Inversión</p>
-                    <div class="grid grid-cols-2 gap-2 mt-2">
-                        <div>
-                            <p class="text-xl font-bold text-purple-800" id="metric-roi-total">0%</p>
-                            <p class="text-[10px] text-purple-500">ROI sobre inversión total</p>
-                        </div>
-                        <div>
-                            <p class="text-xl font-bold text-purple-800" id="metric-roi-monthly">0%</p>
-                            <p class="text-[10px] text-purple-500">Mensual</p>
-                        </div>
-                        <div>
-                            <p class="text-xl font-bold text-purple-800" id="metric-roi-recovery">-</p>
-                            <p class="text-[10px] text-purple-500">Recuperación</p>
-                        </div>
-                        <div>
-                            <p class="text-xl font-bold text-purple-800" id="metric-roi-multiplier">0x</p>
-                            <p class="text-[10px] text-purple-500">Multiplicador</p>
-                        </div>
-                    </div>
-                    <p class="text-xs text-purple-500 mt-2 pt-2 border-t border-purple-200" id="metric-roi-detail">Sin inversiones registradas</p>
-                </div>
-            </div>
-
-            <!-- Reparto: cuánto se llevó el dueño vs. cuánto quedó reinvertido en el negocio -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="bg-indigo-50 rounded-xl p-4 border border-indigo-200">
-                    <p class="text-indigo-600 text-xs font-bold uppercase">🧑 Retiro del Dueño</p>
-                    <p class="text-2xl font-bold text-indigo-800" id="metric-owner-withdraw">$0</p>
-                    <p class="text-xs text-indigo-500 mt-1">Lo que sacaste del negocio para vos (sueldo/ganancias) — se registra desde "Retirar Dinero → Dueño/Ganancias". No es un gasto operativo, es un reparto de lo ya ganado.</p>
-                </div>
-                <div class="bg-teal-50 rounded-xl p-4 border border-teal-200">
-                    <p class="text-teal-600 text-xs font-bold uppercase">🌱 Ganancia Retenida en el Negocio</p>
-                    <p class="text-2xl font-bold text-teal-800" id="metric-retained-profit">$0</p>
-                    <p class="text-xs text-teal-500 mt-1">Ganancia del Negocio menos lo que retiraste. Si es negativo, estás sacando más de lo que el negocio genera.</p>
-                </div>
-            </div>
-
-            <!-- Evolución mensual: Ingresos vs Gastos vs Ganancia Neta -->
-            <div class="bg-white rounded-2xl shadow-lg p-6">
-                <h3 class="text-lg font-bold mb-1"><i class="fas fa-chart-column text-emerald-600"></i> Evolución Mensual: Ingresos, Gastos y Ganancia Neta</h3>
-                <p class="text-xs text-gray-500 mb-4">Últimos 6 meses. Sirve para ver la tendencia real del negocio, no solo la foto de hoy — lo que no se mide, no se puede mejorar.</p>
-                <div style="height: 280px;">
-                    <canvas id="monthly-profit-chart"></canvas>
-                </div>
-            </div>
-
-            <!-- Ventas del Día: Por Categoría y Por Facturación -->
-            <div class="bg-white rounded-2xl shadow-lg p-6">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold"><i class="fas fa-chart-pie text-purple-600"></i> Ventas del Día</h3>
-                    <div class="flex bg-gray-100 rounded-lg p-1">
-                        <button onclick="setCashflowView('category')" id="btn-cf-category" class="px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white">Por Categoría</button>
-                        <button onclick="setCashflowView('invoice')" id="btn-cf-invoice" class="px-3 py-1 text-xs font-bold rounded bg-white text-gray-800 shadow-sm">Por Facturación</button>
-                    </div>
-                </div>
-                <div id="cashflow-view-content" class="min-h-[200px]">
-                    <!-- Se llena con JS -->
-                </div>
-            </div>
-
             <!-- Movimientos de Caja y Cuenta -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div class="bg-white rounded-2xl shadow-lg p-6">
@@ -2538,6 +2476,103 @@
                 </div>
             </div>
 
+        </div>
+
+        <!-- ANÁLISIS: ganancia del negocio, ROI, punto de equilibrio y tendencias -->
+        <div id="analysis" class="section hidden space-y-6 fade-in">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <i class="fas fa-chart-pie text-purple-600"></i> Análisis
+                </h2>
+                <p class="text-sm text-gray-500">Qué tan bien le va al negocio, no solo cuánta plata hay hoy — lo que no se mide, no se puede mejorar.</p>
+            </div>
+
+            <!-- Resumen Financiero Simple -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                    <p class="text-blue-600 text-xs font-bold uppercase">💰 Capital Total</p>
+                    <p class="text-2xl font-bold text-blue-800" id="metric-capital-injected">$0</p>
+                    <p class="text-xs text-blue-500 mt-1">Caja + Cuenta + Stock</p>
+                </div>
+                <div class="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
+                    <p class="text-emerald-600 text-xs font-bold uppercase">💵 Ganancia del Negocio</p>
+                    <div class="flex items-center gap-2">
+                        <p class="text-2xl font-bold text-emerald-800" id="metric-net-profit">$0</p>
+                        <span class="text-sm font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full" id="metric-avg-margin">0%</span>
+                    </div>
+                    <p class="text-xs text-emerald-500 mt-1">Con gastos operativos descontados. No incluye lo que retiraste como dueño (ver abajo).</p>
+                    <p class="text-[10px] text-emerald-600 mt-1 font-mono" id="metric-net-profit-breakdown">-</p>
+                </div>
+                <div class="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                    <p class="text-amber-600 text-xs font-bold uppercase">⚖️ Punto de Equilibrio</p>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <p class="text-2xl font-bold text-amber-800" id="metric-breakeven">-</p>
+                        <span id="metric-breakeven-source-badge" class="hidden text-[10px] font-bold uppercase tracking-wide bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full">Promedio</span>
+                    </div>
+                    <p class="text-xs text-amber-500 mt-1" id="metric-breakeven-detail">Cargá gastos para calcularlo</p>
+                    <p class="text-[10px] text-amber-600 mt-1">Cuánto tenés que facturar por mes para cubrir los gastos</p>
+                </div>
+                <div class="bg-purple-50 rounded-xl p-4 border border-purple-200">
+                    <p class="text-purple-600 text-xs font-bold uppercase">📈 Retorno de Inversión</p>
+                    <div class="grid grid-cols-2 gap-2 mt-2">
+                        <div>
+                            <p class="text-xl font-bold text-purple-800" id="metric-roi-total">0%</p>
+                            <p class="text-[10px] text-purple-500">ROI sobre inversión total</p>
+                        </div>
+                        <div>
+                            <p class="text-xl font-bold text-purple-800" id="metric-roi-monthly">0%</p>
+                            <p class="text-[10px] text-purple-500">Mensual</p>
+                        </div>
+                        <div>
+                            <p class="text-xl font-bold text-purple-800" id="metric-roi-recovery">-</p>
+                            <p class="text-[10px] text-purple-500">Recuperación</p>
+                        </div>
+                        <div>
+                            <p class="text-xl font-bold text-purple-800" id="metric-roi-multiplier">0x</p>
+                            <p class="text-[10px] text-purple-500">Multiplicador</p>
+                        </div>
+                    </div>
+                    <p class="text-xs text-purple-500 mt-2 pt-2 border-t border-purple-200" id="metric-roi-detail">Sin inversiones registradas</p>
+                </div>
+            </div>
+
+            <!-- Reparto: cuánto se llevó el dueño vs. cuánto quedó reinvertido en el negocio -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-indigo-50 rounded-xl p-4 border border-indigo-200">
+                    <p class="text-indigo-600 text-xs font-bold uppercase">🧑 Retiro del Dueño</p>
+                    <p class="text-2xl font-bold text-indigo-800" id="metric-owner-withdraw">$0</p>
+                    <p class="text-xs text-indigo-500 mt-1">Lo que sacaste del negocio para vos (sueldo/ganancias) — se registra desde "Retirar Dinero → Dueño/Ganancias". No es un gasto operativo, es un reparto de lo ya ganado.</p>
+                </div>
+                <div class="bg-teal-50 rounded-xl p-4 border border-teal-200">
+                    <p class="text-teal-600 text-xs font-bold uppercase">🌱 Ganancia Retenida en el Negocio</p>
+                    <p class="text-2xl font-bold text-teal-800" id="metric-retained-profit">$0</p>
+                    <p class="text-xs text-teal-500 mt-1">Ganancia del Negocio menos lo que retiraste. Si es negativo, estás sacando más de lo que el negocio genera.</p>
+                </div>
+            </div>
+
+            <!-- Evolución mensual: Ingresos vs Gastos vs Ganancia Neta -->
+            <div class="bg-white rounded-2xl shadow-lg p-6">
+                <h3 class="text-lg font-bold mb-1"><i class="fas fa-chart-column text-emerald-600"></i> Evolución Mensual: Ingresos, Gastos y Ganancia Neta</h3>
+                <p class="text-xs text-gray-500 mb-4">Últimos 6 meses. Sirve para ver la tendencia real del negocio, no solo la foto de hoy — lo que no se mide, no se puede mejorar.</p>
+                <div style="height: 280px;">
+                    <canvas id="monthly-profit-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Ventas del Día: Por Categoría y Por Facturación -->
+            <div class="bg-white rounded-2xl shadow-lg p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold"><i class="fas fa-chart-pie text-purple-600"></i> Ventas del Día</h3>
+                    <div class="flex bg-gray-100 rounded-lg p-1">
+                        <button onclick="setCashflowView('category')" id="btn-cf-category" class="px-3 py-1 text-xs font-bold rounded text-gray-600 hover:bg-white">Por Categoría</button>
+                        <button onclick="setCashflowView('invoice')" id="btn-cf-invoice" class="px-3 py-1 text-xs font-bold rounded bg-white text-gray-800 shadow-sm">Por Facturación</button>
+                    </div>
+                </div>
+                <div id="cashflow-view-content" class="min-h-[200px]">
+                    <!-- Se llena con JS -->
+                </div>
+            </div>
+
             <!-- Gráfico Financiero -->
             <div class="bg-white rounded-2xl p-4 shadow-lg">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
@@ -2562,7 +2597,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Navegación de Período con Flechas -->
                 <div class="flex items-center justify-center gap-4 mb-3">
                     <button onclick="navigateChartPeriod(-1)" class="w-8 h-8 rounded-full bg-purple-100 hover:bg-purple-200 text-purple-700 flex items-center justify-center transition">
@@ -2573,7 +2608,7 @@
                         <i class="fas fa-chevron-right text-xs"></i>
                     </button>
                 </div>
-                
+
                 <canvas id="cashFlowChart" height="150"></canvas>
                 <div class="flex justify-center gap-4 mt-2 text-xs">
                     <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-green-500"></span> Facturado</span>
@@ -4642,7 +4677,7 @@
             }
             
             // Protección: colaboradores no pueden ver ciertas secciones
-            const adminOnlySections = ['sales-calendar', 'cashflow', 'cashflow-projection', 'reports', 'billing', 'settings', 'promotions'];
+            const adminOnlySections = ['sales-calendar', 'cashflow', 'analysis', 'cashflow-projection', 'reports', 'billing', 'settings', 'promotions'];
             if (adminOnlySections.includes(sectionId) && !isAdmin()) {
                 showNotification('Acceso restringido solo para administradores', 'error');
                 sectionId = 'sell';
@@ -4705,6 +4740,7 @@
                 'wholesale-purchase': 'Compra Mayorista',
                 'purchase-review': 'Revisar Compras del Celular',
                 'cashflow': 'Finanzas',
+                'analysis': 'Análisis',
                 'cashflow-projection': 'Flujo de Caja',
                 'reports': 'Reportes',
                 'billing': 'Facturación',
@@ -4750,7 +4786,7 @@
             if (sectionId === 'purchase-review') {
                 loadPurchaseReviewItems();
             }
-            if (sectionId === 'cashflow') {
+            if (sectionId === 'cashflow' || sectionId === 'analysis') {
                 renderCashflow();
                 setTimeout(() => renderCashFlowChartByPeriod(), 100);
             }
@@ -8156,6 +8192,18 @@
             }
         }
 
+        // Enter en cualquier campo del modal de Pedido (cliente, fecha, monto recibido,
+        // etc.) guarda e imprime la comanda directo, sin tocar el mouse -- salvo en el
+        // buscador de producto (ya tiene su propio Enter para agregarlo, y frena la
+        // propagación) y en las notas (Enter ahí es un salto de línea, no "guardar").
+        function handlePedidoModalKeydown(e) {
+            if (e.key !== 'Enter') return;
+            const tag = (e.target.tagName || '').toUpperCase();
+            if (tag === 'TEXTAREA' || tag === 'BUTTON') return;
+            e.preventDefault();
+            savePedido();
+        }
+
         // Agrega siempre de a 1 (como el buscador de Vender): para más cantidad se usan
         // los botones +/- del carrito del pedido, así se evita tener que tipear un
         // número acá (y los valores raros tipo "1,01" que eso generaba).
@@ -9278,6 +9326,16 @@
             }
             const previo = (appState.arcaConfig && appState.arcaConfig.facturadoPrevio) || 0;
             return { app: total, previo: previo, total: total + previo };
+        }
+
+        // Clasifica una venta completa por origen de facturación, según lo que ya quedó
+        // guardado en invoiceBreakdown al momento de venderla (no vuelve a calcular nada).
+        function getSaleInvoiceComposition(sale) {
+            const bd = (sale && sale.invoiceBreakdown) || {};
+            const w = bd.white || 0, b = bd.black || 0;
+            if (w > 0 && b > 0) return 'mixed';
+            if (b > 0) return 'black';
+            return 'white';
         }
 
         // Reglas de auto-facturación normalizadas (mercadería × medio de pago).
@@ -10717,6 +10775,11 @@
                 ? fuzzySearchProducts(search, activeInventory, 100, { sortBySales: true })
                 : activeInventory.slice();
 
+            const invoiceFilter = document.getElementById('inventory-invoice-filter')?.value || '';
+            if (invoiceFilter) {
+                filtered = filtered.filter(p => getProductInvoiceComposition(p) === invoiceFilter);
+            }
+
             const sortMode = document.getElementById('inventory-sort')?.value || 'name';
             if (sortMode === 'margin-desc') {
                 filtered.sort((a, b) => getProductMarginPct(b) - getProductMarginPct(a));
@@ -10784,6 +10847,12 @@
                 const compositeBadge = isComposite ? '<span class="text-[10px] bg-orange-100 text-orange-700 px-1 rounded mr-1">🧩</span>' : '';
                 const weightBadge = p.saleByWeight ? '<span class="text-[10px] bg-blue-100 text-blue-700 px-1 rounded mr-1">⚖️</span>' : '';
                 const hiddenBadge = p.hiddenFromSale ? '<span class="text-[10px] bg-gray-200 text-gray-600 px-1 rounded mr-1" title="Oculto de la venta">🙈</span>' : '';
+                const invoiceComposition = getProductInvoiceComposition(p);
+                const invoiceBadge = invoiceComposition === 'black'
+                    ? '<span class="text-[10px] bg-gray-200 text-gray-700 px-1 rounded mr-1" title="Stock en negro (sin factura)">🙈N</span>'
+                    : invoiceComposition === 'mixed'
+                        ? '<span class="text-[10px] bg-purple-100 text-purple-700 px-1 rounded mr-1" title="Mezcla de stock en blanco y en negro">🔀</span>'
+                        : '<span class="text-[10px] bg-blue-100 text-blue-700 px-1 rounded mr-1" title="Stock en blanco (facturado)">🧾B</span>';
                 const weightInfo = p.saleByWeight && p.weightPerUnit ? `<span class="text-xs text-blue-600">(${Math.round(totalStock * p.weightPerUnit)}g)</span>` : '';
 
                 const displayCost = isComposite ? calculateCompositeCost(p) : (p.cost || 0);
@@ -10814,7 +10883,7 @@
                 return `
                 <tr class="hover:bg-gray-50">
                     <td class="px-3 py-2">
-                        <div class="font-medium text-gray-900">${compositeBadge}${weightBadge}${hiddenBadge}${escapeHtml(p.name)}</div>
+                        <div class="font-medium text-gray-900">${compositeBadge}${weightBadge}${hiddenBadge}${invoiceBadge}${escapeHtml(p.name)}</div>
                         ${categoryLine}
                         ${weightInfo ? `<div class="text-xs text-gray-500 mb-1">${weightInfo}</div>` : ''}
                         ${inlinePackagingEdit}
@@ -11542,6 +11611,24 @@
             return breakdown.reduce((sum, entry) => sum + (entry.quantity * entry.cost), 0);
         }
         
+        // Clasifica un producto por origen de facturación de su stock ACTUAL (para filtrar
+        // en Inventario) -- no tiene que ver con cómo se facturan las ventas, sino con si
+        // lo que hay comprado/cargado es en blanco, en negro, o mezcla de lotes de los dos.
+        // Solo mira lotes con stock > 0 (los agotados no importan para "qué tengo hoy").
+        function getProductInvoiceComposition(product) {
+            if (!product) return 'white';
+            if (Array.isArray(product.batches) && product.batches.length > 0) {
+                const withStock = product.batches.filter(b => (b.stock || 0) > 0);
+                const relevant = withStock.length > 0 ? withStock : product.batches;
+                const hasWhite = relevant.some(b => b.invoiceType !== 'black');
+                const hasBlack = relevant.some(b => b.invoiceType === 'black');
+                if (hasWhite && hasBlack) return 'mixed';
+                if (hasBlack) return 'black';
+                if (hasWhite) return 'white';
+            }
+            return product.invoiceType === 'black' ? 'black' : 'white';
+        }
+
         // Función auxiliar para obtener stock total de un producto (desde lotes o stock directo)
         function getProductStock(product) {
             if (!product) return 0;
@@ -12661,10 +12748,21 @@
             `).join('') : '<p class="text-center text-gray-400 py-4">No hay productos vendidos este día</p>';
             
             const dayAnuladas = (appState.salesAnuladas || []).filter(s => s.date === dateStr);
-            document.getElementById('day-sales-list').innerHTML = (daySales.length > 0 || dayAnuladas.length > 0) ? daySales.map(sale => `
+            const daySalesInvoiceFilter = document.getElementById('day-sales-invoice-filter')?.value || '';
+            const daySalesForList = daySalesInvoiceFilter
+                ? daySales.filter(sale => getSaleInvoiceComposition(sale) === daySalesInvoiceFilter)
+                : daySales;
+            document.getElementById('day-sales-list').innerHTML = (daySalesForList.length > 0 || dayAnuladas.length > 0) ? daySalesForList.map(sale => {
+                const invoiceComp = getSaleInvoiceComposition(sale);
+                const invoiceBadge = invoiceComp === 'black'
+                    ? '<span class="text-[10px] bg-gray-200 text-gray-700 px-1 rounded mr-1" title="Venta en negro">🙈N</span>'
+                    : invoiceComp === 'mixed'
+                        ? '<span class="text-[10px] bg-purple-100 text-purple-700 px-1 rounded mr-1" title="Venta mixta (parte en blanco, parte en negro)">🔀</span>'
+                        : '<span class="text-[10px] bg-blue-100 text-blue-700 px-1 rounded mr-1" title="Venta en blanco">🧾B</span>';
+                return `
                 <div class="sale-item flex justify-between items-center p-3 rounded-lg border">
                     <div class="flex-1 cursor-pointer" onclick="showSaleDetail('${sale.id}')">
-                        <p class="font-bold text-gray-800">Venta #${sale.id.slice(-4)}</p>
+                        <p class="font-bold text-gray-800">${invoiceBadge}Venta #${sale.id.slice(-4)}</p>
                         ${sale.fromPedido ? `<p class="text-xs font-bold text-orange-600">📋 Pedido — Comanda #${sale.comandaNumber || '?'}${sale.pedidoCustomerName ? ' — ' + escapeHtml(sale.pedidoCustomerName) : ''}</p>` : ''}
                         <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.paymentMethod === 'qr' ? '📱 QR' : (sale.isMercadoCredito ? '💳 MercadoCrédito' : '💳 Débito')))}</p>
                     </div>
@@ -12682,7 +12780,8 @@
                         </button>
                     </div>
                 </div>
-            `).join('') + dayAnuladas.map(sale => `
+            `;
+            }).join('') + dayAnuladas.map(sale => `
                 <div class="sale-item flex justify-between items-center p-3 rounded-lg border bg-gray-100 opacity-60">
                     <div class="flex-1 cursor-pointer" onclick="showSaleDetail('${sale.id}')">
                         <p class="font-bold text-gray-400">🔒 Venta #${sale.id.slice(-4)} — ANULADA</p>
@@ -15083,29 +15182,49 @@
                 }
 
                 // ===== PUNTO DE EQUILIBRIO =====
-                // Gastos fijos mensuales (promedio de los últimos 3 meses con gastos cargados)
-                // vs el margen bruto % actual: cuánto hay que facturar por mes para cubrir los
-                // gastos, antes de empezar a ganar de verdad.
+                // Gastos FIJOS mensuales (alquiler, sueldos, etc.) vs el margen bruto % actual:
+                // cuánto hay que facturar por mes para cubrir los gastos fijos, antes de
+                // empezar a ganar de verdad.
+                //
+                // Prioridad: si están cargados en Configuración → Flujo de Caja → "Gastos
+                // Fijos y Recurrentes", se usa ESE monto (el que corresponde HOY -- si subió
+                // el alquiler o el sueldo, alcanza con actualizar ese monto ahí y el punto de
+                // equilibrio se corrige al toque). Sin eso cargado, se cae a un promedio de
+                // los gastos operativos de los últimos 3 meses, que es más impreciso porque
+                // mezcla gastos variables y no reacciona rápido a un aumento reciente.
                 const breakEvenEl = document.getElementById('metric-breakeven');
                 const breakEvenDetailEl = document.getElementById('metric-breakeven-detail');
+                const breakEvenBadgeEl = document.getElementById('metric-breakeven-source-badge');
                 if (breakEvenEl) {
-                    // Gastos operativos reales, SIN contar lo que el dueño retiró (eso no
-                    // es un costo fijo de operar, es reparto de ganancia ya generada).
-                    const operatingExpensesOnly = allExpenses.filter(e => !isOwnerWithdrawal(e));
-                    const monthKeys = new Set();
-                    operatingExpensesOnly.forEach(e => { if (e.date) monthKeys.add(e.date.slice(0, 7)); });
-                    const last3Months = Array.from(monthKeys).sort().slice(-3);
-                    const avgMonthlyExpenses = last3Months.length > 0
-                        ? last3Months.reduce((sum, ym) => sum + operatingExpensesOnly.filter(e => e.date && e.date.startsWith(ym)).reduce((s, e) => s + (e.amount || 0), 0), 0) / last3Months.length
-                        : 0;
+                    const fixedExpensesConfigured = calculateFixedExpensesTotal('month');
+                    let avgMonthlyExpenses = 0;
+                    let breakEvenSource = '';
+                    let isAverage = false;
+                    if (fixedExpensesConfigured > 0) {
+                        avgMonthlyExpenses = fixedExpensesConfigured;
+                        breakEvenSource = 'gastos fijos configurados';
+                    } else {
+                        // Gastos operativos reales, SIN contar lo que el dueño retiró (eso no
+                        // es un costo fijo de operar, es reparto de ganancia ya generada).
+                        isAverage = true;
+                        const operatingExpensesOnly = allExpenses.filter(e => !isOwnerWithdrawal(e));
+                        const monthKeys = new Set();
+                        operatingExpensesOnly.forEach(e => { if (e.date) monthKeys.add(e.date.slice(0, 7)); });
+                        const last3Months = Array.from(monthKeys).sort().slice(-3);
+                        avgMonthlyExpenses = last3Months.length > 0
+                            ? last3Months.reduce((sum, ym) => sum + operatingExpensesOnly.filter(e => e.date && e.date.startsWith(ym)).reduce((s, e) => s + (e.amount || 0), 0), 0) / last3Months.length
+                            : 0;
+                        breakEvenSource = 'PROMEDIO de los últimos 3 meses (cargá Gastos Fijos para más precisión)';
+                    }
+                    if (breakEvenBadgeEl) breakEvenBadgeEl.classList.toggle('hidden', !isAverage);
                     const grossMarginPct = totalSalesAmount > 0 ? (grossProfit / totalSalesAmount) : 0;
                     if (avgMonthlyExpenses > 0 && grossMarginPct > 0) {
                         const breakEvenSales = avgMonthlyExpenses / grossMarginPct;
                         breakEvenEl.textContent = `$${formatMoney(breakEvenSales)}`;
-                        breakEvenDetailEl.textContent = `Con gastos de ~$${formatMoney(avgMonthlyExpenses)}/mes y ${fmtNumber(grossMarginPct * 100, 0)}% de margen bruto`;
+                        breakEvenDetailEl.textContent = `Con gastos fijos de ~$${formatMoney(avgMonthlyExpenses)}/mes (${breakEvenSource}) y ${fmtNumber(grossMarginPct * 100, 0)}% de margen bruto`;
                     } else {
                         breakEvenEl.textContent = '-';
-                        breakEvenDetailEl.textContent = avgMonthlyExpenses <= 0 ? 'Cargá gastos para calcularlo' : 'Sin margen bruto positivo';
+                        breakEvenDetailEl.textContent = avgMonthlyExpenses <= 0 ? 'Cargá tus Gastos Fijos (alquiler, sueldos) para calcularlo' : 'Sin margen bruto positivo';
                     }
                 }
                 
@@ -25844,7 +25963,7 @@ RESULTADOS:
     </div>
 
     <!-- ==================== PEDIDO MODAL ==================== -->
-    <div id="pedido-modal" class="modal">
+    <div id="pedido-modal" class="modal" onkeydown="handlePedidoModalKeydown(event)">
         <div class="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <h3 class="text-xl font-bold mb-4 text-orange-600"><i class="fas fa-bell"></i> Pedido</h3>
             <div class="space-y-3">

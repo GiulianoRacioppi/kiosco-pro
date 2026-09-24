@@ -20129,6 +20129,7 @@ Total de productos a comprar: ${shoppingList.length}
         // real y avisa acá con notificación + sonido, sin refrescar nada.
         let mpPaymentListener = null;
         let mpPaymentListenerFirstLoad = true;
+        let mpCheckNowInterval = null;
 
         async function startMercadoPagoPaymentListener() {
             if (!window.db || mpPaymentListener) return;
@@ -20151,6 +20152,16 @@ Total de productos a comprar: ${shoppingList.length}
                 }, (err) => console.warn('Error escuchando pagos de Mercado Pago:', err));
             } catch (e) {
                 console.warn('No se pudo iniciar el listener de pagos de Mercado Pago:', e);
+            }
+
+            // El sondeo automático del lado del servidor corre cada 1 minuto (es el
+            // mínimo que permite Cloud Scheduler), pero mientras la app está abierta
+            // podemos pedirle que revise mucho más seguido -- cada 5 segundos -- para
+            // que el aviso de un cobro o transferencia aparezca casi al instante.
+            if (!mpCheckNowInterval) {
+                mpCheckNowInterval = setInterval(() => {
+                    fetch('https://us-central1-kioscopro.cloudfunctions.net/mercadopagoCheckNow').catch(() => {});
+                }, 5000);
             }
         }
 

@@ -4279,6 +4279,13 @@
             losses: [],
             // Devoluciones
             returns: [],
+            // Libro de movimientos de stock: UN registro por cada cambio real de
+            // cantidad (venta, compra, stock gratis, merma, devolución, edición manual),
+            // con el total resultante en ese momento. Sirve para reconstruir "esto es lo
+            // que debería haber" sumando movimientos, y detectar en qué paso se rompió
+            // algo si el número final no cierra -- en vez de confiar solo en el número
+            // final, que un bug puede corromper sin dejar rastro.
+            stockLedger: [],
             // Flujo de caja
             recurringExpenses: [],
             cashFlowSettings: {
@@ -7255,7 +7262,7 @@
         }
         
         // 2. Descontar stock con snapshot para rollback
-        function deductStockWithSnapshot(cart) {
+        function deductStockWithSnapshot(cart, saleId) {
             const snapshot = []; // { productId, previousTotalStock, previousBatches }
             let saleWhiteTotal = 0;
             let saleBlackTotal = 0;
@@ -7312,6 +7319,7 @@
                 }
                 
                 let qtyToDeduct = item.quantity;
+                const qtyRequested = qtyToDeduct;
                 
                 if (product.isComposite && product.components) {
                     // Descontar de cada componente
@@ -7319,7 +7327,8 @@
                         const compProduct = appState.inventory.find(p => p.id === comp.productId);
                         if (!compProduct) continue;
                         let compQtyToDeduct = item.quantity * (comp.quantity || 1);
-                        
+                        const compQtyRequested = compQtyToDeduct;
+
                         if (compProduct.batches && compProduct.batches.length > 0) {
                             // FIFO por fecha de creación del lote
                             compProduct.batches.sort((a, b) => {
@@ -7342,6 +7351,11 @@
                         } else if (typeof compProduct.stock === 'number') {
                             const deductFromStock = Math.min(compQtyToDeduct, compProduct.stock);
                             compProduct.stock -= deductFromStock;
+                            compQtyToDeduct -= deductFromStock;
+                        }
+                        const compQtyDeducted = compQtyRequested - compQtyToDeduct;
+                        if (compQtyDeducted > 0) {
+                            recordStockMovement(compProduct.id, -compQtyDeducted, 'sale', saleId, 'Componente de ' + (product.name || product.id) + ' x' + item.quantity);
                         }
                     }
                 } else {
@@ -7388,6 +7402,10 @@
                     }
                     product.lastSale = new Date().toISOString();
                     product.updatedAt = new Date().toISOString();
+                    const qtyDeducted = qtyRequested - qtyToDeduct;
+                    if (qtyDeducted > 0) {
+                        recordStockMovement(product.id, -qtyDeducted, 'sale', saleId, item.name + ' x' + item.quantity);
+                    }
                 }
                 itemBreakdown.push({ white: itemWhite, black: itemBlack });
             }
@@ -7423,12 +7441,14 @@
             console.warn('↩️ Stock restaurado por rollback:', snapshot.length, 'productos');
         }
         
-        // Verifica después de un rato que el stock refleje el cambio esperado.
-        // Si no coincide, reintenta hasta maxRetries veces ajustando con lotes de corrección.
-        // La primera espera es larga a propósito: si se hace muy pronto, puede
-        // cruzarse con una sincronización de Firebase todavía en curso de la
-        // MISMA venta (que a veces tarda más que unos segundos) y dispara un
-        // falso "no coincide" que en realidad se iba a corregir solo.
+        // Verifica después de un rato que el stock refleje el cambio esperado de la
+        // venta. Esto es SOLO un diagnóstico -- NUNCA toca el stock ni los lotes.
+        // Antes, si no coincidía, "corregía" agregando o quitando stock por su cuenta;
+        // eso es exactamente lo que NO puede pasar con algo tan sensible como el stock
+        // (una diferencia pasajera -- ej: un cruce con la sincronización -- podía
+        // terminar restando unidades reales que sí estaban bien). Ahora solo vuelve a
+        // mirar unas veces más, espaciado, y si sigue sin coincidir avisa para que se
+        // revise a mano -- sin haber movido un solo número por su cuenta.
         function verifyAndRetryStockChange(description, productId, expectedStockFn, maxRetries = 2) {
             let retries = 0;
             const check = () => {
@@ -7440,40 +7460,12 @@
                     console.log('✅ Stock verificado:', description, '→', actual);
                     return;
                 }
-                console.warn('⚠️ Stock no coincide:', description, 'esperado', expected, 'actual', actual);
+                console.warn('⚠️ Stock no coincide (todavía sin tocar nada):', description, 'esperado', expected, 'actual', actual);
                 if (retries < maxRetries) {
                     retries++;
-                    const diff = expected - actual;
-                    console.log('🔄 Reintentando ajuste de stock:', diff);
-                    if (!product.batches) product.batches = [];
-                    if (diff > 0) {
-                        product.batches.push({
-                            id: 'CORRECTION-' + Date.now() + '-' + retries,
-                            stock: diff,
-                            initialStock: diff,
-                            expiry: '',
-                            dateAdded: formatDateISO(appState.activeDate || new Date()),
-                            invoiceType: 'black',
-                            source: 'cash',
-                            cost: product.cost || 0,
-                            updatedAt: new Date().toISOString()
-                        });
-                    } else if (diff < 0) {
-                        let remaining = -diff;
-                        for (const batch of product.batches) {
-                            if (remaining <= 0) break;
-                            const deduct = Math.min(remaining, batch.stock || 0);
-                            batch.stock -= deduct;
-                            remaining -= deduct;
-                        }
-                    }
-                    product.stock = getProductStock(product);
-                    product.updatedAt = new Date().toISOString();
-                    saveToLocalStorage();
-                    renderAll();
                     setTimeout(check, 15000);
                 } else {
-                    showNotification('⚠️ ' + description + ' no se confirmó en el stock después de reintentar. Revisá manualmente.', 'error', 10000);
+                    showNotification('⚠️ ' + description + ': el stock esperado era ' + expected + ' y hay ' + actual + '. Revisá manualmente (no se modificó nada automáticamente).', 'error', 15000);
                 }
             };
             setTimeout(check, 20000);
@@ -7481,6 +7473,15 @@
         
         // Venta que quedó esperando a que se registre la apertura de caja del día
         let pendingSaleAfterOpening = false;
+
+        // Traba contra doble envío de completeSale(): un doble click, o Enter en
+        // "Monto recibido" justo cuando también se hace click en el botón, podían
+        // disparar la función dos veces antes de que el carrito se vaciara (recién
+        // se vacía 1.5s después de terminar) -- registrando la MISMA venta dos veces
+        // (plata y stock descontados por duplicado). Se libera en cada salida
+        // temprana (no se pudo vender) y, en el camino exitoso, recién cuando el
+        // carrito se vacía de verdad al final.
+        let saleInProgress = false;
 
         // ¿Ya se registró la apertura de caja para esa fecha?
         function cashOpeningDone(dateStr) {
@@ -7491,11 +7492,14 @@
 
         async function completeSale() {
             if (appState.cart.length === 0) return;
+            if (saleInProgress) return; // doble click / doble Enter: ignorar el segundo
+            saleInProgress = true;
 
             // El respaldo automático en carpeta es obligatorio para poder vender: si no
             // está activo, se muestra el cartel grande (checkBackupRequired) y se frena
             // la venta acá, antes de tocar plata o stock.
             if (!checkBackupRequired()) {
+                saleInProgress = false;
                 return;
             }
 
@@ -7507,12 +7511,14 @@
                 pendingSaleAfterOpening = true;
                 showNotification('Primero registrá la apertura de caja del día', 'info', 4000);
                 openCashCountModal();
+                saleInProgress = false;
                 return;
             }
 
             // Si es fiado y todavía no tenemos el nombre del cliente, pedirlo primero
             if (appState.paymentMethod === 'fiado' && !pendingFiadoCustomerName) {
                 openFiadoModal();
+                saleInProgress = false;
                 return;
             }
 
@@ -7521,15 +7527,17 @@
             if (stockErrors.length > 0) {
                 showNotification('❌ Stock insuficiente:\n' + stockErrors.join('\n'), 'error');
                 console.error('Stock validation failed:', stockErrors);
+                saleInProgress = false;
                 return;
             }
-            
+
             // ========== ALERTA DE FECHA ==========
             // Si la fecha activa no es hoy, pedir confirmación para evitar cargar ventas en otra fecha por error
             const activeDateStr = formatDateISO(appState.activeDate || new Date());
             const todayStr = formatDateISO(new Date());
             if (activeDateStr !== todayStr) {
                 if (!(await showConfirmModal(`⚠️ ATENCIÓN: Estás por registrar una venta en la fecha ${activeDateStr}, que NO es hoy (${todayStr}).\n\n¿Estás seguro de que querés continuar?`))) {
+                    saleInProgress = false;
                     return;
                 }
             }
@@ -7585,10 +7593,12 @@
                 if (received <= 0) {
                     showNotification('Ingresá el monto recibido en efectivo', 'error');
                     document.getElementById('cash-received').focus();
+                    saleInProgress = false;
                     return;
                 }
                 if (received < finalTotal) {
                     showNotification(`Monto insuficiente. Recibido: $${formatMoney(received)}, Falta: $${formatMoney((finalTotal - received))}`, 'error');
+                    saleInProgress = false;
                     return;
                 }
             }
@@ -7657,7 +7667,7 @@
             }
 
             // ========== FASE 2: DESCONTAR STOCK CON SNAPSHOT ==========
-            const { snapshot: stockSnapshot, saleWhiteTotal, saleBlackTotal, itemBreakdown } = deductStockWithSnapshot(appState.cart);
+            const { snapshot: stockSnapshot, saleWhiteTotal, saleBlackTotal, itemBreakdown } = deductStockWithSnapshot(appState.cart, sale.id);
             
             // ========== FASE 3: VERIFICAR QUE EL STOCK REALMENTE CAMBIÓ ==========
             const verifyErrors = verifyStockDeduction(stockSnapshot);
@@ -7666,6 +7676,7 @@
                 rollbackStockFromSnapshot(stockSnapshot);
                 showNotification('❌ Error al descontar stock. Venta cancelada:\n' + verifyErrors.join('\n'), 'error');
                 console.error('Stock deduction verification failed:', verifyErrors);
+                saleInProgress = false;
                 return;
             }
             
@@ -7760,6 +7771,7 @@
             
             setTimeout(() => {
                 appState.cart = [];
+                saleInProgress = false;
                 window.comboNotified = false;
                 appState.cartSubtotal = 0;
                 appState.cartDiscount = 0;
@@ -10502,6 +10514,9 @@
             
             appState.inventory.push(product);
             console.log('Inventario después:', appState.inventory.length, 'productos');
+            if (!isComposite) {
+                recordStockMovement(product.id, appState.pendingPurchase.stock, 'created', product.purchaseBatchId, 'Alta de producto nuevo');
+            }
 
             // Registrar como INVERSIÓN (solo si no es compuesto)
             if (!isComposite) {
@@ -10925,6 +10940,9 @@
                         </button>
                         <button onclick="openEditProductModal('${p.id}')" class="text-gray-600 hover:text-gray-800 mr-2" title="Editar">
                             <i class="fas fa-edit"></i>
+                        </button>
+                        <button onclick="openStockLedgerModal('${p.id}')" class="text-teal-600 hover:text-teal-800 mr-2" title="Historial de movimientos de stock">
+                            <i class="fas fa-list-ul"></i>
                         </button>
                         <button onclick="deleteProduct('${p.id}')" class="text-red-500 hover:text-red-700" title="Eliminar producto">
                             <i class="fas fa-trash"></i>
@@ -11669,10 +11687,112 @@
             return parseFloat(product.stock) || 0;
         }
 
+        // Libro de movimientos de stock: se llama DESPUÉS de cambiar el stock real
+        // (nunca antes), y anota cuánto cambió y cuánto quedó en ese momento. No
+        // decide ni corrige nada -- es solo el registro para poder reconstruir después
+        // "esto es lo que debería haber" sumando movimientos, en vez de confiar
+        // ciegamente en el número final.
+        // reason: 'sale' | 'purchase' | 'add-stock' | 'found-stock' | 'loss' | 'return' | 'manual-edit' | 'created'
+        function recordStockMovement(productId, delta, reason, refId, note) {
+            if (!productId || !delta) return;
+            const product = appState.inventory.find(p => p.id === productId);
+            if (!appState.stockLedger) appState.stockLedger = [];
+            appState.stockLedger.push({
+                id: 'STOCKMOV-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+                productId: productId,
+                productName: product ? product.name : null,
+                date: formatDateISO(appState.activeDate || new Date()),
+                timestamp: Date.now(),
+                delta: delta,
+                stockAfter: product ? getProductStock(product) : null,
+                reason: reason || 'other',
+                refId: refId || null,
+                note: note || null
+            });
+            // Tope para que no crezca sin límite (últimos ~5000 movimientos entre todos los productos)
+            if (appState.stockLedger.length > 5000) {
+                appState.stockLedger = appState.stockLedger.slice(-5000);
+            }
+        }
+
+        // Reconstruye, sumando el libro de movimientos desde el principio, cuánto
+        // stock DEBERÍA haber para un producto -- útil para detectar en qué
+        // movimiento se rompió algo si el número actual no cierra.
+        function reconcileProductStock(productId) {
+            const movements = (appState.stockLedger || [])
+                .filter(m => m.productId === productId)
+                .sort((a, b) => a.timestamp - b.timestamp);
+            let running = 0;
+            const trail = movements.map(m => {
+                running += m.delta;
+                return { ...m, runningTotal: running };
+            });
+            const product = appState.inventory.find(p => p.id === productId);
+            const actual = product ? getProductStock(product) : 0;
+            return {
+                movements: trail,
+                expectedFromLedger: running,
+                actual: actual,
+                matches: Math.abs(running - actual) < 0.001
+            };
+        }
+
+        const STOCK_LEDGER_REASON_LABELS = {
+            sale: '🛒 Venta',
+            purchase: '📦 Compra',
+            'add-stock': '📦 Agregar stock',
+            'add-stock-edit': '✏️ Corrección de compra',
+            'found-stock': '🎁 Stock gratis/encontrado',
+            loss: '💔 Merma',
+            'loss-deleted': '↩️ Merma eliminada',
+            'sale-cancelled': '🚫 Venta anulada',
+            'sale-edit': '✏️ Venta editada',
+            'manual-edit': '✏️ Edición manual',
+            created: '✨ Alta de producto',
+            'purchase-deleted': '🗑️ Compra eliminada',
+            restore: '↩️ Restauración',
+            other: 'Otro'
+        };
+
+        function openStockLedgerModal(productId) {
+            const product = appState.inventory.find(p => p.id === productId);
+            const result = reconcileProductStock(productId);
+            document.getElementById('stock-ledger-product-name').textContent = product ? product.name : productId;
+
+            const banner = document.getElementById('stock-ledger-match-banner');
+            if (result.movements.length === 0) {
+                banner.className = 'rounded-xl p-3 mb-4 text-sm font-bold bg-gray-100 text-gray-500';
+                banner.textContent = 'Todavía no hay movimientos registrados para este producto (o son de antes de armar este libro).';
+            } else if (result.matches) {
+                banner.className = 'rounded-xl p-3 mb-4 text-sm font-bold bg-green-100 text-green-700';
+                banner.textContent = `✅ Cierra bien: el libro dice ${result.expectedFromLedger} y el stock actual es ${result.actual}.`;
+            } else {
+                banner.className = 'rounded-xl p-3 mb-4 text-sm font-bold bg-red-100 text-red-700';
+                banner.textContent = `⚠️ No cierra: el libro dice que debería haber ${result.expectedFromLedger}, pero el stock actual es ${result.actual}. Revisá los movimientos de abajo.`;
+            }
+
+            document.getElementById('stock-ledger-rows').innerHTML = result.movements.length > 0
+                ? result.movements.slice().reverse().map(m => `
+                    <tr>
+                        <td class="px-2 py-1.5 text-xs text-gray-500">${m.date || '-'}</td>
+                        <td class="px-2 py-1.5 text-xs">${STOCK_LEDGER_REASON_LABELS[m.reason] || m.reason}${m.note ? ` <span class="text-gray-400">— ${escapeHtml(m.note)}</span>` : ''}</td>
+                        <td class="px-2 py-1.5 text-xs text-right font-bold ${m.delta > 0 ? 'text-green-600' : 'text-red-600'}">${m.delta > 0 ? '+' : ''}${m.delta}</td>
+                        <td class="px-2 py-1.5 text-xs text-right font-mono">${m.runningTotal}</td>
+                    </tr>
+                `).join('')
+                : '<tr><td colspan="4" class="text-center text-gray-400 py-4">Sin movimientos registrados</td></tr>';
+
+            document.getElementById('stock-ledger-modal').classList.add('active');
+        }
+
+        function closeStockLedgerModal() {
+            document.getElementById('stock-ledger-modal').classList.remove('active');
+        }
+
         // Restaurar stock de un producto (maneja compuestos y normales)
-        function restoreProductStock(product, quantity) {
+        function restoreProductStock(product, quantity, reason, refId) {
             if (!product || quantity <= 0) return;
-            
+
             if (product.isComposite && product.components) {
                 // Restaurar stock a cada componente
                 for (const comp of product.components) {
@@ -11699,6 +11819,7 @@
                         });
                     }
                     compProduct.stock = getProductStock(compProduct);
+                    recordStockMovement(compProduct.id, qtyToRestore, reason || 'restore', refId, 'Componente de ' + (product.name || product.id));
                 }
             } else {
                 // Producto normal: agregar al primer lote o crear uno nuevo
@@ -11722,6 +11843,7 @@
                     });
                 }
                 product.stock = getProductStock(product);
+                recordStockMovement(product.id, quantity, reason || 'restore', refId, null);
             }
         }
 
@@ -11910,6 +12032,7 @@
             });
             logExpiryHistory(product.id, editOriginalBatchDate || formatDateISO(appState.activeDate), newExpiry);
             recordBulkDiscountIfApplicable(product, qtyBags, newUnitCost, oldCost);
+            recordStockMovement(product.id, Math.max(0, qtyBags - editSoldQty), wasEditMode ? 'add-stock-edit' : 'add-stock', batchId, wasEditMode ? 'Corrección de compra anterior' : null);
 
             // Ordenar lotes por fecha de creación (FIFO - el primero en entrar, primero en salir)
             product.batches.sort((a, b) => {
@@ -12299,6 +12422,7 @@
             
             if (product) {
                 const oldCost = product.cost || 0;
+                const stockBeforeEdit = getProductStock(product);
                 product.name = document.getElementById('edit-prod-name').value.trim();
                 product.barcode = document.getElementById('edit-prod-barcode').value.trim();
                 product.cost = parseFloat(document.getElementById('edit-prod-cost').value) || 0;
@@ -12380,7 +12504,11 @@
                 
                 product.batches = newBatches;
                 product.stock = getProductStock(product);
-                
+                const stockEditDelta = product.stock - stockBeforeEdit;
+                if (stockEditDelta !== 0) {
+                    recordStockMovement(product.id, stockEditDelta, 'manual-edit', null, 'Edición manual de lotes en Inventario');
+                }
+
                 // Actualizar vencimiento del producto (compatibilidad)
                 if (product.batches.length > 0) {
                     product.expiry = product.batches[0].expiry || '';
@@ -12892,7 +13020,7 @@
                 if (!item.productId || item.isManual) return;
                 const product = appState.inventory.find(p => p.id === item.productId);
                 if (product) {
-                    restoreProductStock(product, item.quantity);
+                    restoreProductStock(product, item.quantity, 'sale-cancelled', saleId);
                 }
             });
 
@@ -13119,20 +13247,25 @@
                 if (productIndex !== -1) {
                     const product = appState.inventory[productIndex];
                     const hadBatches = product.batches && product.batches.length > 0;
+                    const stockBeforeRemoval = getProductStock(product);
+                    let removedBatchStock = 0;
 
                     if (investment.batchId && hadBatches) {
                         // Eliminar el lote específico asociado a esta inversión
                         const batchIndex = product.batches.findIndex(b => b.id === investment.batchId);
                         if (batchIndex !== -1) {
+                            removedBatchStock = product.batches[batchIndex].stock || 0;
                             product.batches.splice(batchIndex, 1);
                         }
                     } else if (hadBatches) {
                         // Fallback para inversiones antiguas sin batchId: intentar coincidir por fecha o eliminar el último lote
                         const fallbackIndex = product.batches.findIndex(b => b.dateAdded === investment.date);
                         if (fallbackIndex !== -1) {
+                            removedBatchStock = product.batches[fallbackIndex].stock || 0;
                             product.batches.splice(fallbackIndex, 1);
                         } else {
-                            product.batches.pop();
+                            const popped = product.batches.pop();
+                            removedBatchStock = popped ? (popped.stock || 0) : 0;
                         }
                     }
 
@@ -13143,6 +13276,9 @@
                             : 0;
                     }
                     product.updatedAt = new Date().toISOString();
+                    if (removedBatchStock > 0) {
+                        recordStockMovement(product.id, -removedBatchStock, 'purchase-deleted', investment.id, 'Compra eliminada');
+                    }
                     
                     // Si es una compra inicial (purchase) y el producto no tiene ventas ni stock, eliminarlo
                     if (investment.type === 'purchase' && product.stock <= 0) {
@@ -13191,7 +13327,7 @@
             sale.items.forEach(item => {
                 const product = appState.inventory.find(p => p.id === item.productId);
                 if (product) {
-                    restoreProductStock(product, item.quantity);
+                    restoreProductStock(product, item.quantity, 'sale-edit', saleId);
                 }
             });
 
@@ -17338,6 +17474,7 @@
                 notes: notes || '',
                 timestamp: Date.now()
             };
+            recordStockMovement(product.id, units, 'found-stock', entry.id, notes || reason || 'Stock gratis/encontrado');
             // Los ajustes automáticos (venta sin stock cargado) quedan marcados como
             // pendientes hasta que se confirmen contra la compra real -- ahí se corrige
             // el costo (calculado con lo que tenía guardado en ese momento, no el real)
@@ -17968,8 +18105,9 @@
             }
 
             if (!appState.losses) appState.losses = [];
+            const lossId = 'LOSS-' + Date.now();
             appState.losses.push({
-                id: 'LOSS-' + Date.now(),
+                id: lossId,
                 date: formatDateISO(appState.activeDate || new Date()),
                 productId: productId,
                 productName: product.name,
@@ -17982,6 +18120,14 @@
                 notes: notes,
                 timestamp: Date.now()
             });
+
+            if (isPrep) {
+                for (const comp of product.components) {
+                    recordStockMovement(comp.productId, -(units * (comp.quantity || 1)), 'loss', lossId, 'Merma de ' + product.name);
+                }
+            } else {
+                recordStockMovement(product.id, -units, 'loss', lossId, notes || lossReason || 'Merma');
+            }
 
             saveToLocalStorage();
             renderAll();
@@ -19105,7 +19251,7 @@
                 for (const comp of (comps || [])) {
                     const compProduct = appState.inventory.find(p => p.id === comp.productId);
                     if (!compProduct) continue;
-                    restoreProductStock(compProduct, (loss.quantity || 0) * (comp.quantity || 1));
+                    restoreProductStock(compProduct, (loss.quantity || 0) * (comp.quantity || 1), 'loss-deleted', lossId);
                 }
             } else if (product) {
                 const isWeight = product.saleByWeight && product.weightPerUnit > 0;
@@ -19128,6 +19274,7 @@
                 } else {
                     product.stock = (product.stock || 0) + restoreUnits;
                 }
+                recordStockMovement(product.id, restoreUnits, 'loss-deleted', lossId, null);
             }
             
             appState.losses.splice(idx, 1);
@@ -19911,6 +20058,7 @@ Total de productos a comprar: ${shoppingList.length}
             });
             product.cost = cost; // el costo más reciente pasa a ser el de referencia
             product.stock = getProductStock(product);
+            recordStockMovement(product.id, qty, 'purchase', batchId, conceptPrefix || 'Compra');
 
             if (source === 'cash') appState.cash -= qty * cost;
             else appState.bank -= qty * cost;
@@ -20974,6 +21122,7 @@ Total de productos a comprar: ${shoppingList.length}
                 deletedPromotionIds: [],
                 losses: [],
                 returns: [],
+                stockLedger: [],
                 recurringExpenses: [],
                 cashFlowSettings: { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
                 suppliers: [],
@@ -23808,7 +23957,8 @@ RESULTADOS:
                 main_guestLogs: 'guestLogs',
                 main_users: 'users',
                 main_reserveMovements: 'reserveMovements',
-                main_shiftCounts: 'shiftCounts'
+                main_shiftCounts: 'shiftCounts',
+                main_stockLedger: 'stockLedger'
             };
         }
 
@@ -24715,6 +24865,7 @@ RESULTADOS:
                 const deletedInvIdsMaster = new Set((appState.deletedInvestmentIds || []).map(d => d.id).filter(Boolean));
                 appState.investments = appState.investments.filter(i => !deletedInvIdsMaster.has(i.id));
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
+                appState.stockLedger = smartMergeArrays(appState.stockLedger || [], data.stockLedger || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
                 appState.billedDays = smartMergeArrays(appState.billedDays || [], data.billedDays || []);
                 appState.guestLogs = smartMergeArrays(appState.guestLogs || [], data.guestLogs || []);
@@ -24802,6 +24953,7 @@ RESULTADOS:
                 appState.shiftCounts = smartMergeArrays(appState.shiftCounts || [], data.shiftCounts || []);
                 appState.foundStock = smartMergeArrays(appState.foundStock || [], data.foundStock || []);
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
+                appState.stockLedger = smartMergeArrays(appState.stockLedger || [], data.stockLedger || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
                 appState.billedDays = smartMergeArrays(appState.billedDays || [], data.billedDays || []);
                 appState.guestLogs = smartMergeArrays(appState.guestLogs || [], data.guestLogs || []);
@@ -26048,6 +26200,32 @@ RESULTADOS:
                     <button onclick="saveExpense()" class="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-red-700">Guardar</button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ==================== HISTORIAL DE MOVIMIENTOS DE STOCK ==================== -->
+    <div id="stock-ledger-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div class="flex justify-between items-start mb-2">
+                <h3 class="text-xl font-bold text-teal-700"><i class="fas fa-list-ul"></i> Historial de stock</h3>
+                <button onclick="closeStockLedgerModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <p class="text-sm font-medium text-gray-700 mb-3" id="stock-ledger-product-name">-</p>
+            <div id="stock-ledger-match-banner" class="rounded-xl p-3 mb-4 text-sm font-bold"></div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-2 py-1 text-left text-xs font-medium text-gray-500">Fecha</th>
+                            <th class="px-2 py-1 text-left text-xs font-medium text-gray-500">Motivo</th>
+                            <th class="px-2 py-1 text-right text-xs font-medium text-gray-500">Cambio</th>
+                            <th class="px-2 py-1 text-right text-xs font-medium text-gray-500">Total según libro</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stock-ledger-rows" class="divide-y divide-gray-100"></tbody>
+                </table>
+            </div>
+            <p class="text-xs text-gray-400 mt-3">Solo se registran los movimientos desde que se armó este libro -- los que pasaron antes no van a aparecer.</p>
         </div>
     </div>
 

@@ -7411,8 +7411,12 @@
             console.warn('↩️ Stock restaurado por rollback:', snapshot.length, 'productos');
         }
         
-        // Verifica después de 5 segundos que el stock refleje el cambio esperado.
+        // Verifica después de un rato que el stock refleje el cambio esperado.
         // Si no coincide, reintenta hasta maxRetries veces ajustando con lotes de corrección.
+        // La primera espera es larga a propósito: si se hace muy pronto, puede
+        // cruzarse con una sincronización de Firebase todavía en curso de la
+        // MISMA venta (que a veces tarda más que unos segundos) y dispara un
+        // falso "no coincide" que en realidad se iba a corregir solo.
         function verifyAndRetryStockChange(description, productId, expectedStockFn, maxRetries = 2) {
             let retries = 0;
             const check = () => {
@@ -7455,12 +7459,12 @@
                     product.updatedAt = new Date().toISOString();
                     saveToLocalStorage();
                     renderAll();
-                    setTimeout(check, 5000);
+                    setTimeout(check, 15000);
                 } else {
                     showNotification('⚠️ ' + description + ' no se confirmó en el stock después de reintentar. Revisá manualmente.', 'error', 10000);
                 }
             };
-            setTimeout(check, 5000);
+            setTimeout(check, 20000);
         }
         
         // Venta que quedó esperando a que se registre la apertura de caja del día

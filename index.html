@@ -2111,8 +2111,9 @@
                         <option value="bulkPackSize">Viene en bulto de (unidades)</option>
                         <option value="unitsPerDisplay">Unidades por display</option>
                         <option value="displaysPerBulk">Displays por bulto</option>
+                        <option value="invoiceType">👁️ Ver facturación (blanco/negro)</option>
                     </select>
-                    <span class="text-xs text-gray-400">Elegí qué campo querés corregir y te aparece editable en cada fila. Los días de compra se editan por proveedor en Configuración.</span>
+                    <span class="text-xs text-gray-400">Elegí qué campo querés corregir y te aparece editable en cada fila. Los días de compra se editan por proveedor en Configuración. La facturación de blanco/negro se edita por lote, en Stock.</span>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full">
@@ -4851,7 +4852,6 @@
             setTimeout(() => btn.classList.remove('btn-clicked'), 200);
             
             showSection('sell');
-            showNotification('Modo venta activado', 'success');
         }
 
         // ==================== DASHBOARD ====================
@@ -8779,7 +8779,7 @@
                         </div>
                         <div class="flex flex-col items-end gap-1">
                             ${isUrgent ? `<span class="text-xs font-bold px-2 py-1 rounded-full bg-red-200 text-red-800">Prioridad #${urgentNumbers.get(pedido.id) || ''}</span>` : `<span class="text-xs font-bold px-2 py-1 rounded-full ${statusBadgeColors[pedido.status] || 'bg-gray-200 text-gray-600'}">${statusLabels[pedido.status] || pedido.status}</span>`}
-                            <span class="text-xs font-bold px-2 py-1 rounded-full ${pedido.paymentStatus === 'pagado' ? 'bg-green-200 text-green-800' : (pedido.paymentMethod === 'fiado' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')}">${pedido.paymentStatus === 'pagado' ? '💰 Pagado' : (pedido.paymentMethod === 'fiado' ? '🤝 Fiado' : '⏳ Sin pagar')}</span>
+                            <span class="text-xs font-bold px-2 py-1 rounded-full ${pedido.paymentStatus === 'pagado' ? 'bg-green-200 text-green-800' : (pedido.paymentMethod === 'fiado' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')}">${pedido.paymentStatus === 'pagado' ? '💰 Pagado — ' + paymentMethodLabel(pedido) : (pedido.paymentMethod === 'fiado' ? '🤝 Fiado' : '⏳ Sin pagar')}</span>
                         </div>
                     </div>
                     <div class="flex flex-wrap gap-2 mt-2">
@@ -10863,12 +10863,15 @@
                 const compositeBadge = isComposite ? '<span class="text-[10px] bg-orange-100 text-orange-700 px-1 rounded mr-1">🧩</span>' : '';
                 const weightBadge = p.saleByWeight ? '<span class="text-[10px] bg-blue-100 text-blue-700 px-1 rounded mr-1">⚖️</span>' : '';
                 const hiddenBadge = p.hiddenFromSale ? '<span class="text-[10px] bg-gray-200 text-gray-600 px-1 rounded mr-1" title="Oculto de la venta">🙈</span>' : '';
+                // Este ícono solo se muestra si elegiste "Facturación" en Editar rápido --
+                // el resto del tiempo no ensucia el nombre del producto. La edición real
+                // (blanco/negro por lote) se hace en Stock, en cada lote, no acá.
                 const invoiceComposition = getProductInvoiceComposition(p);
-                const invoiceBadge = invoiceComposition === 'black'
+                const invoiceBadge = inventoryEditField !== 'invoiceType' ? '' : (invoiceComposition === 'black'
                     ? '<span class="text-[10px] bg-gray-200 text-gray-700 px-1 rounded mr-1" title="Stock en negro (sin factura)">🙈N</span>'
                     : invoiceComposition === 'mixed'
                         ? '<span class="text-[10px] bg-purple-100 text-purple-700 px-1 rounded mr-1" title="Mezcla de stock en blanco y en negro">🔀</span>'
-                        : '<span class="text-[10px] bg-blue-100 text-blue-700 px-1 rounded mr-1" title="Stock en blanco (facturado)">🧾B</span>';
+                        : '<span class="text-[10px] bg-blue-100 text-blue-700 px-1 rounded mr-1" title="Stock en blanco (facturado)">🧾B</span>');
                 const weightInfo = p.saleByWeight && p.weightPerUnit ? `<span class="text-xs text-blue-600">(${Math.round(totalStock * p.weightPerUnit)}g)</span>` : '';
 
                 const displayCost = isComposite ? calculateCompositeCost(p) : (p.cost || 0);

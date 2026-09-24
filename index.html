@@ -24301,12 +24301,27 @@ RESULTADOS:
                         }
                     }
                     
+                    // Para decidir si un lote que está SOLO en remoto es legítimo (nuevo,
+                    // cargado desde otro dispositivo) o un lote VIEJO que acá ya se vendió
+                    // por completo (por eso se filtró del array local hace un rato) --
+                    // se usa el updatedAt real del producto, no getItemTimestamp (que
+                    // prioriza createdAt, fijo desde que se creó el producto, y por eso
+                    // nunca refleja una venta reciente).
+                    const localUpdatedAt = localItem.updatedAt ? new Date(localItem.updatedAt).getTime() : 0;
+                    const remoteUpdatedAt = remoteItem.updatedAt ? new Date(remoteItem.updatedAt).getTime() : 0;
+
                     const mergedBatches = [];
                     for (const [key, entry] of batchMap) {
                         if (entry.local && !entry.remote) {
                             mergedBatches.push(JSON.parse(JSON.stringify(entry.local)));
                         } else if (!entry.local && entry.remote) {
-                            mergedBatches.push(JSON.parse(JSON.stringify(entry.remote)));
+                            // Solo resucitar el lote si remoto es realmente MÁS NUEVO que lo
+                            // local de este producto. Si no, es casi seguro un lote que ya se
+                            // agotó y removió acá (ej: una venta que lo dejó en 0) y remoto
+                            // todavía no se enteró -- no hay que devolverle el stock.
+                            if (remoteUpdatedAt > localUpdatedAt) {
+                                mergedBatches.push(JSON.parse(JSON.stringify(entry.remote)));
+                            }
                         } else {
                             // Batch en ambos: quedarse con el de menor stock (más conservador)
                             const localStock = entry.local.stock || 0;

@@ -33,6 +33,17 @@
         #notifications > * { pointer-events: auto; }
         .notification { animation: slideIn 0.3s ease; }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        /* Aviso de pago de Mercado Pago: arriba y con su celeste de marca, para
+           distinguirlo de un vistazo de los avisos normales de la app (que van
+           abajo a la derecha). */
+        #mp-notifications { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 100001; display: flex; flex-direction: column; gap: 10px; pointer-events: none; align-items: center; }
+        #mp-notifications > * { pointer-events: auto; }
+        .mp-notification { animation: slideInTop 0.35s ease; background: linear-gradient(135deg, #00c3ff, #009ee3); color: #fff; padding: 14px 20px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,158,227,0.4); display: flex; align-items: center; gap: 14px; min-width: 320px; max-width: 90vw; }
+        @keyframes slideInTop { from { transform: translateY(-40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .mp-notification-icon { width: 44px; height: 44px; background: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .mp-notification-icon i { color: #009ee3; font-size: 20px; }
+        .mp-notification-title { font-weight: 800; font-size: 12px; letter-spacing: 0.4px; text-transform: uppercase; opacity: 0.9; }
+        .mp-notification-text { font-size: 15px; font-weight: 700; line-height: 1.25; }
         .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99999; align-items: center; justify-content: center; }
         .modal.active { display: flex !important; }
         /* Con el modal de stock abierto, los botones rápidos (Nueva Venta / Stock / Gasto)
@@ -417,6 +428,7 @@
     </div>
 
     <div id="notifications"></div>
+    <div id="mp-notifications"></div>
 
     <!-- Aviso: esta pestaña quedó vieja porque otra pestaña del mismo navegador guardó cambios -->
     <div id="stale-tab-banner" class="hidden fixed top-0 left-0 right-0 z-[130] bg-amber-500 text-white text-sm font-bold px-4 py-2 flex items-center justify-center gap-3 shadow-lg">
@@ -19982,14 +19994,35 @@ Total de productos a comprar: ${shoppingList.length}
                     snap.docChanges().forEach(change => {
                         if (change.type !== 'added') return;
                         const data = change.doc.data();
-                        const desc = data.description ? ' — ' + escapeHtml(data.description) : '';
-                        showNotification(`💰 Pago recibido por Mercado Pago: $${formatMoney(data.amount || 0)}${desc}`, 'success', 10000);
+                        showMercadoPagoNotification(data.amount || 0, data.description || '');
                         playPedidoBeep(true);
                     });
                 }, (err) => console.warn('Error escuchando pagos de Mercado Pago:', err));
             } catch (e) {
                 console.warn('No se pudo iniciar el listener de pagos de Mercado Pago:', e);
             }
+        }
+
+        // Aviso especial (arriba de la pantalla, celeste de Mercado Pago) para
+        // distinguirlo de un vistazo de los avisos comunes de la app.
+        function showMercadoPagoNotification(amount, description) {
+            const container = document.getElementById('mp-notifications');
+            if (!container) return;
+            const notif = document.createElement('div');
+            notif.className = 'mp-notification';
+            notif.innerHTML = `
+                <div class="mp-notification-icon"><i class="fas fa-wallet"></i></div>
+                <div>
+                    <p class="mp-notification-title">Mercado Pago</p>
+                    <p class="mp-notification-text">Llegó un pago de $${formatMoney(amount)}${description ? ' — ' + escapeHtml(description) : ''}</p>
+                </div>
+            `;
+            container.appendChild(notif);
+            setTimeout(() => {
+                notif.style.opacity = '0';
+                notif.style.transition = 'opacity 0.3s';
+                setTimeout(() => notif.remove(), 300);
+            }, 10000);
         }
 
         // Combina lo que ya tenemos localmente (con ediciones/orden hechos en pantalla)

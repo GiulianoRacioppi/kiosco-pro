@@ -19955,6 +19955,39 @@ Total de productos a comprar: ${shoppingList.length}
         let purchaseReviewListener = null;
         let purchaseReviewDragId = null;
 
+        // Aviso de pago recibido por Mercado Pago: el backend (Cloud Function
+        // "mercadopago" en backend-arca/) escucha el webhook de Mercado Pago,
+        // vuelve a confirmar el pago con la API oficial y guarda un documento en
+        // la colección "mpPayments". Este listener escucha esa colección en tiempo
+        // real y avisa acá con notificación + sonido, sin refrescar nada.
+        let mpPaymentListener = null;
+        let mpPaymentListenerFirstLoad = true;
+
+        async function startMercadoPagoPaymentListener() {
+            if (!window.db || mpPaymentListener) return;
+            try {
+                const { collection, query, orderBy, limit, onSnapshot } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                const q = query(collection(window.db, 'mpPayments'), orderBy('createdAt', 'desc'), limit(20));
+                mpPaymentListener = onSnapshot(q, (snap) => {
+                    // El primer disparo trae los pagos que YA estaban guardados de
+                    // antes de abrir la app -- no avisar de esos, solo de los nuevos.
+                    if (mpPaymentListenerFirstLoad) {
+                        mpPaymentListenerFirstLoad = false;
+                        return;
+                    }
+                    snap.docChanges().forEach(change => {
+                        if (change.type !== 'added') return;
+                        const data = change.doc.data();
+                        const desc = data.description ? ' — ' + escapeHtml(data.description) : '';
+                        showNotification(`💰 Pago recibido por Mercado Pago: $${formatMoney(data.amount || 0)}${desc}`, 'success', 10000);
+                        playPedidoBeep(true);
+                    });
+                }, (err) => console.warn('Error escuchando pagos de Mercado Pago:', err));
+            } catch (e) {
+                console.warn('No se pudo iniciar el listener de pagos de Mercado Pago:', e);
+            }
+        }
+
         // Combina lo que ya tenemos localmente (con ediciones/orden hechos en pantalla)
         // con lo que hay en la nube: agrega los nuevos al final, y saca los que ya no
         // están (confirmados o descartados, acá o desde otro dispositivo).
@@ -25623,6 +25656,7 @@ RESULTADOS:
             setTimeout(() => {
                 startFirebaseListener();
                 startPurchaseReviewListener();
+                startMercadoPagoPaymentListener();
             }, 1000);
 
             // === EXPONER FUNCIONES AL WINDOW PARA ONCLICK HANDLERS ===

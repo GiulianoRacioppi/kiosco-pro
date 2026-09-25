@@ -1061,6 +1061,11 @@
                 <i class="fas fa-chart-pie w-4 text-xs"></i> Análisis
             </button>
 
+            <!-- CLIENTES (cuentas creadas en Kiosco47: nombre/teléfono/email/direcciones): Solo admin -->
+            <button onclick="showSection('clientes')" id="nav-clientes" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="clientes">
+                <i class="fas fa-address-book w-4 text-xs"></i> Clientes
+            </button>
+
             <!-- FLUJO DE CAJA (proyección): Solo admin -->
             <button onclick="showSection('cashflow-projection')" id="nav-cashflow-projection" class="nav-btn sidebar-admin-only w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="cashflow-projection">
                 <i class="fas fa-water w-4 text-xs"></i> Flujo de Caja
@@ -2627,6 +2632,47 @@
                     <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-green-500"></span> Facturado</span>
                     <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-blue-500"></span> Ganado</span>
                     <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-red-500"></span> Gastado</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- CLIENTES: cuentas creadas en Kiosco47 (nombre/teléfono/email/direcciones que
+             escribieron). Se lee directo de Firestore (colección "customers"), no forma
+             parte del appState local -- son cuentas de Kiosco47, no del kiosco físico. -->
+        <div id="clientes" class="section hidden space-y-6 fade-in">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                        <i class="fas fa-address-book text-purple-600"></i> Clientes de Kiosco47
+                    </h2>
+                    <p class="text-sm text-gray-500">Datos de contacto de quienes se registraron para pedir online. Sirve para saber a quién avisarle y adónde mandar cada pedido.</p>
+                </div>
+                <button onclick="loadClientesFromFirebase()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl font-bold shadow">
+                    <i class="fas fa-sync"></i> Actualizar
+                </button>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div class="p-4 border-b">
+                    <input type="text" id="clientes-search" class="w-full sm:w-80 border rounded-lg px-3 py-2 text-sm" placeholder="Buscar por nombre, teléfono o email..." onkeyup="renderClientesList()">
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Nombre</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Teléfono</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Email</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Se registró</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500">Pedidos</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500">Total gastado</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 cell-notes">Últimas direcciones de envío</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clientes-table" class="divide-y divide-gray-200">
+                            <tr><td colspan="7" class="text-center text-gray-400 py-8">Cargando...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -4697,7 +4743,7 @@
             }
             
             // Protección: colaboradores no pueden ver ciertas secciones
-            const adminOnlySections = ['sales-calendar', 'cashflow', 'analysis', 'cashflow-projection', 'reports', 'billing', 'settings', 'promotions'];
+            const adminOnlySections = ['sales-calendar', 'cashflow', 'analysis', 'cashflow-projection', 'reports', 'billing', 'settings', 'promotions', 'clientes'];
             if (adminOnlySections.includes(sectionId) && !isAdmin()) {
                 showNotification('Acceso restringido solo para administradores', 'error');
                 sectionId = 'sell';
@@ -4767,6 +4813,7 @@
                 'fiados': 'Fiados',
                 'promotions': 'Promociones',
                 'discount-tickets': 'Tickets de Descuento',
+                'clientes': 'Clientes',
                 'settings': 'Configuración'
             };
             document.getElementById('page-title').textContent = titles[sectionId] || 'KioscoPro';
@@ -4812,6 +4859,9 @@
             }
             if (sectionId === 'cashflow-projection') {
                 renderCashFlowProjection();
+            }
+            if (sectionId === 'clientes') {
+                loadClientesFromFirebase();
             }
             if (sectionId === 'predictions') {
                 showSection('inventory');
@@ -20243,6 +20293,7 @@ Total de productos a comprar: ${shoppingList.length}
             const pedido = {
                 id: 'PEDIDO-' + Date.now(),
                 onlineOrderId: data.pedidoId,
+                onlineCustomerId: data.customerId || null,
                 comandaNumber,
                 customerName: (data.customerName || 'Cliente online') + ' 🛍️ (pedido online)',
                 customerPhone: data.customerPhone || '',
@@ -20271,6 +20322,88 @@ Total de productos a comprar: ${shoppingList.length}
             printComanda(pedido);
             showNotification('🛍️ Pedido online nuevo (ya pagado) de ' + (data.customerName || 'un cliente'), 'success', 10000);
             playPedidoBeep(true);
+        }
+
+        // ==================== CLIENTES DE KIOSCO47 ====================
+        // Son cuentas de la app de pedidos online (login con email/contraseña), separadas
+        // del appState local -- se leen directo de Firestore cada vez que se abre la
+        // sección, no se guardan en localStorage.
+        let onlineCustomers = [];
+
+        async function loadClientesFromFirebase() {
+            const tbody = document.getElementById('clientes-table');
+            if (!window.db) { tbody.innerHTML = '<tr><td colspan="7" class="text-center text-red-400 py-8">Sin conexión a Firebase</td></tr>'; return; }
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-gray-400 py-8">Cargando...</td></tr>';
+            try {
+                const { collection, getDocs } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                const [customersSnap, ordersSnap] = await Promise.all([
+                    getDocs(collection(window.db, 'customers')),
+                    getDocs(collection(window.db, 'pedidosOnline'))
+                ]);
+
+                // Direcciones de envío y estadísticas de compra por cliente (solo pedidos
+                // ya pagados -- uno que quedó sin pagar no cuenta como compra real).
+                const addressesByCustomer = {};
+                const statsByCustomer = {};
+                ordersSnap.forEach(d => {
+                    const o = d.data();
+                    if (!o.customerId) return;
+                    if (o.deliveryType === 'delivery' && o.deliveryAddress) {
+                        if (!addressesByCustomer[o.customerId]) addressesByCustomer[o.customerId] = [];
+                        addressesByCustomer[o.customerId].push(o.deliveryAddress);
+                    }
+                    if (o.status === 'paid') {
+                        if (!statsByCustomer[o.customerId]) statsByCustomer[o.customerId] = { count: 0, total: 0, lastDate: 0 };
+                        const stats = statsByCustomer[o.customerId];
+                        stats.count += 1;
+                        stats.total += o.total || 0;
+                        stats.lastDate = Math.max(stats.lastDate, o.createdAt || 0);
+                    }
+                });
+
+                onlineCustomers = customersSnap.docs.map(d => ({
+                    id: d.id,
+                    ...d.data(),
+                    addresses: (addressesByCustomer[d.id] || []).slice(-3).reverse(),
+                    orderCount: (statsByCustomer[d.id] || {}).count || 0,
+                    totalSpent: (statsByCustomer[d.id] || {}).total || 0,
+                    lastOrderDate: (statsByCustomer[d.id] || {}).lastDate || 0
+                }));
+                renderClientesList();
+            } catch (e) {
+                console.error(e);
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-red-400 py-8">No se pudo cargar (revisá las reglas de Firestore / conexión)</td></tr>';
+            }
+        }
+
+        function renderClientesList() {
+            const q = normalizeText(document.getElementById('clientes-search').value.trim());
+            let list = onlineCustomers;
+            if (q) {
+                list = list.filter(c =>
+                    normalizeText(c.name || '').includes(q) ||
+                    normalizeText(c.phone || '').includes(q) ||
+                    normalizeText(c.email || '').includes(q)
+                );
+            }
+            list = list.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+            const tbody = document.getElementById('clientes-table');
+            if (list.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-gray-400 py-8">Todavía no hay clientes registrados</td></tr>';
+                return;
+            }
+            tbody.innerHTML = list.map(c => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-3 py-2 font-medium text-gray-900">${escapeHtml(c.name || '-')}</td>
+                    <td class="px-3 py-2 text-sm text-gray-600">${escapeHtml(c.phone || '-')}</td>
+                    <td class="px-3 py-2 text-sm text-gray-600">${escapeHtml(c.email || '-')}</td>
+                    <td class="px-3 py-2 text-sm text-gray-500">${c.createdAt ? new Date(c.createdAt).toLocaleDateString('es-AR') : '-'}</td>
+                    <td class="px-3 py-2 text-sm text-center font-bold ${c.orderCount > 0 ? 'text-purple-700' : 'text-gray-300'}">${c.orderCount}</td>
+                    <td class="px-3 py-2 text-sm text-right font-bold ${c.totalSpent > 0 ? 'text-green-600' : 'text-gray-300'}">$${formatMoney(c.totalSpent)}</td>
+                    <td class="px-3 py-2 text-xs text-gray-500 cell-notes">${c.addresses && c.addresses.length > 0 ? c.addresses.map(a => escapeHtml(a)).join('<br>') : '<span class="text-gray-300">Sin envíos todavía</span>'}</td>
+                </tr>
+            `).join('');
         }
 
         // Combina lo que ya tenemos localmente (con ediciones/orden hechos en pantalla)

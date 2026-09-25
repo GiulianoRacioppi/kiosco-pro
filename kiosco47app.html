@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Kiosco47</title>
+<link rel="manifest" href="pedir-manifest.json">
+<meta name="theme-color" content="#7c3aed">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kiosco47">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    body { -webkit-tap-highlight-color: transparent; }
+    .card { background: white; border-radius: 1rem; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+    input[type=number], input[type=text], input[type=tel], select { font-size: 16px; } /* evita zoom automático en iOS */
+</style>
+</head>
+<body class="bg-gray-50 text-gray-800 pb-28">
+
+    <div class="bg-purple-700 text-white p-4 sticky top-0 z-10 shadow-lg">
+        <h1 class="text-lg font-bold flex items-center gap-2">🛍️ Kiosco47</h1>
+        <p id="sync-status" class="text-xs text-purple-100">Cargando catálogo...</p>
+    </div>
+
+    <!-- Pantalla de "volviendo del pago" -->
+    <div id="payment-return-screen" class="fixed inset-0 bg-white z-40 hidden flex items-center justify-center p-6">
+        <div class="card p-6 w-full max-w-sm text-center">
+            <p class="text-5xl mb-3" id="return-icon">⏳</p>
+            <h2 class="text-lg font-bold mb-2" id="return-title">Confirmando tu pago...</h2>
+            <p class="text-sm text-gray-500 mb-4" id="return-text">Esperá un momento, ya casi está.</p>
+            <button onclick="startNewOrder()" id="return-new-order-btn" class="hidden w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold">Hacer otro pedido</button>
+        </div>
+    </div>
+
+    <div id="app-content" class="p-3 space-y-3">
+
+        <!-- Buscador / categorías -->
+        <div class="card p-3">
+            <input type="text" id="product-search" class="w-full border-2 border-purple-200 rounded-xl px-3 py-2" placeholder="Buscar producto..." oninput="renderCatalog()">
+            <div id="category-tabs" class="flex gap-2 overflow-x-auto mt-2 pb-1"></div>
+        </div>
+
+        <!-- Catálogo -->
+        <div id="catalog-list" class="space-y-2"></div>
+
+    </div>
+
+    <!-- Carrito flotante -->
+    <div id="cart-bar" class="fixed bottom-0 left-0 right-0 bg-white border-t p-3 shadow-lg hidden">
+        <button onclick="openCartModal()" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold shadow-lg flex justify-between items-center px-4">
+            <span>🛒 Ver pedido (<span id="cart-count">0</span>)</span>
+            <span>$<span id="cart-total-bar">0</span></span>
+        </button>
+    </div>
+
+    <!-- Modal del carrito / checkout -->
+    <div id="cart-modal" class="fixed inset-0 bg-black/50 z-30 hidden items-end justify-center">
+        <div class="bg-white rounded-t-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-4">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="font-bold text-lg">Tu pedido</h3>
+                <button onclick="closeCartModal()" class="text-gray-400 text-xl px-2">✕</button>
+            </div>
+            <div id="cart-items-list" class="space-y-2 mb-3"></div>
+            <div class="flex justify-between items-center border-t pt-2 mb-3">
+                <span class="font-bold text-gray-600">Total</span>
+                <span class="font-bold text-xl text-purple-700">$<span id="cart-total-modal">0</span></span>
+            </div>
+
+            <div class="space-y-2 mb-3">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Tu nombre</label>
+                    <input type="text" id="customer-name" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2" placeholder="Nombre">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Tu teléfono</label>
+                    <input type="tel" id="customer-phone" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2" placeholder="Para avisarte cuando esté listo">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Notas (opcional)</label>
+                    <input type="text" id="customer-notes" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2" placeholder="Ej: sin mayonesa">
+                </div>
+            </div>
+
+            <p id="checkout-error" class="text-red-500 text-sm mb-2 hidden"></p>
+            <button onclick="startCheckout()" id="checkout-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg">
+                💳 Pagar con Mercado Pago
+            </button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBqYqLew5sf41zrQGr_GLm8d22hanNtWvg",
+            authDomain: "kioscopro.firebaseapp.com",
+            projectId: "kioscopro",
+            storageBucket: "kioscopro.firebasestorage.app",
+            messagingSenderId: "334703637356",
+            appId: "1:334703637356:web:cfd74b2143e56f09903949",
+            measurementId: "G-6QX394HCSR"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        window.db = db;
+        window.fbDoc = doc;
+        window.fbGetDoc = getDoc;
+        window.fbSetDoc = setDoc;
+
+        window.dispatchEvent(new Event('firebase-ready'));
+    </script>
+
+    <script>
+        // ==================== CONFIG ====================
+        // URL de la Cloud Function que crea la preferencia de pago (backend-arca/pedidos-online.js)
+        const CREAR_PREFERENCIA_URL = 'https://us-central1-kioscopro.cloudfunctions.net/crearPreferencia';
+
+        const CATEGORY_LABELS = {
+            golosinas: '🍬 Golosinas', bebidas: '🥤 Bebidas', cigarrillos: '🚬 Cigarrillos',
+            almacen: '🛒 Almacén', lacteos: '🥛 Lácteos', panificados: '🍞 Panificados',
+            subproductos: '📦 Otros', limpieza: '🧼 Limpieza', congelados: '🧊 Congelados'
+        };
+
+        // ==================== UTILIDADES ====================
+        function formatMoney(amount) {
+            if (typeof amount !== 'number' || isNaN(amount)) amount = 0;
+            return amount.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        function escapeHtml(text) {
+            if (typeof text !== 'string') return text;
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        function normalizeText(text) {
+            if (!text) return '';
+            return text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+        }
+        function statusText(s) {
+            const el = document.getElementById('sync-status');
+            if (el) el.textContent = s;
+        }
+
+        // ==================== ESTADO ====================
+        let catalog = [];      // productos disponibles para pedir online
+        let cart = {};         // { productId: { productId, name, price, quantity } }
+        let selectedCategory = '';
+
+        // ==================== CARGA DEL CATÁLOGO ====================
+        window.addEventListener('firebase-ready', async () => {
+            statusText('Conectando...');
+            try {
+                await loadCatalog();
+                statusText('');
+            } catch (e) {
+                console.error(e);
+                statusText('⚠️ No se pudo conectar (revisá la conexión) — tocá para reintentar');
+                document.getElementById('sync-status').onclick = () => location.reload();
+                return;
+            }
+            renderCategoryTabs();
+            renderCatalog();
+            checkPaymentReturn();
+        });
+
+        async function loadCatalog() {
+            const mainSnap = await window.fbGetDoc(window.fbDoc(window.db, 'kioscos', 'main'));
+            if (!mainSnap.exists()) return;
+            const mainData = mainSnap.data();
+            const chunkCounts = mainData.chunkCounts || {};
+            const count = chunkCounts.main_inventory || 0;
+            let fullInventory = [];
+            if (count > 0) {
+                const names = [];
+                for (let i = 0; i < count; i++) names.push('main_inventory_chunk_' + i);
+                const snaps = await Promise.all(names.map(n => window.fbGetDoc(window.fbDoc(window.db, 'kioscos', n))));
+                snaps.forEach(s => {
+                    if (s.exists() && Array.isArray(s.data().data)) fullInventory = fullInventory.concat(s.data().data);
+                });
+            }
+            // Solo productos normales (sin peso, sin preparación) con stock real --
+            // las preparaciones y venta por peso quedan para una vuelta futura.
+            catalog = fullInventory.filter(p =>
+                p && p.id && p.name &&
+                !p.hiddenFromSale && !p.isComposite && !p.saleByWeight &&
+                (p.stock || 0) > 0 && (p.salePrice || p.price || 0) > 0
+            );
+        }
+
+        // ==================== CATEGORÍAS Y CATÁLOGO ====================
+        function renderCategoryTabs() {
+            const cats = Array.from(new Set(catalog.map(p => p.category || 'subproductos')));
+            cats.sort();
+            const tabs = document.getElementById('category-tabs');
+            tabs.innerHTML = ['<button onclick="selectCategory(\'\')" class="cat-tab px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap ' + (selectedCategory === '' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600') + '">Todo</button>']
+                .concat(cats.map(c => `<button onclick="selectCategory('${c}')" class="cat-tab px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap ${selectedCategory === c ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'}">${CATEGORY_LABELS[c] || c}</button>`))
+                .join('');
+        }
+        function selectCategory(cat) {
+            selectedCategory = cat;
+            renderCategoryTabs();
+            renderCatalog();
+        }
+        window.selectCategory = selectCategory;
+
+        function renderCatalog() {
+            const q = normalizeText(document.getElementById('product-search').value.trim());
+            let items = catalog;
+            if (selectedCategory) items = items.filter(p => (p.category || 'subproductos') === selectedCategory);
+            if (q) items = items.filter(p => normalizeText(p.name).includes(q));
+            items = items.slice().sort((a, b) => a.name.localeCompare(b.name));
+
+            const container = document.getElementById('catalog-list');
+            if (items.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-400 py-8">No hay productos que coincidan</p>';
+                return;
+            }
+            container.innerHTML = items.map(p => {
+                const price = p.salePrice || p.price || 0;
+                const inCart = cart[p.id];
+                return `
+                <div class="card p-3 flex justify-between items-center gap-2">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-bold text-sm">${escapeHtml(p.name)}</p>
+                        <p class="text-purple-700 font-bold">$${formatMoney(price)}</p>
+                    </div>
+                    ${inCart
+                        ? `<div class="flex items-center gap-2 shrink-0">
+                            <button onclick="changeQty('${p.id}', -1)" class="w-8 h-8 rounded-full bg-gray-100 font-bold">-</button>
+                            <span class="font-bold w-6 text-center">${inCart.quantity}</span>
+                            <button onclick="changeQty('${p.id}', 1)" class="w-8 h-8 rounded-full bg-purple-600 text-white font-bold">+</button>
+                          </div>`
+                        : `<button onclick="changeQty('${p.id}', 1)" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-bold text-sm shrink-0">+ Agregar</button>`}
+                </div>`;
+            }).join('');
+        }
+
+        // ==================== CARRITO ====================
+        function changeQty(productId, delta) {
+            const product = catalog.find(p => p.id === productId);
+            if (!product) return;
+            const price = product.salePrice || product.price || 0;
+            if (!cart[productId]) cart[productId] = { productId, name: product.name, price, quantity: 0 };
+            cart[productId].quantity += delta;
+            if (cart[productId].quantity <= 0) delete cart[productId];
+            renderCatalog();
+            renderCartBar();
+            renderCartModal();
+        }
+        window.changeQty = changeQty;
+
+        function cartTotal() {
+            return Object.values(cart).reduce((s, i) => s + i.price * i.quantity, 0);
+        }
+        function cartCount() {
+            return Object.values(cart).reduce((s, i) => s + i.quantity, 0);
+        }
+
+        function renderCartBar() {
+            const bar = document.getElementById('cart-bar');
+            const count = cartCount();
+            bar.classList.toggle('hidden', count === 0);
+            document.getElementById('cart-count').textContent = count;
+            document.getElementById('cart-total-bar').textContent = formatMoney(cartTotal());
+        }
+
+        function openCartModal() {
+            renderCartModal();
+            document.getElementById('cart-modal').classList.remove('hidden');
+            document.getElementById('cart-modal').classList.add('flex');
+        }
+        function closeCartModal() {
+            document.getElementById('cart-modal').classList.add('hidden');
+            document.getElementById('cart-modal').classList.remove('flex');
+        }
+        window.openCartModal = openCartModal;
+        window.closeCartModal = closeCartModal;
+
+        function renderCartModal() {
+            const items = Object.values(cart);
+            const container = document.getElementById('cart-items-list');
+            container.innerHTML = items.length > 0 ? items.map(i => `
+                <div class="flex justify-between items-center gap-2">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-medium text-sm">${escapeHtml(i.name)}</p>
+                        <p class="text-xs text-gray-400">$${formatMoney(i.price)} c/u</p>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <button onclick="changeQty('${i.productId}', -1)" class="w-7 h-7 rounded-full bg-gray-100 font-bold">-</button>
+                        <span class="font-bold w-6 text-center">${i.quantity}</span>
+                        <button onclick="changeQty('${i.productId}', 1)" class="w-7 h-7 rounded-full bg-purple-600 text-white font-bold">+</button>
+                    </div>
+                </div>
+            `).join('') : '<p class="text-center text-gray-400 py-4 text-sm">Todavía no agregaste nada</p>';
+            document.getElementById('cart-total-modal').textContent = formatMoney(cartTotal());
+        }
+
+        // ==================== CHECKOUT / PAGO ====================
+        async function startCheckout() {
+            const items = Object.values(cart);
+            const errorEl = document.getElementById('checkout-error');
+            errorEl.classList.add('hidden');
+
+            if (items.length === 0) {
+                errorEl.textContent = 'Agregá al menos un producto';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            const customerName = document.getElementById('customer-name').value.trim();
+            const customerPhone = document.getElementById('customer-phone').value.trim();
+            if (!customerName || !customerPhone) {
+                errorEl.textContent = 'Completá tu nombre y teléfono';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            const btn = document.getElementById('checkout-btn');
+            btn.disabled = true;
+            btn.textContent = 'Generando el pago...';
+
+            try {
+                const pedidoId = 'PEDIDOONLINE-' + Date.now();
+                const total = cartTotal();
+                const notes = document.getElementById('customer-notes').value.trim();
+
+                // 1. Guardar el pedido en Firestore ANTES de pagar (estado "pending_payment")
+                await window.fbSetDoc(window.fbDoc(window.db, 'pedidosOnline', pedidoId), {
+                    items: items,
+                    total: total,
+                    customerName: customerName,
+                    customerPhone: customerPhone,
+                    notes: notes,
+                    status: 'pending_payment',
+                    createdAt: Date.now()
+                });
+
+                // 2. Pedirle a Mercado Pago el link de pago para este pedido
+                const resp = await fetch(CREAR_PREFERENCIA_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pedidoId, items })
+                });
+                const data = await resp.json();
+                if (!data.ok || !data.initPoint) {
+                    throw new Error(data.error || 'No se pudo generar el pago');
+                }
+
+                localStorage.setItem('pedir-last-pedido-id', pedidoId);
+
+                // 3. Ir a pagar a Mercado Pago
+                window.location.href = data.initPoint;
+            } catch (e) {
+                console.error(e);
+                errorEl.textContent = 'Hubo un error generando el pago. Probá de nuevo.';
+                errorEl.classList.remove('hidden');
+                btn.disabled = false;
+                btn.textContent = '💳 Pagar con Mercado Pago';
+            }
+        }
+        window.startCheckout = startCheckout;
+
+        // ==================== VOLVER DESPUÉS DE PAGAR ====================
+        function checkPaymentReturn() {
+            const params = new URLSearchParams(window.location.search);
+            const status = params.get('status');
+            const pedidoId = params.get('pedido') || localStorage.getItem('pedir-last-pedido-id');
+            if (!status || !pedidoId) return;
+
+            document.getElementById('app-content').classList.add('hidden');
+            document.getElementById('cart-bar').classList.add('hidden');
+            document.getElementById('payment-return-screen').classList.remove('hidden');
+
+            if (status === 'failure') {
+                document.getElementById('return-icon').textContent = '❌';
+                document.getElementById('return-title').textContent = 'El pago no se completó';
+                document.getElementById('return-text').textContent = 'Podés intentar de nuevo cuando quieras.';
+                document.getElementById('return-new-order-btn').classList.remove('hidden');
+                return;
+            }
+
+            // success o pending: esperar a que el webhook/sondeo confirme el pago
+            // consultando el propio documento del pedido cada 3 segundos.
+            pollOrderStatus(pedidoId, 0);
+        }
+
+        async function pollOrderStatus(pedidoId, attempt) {
+            try {
+                const snap = await window.fbGetDoc(window.fbDoc(window.db, 'pedidosOnline', pedidoId));
+                if (snap.exists() && snap.data().status === 'paid') {
+                    document.getElementById('return-icon').textContent = '✅';
+                    document.getElementById('return-title').textContent = '¡Pedido confirmado!';
+                    document.getElementById('return-text').textContent = 'Ya le llegó al kiosco. Te va a avisar por teléfono cuando esté listo.';
+                    document.getElementById('return-new-order-btn').classList.remove('hidden');
+                    localStorage.removeItem('pedir-last-pedido-id');
+                    return;
+                }
+            } catch (e) { console.warn(e); }
+
+            if (attempt >= 20) { // ~1 minuto esperando
+                document.getElementById('return-icon').textContent = '⏳';
+                document.getElementById('return-title').textContent = 'Todavía estamos confirmando el pago';
+                document.getElementById('return-text').textContent = 'Puede tardar un poco más — no hace falta que hagas nada, ni que pagues de nuevo.';
+                document.getElementById('return-new-order-btn').classList.remove('hidden');
+                return;
+            }
+            setTimeout(() => pollOrderStatus(pedidoId, attempt + 1), 3000);
+        }
+
+        function startNewOrder() {
+            window.location.href = 'kiosco47app.html';
+        }
+        window.startNewOrder = startNewOrder;
+
+        // Mismo service worker que usa index.html
+        if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+            navigator.serviceWorker.register('sw.js').catch(function (e) {
+                console.warn('SW no registrado:', e);
+            });
+        }
+    </script>
+</body>
+</html>

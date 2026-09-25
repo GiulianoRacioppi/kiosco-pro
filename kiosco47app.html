@@ -72,7 +72,9 @@
                 <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Contraseña</label>
                 <input type="password" id="login-password" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2">
             </div>
+            <p class="text-right -mt-1"><a href="#" onclick="doPasswordReset();return false;" class="text-xs text-gray-400 underline">¿Olvidaste tu contraseña?</a></p>
             <p id="login-error" class="text-red-500 text-sm hidden"></p>
+            <p id="login-info" class="text-green-600 text-sm hidden"></p>
             <button onclick="doLogin()" class="w-full btn-primary py-3 rounded-xl font-bold">Entrar</button>
             <p class="text-center text-sm text-gray-500">¿Todavía no tenés cuenta? <a href="#" onclick="setAuthTab('signup');return false;" class="text-blue-600 font-bold">Creá una</a></p>
         </div>
@@ -216,7 +218,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc, collection, query, where, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
-        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendEmailVerification } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendEmailVerification, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBqYqLew5sf41zrQGr_GLm8d22hanNtWvg",
@@ -246,6 +248,7 @@
         window.fbSignIn = signInWithEmailAndPassword;
         window.fbSignOut = signOut;
         window.fbSendEmailVerification = sendEmailVerification;
+        window.fbSendPasswordResetEmail = sendPasswordResetEmail;
 
         onAuthStateChanged(auth, (user) => {
             window.dispatchEvent(new CustomEvent('auth-state-changed', { detail: { user } }));
@@ -321,6 +324,29 @@
             }
         }
         window.doLogin = doLogin;
+
+        async function doPasswordReset() {
+            const email = document.getElementById('login-email').value.trim();
+            const errorEl = document.getElementById('login-error');
+            const infoEl = document.getElementById('login-info');
+            errorEl.classList.add('hidden');
+            infoEl.classList.add('hidden');
+            if (!email) {
+                errorEl.textContent = 'Escribí primero tu email arriba, y después tocá "¿Olvidaste tu contraseña?"';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            try {
+                await window.fbSendPasswordResetEmail(window.fbAuth, email);
+                infoEl.textContent = '✅ Te mandamos un correo a ' + email + ' para elegir una contraseña nueva.';
+                infoEl.classList.remove('hidden');
+            } catch (e) {
+                console.error(e);
+                errorEl.textContent = 'No se pudo enviar el correo. Revisá que el email esté bien escrito.';
+                errorEl.classList.remove('hidden');
+            }
+        }
+        window.doPasswordReset = doPasswordReset;
 
         async function doSignup() {
             const name = document.getElementById('signup-name').value.trim();
@@ -670,15 +696,44 @@
             }
             statusEl.textContent = 'Buscando tu ubicación...';
             navigator.geolocation.getCurrentPosition(
-                (pos) => {
+                async (pos) => {
                     deliveryLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                    statusEl.textContent = '✅ Ubicación agregada';
+                    statusEl.textContent = '✅ Ubicación agregada — calculando la dirección...';
+                    await fillAddressFromLocation(deliveryLocation.lat, deliveryLocation.lng);
                 },
                 (err) => {
                     console.warn(err);
                     statusEl.textContent = 'No se pudo obtener la ubicación (revisá el permiso) -- no es obligatorio, podés seguir solo con la dirección escrita';
                 }
             );
+        }
+
+        // Convierte lat/lng en una dirección de texto (servicio gratuito de OpenStreetMap)
+        // y la escribe sola en el campo de dirección -- el cliente la puede corregir si
+        // no quedó exacta (ej: piso/depto, que el GPS no sabe).
+        async function fillAddressFromLocation(lat, lng) {
+            const statusEl = document.getElementById('location-status');
+            try {
+                const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=es`);
+                const data = await resp.json();
+                const a = data.address || {};
+                const calle = a.road || a.pedestrian || a.residential || '';
+                const numero = a.house_number || '';
+                const barrio = a.suburb || a.neighbourhood || a.city_district || '';
+                const ciudad = a.city || a.town || a.village || '';
+                const partes = [calle && numero ? `${calle} ${numero}` : calle, barrio, ciudad].filter(Boolean);
+                const direccionCalculada = partes.length > 0 ? partes.join(', ') : data.display_name;
+
+                if (direccionCalculada) {
+                    document.getElementById('delivery-address').value = direccionCalculada;
+                    statusEl.textContent = '✅ Dirección calculada por GPS -- revisala y corregila si hace falta (piso, depto, etc.)';
+                } else {
+                    statusEl.textContent = '✅ Ubicación agregada (no se pudo calcular la dirección en texto -- escribila vos)';
+                }
+            } catch (e) {
+                console.warn(e);
+                statusEl.textContent = '✅ Ubicación agregada (no se pudo calcular la dirección en texto -- escribila vos)';
+            }
         }
         window.useMyLocation = useMyLocation;
 

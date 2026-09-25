@@ -20234,16 +20234,25 @@ Total de productos a comprar: ${shoppingList.length}
 
             const today = formatDateISO(new Date());
             const comandaNumber = appState.pedidos.filter(p => p.scheduledDate === today).length + 1;
+            const isDelivery = data.deliveryType === 'delivery';
+            const deliveryNote = isDelivery
+                ? '🚚 ENVÍO A DOMICILIO — ' + (data.deliveryAddress || 'sin dirección escrita') +
+                  (data.location && data.location.lat ? ` (📍 ver ubicación: https://maps.google.com/?q=${data.location.lat},${data.location.lng})` : '')
+                : '🏠 Retira en el local';
+            const combinedNotes = [deliveryNote, data.notes || ''].filter(Boolean).join(' · ');
             const pedido = {
                 id: 'PEDIDO-' + Date.now(),
                 onlineOrderId: data.pedidoId,
                 comandaNumber,
                 customerName: (data.customerName || 'Cliente online') + ' 🛍️ (pedido online)',
                 customerPhone: data.customerPhone || '',
+                deliveryType: data.deliveryType || 'pickup',
+                deliveryAddress: data.deliveryAddress || '',
+                location: data.location || null,
                 scheduledDate: today,
                 scheduledTime: '',
                 reminderMinutesBefore: 0,
-                notes: data.notes || '',
+                notes: combinedNotes,
                 items: Array.isArray(data.items) ? data.items.map(i => ({ productId: i.productId, name: i.name, quantity: i.quantity, price: i.price })) : [],
                 total: data.total || 0,
                 promoDiscount: 0,

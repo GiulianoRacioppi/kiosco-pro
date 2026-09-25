@@ -4,7 +4,7 @@
 // - Firebase/API: nunca se cachea (va siempre a la red)
 const CACHE_NAME = 'kioscopro-v1';
 
-const PRECACHE = ['./', './index.html', './manifest.webmanifest', './compras-mayorista.html', './compras-manifest.json', './pedir.html', './pedir-manifest.json'];
+const PRECACHE = ['./', './index.html', './manifest.webmanifest', './compras-mayorista.html', './compras-manifest.json', './kiosco47app.html', './pedir-manifest.json'];
 
 const CDN_HOSTS = [
     'cdn.tailwindcss.com',

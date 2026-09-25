@@ -8840,6 +8840,7 @@
                         <div>
                             <p class="font-bold ${isUrgent ? 'text-red-700' : 'text-gray-800'}">${comandaLabel}${whenLabel}${pedido.customerName ? ' — ' + escapeHtml(pedido.customerName) : ''}</p>
                             ${itemsResumen ? `<p class="text-sm text-gray-600">${escapeHtml(itemsResumen)}</p>` : ''}
+                            ${pedido.deliveryType === 'delivery' && pedido.deliveryAddress ? `<p class="text-xs font-bold mt-1"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(pedido.location && pedido.location.lat ? pedido.location.lat + ',' + pedido.location.lng : pedido.deliveryAddress)}" target="_blank" rel="noopener" class="text-blue-600 hover:underline">🚚📍 ${escapeHtml(pedido.deliveryAddress)} (ver en Maps)</a></p>` : ''}
                             ${pedido.notes ? `<p class="text-xs text-gray-500 mt-1">📝 ${escapeHtml(pedido.notes)}</p>` : ''}
                             ${pedido.total > 0 ? `<p class="text-xs font-bold text-purple-700 mt-1">$${formatMoney(pedido.total)}</p>` : ''}
                         </div>
@@ -20285,10 +20286,9 @@ Total de productos a comprar: ${shoppingList.length}
             const today = formatDateISO(new Date());
             const comandaNumber = appState.pedidos.filter(p => p.scheduledDate === today).length + 1;
             const isDelivery = data.deliveryType === 'delivery';
-            const deliveryNote = isDelivery
-                ? '🚚 ENVÍO A DOMICILIO — ' + (data.deliveryAddress || 'sin dirección escrita') +
-                  (data.location && data.location.lat ? ` (📍 ver ubicación: https://maps.google.com/?q=${data.location.lat},${data.location.lng})` : '')
-                : '🏠 Retira en el local';
+            // La dirección clickeable a Maps ya se muestra aparte (ver deliveryAddress más
+            // abajo) -- acá solo un indicador corto de qué tipo de entrega es.
+            const deliveryNote = isDelivery ? '🚚 Envío a domicilio' : '🏠 Retira en el local';
             const combinedNotes = [deliveryNote, data.notes || ''].filter(Boolean).join(' · ');
             const pedido = {
                 id: 'PEDIDO-' + Date.now(),
@@ -20401,7 +20401,7 @@ Total de productos a comprar: ${shoppingList.length}
                     <td class="px-3 py-2 text-sm text-gray-500">${c.createdAt ? new Date(c.createdAt).toLocaleDateString('es-AR') : '-'}</td>
                     <td class="px-3 py-2 text-sm text-center font-bold ${c.orderCount > 0 ? 'text-purple-700' : 'text-gray-300'}">${c.orderCount}</td>
                     <td class="px-3 py-2 text-sm text-right font-bold ${c.totalSpent > 0 ? 'text-green-600' : 'text-gray-300'}">$${formatMoney(c.totalSpent)}</td>
-                    <td class="px-3 py-2 text-xs text-gray-500 cell-notes">${c.addresses && c.addresses.length > 0 ? c.addresses.map(a => escapeHtml(a)).join('<br>') : '<span class="text-gray-300">Sin envíos todavía</span>'}</td>
+                    <td class="px-3 py-2 text-xs cell-notes">${c.addresses && c.addresses.length > 0 ? c.addresses.map(a => `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a)}" target="_blank" rel="noopener" class="text-blue-600 hover:underline" title="Abrir en Google Maps">📍 ${escapeHtml(a)}</a>`).join('<br>') : '<span class="text-gray-300">Sin envíos todavía</span>'}</td>
                 </tr>
             `).join('');
         }

@@ -15,14 +15,93 @@
 <style>
     body { -webkit-tap-highlight-color: transparent; }
     .card { background: white; border-radius: 1rem; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
-    input[type=number], input[type=text], input[type=tel], select { font-size: 16px; } /* evita zoom automático en iOS */
+    input[type=number], input[type=text], input[type=tel], input[type=email], input[type=password], select, textarea { font-size: 16px; } /* evita zoom automático en iOS */
+    .tab-btn.active { background: #6d28d9; color: #fff; }
+    .tab-btn { background: #f3f4f6; color: #4b5563; }
 </style>
 </head>
 <body class="bg-gray-50 text-gray-800 pb-28">
 
     <div class="bg-purple-700 text-white p-4 sticky top-0 z-10 shadow-lg">
-        <h1 class="text-lg font-bold flex items-center gap-2">🛍️ Kiosco47</h1>
-        <p id="sync-status" class="text-xs text-purple-100">Cargando catálogo...</p>
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <img id="brand-logo" src="kiosco47-logo.png" alt="Kiosco47" class="h-8 w-8 rounded-lg object-cover" onerror="this.style.display='none'; document.getElementById('brand-emoji').style.display='inline';">
+                <span id="brand-emoji" style="display:none">🛍️</span>
+                <h1 class="text-lg font-bold">Kiosco47</h1>
+            </div>
+            <button id="logout-btn" onclick="logout()" class="hidden text-xs bg-purple-800 hover:bg-purple-900 px-3 py-1.5 rounded-lg font-bold">Cerrar sesión</button>
+        </div>
+        <p id="sync-status" class="text-xs text-purple-100">Cargando...</p>
+    </div>
+
+    <!-- ==================== PANTALLA DE LOGIN / REGISTRO ==================== -->
+    <div id="auth-screen" class="hidden p-4 max-w-sm mx-auto">
+        <div class="flex gap-2 mb-4">
+            <button id="auth-tab-login" onclick="setAuthTab('login')" class="tab-btn active flex-1 py-2 rounded-xl font-bold text-sm">Iniciar sesión</button>
+            <button id="auth-tab-signup" onclick="setAuthTab('signup')" class="tab-btn flex-1 py-2 rounded-xl font-bold text-sm">Crear cuenta</button>
+        </div>
+
+        <div id="auth-login-form" class="card p-4 space-y-3">
+            <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
+                <input type="email" id="login-email" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Contraseña</label>
+                <input type="password" id="login-password" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2">
+            </div>
+            <p id="login-error" class="text-red-500 text-sm hidden"></p>
+            <button onclick="doLogin()" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold">Entrar</button>
+        </div>
+
+        <div id="auth-signup-form" class="hidden card p-4 space-y-3">
+            <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Tu nombre</label>
+                <input type="text" id="signup-name" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Teléfono</label>
+                <input type="tel" id="signup-phone" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
+                <input type="email" id="signup-email" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Contraseña</label>
+                <input type="password" id="signup-password" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2" placeholder="Mínimo 6 caracteres">
+            </div>
+            <label class="flex items-start gap-2 text-xs text-gray-500">
+                <input type="checkbox" id="signup-privacy" class="mt-0.5">
+                <span>Acepto la <a href="privacidad.html" target="_blank" class="text-purple-600 underline">Política de Privacidad</a></span>
+            </label>
+            <p id="signup-error" class="text-red-500 text-sm hidden"></p>
+            <button onclick="doSignup()" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold">Crear cuenta</button>
+        </div>
+    </div>
+
+    <!-- ==================== APP (logueado) ==================== -->
+    <div id="app-content" class="hidden">
+
+        <div class="flex gap-2 p-3 pb-0">
+            <button id="main-tab-catalog" onclick="setMainTab('catalog')" class="tab-btn active flex-1 py-2 rounded-xl font-bold text-sm">🛍️ Catálogo</button>
+            <button id="main-tab-orders" onclick="setMainTab('orders')" class="tab-btn flex-1 py-2 rounded-xl font-bold text-sm">📋 Mis Pedidos</button>
+        </div>
+
+        <div id="catalog-tab" class="p-3 space-y-3">
+            <!-- Buscador / categorías -->
+            <div class="card p-3">
+                <input type="text" id="product-search" class="w-full border-2 border-purple-200 rounded-xl px-3 py-2" placeholder="Buscar producto..." oninput="renderCatalog()">
+                <div id="category-tabs" class="flex gap-2 overflow-x-auto mt-2 pb-1"></div>
+            </div>
+            <!-- Catálogo -->
+            <div id="catalog-list" class="space-y-2"></div>
+        </div>
+
+        <div id="orders-tab" class="hidden p-3 space-y-2">
+            <div id="orders-list"></div>
+        </div>
+
     </div>
 
     <!-- Pantalla de "volviendo del pago" -->
@@ -31,21 +110,8 @@
             <p class="text-5xl mb-3" id="return-icon">⏳</p>
             <h2 class="text-lg font-bold mb-2" id="return-title">Confirmando tu pago...</h2>
             <p class="text-sm text-gray-500 mb-4" id="return-text">Esperá un momento, ya casi está.</p>
-            <button onclick="startNewOrder()" id="return-new-order-btn" class="hidden w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold">Hacer otro pedido</button>
+            <button onclick="startNewOrder()" id="return-new-order-btn" class="hidden w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold">Volver al catálogo</button>
         </div>
-    </div>
-
-    <div id="app-content" class="p-3 space-y-3">
-
-        <!-- Buscador / categorías -->
-        <div class="card p-3">
-            <input type="text" id="product-search" class="w-full border-2 border-purple-200 rounded-xl px-3 py-2" placeholder="Buscar producto..." oninput="renderCatalog()">
-            <div id="category-tabs" class="flex gap-2 overflow-x-auto mt-2 pb-1"></div>
-        </div>
-
-        <!-- Catálogo -->
-        <div id="catalog-list" class="space-y-2"></div>
-
     </div>
 
     <!-- Carrito flotante -->
@@ -78,6 +144,24 @@
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Tu teléfono</label>
                     <input type="tel" id="customer-phone" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2" placeholder="Para avisarte cuando esté listo">
                 </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">¿Cómo lo recibís?</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button type="button" onclick="setDeliveryType('pickup')" id="btn-delivery-pickup" class="py-2 rounded-xl border-2 font-bold text-sm">🏠 Retiro en el local</button>
+                        <button type="button" onclick="setDeliveryType('delivery')" id="btn-delivery-delivery" class="py-2 rounded-xl border-2 font-bold text-sm">🚚 Envío a domicilio</button>
+                    </div>
+                </div>
+
+                <div id="delivery-address-section" class="hidden space-y-2">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Dirección</label>
+                        <input type="text" id="delivery-address" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2" placeholder="Calle, número, piso/depto">
+                    </div>
+                    <button type="button" onclick="useMyLocation()" id="location-btn" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-xl font-bold text-sm">📍 Usar mi ubicación (opcional, ayuda a encontrarte)</button>
+                    <p id="location-status" class="text-xs text-gray-400"></p>
+                </div>
+
                 <div>
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Notas (opcional)</label>
                     <input type="text" id="customer-notes" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2" placeholder="Ej: sin mayonesa">
@@ -93,7 +177,8 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
-        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, collection, query, where, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBqYqLew5sf41zrQGr_GLm8d22hanNtWvg",
@@ -107,10 +192,25 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        const auth = getAuth(app);
         window.db = db;
         window.fbDoc = doc;
         window.fbGetDoc = getDoc;
         window.fbSetDoc = setDoc;
+        window.fbCollection = collection;
+        window.fbQuery = query;
+        window.fbWhere = where;
+        window.fbOrderBy = orderBy;
+        window.fbGetDocs = getDocs;
+
+        window.fbAuth = auth;
+        window.fbCreateUser = createUserWithEmailAndPassword;
+        window.fbSignIn = signInWithEmailAndPassword;
+        window.fbSignOut = signOut;
+
+        onAuthStateChanged(auth, (user) => {
+            window.dispatchEvent(new CustomEvent('auth-state-changed', { detail: { user } }));
+        });
 
         window.dispatchEvent(new Event('firebase-ready'));
     </script>
@@ -150,10 +250,119 @@
         let catalog = [];      // productos disponibles para pedir online
         let cart = {};         // { productId: { productId, name, price, quantity } }
         let selectedCategory = '';
+        let currentUser = null;
+        let currentProfile = null; // { name, phone, email }
+        let deliveryType = 'pickup';
+        let deliveryLocation = null; // { lat, lng }
+        let firebaseIsReady = false;
 
-        // ==================== CARGA DEL CATÁLOGO ====================
-        window.addEventListener('firebase-ready', async () => {
-            statusText('Conectando...');
+        // ==================== LOGIN / REGISTRO ====================
+        function setAuthTab(tab) {
+            document.getElementById('auth-tab-login').classList.toggle('active', tab === 'login');
+            document.getElementById('auth-tab-signup').classList.toggle('active', tab === 'signup');
+            document.getElementById('auth-login-form').classList.toggle('hidden', tab !== 'login');
+            document.getElementById('auth-signup-form').classList.toggle('hidden', tab !== 'signup');
+        }
+        window.setAuthTab = setAuthTab;
+
+        async function doLogin() {
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+            const errorEl = document.getElementById('login-error');
+            errorEl.classList.add('hidden');
+            if (!email || !password) {
+                errorEl.textContent = 'Completá email y contraseña';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            try {
+                await window.fbSignIn(window.fbAuth, email, password);
+            } catch (e) {
+                console.error(e);
+                errorEl.textContent = 'Email o contraseña incorrectos';
+                errorEl.classList.remove('hidden');
+            }
+        }
+        window.doLogin = doLogin;
+
+        async function doSignup() {
+            const name = document.getElementById('signup-name').value.trim();
+            const phone = document.getElementById('signup-phone').value.trim();
+            const email = document.getElementById('signup-email').value.trim();
+            const password = document.getElementById('signup-password').value;
+            const acceptedPrivacy = document.getElementById('signup-privacy').checked;
+            const errorEl = document.getElementById('signup-error');
+            errorEl.classList.add('hidden');
+
+            if (!name || !phone || !email || !password) {
+                errorEl.textContent = 'Completá todos los campos';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            if (password.length < 6) {
+                errorEl.textContent = 'La contraseña tiene que tener al menos 6 caracteres';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            if (!acceptedPrivacy) {
+                errorEl.textContent = 'Tenés que aceptar la Política de Privacidad para crear la cuenta';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const cred = await window.fbCreateUser(window.fbAuth, email, password);
+                await window.fbSetDoc(window.fbDoc(window.db, 'customers', cred.user.uid), {
+                    name, phone, email,
+                    createdAt: Date.now()
+                });
+            } catch (e) {
+                console.error(e);
+                errorEl.textContent = e.code === 'auth/email-already-in-use'
+                    ? 'Ya existe una cuenta con ese email -- iniciá sesión'
+                    : 'No se pudo crear la cuenta. Revisá los datos.';
+                errorEl.classList.remove('hidden');
+            }
+        }
+        window.doSignup = doSignup;
+
+        async function logout() {
+            await window.fbSignOut(window.fbAuth);
+        }
+        window.logout = logout;
+
+        // ==================== ARRANQUE ====================
+        window.addEventListener('firebase-ready', () => { firebaseIsReady = true; });
+
+        window.addEventListener('auth-state-changed', async (e) => {
+            currentUser = e.detail.user;
+            if (currentUser) {
+                document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('app-content').classList.remove('hidden');
+                document.getElementById('logout-btn').classList.remove('hidden');
+                await loadProfile();
+                await bootApp();
+            } else {
+                document.getElementById('auth-screen').classList.remove('hidden');
+                document.getElementById('app-content').classList.add('hidden');
+                document.getElementById('cart-bar').classList.add('hidden');
+                document.getElementById('logout-btn').classList.add('hidden');
+                statusText('');
+            }
+        });
+
+        async function loadProfile() {
+            try {
+                const snap = await window.fbGetDoc(window.fbDoc(window.db, 'customers', currentUser.uid));
+                currentProfile = snap.exists() ? snap.data() : { name: '', phone: '', email: currentUser.email };
+            } catch (e) {
+                console.warn(e);
+                currentProfile = { name: '', phone: '', email: currentUser.email };
+            }
+        }
+
+        async function bootApp() {
+            statusText('Cargando catálogo...');
             try {
                 await loadCatalog();
                 statusText('');
@@ -166,7 +375,7 @@
             renderCategoryTabs();
             renderCatalog();
             checkPaymentReturn();
-        });
+        }
 
         async function loadCatalog() {
             const mainSnap = await window.fbGetDoc(window.fbDoc(window.db, 'kioscos', 'main'));
@@ -190,6 +399,52 @@
                 !p.hiddenFromSale && !p.isComposite && !p.saleByWeight &&
                 (p.stock || 0) > 0 && (p.salePrice || p.price || 0) > 0
             );
+        }
+
+        // ==================== TABS PRINCIPALES ====================
+        function setMainTab(tab) {
+            document.getElementById('main-tab-catalog').classList.toggle('active', tab === 'catalog');
+            document.getElementById('main-tab-orders').classList.toggle('active', tab === 'orders');
+            document.getElementById('catalog-tab').classList.toggle('hidden', tab !== 'catalog');
+            document.getElementById('orders-tab').classList.toggle('hidden', tab !== 'orders');
+            document.getElementById('cart-bar').classList.toggle('hidden', tab !== 'catalog' || cartCount() === 0);
+            if (tab === 'orders') renderMyOrders();
+        }
+        window.setMainTab = setMainTab;
+
+        async function renderMyOrders() {
+            const container = document.getElementById('orders-list');
+            container.innerHTML = '<p class="text-center text-gray-400 py-8">Cargando...</p>';
+            try {
+                const q = window.fbQuery(
+                    window.fbCollection(window.db, 'pedidosOnline'),
+                    window.fbWhere('customerId', '==', currentUser.uid),
+                    window.fbOrderBy('createdAt', 'desc')
+                );
+                const snap = await window.fbGetDocs(q);
+                const orders = snap.docs.map(d => d.data());
+                if (orders.length === 0) {
+                    container.innerHTML = '<p class="text-center text-gray-400 py-8">Todavía no hiciste ningún pedido</p>';
+                    return;
+                }
+                const statusLabels = {
+                    pending_payment: '⏳ Esperando pago',
+                    paid: '✅ Pagado'
+                };
+                container.innerHTML = orders.map(o => `
+                    <div class="card p-3 mb-2">
+                        <div class="flex justify-between items-start mb-1">
+                            <span class="text-xs font-bold px-2 py-0.5 rounded-full ${o.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}">${statusLabels[o.status] || o.status}</span>
+                            <span class="font-bold text-purple-700">$${formatMoney(o.total || 0)}</span>
+                        </div>
+                        <p class="text-sm text-gray-600">${(o.items || []).map(i => i.quantity + 'x ' + escapeHtml(i.name)).join(', ')}</p>
+                        <p class="text-xs text-gray-400 mt-1">${o.deliveryType === 'delivery' ? '🚚 Envío a domicilio' : '🏠 Retiro en el local'}</p>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = '<p class="text-center text-red-400 py-8">No se pudo cargar tu historial</p>';
+            }
         }
 
         // ==================== CATEGORÍAS Y CATÁLOGO ====================
@@ -270,6 +525,12 @@
         }
 
         function openCartModal() {
+            // Prefill con los datos del perfil, editables por si hacen el pedido para otra persona
+            if (currentProfile) {
+                document.getElementById('customer-name').value = currentProfile.name || '';
+                document.getElementById('customer-phone').value = currentProfile.phone || '';
+            }
+            setDeliveryType(deliveryType);
             renderCartModal();
             document.getElementById('cart-modal').classList.remove('hidden');
             document.getElementById('cart-modal').classList.add('flex');
@@ -300,6 +561,35 @@
             document.getElementById('cart-total-modal').textContent = formatMoney(cartTotal());
         }
 
+        // ==================== ENVÍO / UBICACIÓN ====================
+        function setDeliveryType(type) {
+            deliveryType = type;
+            document.getElementById('btn-delivery-pickup').className = 'py-2 rounded-xl border-2 font-bold text-sm ' + (type === 'pickup' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-500');
+            document.getElementById('btn-delivery-delivery').className = 'py-2 rounded-xl border-2 font-bold text-sm ' + (type === 'delivery' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-500');
+            document.getElementById('delivery-address-section').classList.toggle('hidden', type !== 'delivery');
+        }
+        window.setDeliveryType = setDeliveryType;
+
+        function useMyLocation() {
+            const statusEl = document.getElementById('location-status');
+            if (!navigator.geolocation) {
+                statusEl.textContent = 'Tu navegador no permite compartir ubicación';
+                return;
+            }
+            statusEl.textContent = 'Buscando tu ubicación...';
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    deliveryLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    statusEl.textContent = '✅ Ubicación agregada';
+                },
+                (err) => {
+                    console.warn(err);
+                    statusEl.textContent = 'No se pudo obtener la ubicación (revisá el permiso) -- no es obligatorio, podés seguir solo con la dirección escrita';
+                }
+            );
+        }
+        window.useMyLocation = useMyLocation;
+
         // ==================== CHECKOUT / PAGO ====================
         async function startCheckout() {
             const items = Object.values(cart);
@@ -318,6 +608,12 @@
                 errorEl.classList.remove('hidden');
                 return;
             }
+            const deliveryAddress = document.getElementById('delivery-address').value.trim();
+            if (deliveryType === 'delivery' && !deliveryAddress) {
+                errorEl.textContent = 'Escribí la dirección de envío';
+                errorEl.classList.remove('hidden');
+                return;
+            }
 
             const btn = document.getElementById('checkout-btn');
             btn.disabled = true;
@@ -330,11 +626,16 @@
 
                 // 1. Guardar el pedido en Firestore ANTES de pagar (estado "pending_payment")
                 await window.fbSetDoc(window.fbDoc(window.db, 'pedidosOnline', pedidoId), {
+                    customerId: currentUser.uid,
                     items: items,
                     total: total,
                     customerName: customerName,
                     customerPhone: customerPhone,
+                    customerEmail: currentUser.email || '',
                     notes: notes,
+                    deliveryType: deliveryType,
+                    deliveryAddress: deliveryType === 'delivery' ? deliveryAddress : '',
+                    location: deliveryType === 'delivery' ? deliveryLocation : null,
                     status: 'pending_payment',
                     createdAt: Date.now()
                 });
@@ -412,6 +713,8 @@
         }
 
         function startNewOrder() {
+            cart = {};
+            deliveryLocation = null;
             window.location.href = 'kiosco47app.html';
         }
         window.startNewOrder = startNewOrder;

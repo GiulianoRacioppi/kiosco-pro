@@ -262,6 +262,12 @@
         // URL de la Cloud Function que crea la preferencia de pago (backend-arca/pedidos-online.js)
         const CREAR_PREFERENCIA_URL = 'https://us-central1-kioscopro.cloudfunctions.net/crearPreferencia';
 
+        // ⚠️⚠️⚠️ MODO PRUEBA -- Mercado Pago no deja pagarte a vos mismo, así que esto
+        // salta el cobro entero y manda el pedido directo como "ya pagado". Poner en
+        // "false" antes de lanzar la app de verdad, o todos los pedidos van a entrar
+        // gratis, sin cobrar nada. ⚠️⚠️⚠️
+        const SKIP_MERCADOPAGO_FOR_TESTING = true;
+
         const CATEGORY_LABELS = {
             golosinas: '🍬 Golosinas', bebidas: '🥤 Bebidas', cigarrillos: '🚬 Cigarrillos',
             almacen: '🛒 Almacén', lacteos: '🥛 Lácteos', panificados: '🍞 Panificados',
@@ -770,9 +776,7 @@
                 const pedidoId = 'PEDIDOONLINE-' + Date.now();
                 const total = cartTotal();
                 const notes = document.getElementById('customer-notes').value.trim();
-
-                // 1. Guardar el pedido en Firestore ANTES de pagar (estado "pending_payment")
-                await window.fbSetDoc(window.fbDoc(window.db, 'pedidosOnline', pedidoId), {
+                const orderData = {
                     customerId: currentUser.uid,
                     items: items,
                     total: total,
@@ -782,7 +786,47 @@
                     notes: notes,
                     deliveryType: deliveryType,
                     deliveryAddress: deliveryType === 'delivery' ? deliveryAddress : '',
-                    location: deliveryType === 'delivery' ? deliveryLocation : null,
+                    location: deliveryType === 'delivery' ? deliveryLocation : null
+                };
+
+                if (SKIP_MERCADOPAGO_FOR_TESTING) {
+                    // ⚠️ MODO PRUEBA: no se puede pagar a uno mismo en Mercado Pago, así que
+                    // esto salta directo el pago y manda el pedido como si ya estuviera
+                    // cobrado. Sacar SKIP_MERCADOPAGO_FOR_TESTING (arriba del todo del script)
+                    // antes de lanzar la app de verdad -- si no, todos los pedidos entrarían
+                    // gratis, sin cobrar nada.
+                    await window.fbSetDoc(window.fbDoc(window.db, 'pedidosOnline', pedidoId), {
+                        ...orderData,
+                        status: 'paid',
+                        createdAt: Date.now()
+                    });
+                    await window.fbSetDoc(window.fbDoc(window.db, 'pedidosOnlinePendientes', pedidoId), {
+                        pedidoId: pedidoId,
+                        customerId: orderData.customerId,
+                        items: orderData.items,
+                        total: orderData.total,
+                        customerName: orderData.customerName,
+                        customerPhone: orderData.customerPhone,
+                        customerEmail: orderData.customerEmail,
+                        notes: orderData.notes,
+                        deliveryType: orderData.deliveryType,
+                        deliveryAddress: orderData.deliveryAddress,
+                        location: orderData.location,
+                        mpPaymentId: 'PRUEBA-SIN-PAGO',
+                        createdAt: Date.now()
+                    });
+                    cart = {};
+                    closeCartModal();
+                    renderCartBar();
+                    statusText('✅ Pedido de prueba enviado (sin cobrar) — debería aparecer ya en la bandeja de Pedidos del kiosco');
+                    btn.disabled = false;
+                    btn.textContent = '💳 Pagar con Mercado Pago';
+                    return;
+                }
+
+                // 1. Guardar el pedido en Firestore ANTES de pagar (estado "pending_payment")
+                await window.fbSetDoc(window.fbDoc(window.db, 'pedidosOnline', pedidoId), {
+                    ...orderData,
                     status: 'pending_payment',
                     createdAt: Date.now()
                 });

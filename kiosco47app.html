@@ -5,43 +5,65 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>Kiosco47</title>
 <link rel="manifest" href="pedir-manifest.json">
-<meta name="theme-color" content="#7c3aed">
+<meta name="theme-color" content="#7a0f22">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Kiosco47">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
 <script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-    body { -webkit-tap-highlight-color: transparent; }
-    .card { background: white; border-radius: 1rem; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+    :root {
+        --brand-red: #B5122A;
+        --brand-red-dark: #8A0E20;
+        --brand-gold: #F0A83C;
+        --brand-gold-dark: #D4901F;
+        --brand-cream: #FBF5E8;
+        --brand-dark: #3D2013;
+    }
+    body { -webkit-tap-highlight-color: transparent; background: var(--brand-cream); color: var(--brand-dark); font-family: 'Inter', system-ui, sans-serif; }
+    h1, h2, h3, .font-brand { font-family: 'Poppins', system-ui, sans-serif; }
+    .card { background: white; border-radius: 1.1rem; box-shadow: 0 4px 18px rgba(61,32,19,0.08); border: 1px solid rgba(61,32,19,0.06); }
     input[type=number], input[type=text], input[type=tel], input[type=email], input[type=password], select, textarea { font-size: 16px; } /* evita zoom automático en iOS */
-    .tab-btn.active { background: #6d28d9; color: #fff; }
-    .tab-btn { background: #f3f4f6; color: #4b5563; }
+    input:focus, textarea:focus { outline: none !important; border-color: var(--brand-red) !important; box-shadow: 0 0 0 3px rgba(181,18,42,0.12); }
+    .tab-btn { background: #fff; color: #9c8873; border: 1px solid #efe1c6; transition: all 0.15s; }
+    .tab-btn.active { background: var(--brand-red); color: #fff; border-color: var(--brand-red); box-shadow: 0 3px 10px rgba(181,18,42,0.3); }
+    .btn-primary { background: var(--brand-red); color: #fff; transition: background 0.15s, transform 0.1s; }
+    .btn-primary:hover { background: var(--brand-red-dark); }
+    .btn-primary:active { transform: scale(0.98); }
+    .btn-gold { background: var(--brand-gold); color: var(--brand-dark); transition: background 0.15s; }
+    .btn-gold:hover { background: var(--brand-gold-dark); }
+    .brand-link { color: var(--brand-red); font-weight: 700; }
+    .header-gradient { background: linear-gradient(135deg, var(--brand-red), var(--brand-red-dark)); }
 </style>
 </head>
-<body class="bg-gray-50 text-gray-800 pb-28">
+<body class="text-gray-800 pb-28">
 
-    <div class="bg-purple-700 text-white p-4 sticky top-0 z-10 shadow-lg">
+    <div class="header-gradient text-white p-4 sticky top-0 z-10 shadow-lg">
         <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-                <img id="brand-logo" src="kiosco47-logo.png" alt="Kiosco47" class="h-8 w-8 rounded-lg object-cover" onerror="this.style.display='none'; document.getElementById('brand-emoji').style.display='inline';">
-                <span id="brand-emoji" style="display:none">🛍️</span>
-                <h1 class="text-lg font-bold">Kiosco47</h1>
+            <div class="flex items-center gap-3">
+                <img id="brand-logo" src="kiosco47-logo.png" alt="Kiosco47" class="h-11 w-11 rounded-full object-cover ring-2 ring-white/50 bg-white shadow" onerror="this.style.display='none'; document.getElementById('brand-emoji').style.display='inline-flex';">
+                <span id="brand-emoji" class="hidden h-11 w-11 rounded-full bg-white/15 items-center justify-center text-2xl">🛍️</span>
+                <div>
+                    <h1 class="text-lg font-bold font-brand leading-tight">Kiosco47</h1>
+                    <p class="text-[11px] text-white/70 leading-tight">Pedidos online</p>
+                </div>
             </div>
-            <button id="logout-btn" onclick="logout()" class="hidden text-xs bg-purple-800 hover:bg-purple-900 px-3 py-1.5 rounded-lg font-bold">Cerrar sesión</button>
+            <button id="logout-btn" onclick="logout()" class="hidden text-xs bg-black/20 hover:bg-black/30 px-3 py-1.5 rounded-lg font-bold">Cerrar sesión</button>
         </div>
-        <p id="sync-status" class="text-xs text-purple-100">Cargando...</p>
+        <p id="sync-status" class="text-xs text-amber-100 mt-1">Cargando...</p>
     </div>
 
     <!-- ==================== PANTALLA DE LOGIN / REGISTRO ==================== -->
+    <!-- Patrón clásico: un solo formulario a la vista por vez, con un enlace chiquito
+         abajo para saltar al otro (como cualquier app grande) -- nada de pestañas. -->
     <div id="auth-screen" class="hidden p-4 max-w-sm mx-auto">
-        <div class="flex gap-2 mb-4">
-            <button id="auth-tab-login" onclick="setAuthTab('login')" class="tab-btn active flex-1 py-2 rounded-xl font-bold text-sm">Iniciar sesión</button>
-            <button id="auth-tab-signup" onclick="setAuthTab('signup')" class="tab-btn flex-1 py-2 rounded-xl font-bold text-sm">Crear cuenta</button>
-        </div>
 
         <div id="auth-login-form" class="card p-4 space-y-3">
+            <h2 class="font-bold text-lg text-center text-gray-800 mb-1">Iniciar sesión</h2>
             <div>
                 <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
                 <input type="email" id="login-email" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2">
@@ -51,10 +73,12 @@
                 <input type="password" id="login-password" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2">
             </div>
             <p id="login-error" class="text-red-500 text-sm hidden"></p>
-            <button onclick="doLogin()" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold">Entrar</button>
+            <button onclick="doLogin()" class="w-full btn-primary py-3 rounded-xl font-bold">Entrar</button>
+            <p class="text-center text-sm text-gray-500">¿Todavía no tenés cuenta? <a href="#" onclick="setAuthTab('signup');return false;" class="text-blue-600 font-bold">Creá una</a></p>
         </div>
 
         <div id="auth-signup-form" class="hidden card p-4 space-y-3">
+            <h2 class="font-bold text-lg text-center text-gray-800 mb-1">Crear cuenta</h2>
             <div>
                 <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Tu nombre</label>
                 <input type="text" id="signup-name" class="w-full border-2 border-gray-200 rounded-xl px-3 py-2">
@@ -73,10 +97,24 @@
             </div>
             <label class="flex items-start gap-2 text-xs text-gray-500">
                 <input type="checkbox" id="signup-privacy" class="mt-0.5">
-                <span>Acepto la <a href="privacidad.html" target="_blank" class="text-purple-600 underline">Política de Privacidad</a></span>
+                <span>Acepto la <a href="privacidad.html" target="_blank" class="brand-link underline">Política de Privacidad</a></span>
             </label>
             <p id="signup-error" class="text-red-500 text-sm hidden"></p>
-            <button onclick="doSignup()" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold">Crear cuenta</button>
+            <button onclick="doSignup()" class="w-full btn-primary py-3 rounded-xl font-bold">Crear cuenta</button>
+            <p class="text-center text-sm text-gray-500">¿Ya tenés cuenta? <a href="#" onclick="setAuthTab('login');return false;" class="text-blue-600 font-bold">Iniciar sesión</a></p>
+        </div>
+    </div>
+
+    <!-- ==================== CONFIRMAR EMAIL ==================== -->
+    <div id="verify-email-screen" class="hidden p-4 max-w-sm mx-auto">
+        <div class="card p-6 text-center space-y-3">
+            <p class="text-5xl">📧</p>
+            <h2 class="font-bold text-lg">Confirmá tu email</h2>
+            <p class="text-sm text-gray-500">Te mandamos un link de confirmación a <b id="verify-email-address" class="text-gray-700"></b>. Abrilo desde tu correo y después volvé aquí.</p>
+            <button onclick="checkEmailVerified()" class="w-full btn-primary py-3 rounded-xl font-bold">Ya confirmé, continuar</button>
+            <button onclick="resendVerification()" id="resend-btn" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 py-2 rounded-xl font-bold text-sm">Reenviar correo</button>
+            <p id="verify-status" class="text-xs text-gray-400"></p>
+            <button onclick="logout()" class="text-xs text-gray-400 underline">Cerrar sesión</button>
         </div>
     </div>
 
@@ -91,7 +129,7 @@
         <div id="catalog-tab" class="p-3 space-y-3">
             <!-- Buscador / categorías -->
             <div class="card p-3">
-                <input type="text" id="product-search" class="w-full border-2 border-purple-200 rounded-xl px-3 py-2" placeholder="Buscar producto..." oninput="renderCatalog()">
+                <input type="text" id="product-search" class="w-full border-2 border-amber-200 rounded-xl px-3 py-2" placeholder="Buscar producto..." oninput="renderCatalog()">
                 <div id="category-tabs" class="flex gap-2 overflow-x-auto mt-2 pb-1"></div>
             </div>
             <!-- Catálogo -->
@@ -110,13 +148,13 @@
             <p class="text-5xl mb-3" id="return-icon">⏳</p>
             <h2 class="text-lg font-bold mb-2" id="return-title">Confirmando tu pago...</h2>
             <p class="text-sm text-gray-500 mb-4" id="return-text">Esperá un momento, ya casi está.</p>
-            <button onclick="startNewOrder()" id="return-new-order-btn" class="hidden w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold">Volver al catálogo</button>
+            <button onclick="startNewOrder()" id="return-new-order-btn" class="hidden w-full btn-primary py-3 rounded-xl font-bold">Volver al catálogo</button>
         </div>
     </div>
 
     <!-- Carrito flotante -->
     <div id="cart-bar" class="fixed bottom-0 left-0 right-0 bg-white border-t p-3 shadow-lg hidden">
-        <button onclick="openCartModal()" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold shadow-lg flex justify-between items-center px-4">
+        <button onclick="openCartModal()" class="w-full btn-primary py-3 rounded-xl font-bold shadow-lg flex justify-between items-center px-4">
             <span>🛒 Ver pedido (<span id="cart-count">0</span>)</span>
             <span>$<span id="cart-total-bar">0</span></span>
         </button>
@@ -132,7 +170,7 @@
             <div id="cart-items-list" class="space-y-2 mb-3"></div>
             <div class="flex justify-between items-center border-t pt-2 mb-3">
                 <span class="font-bold text-gray-600">Total</span>
-                <span class="font-bold text-xl text-purple-700">$<span id="cart-total-modal">0</span></span>
+                <span class="font-bold text-xl text-red-700">$<span id="cart-total-modal">0</span></span>
             </div>
 
             <div class="space-y-2 mb-3">
@@ -178,7 +216,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc, collection, query, where, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
-        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendEmailVerification } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBqYqLew5sf41zrQGr_GLm8d22hanNtWvg",
@@ -207,6 +245,7 @@
         window.fbCreateUser = createUserWithEmailAndPassword;
         window.fbSignIn = signInWithEmailAndPassword;
         window.fbSignOut = signOut;
+        window.fbSendEmailVerification = sendEmailVerification;
 
         onAuthStateChanged(auth, (user) => {
             window.dispatchEvent(new CustomEvent('auth-state-changed', { detail: { user } }));
@@ -258,8 +297,6 @@
 
         // ==================== LOGIN / REGISTRO ====================
         function setAuthTab(tab) {
-            document.getElementById('auth-tab-login').classList.toggle('active', tab === 'login');
-            document.getElementById('auth-tab-signup').classList.toggle('active', tab === 'signup');
             document.getElementById('auth-login-form').classList.toggle('hidden', tab !== 'login');
             document.getElementById('auth-signup-form').classList.toggle('hidden', tab !== 'signup');
         }
@@ -316,6 +353,9 @@
                     name, phone, email,
                     createdAt: Date.now()
                 });
+                await window.fbSendEmailVerification(cred.user);
+                // onAuthStateChanged se dispara solo y, como el email todavía no está
+                // verificado, va a mostrar la pantalla de "confirmá tu email".
             } catch (e) {
                 console.error(e);
                 errorEl.textContent = e.code === 'auth/email-already-in-use'
@@ -331,22 +371,74 @@
         }
         window.logout = logout;
 
+        // ==================== VERIFICACIÓN DE EMAIL ====================
+        function showVerifyEmailScreen() {
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('app-content').classList.add('hidden');
+            document.getElementById('cart-bar').classList.add('hidden');
+            document.getElementById('verify-email-screen').classList.remove('hidden');
+            document.getElementById('verify-email-address').textContent = currentUser.email || '';
+            document.getElementById('logout-btn').classList.remove('hidden');
+        }
+
+        async function checkEmailVerified() {
+            const statusEl = document.getElementById('verify-status');
+            statusEl.textContent = 'Revisando...';
+            await currentUser.reload();
+            if (currentUser.emailVerified) {
+                statusEl.textContent = '';
+                document.getElementById('verify-email-screen').classList.add('hidden');
+                document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('app-content').classList.remove('hidden');
+                await loadProfile();
+                await bootApp();
+            } else {
+                statusEl.textContent = 'Todavía no confirmaste el email -- revisá tu bandeja de entrada (y spam)';
+            }
+        }
+        window.checkEmailVerified = checkEmailVerified;
+
+        let lastVerificationSent = 0;
+        async function resendVerification() {
+            const statusEl = document.getElementById('verify-status');
+            if (Date.now() - lastVerificationSent < 30000) {
+                statusEl.textContent = 'Esperá un poco antes de pedir otro correo';
+                return;
+            }
+            lastVerificationSent = Date.now();
+            try {
+                await window.fbSendEmailVerification(currentUser);
+                statusEl.textContent = '✅ Te mandamos otro correo de confirmación';
+            } catch (e) {
+                console.error(e);
+                statusEl.textContent = 'No se pudo reenviar, probá de nuevo en un rato';
+            }
+        }
+        window.resendVerification = resendVerification;
+
         // ==================== ARRANQUE ====================
         window.addEventListener('firebase-ready', () => { firebaseIsReady = true; });
 
         window.addEventListener('auth-state-changed', async (e) => {
             currentUser = e.detail.user;
             if (currentUser) {
+                if (!currentUser.emailVerified) {
+                    showVerifyEmailScreen();
+                    return;
+                }
                 document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('verify-email-screen').classList.add('hidden');
                 document.getElementById('app-content').classList.remove('hidden');
                 document.getElementById('logout-btn').classList.remove('hidden');
                 await loadProfile();
                 await bootApp();
             } else {
                 document.getElementById('auth-screen').classList.remove('hidden');
+                document.getElementById('verify-email-screen').classList.add('hidden');
                 document.getElementById('app-content').classList.add('hidden');
                 document.getElementById('cart-bar').classList.add('hidden');
                 document.getElementById('logout-btn').classList.add('hidden');
+                setAuthTab('login');
                 statusText('');
             }
         });
@@ -435,7 +527,7 @@
                     <div class="card p-3 mb-2">
                         <div class="flex justify-between items-start mb-1">
                             <span class="text-xs font-bold px-2 py-0.5 rounded-full ${o.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}">${statusLabels[o.status] || o.status}</span>
-                            <span class="font-bold text-purple-700">$${formatMoney(o.total || 0)}</span>
+                            <span class="font-bold text-red-700">$${formatMoney(o.total || 0)}</span>
                         </div>
                         <p class="text-sm text-gray-600">${(o.items || []).map(i => i.quantity + 'x ' + escapeHtml(i.name)).join(', ')}</p>
                         <p class="text-xs text-gray-400 mt-1">${o.deliveryType === 'delivery' ? '🚚 Envío a domicilio' : '🏠 Retiro en el local'}</p>
@@ -452,8 +544,8 @@
             const cats = Array.from(new Set(catalog.map(p => p.category || 'subproductos')));
             cats.sort();
             const tabs = document.getElementById('category-tabs');
-            tabs.innerHTML = ['<button onclick="selectCategory(\'\')" class="cat-tab px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap ' + (selectedCategory === '' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600') + '">Todo</button>']
-                .concat(cats.map(c => `<button onclick="selectCategory('${c}')" class="cat-tab px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap ${selectedCategory === c ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'}">${CATEGORY_LABELS[c] || c}</button>`))
+            tabs.innerHTML = ['<button onclick="selectCategory(\'\')" class="cat-tab px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap ' + (selectedCategory === '' ? 'btn-primary' : 'bg-gray-100 text-gray-600') + '">Todo</button>']
+                .concat(cats.map(c => `<button onclick="selectCategory('${c}')" class="cat-tab px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap ${selectedCategory === c ? 'btn-primary' : 'bg-gray-100 text-gray-600'}">${CATEGORY_LABELS[c] || c}</button>`))
                 .join('');
         }
         function selectCategory(cat) {
@@ -482,15 +574,15 @@
                 <div class="card p-3 flex justify-between items-center gap-2">
                     <div class="flex-1 min-w-0">
                         <p class="font-bold text-sm">${escapeHtml(p.name)}</p>
-                        <p class="text-purple-700 font-bold">$${formatMoney(price)}</p>
+                        <p class="text-red-700 font-bold">$${formatMoney(price)}</p>
                     </div>
                     ${inCart
                         ? `<div class="flex items-center gap-2 shrink-0">
                             <button onclick="changeQty('${p.id}', -1)" class="w-8 h-8 rounded-full bg-gray-100 font-bold">-</button>
                             <span class="font-bold w-6 text-center">${inCart.quantity}</span>
-                            <button onclick="changeQty('${p.id}', 1)" class="w-8 h-8 rounded-full bg-purple-600 text-white font-bold">+</button>
+                            <button onclick="changeQty('${p.id}', 1)" class="w-8 h-8 rounded-full btn-primary font-bold">+</button>
                           </div>`
-                        : `<button onclick="changeQty('${p.id}', 1)" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-bold text-sm shrink-0">+ Agregar</button>`}
+                        : `<button onclick="changeQty('${p.id}', 1)" class="btn-primary px-4 py-2 rounded-lg font-bold text-sm shrink-0">+ Agregar</button>`}
                 </div>`;
             }).join('');
         }
@@ -554,7 +646,7 @@
                     <div class="flex items-center gap-2 shrink-0">
                         <button onclick="changeQty('${i.productId}', -1)" class="w-7 h-7 rounded-full bg-gray-100 font-bold">-</button>
                         <span class="font-bold w-6 text-center">${i.quantity}</span>
-                        <button onclick="changeQty('${i.productId}', 1)" class="w-7 h-7 rounded-full bg-purple-600 text-white font-bold">+</button>
+                        <button onclick="changeQty('${i.productId}', 1)" class="w-7 h-7 rounded-full btn-primary font-bold">+</button>
                     </div>
                 </div>
             `).join('') : '<p class="text-center text-gray-400 py-4 text-sm">Todavía no agregaste nada</p>';
@@ -564,8 +656,8 @@
         // ==================== ENVÍO / UBICACIÓN ====================
         function setDeliveryType(type) {
             deliveryType = type;
-            document.getElementById('btn-delivery-pickup').className = 'py-2 rounded-xl border-2 font-bold text-sm ' + (type === 'pickup' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-500');
-            document.getElementById('btn-delivery-delivery').className = 'py-2 rounded-xl border-2 font-bold text-sm ' + (type === 'delivery' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-500');
+            document.getElementById('btn-delivery-pickup').className = 'py-2 rounded-xl border-2 font-bold text-sm ' + (type === 'pickup' ? 'border-red-600 bg-red-50 text-red-700' : 'border-gray-200 text-gray-500');
+            document.getElementById('btn-delivery-delivery').className = 'py-2 rounded-xl border-2 font-bold text-sm ' + (type === 'delivery' ? 'border-red-600 bg-red-50 text-red-700' : 'border-gray-200 text-gray-500');
             document.getElementById('delivery-address-section').classList.toggle('hidden', type !== 'delivery');
         }
         window.setDeliveryType = setDeliveryType;

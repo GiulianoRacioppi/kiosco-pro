@@ -10535,6 +10535,7 @@
                     type: 'purchase',
                     productId: product.id,
                     batchId: product.purchaseBatchId || null,
+                    vatApplied: !!product.vatApplied,
                     timestamp: Date.now()
                 });
                 
@@ -12068,6 +12069,7 @@
                 type: 'restock',
                 productId: product.id,
                 batchId: batchId,
+                vatApplied: vatApplied,
                 timestamp: editOriginalTimestamp || Date.now()
             };
             // En modo edición, insertar en el lugar que ocupaba la compra original
@@ -12966,10 +12968,16 @@
                 </div>
             `).join('') : '<p class="text-center text-gray-400 py-4">No hay gastos este día</p>';
             
-            document.getElementById('day-investments-list').innerHTML = dayInvestments.length > 0 ? dayInvestments.map(inv => `
+            document.getElementById('day-investments-list').innerHTML = dayInvestments.length > 0 ? dayInvestments.map(inv => {
+                const vatBadge = inv.vatApplied === true
+                    ? '<span class="text-[10px] font-bold bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded-full ml-1">🧾 +IVA</span>'
+                    : inv.vatApplied === false
+                        ? '<span class="text-[10px] font-bold bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full ml-1">Sin IVA</span>'
+                        : '';
+                return `
                 <div class="sale-item flex justify-between items-center p-3 rounded-lg border bg-blue-50">
                     <div class="flex-1">
-                        <p class="font-bold text-gray-800">📦 ${inv.concept}</p>
+                        <p class="font-bold text-gray-800">📦 ${inv.concept}${vatBadge}</p>
                         <p class="text-sm text-gray-500">${new Date(inv.timestamp).toLocaleTimeString('es-ES')} • ${inv.source === 'cash' ? '💵 Caja' : inv.source === 'bank' ? '🏦 Cuenta' : '📦 Compra'} • INVERSIÓN</p>
                     </div>
                     <div class="text-right mr-3">
@@ -12982,7 +12990,8 @@
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
-            `).join('') : '<p class="text-center text-gray-400 py-4">No hay inversiones este día</p>';
+            `;
+            }).join('') : '<p class="text-center text-gray-400 py-4">No hay inversiones este día</p>';
             
             showDayTab('sales');
             
@@ -20040,7 +20049,7 @@ Total de productos a comprar: ${shoppingList.length}
         // la inversión y actualiza facturación/historial de vencimientos/descuento por bulto.
         // La usan tanto Compra Mayorista (carga en bloque) como la Revisión de Compras del
         // Celular (una por una, comparando contra la factura física).
-        function applyPurchaseLine({ product, qty, cost, expiry, source, invoiceType, conceptPrefix }) {
+        function applyPurchaseLine({ product, qty, cost, expiry, source, invoiceType, conceptPrefix, vatApplied }) {
             const today = formatDateISO(appState.activeDate || new Date());
             if (!appState.investments) appState.investments = [];
             if (!appState.invoiceTracking) appState.invoiceTracking = { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 };
@@ -20076,6 +20085,7 @@ Total de productos a comprar: ${shoppingList.length}
                 type: 'purchase',
                 productId: product.id,
                 batchId: batchId,
+                vatApplied: vatApplied === undefined ? null : !!vatApplied,
                 timestamp: Date.now()
             });
 
@@ -20461,7 +20471,7 @@ Total de productos a comprar: ${shoppingList.length}
             if (totalCost > available) {
                 if (!(await showConfirmModal(`⚠️ Esta compra ($${formatMoney(totalCost)}) deja ${source === 'cash' ? 'la caja' : 'la cuenta'} en negativo (tenés $${formatMoney(available)}). ¿Confirmar igual?`))) return;
             }
-            applyPurchaseLine({ product, qty: item.qty, cost: item.cost, expiry: item.expiry, source, invoiceType: item.invoiceType, conceptPrefix: 'Compra (revisada del celular)' });
+            applyPurchaseLine({ product, qty: item.qty, cost: item.cost, expiry: item.expiry, source, invoiceType: item.invoiceType, conceptPrefix: 'Compra (revisada del celular)', vatApplied: item.vatApplied });
             saveToLocalStorage();
             renderAll();
             await deletePurchaseReviewDoc(id);

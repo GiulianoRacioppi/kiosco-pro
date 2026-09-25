@@ -38,10 +38,10 @@
            abajo a la derecha). */
         #mp-notifications { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 100001; display: flex; flex-direction: column; gap: 10px; pointer-events: none; align-items: center; }
         #mp-notifications > * { pointer-events: auto; }
-        .mp-notification { animation: slideInTop 0.35s ease; background: linear-gradient(135deg, #00c3ff, #009ee3); color: #fff; padding: 14px 20px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,158,227,0.4); display: flex; align-items: center; gap: 14px; min-width: 320px; max-width: 90vw; }
+        .mp-notification { animation: slideInTop 0.35s ease; background: #3483FA; color: #fff; padding: 14px 20px; border-radius: 16px; box-shadow: 0 10px 30px rgba(52,131,250,0.45); display: flex; align-items: center; gap: 14px; min-width: 320px; max-width: 90vw; }
         @keyframes slideInTop { from { transform: translateY(-40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .mp-notification-icon { width: 44px; height: 44px; background: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .mp-notification-icon i { color: #009ee3; font-size: 20px; }
+        .mp-notification-icon { width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .mp-notification-icon i { color: #fff; font-size: 28px; }
         .mp-notification-title { font-weight: 800; font-size: 12px; letter-spacing: 0.4px; text-transform: uppercase; opacity: 0.9; }
         .mp-notification-text { font-size: 15px; font-weight: 700; line-height: 1.25; }
         .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99999; align-items: center; justify-content: center; }
@@ -6945,6 +6945,7 @@
             if (s.paymentMethod === 'cash') return 'Efectivo';
             if (s.paymentMethod === 'fiado') return s.fiadoPaid ? 'Fiado (pagado)' : 'Fiado';
             if (s.paymentMethod === 'qr') return 'QR';
+            if (s.paymentMethod === 'mercadopago') return 'Mercado Pago';
             return 'Débito';
         }
 
@@ -8660,8 +8661,11 @@
                 // "Finalizar y Facturar": todo resuelto, se termina la venta ahí mismo -- no se
                 // navega a Vender ni se muestra el carrito, para no interrumpir al cajero
                 // si está atendiendo a otro cliente en esa pantalla.
+                // "mercadopago" (pedido online ya cobrado) se trata como "qr" para la
+                // plata: en los dos casos entra a la cuenta, no a la caja física.
                 const method = (pedido.paymentMethod === 'debit' || pedido.paymentMethod === 'qr' || pedido.paymentMethod === 'fiado')
-                    ? pedido.paymentMethod : 'cash';
+                    ? pedido.paymentMethod
+                    : (pedido.paymentMethod === 'mercadopago' ? 'qr' : 'cash');
                 setPaymentMethod(method);
                 if (method === 'cash') {
                     const receivedInput = document.getElementById('cash-received');
@@ -20173,7 +20177,7 @@ Total de productos a comprar: ${shoppingList.length}
             const notif = document.createElement('div');
             notif.className = 'mp-notification';
             notif.innerHTML = `
-                <div class="mp-notification-icon"><i class="fas fa-wallet"></i></div>
+                <div class="mp-notification-icon"><i class="fas fa-handshake"></i></div>
                 <div>
                     <p class="mp-notification-title">Mercado Pago</p>
                     <p class="mp-notification-text">Llegó un pago de $${formatMoney(amount)}${description ? ' — ' + escapeHtml(description) : ''}</p>
@@ -20185,6 +20189,69 @@ Total de productos a comprar: ${shoppingList.length}
                 notif.style.transition = 'opacity 0.3s';
                 setTimeout(() => notif.remove(), 300);
             }, 10000);
+        }
+
+        // Pedidos hechos por clientes desde pedir.html y ya pagados con Mercado
+        // Pago: el backend los deja en "pedidosOnlinePendientes" recién cuando el
+        // pago se confirmó (nunca antes) -- este listener los convierte en un
+        // Pedido normal (misma sección de siempre) e imprime la comanda sola.
+        let onlineOrdersListener = null;
+        let onlineOrdersListenerFirstLoad = true;
+
+        async function startOnlineOrdersListener() {
+            if (!window.db || onlineOrdersListener) return;
+            try {
+                const { collection, onSnapshot } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                onlineOrdersListener = onSnapshot(collection(window.db, 'pedidosOnlinePendientes'), (snap) => {
+                    if (onlineOrdersListenerFirstLoad) {
+                        onlineOrdersListenerFirstLoad = false;
+                        return;
+                    }
+                    snap.docChanges().forEach(change => {
+                        if (change.type !== 'added') return;
+                        ingestOnlineOrder(change.doc.data());
+                    });
+                }, (err) => console.warn('Error escuchando pedidosOnlinePendientes:', err));
+            } catch (e) {
+                console.warn('No se pudo iniciar el listener de pedidos online:', e);
+            }
+        }
+
+        function ingestOnlineOrder(data) {
+            if (!appState.pedidos) appState.pedidos = [];
+            // Evitar duplicar si por algún motivo el mismo pedido llega dos veces
+            if (appState.pedidos.some(p => p.onlineOrderId === data.pedidoId)) return;
+
+            const today = formatDateISO(new Date());
+            const comandaNumber = appState.pedidos.filter(p => p.scheduledDate === today).length + 1;
+            const pedido = {
+                id: 'PEDIDO-' + Date.now(),
+                onlineOrderId: data.pedidoId,
+                comandaNumber,
+                customerName: (data.customerName || 'Cliente online') + ' 🛍️ (pedido online)',
+                customerPhone: data.customerPhone || '',
+                scheduledDate: today,
+                scheduledTime: '',
+                reminderMinutesBefore: 0,
+                notes: data.notes || '',
+                items: Array.isArray(data.items) ? data.items.map(i => ({ productId: i.productId, name: i.name, quantity: i.quantity, price: i.price })) : [],
+                total: data.total || 0,
+                promoDiscount: 0,
+                promoLabel: null,
+                status: 'pendiente',
+                paymentStatus: 'pagado',
+                paymentMethod: 'mercadopago',
+                reminderPreFired: false,
+                reminderAtTimeFired: false,
+                createdAt: new Date().toISOString(),
+                timestamp: Date.now()
+            };
+            appState.pedidos.push(pedido);
+            saveToLocalStorage();
+            renderPedidos();
+            printComanda(pedido);
+            showNotification('🛍️ Pedido online nuevo (ya pagado) de ' + (data.customerName || 'un cliente'), 'success', 10000);
+            playPedidoBeep(true);
         }
 
         // Combina lo que ya tenemos localmente (con ediciones/orden hechos en pantalla)
@@ -25875,6 +25942,7 @@ RESULTADOS:
                 startFirebaseListener();
                 startPurchaseReviewListener();
                 startMercadoPagoPaymentListener();
+                startOnlineOrdersListener();
             }, 1000);
 
             // === EXPONER FUNCIONES AL WINDOW PARA ONCLICK HANDLERS ===

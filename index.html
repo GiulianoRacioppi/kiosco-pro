@@ -12780,18 +12780,25 @@
             scanInvoiceReturnPending = true;
             closeScanInvoiceModal();
             openAddStockModal(item.productId);
-            const qtyInput = document.getElementById('add-stock-qty');
-            const costInput = document.getElementById('add-stock-unit-cost');
-            const expiryInput = document.getElementById('add-stock-expiry');
-            const vatInput = document.getElementById('add-stock-vat');
-            if (qtyInput) qtyInput.value = item.qty;
-            if (costInput) costInput.value = item.unitPrice;
-            if (expiryInput) expiryInput.value = item.expiry || '';
-            if (vatInput) vatInput.checked = !!item.vatApplied;
-            addStockVatApplied = !!item.vatApplied;
-            setAddStockInvoiceType(item.invoiceType);
-            setAddStockPayment(item.paymentMethod);
-            updateAddStockCost();
+            const applyValues = () => {
+                const qtyInput = document.getElementById('add-stock-qty');
+                const costInput = document.getElementById('add-stock-unit-cost');
+                const expiryInput = document.getElementById('add-stock-expiry');
+                const vatInput = document.getElementById('add-stock-vat');
+                if (qtyInput) qtyInput.value = item.qty;
+                if (costInput) costInput.value = item.unitPrice;
+                if (expiryInput) expiryInput.value = item.expiry || '';
+                if (vatInput) vatInput.checked = !!item.vatApplied;
+                addStockVatApplied = !!item.vatApplied;
+                setAddStockInvoiceType(item.invoiceType);
+                setAddStockPayment(item.paymentMethod);
+                updateAddStockCost();
+            };
+            applyValues();
+            // Reafirma los valores en el siguiente tick -- por si algo dentro de
+            // openAddStockModal (animación del modal, foco, etc.) llegara a pisar
+            // el valor recién puesto antes de que el usuario vea el modal.
+            setTimeout(applyValues, 0);
             scanInvoiceItems = scanInvoiceItems.filter(i => i.localId !== localId);
         }
         window.confirmScanItemAsStock = confirmScanItemAsStock;
@@ -27547,7 +27554,7 @@ RESULTADOS:
                     <label class="text-xs font-bold text-gray-500 uppercase">Líneas detectadas</label>
                     <button onclick="discardAllScanItems()" class="text-xs text-red-500 font-bold">Descartar todo</button>
                 </div>
-                <div id="scan-invoice-items-list" class="grid grid-cols-1 lg:grid-cols-2 gap-3"></div>
+                <div id="scan-invoice-items-list" class="space-y-3"></div>
             </div>
 
             <!-- "Estacionamiento" del buscador de producto: siempre hay UN solo

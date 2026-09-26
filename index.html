@@ -8,6 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <!-- PWA -->
     <link rel="manifest" href="manifest.webmanifest">
@@ -1739,6 +1740,9 @@
                 </button>
                 <button onclick="openStockCountModal()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow">
                     <i class="fas fa-clipboard-list"></i> Conteo de Stock
+                </button>
+                <button onclick="openScanInvoiceModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow">
+                    <i class="fas fa-file-invoice"></i> Escanear Factura
                 </button>
             </div>
 
@@ -12224,6 +12228,378 @@
             showNotification(message, 'success');
         }
 
+        // ==================== ESCANEAR FACTURA (IA) ====================
+        // Misma idea que en Compras Mayorista (celular) pero acá, en la app
+        // principal: se sube la foto/PDF, una IA (Claude, vía la Cloud
+        // Function "escanearFactura" ya usada por Compras Mayorista) lee
+        // nombre/cantidad/precio de cada línea, y por cada una el usuario
+        // elige a mano si es stock de un producto existente, un producto
+        // nuevo para dar de alta, o directamente un gasto -- nunca se carga
+        // nada solo, cada línea se confirma manualmente en el modal que ya
+        // corresponde (Agregar Stock / Nuevo Producto / Registrar Gasto).
+        let scanInvoiceItems = [];      // [{localId, rawName, qty, unitPrice, type, productId, productName, searchQuery, showSuggestions}]
+        let scanInvoiceItemsFocusId = null;
+        let scanInvoicePageImages = [];  // data URLs de las páginas subidas, solo para poder verlas
+
+        function findBestInventoryMatch(rawName) {
+            const q = normalizeText(rawName || '');
+            if (!q) return null;
+            let best = null, bestScore = 0;
+            for (const p of appState.inventory) {
+                if (!p || p.isComposite) continue;
+                const name = normalizeText(p.name || '');
+                if (!name) continue;
+                let score = 0;
+                if (name === q) score = 100;
+                else if (name.includes(q) || q.includes(name)) score = 70;
+                else {
+                    const qWords = q.split(/\s+/).filter(Boolean);
+                    const nWords = name.split(/\s+/).filter(Boolean);
+                    const common = qWords.filter(w => nWords.includes(w)).length;
+                    score = common * 15;
+                }
+                if (score > bestScore) { bestScore = score; best = p; }
+            }
+            return bestScore >= 15 ? best : null;
+        }
+
+        function resizeImageToDataUrlForScan(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+                reader.onload = () => {
+                    const img = new Image();
+                    img.onerror = () => reject(new Error('No se pudo abrir la imagen'));
+                    img.onload = () => {
+                        const maxDim = 1800;
+                        let { width, height } = img;
+                        if (width > maxDim || height > maxDim) {
+                            const scale = maxDim / Math.max(width, height);
+                            width = Math.round(width * scale);
+                            height = Math.round(height * scale);
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.85));
+                    };
+                    img.src = reader.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.worker.min.js';
+        }
+        async function pdfFileToDataUrlsForScan(file) {
+            const buffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+            const maxDim = 1800;
+            const urls = [];
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const base = page.getViewport({ scale: 1 });
+                const scale = maxDim / Math.max(base.width, base.height);
+                const viewport = page.getViewport({ scale: Math.max(scale, 1) });
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                urls.push(canvas.toDataURL('image/jpeg', 0.85));
+            }
+            return urls;
+        }
+
+        function openScanInvoiceModal() {
+            document.getElementById('scan-invoice-modal').classList.add('active');
+            // Si ya había una factura leída (por ej. se cerró el modal para ir a
+            // confirmar una línea en otro modal), se muestra tal cual quedó en
+            // vez de perder el progreso.
+            if (scanInvoiceItems.length > 0) renderScanInvoiceItems();
+            if (scanInvoicePageImages.length > 0) renderScanInvoicePages();
+        }
+        function closeScanInvoiceModal() {
+            document.getElementById('scan-invoice-modal').classList.remove('active');
+        }
+        function closeScanInvoiceLightbox() {
+            document.getElementById('scan-invoice-lightbox').classList.remove('active');
+        }
+        function openScanInvoiceLightbox(url) {
+            document.getElementById('scan-invoice-lightbox-img').src = url;
+            document.getElementById('scan-invoice-lightbox').classList.add('active');
+        }
+        window.openScanInvoiceModal = openScanInvoiceModal;
+        window.closeScanInvoiceModal = closeScanInvoiceModal;
+        window.closeScanInvoiceLightbox = closeScanInvoiceLightbox;
+        window.openScanInvoiceLightbox = openScanInvoiceLightbox;
+
+        function renderScanInvoicePages() {
+            const container = document.getElementById('scan-invoice-pages');
+            if (!container) return;
+            if (scanInvoicePageImages.length === 0) { container.classList.add('hidden'); return; }
+            container.classList.remove('hidden');
+            container.classList.add('flex');
+            container.innerHTML = scanInvoicePageImages.map((url, i) => `
+                <img src="${url}" onclick="openScanInvoiceLightbox('${url}')" class="w-16 h-16 object-cover rounded-lg border-2 border-gray-200 cursor-pointer hover:border-indigo-400" title="Ver página ${i + 1} en grande">
+            `).join('');
+        }
+
+        async function handleMainInvoiceFileSelected(event) {
+            const file = event.target.files[0];
+            event.target.value = '';
+            if (!file) return;
+            const statusEl = document.getElementById('scan-invoice-status');
+            statusEl.classList.remove('hidden');
+            statusEl.textContent = 'Preparando archivo...';
+            try {
+                const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+                const pageDataUrls = isPdf ? await pdfFileToDataUrlsForScan(file) : [await resizeImageToDataUrlForScan(file)];
+                if (pageDataUrls.length === 0) throw new Error('El PDF no tiene páginas para leer');
+
+                scanInvoicePageImages = pageDataUrls;
+                renderScanInvoicePages();
+
+                statusEl.textContent = pageDataUrls.length > 1
+                    ? `🤖 Leyendo la factura (${pageDataUrls.length} páginas)...`
+                    : '🤖 Leyendo la factura, un momento...';
+
+                const images = pageDataUrls.map(url => ({ data: url.split(',')[1], mimeType: 'image/jpeg' }));
+                const res = await fetch('https://us-central1-kioscopro.cloudfunctions.net/escanearFactura', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ images, password: appState.comprasAppPassword || '' })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo leer la factura');
+                if (!data.items || data.items.length === 0) {
+                    statusEl.textContent = '⚠️ No se detectaron productos. Probá con otra foto/escaneo más claro y derecho.';
+                    return;
+                }
+                scanInvoiceItems = data.items.map(it => {
+                    const match = findBestInventoryMatch(it.name);
+                    return {
+                        localId: 'SI' + Date.now() + Math.random().toString(36).slice(2, 6),
+                        rawName: it.name,
+                        qty: it.quantity || 1,
+                        unitPrice: it.unitPrice != null ? it.unitPrice : 0,
+                        type: match ? 'stock' : 'new',
+                        productId: match ? match.id : null,
+                        productName: match ? match.name : '',
+                        searchQuery: match ? match.name : it.name,
+                        showSuggestions: false
+                    };
+                });
+                statusEl.textContent = `✅ Se leyeron ${scanInvoiceItems.length} línea(s). Revisá y confirmá cada una.`;
+                renderScanInvoiceItems();
+            } catch (e) {
+                console.error(e);
+                statusEl.textContent = '⚠️ ' + (e.message || 'Error leyendo la factura');
+            }
+        }
+        window.handleMainInvoiceFileSelected = handleMainInvoiceFileSelected;
+
+        function renderScanInvoiceItems() {
+            const section = document.getElementById('scan-invoice-items-section');
+            const container = document.getElementById('scan-invoice-items-list');
+            if (!section || !container) return;
+            if (scanInvoiceItems.length === 0) { section.classList.add('hidden'); return; }
+            section.classList.remove('hidden');
+
+            container.innerHTML = scanInvoiceItems.map(item => {
+                const typeBtn = (t, label) => `<button onclick="setScanItemType('${item.localId}', '${t}')" class="flex-1 py-1.5 rounded-lg border-2 text-xs font-bold ${item.type === t ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500'}">${label}</button>`;
+
+                let bodyHtml = '';
+                if (item.type === 'stock') {
+                    const q = normalizeText(item.searchQuery || '');
+                    const suggestions = q ? appState.inventory.filter(p => !p.isComposite && normalizeText(p.name || '').includes(q)).slice(0, 5) : [];
+                    const suggestionsHtml = (item.showSuggestions && suggestions.length > 0) ? `
+                        <div class="border rounded-lg mt-1 bg-white shadow-lg max-h-40 overflow-y-auto">
+                            ${suggestions.map(p => `<div onclick='selectScanItemProduct(${JSON.stringify(item.localId)}, ${JSON.stringify(p.id)}, ${JSON.stringify(p.name).replace(/'/g, "&apos;")})' class="px-2 py-1 text-sm hover:bg-indigo-50 cursor-pointer">${escapeHtml(p.name)}</div>`).join('')}
+                        </div>` : '';
+                    bodyHtml = `
+                        <div>
+                            <label class="block text-[10px] text-gray-400 uppercase">Producto en tu inventario</label>
+                            <input type="text" id="scanitem-search-${item.localId}" value="${escapeHtml(item.searchQuery || '')}" placeholder="Buscar producto..."
+                                oninput="updateScanItemSearch('${item.localId}', this.value)"
+                                onfocus="updateScanItemSearch('${item.localId}', this.value)"
+                                class="w-full border-2 ${item.productId ? 'border-indigo-200' : 'border-orange-300'} rounded-lg px-2 py-1 text-sm">
+                            ${suggestionsHtml}
+                            ${item.productId ? `<p class="text-[11px] text-indigo-600 font-bold mt-0.5">✓ ${escapeHtml(item.productName)}</p>` : `<p class="text-[11px] text-orange-500 mt-0.5">Elegí un producto de la lista</p>`}
+                        </div>
+                        <div class="flex gap-2 items-end mt-2">
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-gray-400 uppercase">Cantidad</label>
+                                <input type="number" min="0" value="${item.qty}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'qty', this.value)">
+                            </div>
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-gray-400 uppercase">Costo unit.</label>
+                                <input type="number" min="0" step="0.01" value="${item.unitPrice}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)">
+                            </div>
+                            <button onclick="confirmScanItemAsStock('${item.localId}')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg font-bold text-sm shrink-0">Agregar Stock</button>
+                        </div>`;
+                } else if (item.type === 'new') {
+                    bodyHtml = `
+                        <p class="text-[11px] text-gray-500 mb-2">Se va a abrir "Nuevo Producto (Compra)" ya cargado con nombre, costo y cantidad -- completás código de barras, categoría, proveedor y precio de venta ahí, como siempre.</p>
+                        <div class="flex gap-2 items-end">
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-gray-400 uppercase">Cantidad</label>
+                                <input type="number" min="0" value="${item.qty}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'qty', this.value)">
+                            </div>
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-gray-400 uppercase">Costo unit.</label>
+                                <input type="number" min="0" step="0.01" value="${item.unitPrice}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)">
+                            </div>
+                            <button onclick="confirmScanItemAsNewProduct('${item.localId}')" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-bold text-sm shrink-0">Dar de alta</button>
+                        </div>`;
+                } else {
+                    const total = Math.round((item.qty || 1) * (item.unitPrice || 0) * 100) / 100;
+                    bodyHtml = `
+                        <div class="flex gap-2 items-end">
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-gray-400 uppercase">Monto total del gasto</label>
+                                <input type="number" min="0" step="0.01" id="scanitem-expense-${item.localId}" value="${total}" class="w-full border rounded-lg px-2 py-1 text-center">
+                            </div>
+                            <button onclick="confirmScanItemAsExpense('${item.localId}')" class="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg font-bold text-sm shrink-0">Registrar Gasto</button>
+                        </div>`;
+                }
+
+                return `
+                <div class="border rounded-xl p-2 space-y-1 ${item.type === 'stock' && !item.productId ? 'border-orange-300 bg-orange-50' : ''}">
+                    <div class="flex justify-between items-start gap-2">
+                        <p class="text-[11px] text-gray-400 flex-1">Factura decía: "${escapeHtml(item.rawName)}"</p>
+                        <button onclick="discardScanItem('${item.localId}')" class="text-gray-400 px-1" title="Descartar esta línea">✕</button>
+                    </div>
+                    <div class="flex gap-2">${typeBtn('stock', '📦 En stock')}${typeBtn('new', '🆕 Producto nuevo')}${typeBtn('expense', '🧾 Gasto')}</div>
+                    ${bodyHtml}
+                </div>`;
+            }).join('');
+
+            if (scanInvoiceItemsFocusId) {
+                const el = document.getElementById(scanInvoiceItemsFocusId);
+                if (el) {
+                    el.focus();
+                    const len = el.value.length;
+                    el.setSelectionRange(len, len);
+                }
+            }
+        }
+
+        function setScanItemType(localId, type) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item.type = type;
+            renderScanInvoiceItems();
+        }
+        window.setScanItemType = setScanItemType;
+
+        function updateScanItemSearch(localId, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item.searchQuery = value;
+            item.showSuggestions = true;
+            if (item.productName && normalizeText(value) !== normalizeText(item.productName)) {
+                item.productId = null;
+                item.productName = '';
+            }
+            scanInvoiceItemsFocusId = 'scanitem-search-' + localId;
+            renderScanInvoiceItems();
+        }
+        window.updateScanItemSearch = updateScanItemSearch;
+
+        function selectScanItemProduct(localId, productId, productName) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item.productId = productId;
+            item.productName = productName;
+            item.searchQuery = productName;
+            item.showSuggestions = false;
+            scanInvoiceItemsFocusId = null;
+            renderScanInvoiceItems();
+        }
+        window.selectScanItemProduct = selectScanItemProduct;
+
+        function updateScanItemField(localId, field, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item[field] = Math.max(0, parseFloat(value) || 0);
+            renderScanInvoiceItems();
+        }
+        window.updateScanItemField = updateScanItemField;
+
+        function discardScanItem(localId) {
+            scanInvoiceItems = scanInvoiceItems.filter(i => i.localId !== localId);
+            renderScanInvoiceItems();
+        }
+        window.discardScanItem = discardScanItem;
+
+        function discardAllScanItems() {
+            scanInvoiceItems = [];
+            scanInvoicePageImages = [];
+            renderScanInvoiceItems();
+            renderScanInvoicePages();
+        }
+        window.discardAllScanItems = discardAllScanItems;
+
+        // Cierra el modal de factura (sin perder las líneas que quedan) y abre
+        // el modal nativo de Agregar Stock, precargado -- el usuario termina de
+        // confirmarlo ahí mismo, exactamente como si lo hubiera cargado a mano.
+        function confirmScanItemAsStock(localId) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            if (!item.productId) { showNotification('Elegí primero a qué producto de tu inventario corresponde esta línea', 'error'); return; }
+            closeScanInvoiceModal();
+            openAddStockModal(item.productId);
+            const qtyInput = document.getElementById('add-stock-qty');
+            const costInput = document.getElementById('add-stock-unit-cost');
+            if (qtyInput) qtyInput.value = item.qty;
+            if (costInput) costInput.value = item.unitPrice;
+            updateAddStockCost();
+            scanInvoiceItems = scanInvoiceItems.filter(i => i.localId !== localId);
+        }
+        window.confirmScanItemAsStock = confirmScanItemAsStock;
+
+        // Cierra el modal de factura y precarga el formulario "Nuevo Producto
+        // (Compra)" de Inventario -- ahí el usuario completa código de barras,
+        // categoría, proveedor y precio de venta antes de confirmar.
+        function confirmScanItemAsNewProduct(localId) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            closeScanInvoiceModal();
+            showSection('inventory');
+            const nameInput = document.getElementById('inv-name');
+            const costInput = document.getElementById('inv-cost');
+            const stockInput = document.getElementById('inv-stock');
+            const barcodeInput = document.getElementById('inv-barcode');
+            if (nameInput) nameInput.value = item.rawName;
+            if (costInput) costInput.value = item.unitPrice;
+            if (stockInput) stockInput.value = item.qty;
+            scanInvoiceItems = scanInvoiceItems.filter(i => i.localId !== localId);
+            setTimeout(() => {
+                const form = document.getElementById('add-inventory-form');
+                if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if (barcodeInput) barcodeInput.focus();
+            }, 100);
+            showNotification('📦 Completá código de barras, categoría, proveedor y precio de venta para dar de alta el producto', 'info', 7000);
+        }
+        window.confirmScanItemAsNewProduct = confirmScanItemAsNewProduct;
+
+        // Cierra el modal de factura y abre "Registrar Gasto" precargado con el
+        // concepto y el monto total de esa línea.
+        function confirmScanItemAsExpense(localId) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            const amountInput = document.getElementById('scanitem-expense-' + localId);
+            const amount = amountInput ? (parseFloat(amountInput.value) || 0) : Math.round((item.qty || 1) * (item.unitPrice || 0) * 100) / 100;
+            closeScanInvoiceModal();
+            openExpenseModal();
+            document.getElementById('expense-concept').value = item.rawName;
+            document.getElementById('expense-amount').value = amount;
+            scanInvoiceItems = scanInvoiceItems.filter(i => i.localId !== localId);
+        }
+        window.confirmScanItemAsExpense = confirmScanItemAsExpense;
+
         function setEditProdInvoiceType(type) {
             document.getElementById('edit-prod-invoice-type').value = type;
             const btnWhite = document.getElementById('btn-edit-prod-white');
@@ -14552,9 +14928,14 @@
                             <p class="text-xs text-gray-500">${d.date} ${d.notes ? '• ' + escapeHtml(d.notes) : ''}</p>
                         </div>
                     </div>
-                    <div class="text-right text-xs text-gray-500">
-                        <div>Caja: $${formatMoney(d.cashAmount || 0)}</div>
-                        <div>Cuenta: $${formatMoney(d.bankAmount || 0)}</div>
+                    <div class="flex items-center gap-2">
+                        <div class="text-right text-xs text-gray-500">
+                            <div>Caja: $${formatMoney(d.cashAmount || 0)}</div>
+                            <div>Cuenta: $${formatMoney(d.bankAmount || 0)}</div>
+                        </div>
+                        <button onclick="reopenCashCount('${d.date}')" class="text-orange-500 hover:text-orange-700 p-2 flex-shrink-0" title="Revertir: elimina este ${d.type === 'surplus' ? 'sobrante' : 'faltante'} y reabre el cierre de ese día">
+                            <i class="fas fa-undo"></i>
+                        </button>
                     </div>
                 </div>
             `).join('');
@@ -14611,12 +14992,12 @@
                     // Un monto negativo es una devolución de préstamo/retiro de capital
                     // (ver "Préstamo/Capital" en Retirar) -- se muestra como salida, no entrada.
                     type: adj.amount < 0 ? 'expense' : 'income',
-                    concept: adj.concept || (adj.amount < 0 ? 'Devolución de capital' : 'Capital inyectado'),
+                    concept: adj.concept || adj.note || (adj.amount < 0 ? 'Devolución de capital' : 'Capital inyectado'),
                     amount: Math.abs(adj.amount),
                     time: new Date(adj.timestamp).toLocaleTimeString('es-ES'),
                     label: '💰 CAPITAL'
                 }));
-            
+
             // Obtener transferencias que afectan caja hoy
             const todayCashTransfers = (appState.cashMovements || [])
                 .filter(mov => mov.date === today)
@@ -14722,7 +15103,7 @@
                 .filter(adj => adj.date === today && adj.target === 'bank')
                 .map(adj => ({
                     type: adj.amount < 0 ? 'expense' : 'income',
-                    concept: adj.concept || (adj.amount < 0 ? 'Devolución de capital' : 'Capital inyectado'),
+                    concept: adj.concept || adj.note || (adj.amount < 0 ? 'Devolución de capital' : 'Capital inyectado'),
                     amount: Math.abs(adj.amount),
                     time: new Date(adj.timestamp).toLocaleTimeString('es-ES'),
                     label: '💰 CAPITAL'
@@ -16679,10 +17060,12 @@
                 });
             }
             
-            // Registrar faltante como gasto y sobrante como ganancia
+            // Faltante → gasto real (reduce Ganancia). El sobrante NO se registra acá aparte --
+            // ya queda capturado íntegro (y con el destino correcto, caja o cuenta) por los
+            // ajustes ADJ-CLOSE-CASH/ADJ-CLOSE-BANK de abajo. Antes se guardaba también como
+            // ADJ-SURPLUS con el mismo monto, duplicando el capital registrado.
             const closeNow = Date.now();
             if (record.difference < 0) {
-                // Faltante → gasto
                 appState.expenses.push({
                     id: 'EXP-SHORTAGE-' + closeNow,
                     date: targetDate,
@@ -16691,18 +17074,8 @@
                     source: 'cash',
                     timestamp: closeNow
                 });
-            } else if (record.difference > 0) {
-                // Sobrante → ganancia (registrado como ingreso positivo en cashDifferences y capitalAdjustment)
-                appState.capitalAdjustments.push({
-                    id: 'ADJ-SURPLUS-' + closeNow,
-                    amount: Math.round(record.difference * 100) / 100,
-                    target: 'cash',
-                    date: targetDate,
-                    timestamp: closeNow,
-                    note: 'Sobrante de caja del ' + targetDate + (record.notes ? ': ' + record.notes : '')
-                });
             }
-            
+
             // Registrar las diferencias individuales de cierre como ajustes de capital para mantener saldos consistentes al recalcular
             if (!Array.isArray(appState.capitalAdjustments)) appState.capitalAdjustments = [];
             if (Math.abs(record.differenceCash) > 0.001) {
@@ -26894,6 +27267,40 @@ RESULTADOS:
                 <button onclick="saveAssetSale()" class="flex-1 bg-purple-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-purple-700">Confirmar venta</button>
             </div>
         </div>
+    </div>
+
+    <!-- ==================== ESCANEAR FACTURA (IA) ==================== -->
+    <div id="scan-invoice-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-1">
+                <h3 class="text-xl font-bold text-indigo-700"><i class="fas fa-file-invoice"></i> Escanear Factura</h3>
+                <button onclick="closeScanInvoiceModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            </div>
+            <p class="text-xs text-gray-400 mb-3">Subí una foto o PDF de la factura del proveedor. Por cada línea vas a poder elegir si es stock de un producto que ya tenés, un producto nuevo para dar de alta, o un gasto (flete, embalaje, etc.) -- nada se carga solo, todo lo confirmás vos.</p>
+
+            <div id="scan-invoice-upload-section">
+                <label class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center py-2.5 rounded-xl font-bold cursor-pointer">
+                    📄 Subir foto o PDF de la factura
+                    <input type="file" accept="image/*,.pdf,application/pdf" class="hidden" onchange="handleMainInvoiceFileSelected(event)">
+                </label>
+                <p id="scan-invoice-status" class="text-xs text-gray-500 mt-2 hidden"></p>
+            </div>
+
+            <div id="scan-invoice-pages" class="hidden gap-2 flex-wrap mt-3"></div>
+
+            <div id="scan-invoice-items-section" class="hidden mt-4">
+                <div class="flex justify-between items-center mb-2">
+                    <label class="text-xs font-bold text-gray-500 uppercase">Líneas detectadas</label>
+                    <button onclick="discardAllScanItems()" class="text-xs text-red-500 font-bold">Descartar todo</button>
+                </div>
+                <div id="scan-invoice-items-list" class="space-y-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lightbox simple para ver en grande la página de la factura subida -->
+    <div id="scan-invoice-lightbox" class="modal" onclick="closeScanInvoiceLightbox()" style="z-index: 9999;">
+        <img id="scan-invoice-lightbox-img" src="" style="max-width:95vw; max-height:95vh; margin:auto; display:block;">
     </div>
 
     <!-- ==================== PEDIDO MODAL ==================== -->

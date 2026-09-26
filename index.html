@@ -12369,11 +12369,8 @@
 
         function openScanInvoiceModal() {
             document.getElementById('scan-invoice-modal').classList.add('active');
-            // Por las dudas, siempre arranca en la vista normal (no en el buscador
-            // de producto), y muestra la factura tal cual había quedado (por ej.
-            // se cerró el modal para ir a confirmar una línea en otro modal) en
-            // vez de perder el progreso.
-            document.getElementById('scan-picker-view').classList.add('hidden');
+            // Muestra la factura tal cual había quedado (por ej. se cerró el modal
+            // para ir a confirmar una línea en otro modal) en vez de perder el progreso.
             document.getElementById('scan-invoice-upload-section').classList.remove('hidden');
             if (scanInvoiceItems.length > 0) renderScanInvoiceItems();
             if (scanInvoicePageImages.length > 0) renderScanInvoicePages();
@@ -12489,10 +12486,12 @@
                     bodyHtml = `
                         <div>
                             <label class="block text-[10px] text-gray-400 uppercase">Producto en tu inventario</label>
-                            <button onclick="openScanProductPicker('${item.localId}')" class="w-full text-left border-2 ${item.productId ? 'border-indigo-200' : 'border-orange-300'} rounded-lg px-2 py-1.5 text-sm flex justify-between items-center gap-2">
-                                <span class="${item.productId ? 'text-indigo-700 font-bold' : 'text-orange-500'}">${item.productId ? '✓ ' + escapeHtml(item.productName) : 'Elegí un producto...'}</span>
-                                <i class="fas fa-search text-gray-300"></i>
-                            </button>
+                            <div id="scanitem-productslot-${item.localId}">
+                                <button onclick="openScanProductPicker('${item.localId}')" class="w-full text-left border-2 ${item.productId ? 'border-indigo-200' : 'border-orange-300'} rounded-lg px-2 py-1.5 text-sm flex justify-between items-center gap-2">
+                                    <span class="${item.productId ? 'text-indigo-700 font-bold' : 'text-orange-500'}">${item.productId ? '✓ ' + escapeHtml(item.productName) : 'Elegí un producto...'}</span>
+                                    <i class="fas fa-search text-gray-300"></i>
+                                </button>
+                            </div>
                             ${productInfoHtml}
                         </div>
                         <div class="flex gap-2 items-end mt-2">
@@ -12569,22 +12568,49 @@
         }
         window.setScanItemType = setScanItemType;
 
-        // ---- Buscar Producto para una línea (mismo buscador que en Vender) ----
-        // En vez de que cada una de las 30+ líneas tenga su propio buscador en
-        // vivo (eso reconstruía toda la lista en cada letra tipeada y se sentía
-        // trabado), hay UN solo buscador compartido: se abre para la línea que
-        // se está editando, se escribe ahí, y listo -- exactamente como
-        // "Buscar Producto" en Vender, que nunca tuvo ese problema porque solo
-        // actualiza su propio resultado, nunca una lista grande de otra cosa.
+        // ---- Buscar Producto para una línea ----
+        // Nunca hay 34 buscadores en vivo a la vez (eso era lo que trababa la
+        // pantalla): existe UN solo cuadro de búsqueda, creado una vez, que se
+        // REUBICA con appendChild() dentro de la línea que se está editando
+        // (adentro mismo de "Producto en tu inventario") y vuelve a un
+        // "estacionamiento" fuera de la lista cuando no se usa -- así sobrevive
+        // a que renderScanInvoiceItems() reconstruya las tarjetas, y escribir
+        // ahí nunca toca ni recalcula las otras 30+ líneas.
         let scanPickerActiveItemId = null;
         let scanPickerResults = [];
         let scanPickerSelectedIndex = -1;
+        let scanInlinePickerEl = null;
+
+        function ensureScanInlinePicker() {
+            if (scanInlinePickerEl) return scanInlinePickerEl;
+            const el = document.createElement('div');
+            el.className = 'bg-white border-2 border-indigo-400 rounded-lg shadow-lg p-1.5';
+            el.innerHTML = `
+                <div class="relative mb-1">
+                    <i class="fas fa-search absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                    <input type="text" id="scan-picker-search-input" placeholder="Buscar producto..."
+                        class="w-full pl-6 pr-2 py-1 border-2 border-indigo-200 rounded-md text-sm focus:border-indigo-500 focus:outline-none"
+                        oninput="handleScanPickerSearch()"
+                        onkeydown="handleScanPickerSearchKeydown(event)"
+                        autocomplete="off">
+                </div>
+                <div id="scan-picker-results" class="max-h-48 overflow-y-auto space-y-1"></div>
+            `;
+            document.getElementById('scan-inline-picker-park').appendChild(el);
+            scanInlinePickerEl = el;
+            return el;
+        }
 
         function openScanProductPicker(localId) {
+            // Si ya estaba abierto en otra línea, cerrarlo bien ahí primero (si no,
+            // esa línea queda con la ranura vacía porque el buscador se muda solo).
+            if (scanPickerActiveItemId && scanPickerActiveItemId !== localId) closeScanProductPicker();
             scanPickerActiveItemId = localId;
-            // Flota encima de la lista de líneas (no la esconde ni cierra el modal),
-            // así se ve como que el buscador "aparece ahí mismo" sin salir de nada.
-            document.getElementById('scan-picker-view').classList.remove('hidden');
+            const picker = ensureScanInlinePicker();
+            const slot = document.getElementById('scanitem-productslot-' + localId);
+            if (!slot) return;
+            slot.innerHTML = '';
+            slot.appendChild(picker);
             const input = document.getElementById('scan-picker-search-input');
             input.value = '';
             scanPickerResults = [];
@@ -12595,8 +12621,14 @@
         window.openScanProductPicker = openScanProductPicker;
 
         function closeScanProductPicker() {
+            const activeId = scanPickerActiveItemId;
             scanPickerActiveItemId = null;
-            document.getElementById('scan-picker-view').classList.add('hidden');
+            // Devolver el buscador al estacionamiento ANTES de re-renderizar esa
+            // línea -- si se dejara adentro, renderScanInvoiceItems() lo
+            // destruiría junto con el resto del HTML de la tarjeta.
+            const park = document.getElementById('scan-inline-picker-park');
+            if (scanInlinePickerEl && park) park.appendChild(scanInlinePickerEl);
+            if (activeId) renderScanInvoiceItems();
         }
         window.closeScanProductPicker = closeScanProductPicker;
 
@@ -12609,7 +12641,7 @@
                 return;
             }
             const activeInv = appState.inventory.filter(p => !p.isComposite);
-            scanPickerResults = fuzzySearchProducts(search, activeInv, 15, { sortBySales: true });
+            scanPickerResults = fuzzySearchProducts(search, activeInv, 8, { sortBySales: true });
             scanPickerSelectedIndex = scanPickerResults.length > 0 ? 0 : -1;
             renderScanPickerResults();
         }
@@ -12617,24 +12649,22 @@
 
         function renderScanPickerResults() {
             const container = document.getElementById('scan-picker-results');
+            if (!container) return;
             if (scanPickerResults.length === 0) {
-                container.innerHTML = '<p class="text-gray-400 text-center py-4 text-sm">Escribí para buscar en tu inventario</p>';
+                container.innerHTML = '<p class="text-gray-400 text-center py-2 text-xs">Escribí para buscar...</p>';
                 return;
             }
             container.innerHTML = scanPickerResults.map((p, idx) => {
                 const stock = getProductStock(p);
                 const isSelected = idx === scanPickerSelectedIndex;
                 return `
-                <div class="flex justify-between items-center p-3 rounded-lg cursor-pointer transition ${isSelected ? 'bg-indigo-100 border-2 border-indigo-400' : 'bg-gray-50 hover:bg-indigo-50 border-2 border-transparent'}"
-                     onclick="selectScanPickerResult('${p.id}')" data-result-index="${idx}">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-full ${isSelected ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-600'} flex items-center justify-center text-xs font-bold shrink-0">${idx + 1}</div>
-                        <div>
-                            <p class="font-bold text-gray-800 text-sm">${escapeHtml(p.name)}</p>
-                            <p class="text-xs text-gray-500">${p.category ? `<span class="capitalize">${escapeHtml(p.category)}</span> • ` : ''}Código: ${p.barcode || 'N/A'} • Stock: ${stock}</p>
-                        </div>
+                <div class="flex justify-between items-center px-2 py-1.5 rounded-md cursor-pointer text-xs ${isSelected ? 'bg-indigo-100 border border-indigo-400' : 'bg-gray-50 hover:bg-indigo-50 border border-transparent'}"
+                     onclick="selectScanPickerResult('${p.id}')">
+                    <div class="min-w-0">
+                        <p class="font-bold text-gray-800 truncate">${escapeHtml(p.name)}</p>
+                        <p class="text-[10px] text-gray-500 truncate">${p.category ? escapeHtml(p.category) + ' • ' : ''}Stock: ${stock}</p>
                     </div>
-                    <span class="text-[10px] ${isSelected ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'} px-2 py-1 rounded shrink-0">${isSelected ? 'Enter' : 'Elegir'}</span>
+                    <span class="text-[9px] ${isSelected ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'} px-1.5 py-0.5 rounded shrink-0 ml-1">${isSelected ? 'Enter' : 'Elegir'}</span>
                 </div>`;
             }).join('');
         }
@@ -12670,7 +12700,6 @@
             item.productId = product.id;
             item.productName = product.name;
             closeScanProductPicker();
-            renderScanInvoiceItems();
         }
         window.selectScanPickerResult = selectScanPickerResult;
 
@@ -27521,25 +27550,12 @@ RESULTADOS:
                 <div id="scan-invoice-items-list" class="grid grid-cols-1 lg:grid-cols-2 gap-3"></div>
             </div>
 
-            <!-- Vista de "Buscar Producto" (mismo buscador rápido que en Vender, con
-                 su propio ícono de resultados numerados) -- flota ENCIMA de la lista
-                 de líneas (no la reemplaza ni cierra el modal) mientras se está
-                 eligiendo el producto de una línea en particular. -->
-            <div id="scan-picker-view" class="hidden absolute inset-0 bg-white/98 backdrop-blur-sm rounded-2xl p-6 overflow-y-auto">
-                <div class="flex items-center gap-2 mb-3">
-                    <button onclick="closeScanProductPicker()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-arrow-left text-lg"></i></button>
-                    <h4 class="font-bold text-gray-700 text-sm">Buscar Producto</h4>
-                </div>
-                <div class="relative mb-3">
-                    <i class="fas fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                    <input type="text" id="scan-picker-search-input" placeholder="Escribí el nombre o el código..."
-                        class="w-full pl-11 pr-4 py-3 border-2 border-indigo-200 rounded-xl focus:border-indigo-500 focus:outline-none"
-                        oninput="handleScanPickerSearch()"
-                        onkeydown="handleScanPickerSearchKeydown(event)"
-                        autocomplete="off">
-                </div>
-                <div id="scan-picker-results" class="space-y-2"></div>
-            </div>
+            <!-- "Estacionamiento" del buscador de producto: siempre hay UN solo
+                 buscador (nunca uno por línea, para no repetir la lentitud de
+                 antes) que se reubica dentro de la línea que se está editando
+                 (ver openScanProductPicker) y vuelve a guardarse acá cuando no
+                 se está usando -- por eso sobrevive a los re-renders de la lista. -->
+            <div id="scan-inline-picker-park" class="hidden"></div>
         </div>
     </div>
 

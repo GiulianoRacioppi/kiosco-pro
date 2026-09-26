@@ -12447,7 +12447,8 @@
                         productName: match ? match.name : '',
                         invoiceType: scanInvoiceLastInvoiceType,
                         paymentMethod: scanInvoiceLastPaymentMethod,
-                        expiry: ''
+                        expiry: '',
+                        vatApplied: false
                     };
                 });
                 statusEl.textContent = `✅ Se leyeron ${scanInvoiceItems.length} línea(s). Revisá y confirmá cada una.`;
@@ -12471,6 +12472,20 @@
 
                 let bodyHtml = '';
                 if (item.type === 'stock') {
+                    const matchedProduct = item.productId ? appState.inventory.find(p => p.id === item.productId) : null;
+                    let productInfoHtml = '';
+                    if (matchedProduct) {
+                        const totalStock = getProductStock(matchedProduct);
+                        const batches = matchedProduct.batches || [];
+                        const batchesInfo = batches.length > 0
+                            ? batches.map((b, i) => `Lote ${i + 1}: ${b.stock}u${b.expiry ? ' · vence ' + b.expiry : ''}`).join(' &nbsp;·&nbsp; ')
+                            : 'Sin lotes cargados';
+                        productInfoHtml = `
+                            <div class="bg-gray-50 rounded-lg px-2 py-1.5 text-[11px] text-gray-500 mt-1">
+                                📊 Stock actual: <strong>${totalStock}</strong> &nbsp;·&nbsp; Último costo: <strong>$${formatMoney(matchedProduct.cost || 0)}</strong><br>${batchesInfo}
+                            </div>`;
+                    }
+                    const total = Math.round((item.qty || 0) * (item.unitPrice || 0) * 100) / 100;
                     bodyHtml = `
                         <div>
                             <label class="block text-[10px] text-gray-400 uppercase">Producto en tu inventario</label>
@@ -12478,6 +12493,7 @@
                                 <span class="${item.productId ? 'text-indigo-700 font-bold' : 'text-orange-500'}">${item.productId ? '✓ ' + escapeHtml(item.productName) : 'Elegí un producto...'}</span>
                                 <i class="fas fa-search text-gray-300"></i>
                             </button>
+                            ${productInfoHtml}
                         </div>
                         <div class="flex gap-2 items-end mt-2">
                             <div class="flex-1">
@@ -12493,11 +12509,18 @@
                                 <input type="date" value="${item.expiry || ''}" class="w-full border rounded-lg px-2 py-1" onchange="updateScanItemExpiry('${item.localId}', this.value)">
                             </div>
                         </div>
+                        <label class="flex items-center gap-1.5 mt-1.5 text-xs text-gray-500 cursor-pointer">
+                            <input type="checkbox" ${item.vatApplied ? 'checked' : ''} onchange="toggleScanItemVat('${item.localId}')"> 💰 +IVA 21%
+                        </label>
                         <div class="flex gap-2 mt-2">
                             <button onclick="setScanItemInvoiceType('${item.localId}', 'white')" class="flex-1 py-1.5 rounded-lg border-2 text-xs font-medium ${item.invoiceType === 'white' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500'}"><i class="fas fa-file-invoice"></i> Facturado</button>
                             <button onclick="setScanItemInvoiceType('${item.localId}', 'black')" class="flex-1 py-1.5 rounded-lg border-2 text-xs font-medium ${item.invoiceType === 'black' ? 'border-gray-700 bg-gray-100 text-gray-800 font-bold' : 'border-gray-200 text-gray-500'}"><i class="fas fa-eye-slash"></i> Sin factura</button>
                             <button onclick="setScanItemPayment('${item.localId}', 'cash')" class="flex-1 py-1.5 rounded-lg border-2 text-xs font-medium ${item.paymentMethod === 'cash' ? 'border-green-500 bg-green-50 text-green-700 font-bold' : 'border-gray-200 text-gray-500'}">💵 Caja</button>
                             <button onclick="setScanItemPayment('${item.localId}', 'bank')" class="flex-1 py-1.5 rounded-lg border-2 text-xs font-medium ${item.paymentMethod === 'bank' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500'}">🏦 Cuenta</button>
+                        </div>
+                        <div class="flex justify-between items-center mt-2 bg-indigo-50 rounded-lg px-3 py-1.5">
+                            <span class="text-xs text-indigo-600 font-bold">Costo total</span>
+                            <span class="text-sm text-indigo-700 font-bold">$${formatMoney(total)}</span>
                         </div>
                         <button onclick="confirmScanItemAsStock('${item.localId}')" class="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg font-bold text-sm">Agregar Stock</button>`;
                 } else if (item.type === 'new') {
@@ -12670,6 +12693,17 @@
         }
         window.updateScanItemExpiry = updateScanItemExpiry;
 
+        // Igual que el checkbox "+ IVA 21%" de Agregar Stock: multiplica/divide
+        // el costo unitario ya cargado, no lo suma aparte.
+        function toggleScanItemVat(localId) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item.unitPrice = item.vatApplied ? (item.unitPrice / 1.21) : (item.unitPrice * 1.21);
+            item.vatApplied = !item.vatApplied;
+            renderScanInvoiceItems();
+        }
+        window.toggleScanItemVat = toggleScanItemVat;
+
         // La mayoría de las líneas de UNA MISMA factura comparten tipo de
         // factura y medio de pago, así que al elegirlo en una línea se aplica
         // a todas las que todavía están pendientes (se puede cambiar de nuevo
@@ -12724,9 +12758,12 @@
             const qtyInput = document.getElementById('add-stock-qty');
             const costInput = document.getElementById('add-stock-unit-cost');
             const expiryInput = document.getElementById('add-stock-expiry');
+            const vatInput = document.getElementById('add-stock-vat');
             if (qtyInput) qtyInput.value = item.qty;
             if (costInput) costInput.value = item.unitPrice;
             if (expiryInput) expiryInput.value = item.expiry || '';
+            if (vatInput) vatInput.checked = !!item.vatApplied;
+            addStockVatApplied = !!item.vatApplied;
             setAddStockInvoiceType(item.invoiceType);
             setAddStockPayment(item.paymentMethod);
             updateAddStockCost();
@@ -27463,7 +27500,7 @@ RESULTADOS:
 
     <!-- ==================== ESCANEAR FACTURA (IA) ==================== -->
     <div id="scan-invoice-modal" class="modal">
-        <div class="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="bg-white rounded-2xl p-6 w-[95vw] max-w-6xl mx-4 max-h-[92vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-1">
                 <h3 class="text-xl font-bold text-indigo-700"><i class="fas fa-file-invoice"></i> Escanear Factura</h3>
                 <button onclick="closeScanInvoiceModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
@@ -27485,7 +27522,7 @@ RESULTADOS:
                     <label class="text-xs font-bold text-gray-500 uppercase">Líneas detectadas</label>
                     <button onclick="discardAllScanItems()" class="text-xs text-red-500 font-bold">Descartar todo</button>
                 </div>
-                <div id="scan-invoice-items-list" class="space-y-3"></div>
+                <div id="scan-invoice-items-list" class="grid grid-cols-1 lg:grid-cols-2 gap-3"></div>
             </div>
 
             <!-- Vista de "Buscar Producto" (mismo buscador rápido que en Vender, con

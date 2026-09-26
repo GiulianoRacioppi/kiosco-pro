@@ -12413,7 +12413,11 @@
                 let bodyHtml = '';
                 if (item.type === 'stock') {
                     const q = normalizeText(item.searchQuery || '');
-                    const suggestions = q ? appState.inventory.filter(p => !p.isComposite && normalizeText(p.name || '').includes(q)).slice(0, 5) : [];
+                    // Con el campo vacío (ej: lo borraste para buscar otra cosa) igual se
+                    // muestra una lista para elegir -- no exige ya saber qué escribir.
+                    const suggestions = q
+                        ? appState.inventory.filter(p => !p.isComposite && normalizeText(p.name || '').includes(q)).slice(0, 5)
+                        : appState.inventory.filter(p => !p.isComposite).slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).slice(0, 8);
                     const suggestionsHtml = (item.showSuggestions && suggestions.length > 0) ? `
                         <div class="border rounded-lg mt-1 bg-white shadow-lg max-h-40 overflow-y-auto">
                             ${suggestions.map(p => `<div onclick='selectScanItemProduct(${JSON.stringify(item.localId)}, ${JSON.stringify(p.id)}, ${JSON.stringify(p.name).replace(/'/g, "&apos;")})' class="px-2 py-1 text-sm hover:bg-indigo-50 cursor-pointer">${escapeHtml(p.name)}</div>`).join('')}

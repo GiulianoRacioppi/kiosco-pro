@@ -1066,6 +1066,12 @@
                 <i class="fas fa-address-book w-4 text-xs"></i> Clientes
             </button>
 
+            <!-- EQUIPAMIENTO / ACTIVOS FIJOS (cosas que no son mercadería: campana, heladera,
+                 horno) con seguimiento de pagos -- capital, nunca cuenta como Gasto: Solo admin -->
+            <button onclick="showSection('fixed-assets')" id="nav-fixed-assets" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="fixed-assets">
+                <i class="fas fa-tools w-4 text-xs"></i> Equipamiento
+            </button>
+
             <!-- FLUJO DE CAJA (proyección): Solo admin -->
             <button onclick="showSection('cashflow-projection')" id="nav-cashflow-projection" class="nav-btn sidebar-admin-only w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="cashflow-projection">
                 <i class="fas fa-water w-4 text-xs"></i> Flujo de Caja
@@ -2675,6 +2681,38 @@
                     </table>
                 </div>
             </div>
+        </div>
+
+        <!-- EQUIPAMIENTO / ACTIVOS FIJOS -->
+        <div id="fixed-assets" class="section hidden space-y-6 fade-in">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                        <i class="fas fa-tools text-purple-600"></i> Equipamiento
+                    </h2>
+                    <p class="text-sm text-gray-500">Cosas que no son mercadería para vender (una campana, una heladera, un horno) pero cuestan plata real y a veces se pagan de a poco. Descuentan caja/cuenta cuando pagás, pero nunca cuentan como Gasto operativo -- es capital, no un costo del negocio.</p>
+                </div>
+                <button onclick="openAddAssetModal()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl font-bold shadow shrink-0">
+                    <i class="fas fa-plus"></i> Agregar equipo
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-white rounded-xl p-4 shadow border border-gray-100">
+                    <p class="text-xs text-gray-500 font-bold uppercase">Total invertido en equipamiento</p>
+                    <p class="text-2xl font-bold text-gray-800" id="assets-total-invested">$0</p>
+                </div>
+                <div class="bg-white rounded-xl p-4 shadow border border-gray-100">
+                    <p class="text-xs text-gray-500 font-bold uppercase">Pagado hasta ahora</p>
+                    <p class="text-2xl font-bold text-green-600" id="assets-total-paid">$0</p>
+                </div>
+                <div class="bg-white rounded-xl p-4 shadow border border-amber-100">
+                    <p class="text-xs text-amber-600 font-bold uppercase">Todavía debés</p>
+                    <p class="text-2xl font-bold text-amber-700" id="assets-total-owed">$0</p>
+                </div>
+            </div>
+
+            <div id="fixed-assets-list" class="space-y-3"></div>
         </div>
 
         <!-- FLUJO DE CAJA - Proyección y gastos fijos -->
@@ -4325,6 +4363,12 @@
             losses: [],
             // Devoluciones
             returns: [],
+            // Equipamiento / activos fijos: cosas que no son mercadería para vender
+            // (una campana extractora, una heladera, un horno) pero cuestan plata real y
+            // se pueden financiar en pagos. Pagarlos descuenta caja/cuenta (liquidez real)
+            // pero NUNCA cuenta como Gasto -- no es un costo operativo, es plata que se
+            // convierte en un bien que además se puede llegar a revender.
+            fixedAssets: [],
             // Libro de movimientos de stock: UN registro por cada cambio real de
             // cantidad (venta, compra, stock gratis, merma, devolución, edición manual),
             // con el total resultante en ese momento. Sirve para reconstruir "esto es lo
@@ -4743,7 +4787,7 @@
             }
             
             // Protección: colaboradores no pueden ver ciertas secciones
-            const adminOnlySections = ['sales-calendar', 'cashflow', 'analysis', 'cashflow-projection', 'reports', 'billing', 'settings', 'promotions', 'clientes'];
+            const adminOnlySections = ['sales-calendar', 'cashflow', 'analysis', 'cashflow-projection', 'reports', 'billing', 'settings', 'promotions', 'clientes', 'fixed-assets'];
             if (adminOnlySections.includes(sectionId) && !isAdmin()) {
                 showNotification('Acceso restringido solo para administradores', 'error');
                 sectionId = 'sell';
@@ -4814,6 +4858,7 @@
                 'promotions': 'Promociones',
                 'discount-tickets': 'Tickets de Descuento',
                 'clientes': 'Clientes',
+                'fixed-assets': 'Equipamiento',
                 'settings': 'Configuración'
             };
             document.getElementById('page-title').textContent = titles[sectionId] || 'KioscoPro';
@@ -4862,6 +4907,9 @@
             }
             if (sectionId === 'clientes') {
                 loadClientesFromFirebase();
+            }
+            if (sectionId === 'fixed-assets') {
+                renderFixedAssets();
             }
             if (sectionId === 'predictions') {
                 showSection('inventory');
@@ -16063,15 +16111,29 @@
             // Cobros de fiados del día (entran el día del cobro, no el día del fiado)
             const cashFiados = appState.sales.filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid && s.fiadoPaidDate === today && s.fiadoPaidMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
             const bankFiados = appState.sales.filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid && s.fiadoPaidDate === today && s.fiadoPaidMethod === 'debit').reduce((sum, s) => sum + s.total, 0);
-            
+
+            // Capital agregado (préstamos, aportes propios) con el botón "Agregar" de
+            // Caja/Cuenta -- los retiros YA se cuentan solos porque se guardan como Gasto
+            // (más abajo), pero los ingresos de capital vivían en un array aparte que
+            // esta cuenta nunca miraba, y por eso el arqueo daba un "sobrante" falso.
+            const cashCapitalAdded = (appState.capitalAdjustments || []).filter(a => a.date === today && a.target === 'cash').reduce((sum, a) => sum + (a.amount || 0), 0);
+            const bankCapitalAdded = (appState.capitalAdjustments || []).filter(a => a.date === today && a.target === 'bank').reduce((sum, a) => sum + (a.amount || 0), 0);
+
+            // Pagos y ventas de Equipamiento/Activos Fijos: mueven caja/cuenta real pero
+            // no son Gasto ni Inversión, así que tampoco entraban en ninguna cuenta de acá.
+            const cashAssetPayments = (appState.fixedAssets || []).flatMap(a => a.payments || []).filter(p => p.date === today && p.source === 'cash').reduce((sum, p) => sum + (p.amount || 0), 0);
+            const bankAssetPayments = (appState.fixedAssets || []).flatMap(a => a.payments || []).filter(p => p.date === today && p.source === 'bank').reduce((sum, p) => sum + (p.amount || 0), 0);
+            const cashAssetSales = (appState.fixedAssets || []).filter(a => a.sold && a.soldDate === today && a.soldSource === 'cash').reduce((sum, a) => sum + (a.soldAmount || 0), 0);
+            const bankAssetSales = (appState.fixedAssets || []).filter(a => a.sold && a.soldDate === today && a.soldSource === 'bank').reduce((sum, a) => sum + (a.soldAmount || 0), 0);
+
             // Transacciones de cuenta (banco/débito)
             const bankSales = appState.sales.filter(s => s.date === today && (s.paymentMethod === 'debit' || s.paymentMethod === 'qr')).reduce((sum, s) => sum + (s.total - (s.mercadoCreditoFee || 0) - (s.qrFee || 0)), 0);
             const bankExpenses = appState.expenses.filter(e => e.date === today && e.source === 'bank').reduce((sum, e) => sum + e.amount, 0);
             const bankInvestments = appState.investments.filter(i => i.date === today && i.source === 'bank').reduce((sum, i) => sum + i.amount, 0);
             const bankReturns = appState.returns ? appState.returns.filter(r => r.date === today && r.paymentMethod === 'debit').reduce((sum, r) => sum + r.amount, 0) : 0;
-            
-            const expectedCash = openingCash + cashSales + cashFiados - cashExpenses - cashInvestments - cashReturns + toCash - toBank - resDeposits + resWithdraws;
-            const expectedBank = openingBank + bankSales + bankFiados - bankExpenses - bankInvestments - bankReturns - toCash + toBank;
+
+            const expectedCash = openingCash + cashSales + cashFiados + cashCapitalAdded + cashAssetSales - cashExpenses - cashInvestments - cashReturns - cashAssetPayments + toCash - toBank - resDeposits + resWithdraws;
+            const expectedBank = openingBank + bankSales + bankFiados + bankCapitalAdded + bankAssetSales - bankExpenses - bankInvestments - bankReturns - bankAssetPayments - toCash + toBank;
 
             return { cash: expectedCash, bank: expectedBank, total: expectedCash + expectedBank, reserveNet: resDeposits - resWithdraws, cashFiados, bankFiados };
         }
@@ -18400,6 +18462,209 @@
             closeMoveModal();
 
             showNotification('Movimiento registrado', 'success');
+        }
+
+        // ==================== EQUIPAMIENTO / ACTIVOS FIJOS ====================
+        // Cosas que no son mercadería para vender (una campana extractora, una heladera,
+        // un horno) pero cuestan plata real y a veces se pagan de a poco. Pagarlas
+        // descuenta caja/cuenta (liquidez real) pero NUNCA cuenta como Gasto ni como
+        // Inversión de mercadería -- no es un costo operativo ni algo con stock/margen,
+        // es capital que se convierte en un bien (que además se puede llegar a revender).
+        let assetPaymentSource = 'cash';
+        let currentAssetPaymentId = null;
+        let currentAssetSellId = null;
+
+        function getAssetPaid(asset) {
+            return (asset.payments || []).reduce((s, p) => s + (p.amount || 0), 0);
+        }
+        function getAssetOwed(asset) {
+            return Math.max(0, (asset.totalCost || 0) - getAssetPaid(asset));
+        }
+
+        function setAssetPaymentSource(source) {
+            assetPaymentSource = source;
+            ['btn-asset-source-cash', 'btn-asset-source-bank', 'btn-asset-payment-source-cash', 'btn-asset-payment-source-bank', 'btn-asset-sell-source-cash', 'btn-asset-sell-source-bank'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const isCash = id.endsWith('cash');
+                const active = (isCash && source === 'cash') || (!isCash && source === 'bank');
+                el.className = 'flex-1 py-2 rounded-lg border-2 text-xs font-bold ' + (active ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-500');
+            });
+        }
+
+        function openAddAssetModal() {
+            document.getElementById('asset-name').value = '';
+            document.getElementById('asset-description').value = '';
+            document.getElementById('asset-total-cost').value = '';
+            document.getElementById('asset-date').value = formatDateISO(appState.activeDate || new Date());
+            document.getElementById('asset-has-initial-payment').checked = false;
+            document.getElementById('asset-initial-payment-section').classList.add('hidden');
+            document.getElementById('asset-initial-payment').value = '';
+            setAssetPaymentSource('cash');
+            document.getElementById('add-asset-modal').classList.add('active');
+        }
+        function closeAddAssetModal() {
+            document.getElementById('add-asset-modal').classList.remove('active');
+        }
+
+        function saveNewAsset() {
+            const name = document.getElementById('asset-name').value.trim();
+            const description = document.getElementById('asset-description').value.trim();
+            const totalCost = parseFloat(document.getElementById('asset-total-cost').value) || 0;
+            const date = document.getElementById('asset-date').value || formatDateISO(appState.activeDate || new Date());
+            if (!name) { showNotification('Ingresá un nombre', 'error'); return; }
+            if (totalCost <= 0) { showNotification('Ingresá el costo total', 'error'); return; }
+
+            const hasInitial = document.getElementById('asset-has-initial-payment').checked;
+            const initialAmount = hasInitial ? (parseFloat(document.getElementById('asset-initial-payment').value) || 0) : 0;
+
+            if (!appState.fixedAssets) appState.fixedAssets = [];
+            const asset = {
+                id: 'ASSET-' + Date.now(),
+                name, description, totalCost, dateAdded: date,
+                payments: [],
+                sold: false, soldAmount: null, soldDate: null, soldSource: null
+            };
+
+            if (initialAmount > 0) {
+                const available = assetPaymentSource === 'cash' ? appState.cash : appState.bank;
+                if (initialAmount > available) {
+                    showNotification(`⚠️ Esto deja ${assetPaymentSource === 'cash' ? 'la caja' : 'la cuenta'} en negativo`, 'warning', 5000);
+                }
+                asset.payments.push({ id: 'ASSETPAY-' + Date.now(), amount: initialAmount, date, source: assetPaymentSource });
+                if (assetPaymentSource === 'cash') appState.cash -= initialAmount; else appState.bank -= initialAmount;
+            }
+
+            appState.fixedAssets.push(asset);
+            saveToLocalStorage();
+            closeAddAssetModal();
+            renderFixedAssets();
+            renderCashflow();
+            showNotification('✅ Equipo agregado', 'success');
+        }
+
+        function openAssetPaymentModal(assetId) {
+            currentAssetPaymentId = assetId;
+            const asset = (appState.fixedAssets || []).find(a => a.id === assetId);
+            if (!asset) return;
+            document.getElementById('asset-payment-context').textContent = `${asset.name} — debés $${formatMoney(getAssetOwed(asset))}`;
+            document.getElementById('asset-payment-amount').value = '';
+            setAssetPaymentSource('cash');
+            document.getElementById('asset-payment-modal').classList.add('active');
+        }
+        function closeAssetPaymentModal() {
+            document.getElementById('asset-payment-modal').classList.remove('active');
+            currentAssetPaymentId = null;
+        }
+        function saveAssetPayment() {
+            const asset = (appState.fixedAssets || []).find(a => a.id === currentAssetPaymentId);
+            if (!asset) return;
+            const amount = parseFloat(document.getElementById('asset-payment-amount').value) || 0;
+            if (amount <= 0) { showNotification('Ingresá un monto válido', 'error'); return; }
+            const available = assetPaymentSource === 'cash' ? appState.cash : appState.bank;
+            if (amount > available) {
+                showNotification(`⚠️ Esto deja ${assetPaymentSource === 'cash' ? 'la caja' : 'la cuenta'} en negativo`, 'warning', 5000);
+            }
+            if (!asset.payments) asset.payments = [];
+            asset.payments.push({ id: 'ASSETPAY-' + Date.now(), amount, date: formatDateISO(appState.activeDate || new Date()), source: assetPaymentSource });
+            if (assetPaymentSource === 'cash') appState.cash -= amount; else appState.bank -= amount;
+            saveToLocalStorage();
+            closeAssetPaymentModal();
+            renderFixedAssets();
+            renderCashflow();
+            showNotification('✅ Pago registrado', 'success');
+        }
+
+        function openAssetSellModal(assetId) {
+            currentAssetSellId = assetId;
+            const asset = (appState.fixedAssets || []).find(a => a.id === assetId);
+            if (!asset) return;
+            document.getElementById('asset-sell-context').textContent = asset.name;
+            document.getElementById('asset-sell-amount').value = '';
+            setAssetPaymentSource('cash');
+            document.getElementById('asset-sell-modal').classList.add('active');
+        }
+        function closeAssetSellModal() {
+            document.getElementById('asset-sell-modal').classList.remove('active');
+            currentAssetSellId = null;
+        }
+        function saveAssetSale() {
+            const asset = (appState.fixedAssets || []).find(a => a.id === currentAssetSellId);
+            if (!asset) return;
+            const amount = parseFloat(document.getElementById('asset-sell-amount').value) || 0;
+            if (amount <= 0) { showNotification('Ingresá un monto válido', 'error'); return; }
+            asset.sold = true;
+            asset.soldAmount = amount;
+            asset.soldDate = formatDateISO(appState.activeDate || new Date());
+            asset.soldSource = assetPaymentSource;
+            if (assetPaymentSource === 'cash') appState.cash += amount; else appState.bank += amount;
+            saveToLocalStorage();
+            closeAssetSellModal();
+            renderFixedAssets();
+            renderCashflow();
+            showNotification('✅ Venta registrada', 'success');
+        }
+
+        function deleteFixedAsset(assetId) {
+            const asset = (appState.fixedAssets || []).find(a => a.id === assetId);
+            if (!asset) return;
+            if (!confirm('¿Eliminar este equipo? Se van a revertir todos los pagos (y la venta, si la tenía) a la caja/cuenta.')) return;
+            (asset.payments || []).forEach(p => {
+                if (p.source === 'cash') appState.cash += p.amount; else appState.bank += p.amount;
+            });
+            if (asset.sold && asset.soldAmount) {
+                if (asset.soldSource === 'cash') appState.cash -= asset.soldAmount; else appState.bank -= asset.soldAmount;
+            }
+            appState.fixedAssets = appState.fixedAssets.filter(a => a.id !== assetId);
+            saveToLocalStorage();
+            renderFixedAssets();
+            renderCashflow();
+            showNotification('🗑️ Equipo eliminado', 'info');
+        }
+
+        function renderFixedAssets() {
+            const assets = appState.fixedAssets || [];
+            const totalInvested = assets.reduce((s, a) => s + (a.totalCost || 0), 0);
+            const totalPaid = assets.reduce((s, a) => s + getAssetPaid(a), 0);
+            const totalOwed = assets.reduce((s, a) => s + getAssetOwed(a), 0);
+            document.getElementById('assets-total-invested').textContent = '$' + formatMoney(totalInvested);
+            document.getElementById('assets-total-paid').textContent = '$' + formatMoney(totalPaid);
+            document.getElementById('assets-total-owed').textContent = '$' + formatMoney(totalOwed);
+
+            const container = document.getElementById('fixed-assets-list');
+            if (assets.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-400 py-8">Todavía no cargaste ningún equipo</p>';
+                return;
+            }
+            container.innerHTML = assets.slice().sort((a, b) => (b.dateAdded || '').localeCompare(a.dateAdded || '')).map(asset => {
+                const paid = getAssetPaid(asset);
+                const owed = getAssetOwed(asset);
+                const paymentsHtml = (asset.payments || []).slice().reverse().map(p =>
+                    `<div class="text-xs text-gray-500 flex justify-between"><span>${p.date} · ${p.source === 'cash' ? '💵 Caja' : '🏦 Cuenta'}</span><span class="font-bold">$${formatMoney(p.amount)}</span></div>`
+                ).join('');
+                return `
+                <div class="bg-white rounded-xl p-4 shadow border ${owed > 0 ? 'border-amber-200' : 'border-green-200'}">
+                    <div class="flex flex-wrap justify-between items-start gap-2 mb-2">
+                        <div>
+                            <p class="font-bold text-gray-800">${escapeHtml(asset.name)}${asset.sold ? ' <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full ml-1">Vendido</span>' : ''}</p>
+                            ${asset.description ? `<p class="text-xs text-gray-500">${escapeHtml(asset.description)}</p>` : ''}
+                            <p class="text-xs text-gray-400 mt-1">Agregado el ${asset.dateAdded}</p>
+                        </div>
+                        <span class="text-xs font-bold px-2 py-1 rounded-full ${owed > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}">${owed > 0 ? '⏳ Debés $' + formatMoney(owed) : '✅ Pagado'}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-sm mb-2">
+                        <p class="text-gray-500">Costo total: <span class="font-bold text-gray-800">$${formatMoney(asset.totalCost)}</span></p>
+                        <p class="text-gray-500">Pagado: <span class="font-bold text-green-600">$${formatMoney(paid)}</span></p>
+                    </div>
+                    ${paymentsHtml ? `<div class="border-t pt-2 mt-2 space-y-1">${paymentsHtml}</div>` : ''}
+                    ${asset.sold ? `<p class="text-xs text-blue-600 font-bold mt-2">💰 Vendido el ${asset.soldDate} por $${formatMoney(asset.soldAmount)}</p>` : ''}
+                    <div class="flex gap-2 mt-3">
+                        ${owed > 0 ? `<button onclick="openAssetPaymentModal('${asset.id}')" class="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg font-bold"><i class="fas fa-hand-holding-usd"></i> Registrar pago</button>` : ''}
+                        ${!asset.sold ? `<button onclick="openAssetSellModal('${asset.id}')" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1.5 rounded-lg font-bold"><i class="fas fa-tag"></i> Marcar vendido</button>` : ''}
+                        <button onclick="deleteFixedAsset('${asset.id}')" class="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-bold ml-auto"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>`;
+            }).join('');
         }
 
         function openExpenseModal() {
@@ -21353,6 +21618,7 @@ Total de productos a comprar: ${shoppingList.length}
                 losses: [],
                 returns: [],
                 stockLedger: [],
+                fixedAssets: [],
                 recurringExpenses: [],
                 cashFlowSettings: { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
                 suppliers: [],
@@ -24188,7 +24454,8 @@ RESULTADOS:
                 main_users: 'users',
                 main_reserveMovements: 'reserveMovements',
                 main_shiftCounts: 'shiftCounts',
-                main_stockLedger: 'stockLedger'
+                main_stockLedger: 'stockLedger',
+                main_fixedAssets: 'fixedAssets'
             };
         }
 
@@ -25096,6 +25363,7 @@ RESULTADOS:
                 appState.investments = appState.investments.filter(i => !deletedInvIdsMaster.has(i.id));
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 appState.stockLedger = smartMergeArrays(appState.stockLedger || [], data.stockLedger || []);
+                appState.fixedAssets = smartMergeArrays(appState.fixedAssets || [], data.fixedAssets || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
                 appState.billedDays = smartMergeArrays(appState.billedDays || [], data.billedDays || []);
                 appState.guestLogs = smartMergeArrays(appState.guestLogs || [], data.guestLogs || []);
@@ -25184,6 +25452,7 @@ RESULTADOS:
                 appState.foundStock = smartMergeArrays(appState.foundStock || [], data.foundStock || []);
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 appState.stockLedger = smartMergeArrays(appState.stockLedger || [], data.stockLedger || []);
+                appState.fixedAssets = smartMergeArrays(appState.fixedAssets || [], data.fixedAssets || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
                 appState.billedDays = smartMergeArrays(appState.billedDays || [], data.billedDays || []);
                 appState.guestLogs = smartMergeArrays(appState.guestLogs || [], data.guestLogs || []);
@@ -26457,6 +26726,97 @@ RESULTADOS:
                 </table>
             </div>
             <p class="text-xs text-gray-400 mt-3">Solo se registran los movimientos desde que se armó este libro -- los que pasaron antes no van a aparecer.</p>
+        </div>
+    </div>
+
+    <!-- ==================== EQUIPAMIENTO / ACTIVOS FIJOS ==================== -->
+    <div id="add-asset-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-4 text-purple-700"><i class="fas fa-tools"></i> Agregar equipo</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+                    <input type="text" id="asset-name" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Ej: Campana extractora">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Descripción (opcional)</label>
+                    <input type="text" id="asset-description" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Detalles, marca, etc.">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Costo total</label>
+                    <input type="number" min="0" step="0.01" id="asset-total-cost" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                    <input type="date" id="asset-date" class="w-full border rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div class="border-t pt-3">
+                    <label class="flex items-center gap-2 text-sm font-medium text-gray-700 mb-1">
+                        <input type="checkbox" id="asset-has-initial-payment" onchange="document.getElementById('asset-initial-payment-section').classList.toggle('hidden', !this.checked)">
+                        Ya pagué algo ahora
+                    </label>
+                    <div id="asset-initial-payment-section" class="hidden space-y-2 mt-2">
+                        <input type="number" min="0" step="0.01" id="asset-initial-payment" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Monto pagado ahora">
+                        <div class="flex gap-2">
+                            <button type="button" onclick="setAssetPaymentSource('cash')" id="btn-asset-source-cash" class="flex-1 py-2 rounded-lg border-2 text-xs font-bold">💵 Caja</button>
+                            <button type="button" onclick="setAssetPaymentSource('bank')" id="btn-asset-source-bank" class="flex-1 py-2 rounded-lg border-2 text-xs font-bold">🏦 Cuenta</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-5">
+                <button onclick="closeAddAssetModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                <button onclick="saveNewAsset()" class="flex-1 bg-purple-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-purple-700">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="asset-payment-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4">
+            <h3 class="text-xl font-bold mb-1 text-purple-700"><i class="fas fa-hand-holding-usd"></i> Registrar pago</h3>
+            <p class="text-sm text-gray-500 mb-4" id="asset-payment-context">-</p>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Monto</label>
+                    <input type="number" min="0" step="0.01" id="asset-payment-amount" class="w-full border rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">¿De dónde sale?</label>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="setAssetPaymentSource('cash')" id="btn-asset-payment-source-cash" class="flex-1 py-2 rounded-lg border-2 text-xs font-bold">💵 Caja</button>
+                        <button type="button" onclick="setAssetPaymentSource('bank')" id="btn-asset-payment-source-bank" class="flex-1 py-2 rounded-lg border-2 text-xs font-bold">🏦 Cuenta</button>
+                    </div>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-5">
+                <button onclick="closeAssetPaymentModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                <button onclick="saveAssetPayment()" class="flex-1 bg-purple-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-purple-700">Registrar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="asset-sell-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4">
+            <h3 class="text-xl font-bold mb-1 text-purple-700"><i class="fas fa-tag"></i> Marcar como vendido</h3>
+            <p class="text-sm text-gray-500 mb-4" id="asset-sell-context">-</p>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">¿Por cuánto lo vendiste?</label>
+                    <input type="number" min="0" step="0.01" id="asset-sell-amount" class="w-full border rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">¿A dónde entra la plata?</label>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="setAssetPaymentSource('cash')" id="btn-asset-sell-source-cash" class="flex-1 py-2 rounded-lg border-2 text-xs font-bold">💵 Caja</button>
+                        <button type="button" onclick="setAssetPaymentSource('bank')" id="btn-asset-sell-source-bank" class="flex-1 py-2 rounded-lg border-2 text-xs font-bold">🏦 Cuenta</button>
+                    </div>
+                </div>
+                <p class="text-[11px] text-gray-400">Esa plata entra como capital (no como venta ni ganancia) -- misma lógica que al comprarlo.</p>
+            </div>
+            <div class="flex gap-2 mt-5">
+                <button onclick="closeAssetSellModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                <button onclick="saveAssetSale()" class="flex-1 bg-purple-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-purple-700">Confirmar venta</button>
+            </div>
         </div>
     </div>
 

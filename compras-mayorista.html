@@ -56,7 +56,10 @@
 
         <!-- Buscador libre -->
         <div class="card p-3">
-            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Buscar producto</label>
+            <div class="flex justify-between items-center mb-1">
+                <label class="text-xs font-bold text-gray-500 uppercase">Buscar producto</label>
+                <button id="toggle-all-products" onclick="toggleShowAllProducts()" class="text-xs text-teal-600 font-bold">Ver todos los productos</button>
+            </div>
             <input type="text" id="product-search" class="w-full border-2 border-teal-200 rounded-xl px-3 py-2" placeholder="Escribí el nombre..." oninput="renderSearchResults()">
             <div id="search-results" class="mt-2 space-y-1 max-h-64 overflow-y-auto"></div>
         </div>
@@ -272,16 +275,37 @@
                 </div>`;
             }).join('');
         }
-        document.getElementById('supplier-filter').addEventListener('change', renderSuggestedList);
+        document.getElementById('supplier-filter').addEventListener('change', () => {
+            renderSuggestedList();
+            renderSearchResults();
+        });
 
         // ==================== RENDER: BUSCADOR LIBRE ====================
+        let showAllProducts = false;
+        function toggleShowAllProducts() {
+            showAllProducts = !showAllProducts;
+            const btn = document.getElementById('toggle-all-products');
+            btn.textContent = showAllProducts ? 'Volver a la búsqueda' : 'Ver todos los productos';
+            document.getElementById('search-results').className = showAllProducts
+                ? 'mt-2 space-y-1 max-h-[32rem] overflow-y-auto'
+                : 'mt-2 space-y-1 max-h-64 overflow-y-auto';
+            renderSearchResults();
+        }
+        window.toggleShowAllProducts = toggleShowAllProducts;
+
         function renderSearchResults() {
             const q = normalizeText(document.getElementById('product-search').value.trim());
             const container = document.getElementById('search-results');
-            if (!q) { container.innerHTML = ''; return; }
-            const matches = fullInventory
-                .filter(p => normalizeText(p.name || '').includes(q))
-                .slice(0, 20);
+            const supplierSel = document.getElementById('supplier-filter').value;
+
+            if (!q && !showAllProducts) { container.innerHTML = ''; return; }
+
+            let matches = fullInventory;
+            if (q) matches = matches.filter(p => normalizeText(p.name || '').includes(q));
+            if (showAllProducts && supplierSel) matches = matches.filter(p => p.supplier === supplierSel);
+            matches = matches.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            if (!showAllProducts) matches = matches.slice(0, 20);
+
             if (matches.length === 0) {
                 container.innerHTML = '<p class="text-center text-gray-400 py-2 text-sm">Sin resultados</p>';
                 return;

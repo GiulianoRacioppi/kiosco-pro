@@ -3,6 +3,7 @@
   "short_name": "Compras",
   "description": "Cargar compras en el mayorista para revisarlas despues en el kiosco",
   "lang": "es",
+  "id": "./compras-mayorista.html",
   "start_url": "./compras-mayorista.html",
   "scope": "./",
   "display": "standalone",

@@ -3,6 +3,7 @@
   "short_name": "KioscoPro",
   "description": "Punto de venta, inventario, caja y reportes para tu kiosco",
   "lang": "es",
+  "id": "./index.html",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

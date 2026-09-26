@@ -3,33 +3,34 @@
   "short_name": "Kiosco47",
   "description": "Pedir productos del kiosco y pagar con Mercado Pago",
   "lang": "es",
+  "id": "./kiosco47app.html",
   "start_url": "./kiosco47app.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#7c3aed",
-  "theme_color": "#7c3aed",
+  "background_color": "#FBF5E8",
+  "theme_color": "#B5122A",
   "icons": [
     {
-      "src": "icon-192.png",
+      "src": "kiosco47-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icon-512.png",
+      "src": "kiosco47-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icon-maskable-192.png",
+      "src": "kiosco47-icon-maskable-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "icon-maskable-512.png",
+      "src": "kiosco47-icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

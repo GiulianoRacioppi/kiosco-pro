@@ -12582,9 +12582,8 @@
 
         function openScanProductPicker(localId) {
             scanPickerActiveItemId = localId;
-            document.getElementById('scan-invoice-upload-section').classList.add('hidden');
-            document.getElementById('scan-invoice-pages').classList.add('hidden');
-            document.getElementById('scan-invoice-items-section').classList.add('hidden');
+            // Flota encima de la lista de líneas (no la esconde ni cierra el modal),
+            // así se ve como que el buscador "aparece ahí mismo" sin salir de nada.
             document.getElementById('scan-picker-view').classList.remove('hidden');
             const input = document.getElementById('scan-picker-search-input');
             input.value = '';
@@ -12598,9 +12597,6 @@
         function closeScanProductPicker() {
             scanPickerActiveItemId = null;
             document.getElementById('scan-picker-view').classList.add('hidden');
-            document.getElementById('scan-invoice-upload-section').classList.remove('hidden');
-            if (scanInvoicePageImages.length > 0) document.getElementById('scan-invoice-pages').classList.remove('hidden');
-            if (scanInvoiceItems.length > 0) document.getElementById('scan-invoice-items-section').classList.remove('hidden');
         }
         window.closeScanProductPicker = closeScanProductPicker;
 
@@ -27500,7 +27496,7 @@ RESULTADOS:
 
     <!-- ==================== ESCANEAR FACTURA (IA) ==================== -->
     <div id="scan-invoice-modal" class="modal">
-        <div class="bg-white rounded-2xl p-6 w-[95vw] max-w-6xl mx-4 max-h-[92vh] overflow-y-auto">
+        <div class="relative bg-white rounded-2xl p-6 w-[95vw] max-w-6xl mx-4 max-h-[92vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-1">
                 <h3 class="text-xl font-bold text-indigo-700"><i class="fas fa-file-invoice"></i> Escanear Factura</h3>
                 <button onclick="closeScanInvoiceModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
@@ -27526,9 +27522,10 @@ RESULTADOS:
             </div>
 
             <!-- Vista de "Buscar Producto" (mismo buscador rápido que en Vender, con
-                 su propio ícono de resultados numerados) -- reemplaza la lista de
-                 líneas mientras se está eligiendo el producto de una en particular. -->
-            <div id="scan-picker-view" class="hidden mt-2">
+                 su propio ícono de resultados numerados) -- flota ENCIMA de la lista
+                 de líneas (no la reemplaza ni cierra el modal) mientras se está
+                 eligiendo el producto de una línea en particular. -->
+            <div id="scan-picker-view" class="hidden absolute inset-0 bg-white/98 backdrop-blur-sm rounded-2xl p-6 overflow-y-auto">
                 <div class="flex items-center gap-2 mb-3">
                     <button onclick="closeScanProductPicker()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-arrow-left text-lg"></i></button>
                     <h4 class="font-bold text-gray-700 text-sm">Buscar Producto</h4>
@@ -27541,7 +27538,7 @@ RESULTADOS:
                         onkeydown="handleScanPickerSearchKeydown(event)"
                         autocomplete="off">
                 </div>
-                <div id="scan-picker-results" class="space-y-2 max-h-96 overflow-y-auto"></div>
+                <div id="scan-picker-results" class="space-y-2"></div>
             </div>
         </div>
     </div>

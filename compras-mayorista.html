@@ -13,7 +13,6 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.min.js"></script>
 <style>
     body { -webkit-tap-highlight-color: transparent; }
@@ -58,8 +57,8 @@
 
         <!-- Escanear factura -->
         <div class="card p-3">
-            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">📄 Escanear factura (gratis)</label>
-            <p class="text-[11px] text-gray-400 mb-2">Subí una foto o un PDF escaneado de la factura y se intenta leer nombre, cantidad y precio de cada línea (todo en el celular/PC, sin costo). Es aproximado — revisá siempre cada línea antes de agregarla.</p>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">📄 Escanear factura (con IA)</label>
+            <p class="text-[11px] text-gray-400 mb-2">Subí una foto o un PDF escaneado (una o varias páginas) y una IA lee nombre, cantidad y precio de cada línea. Igual revisá cada una antes de agregarla.</p>
             <label class="block w-full bg-teal-600 hover:bg-teal-700 text-white text-center py-2.5 rounded-xl font-bold cursor-pointer">
                 📄 Subir foto o PDF de la factura
                 <input type="file" accept="image/*,.pdf,application/pdf" class="hidden" onchange="handleInvoiceFileSelected(event)">
@@ -372,9 +371,8 @@
             return bestScore >= 15 ? best : null;
         }
 
-        // Achica la foto antes de procesarla: Tesseract tarda más y consume más
-        // memoria con fotos de 4000x3000px de un celular moderno sin ninguna
-        // ventaja real de precisión sobre una versión más chica.
+        // Achica la foto antes de mandarla: menos datos, menos costo de la IA,
+        // y evita problemas de tamaño con fotos de celular de varios MB.
         function resizeImageToDataUrl(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -427,81 +425,6 @@
             return urls;
         }
 
-        // Convierte un número escrito en CUALQUIERA de los dos formatos que
-        // se ven en facturas reales: "1.234,56" (miles con punto, decimal con
-        // coma -- el habitual en Argentina) o "1,234.56" (miles con coma,
-        // decimal con punto -- muy común igual en software de facturación).
-        // El separador que aparece MÁS CERCA DEL FINAL es el decimal; da igual
-        // cuál sea, porque nunca aparecen los dos con ese significado a la vez.
-        function parseFlexibleNumber(raw) {
-            const s = String(raw).trim();
-            if (!s) return null;
-            const hasComma = s.includes(',');
-            const hasDot = s.includes('.');
-            if (hasComma && hasDot) {
-                const decimalSep = s.lastIndexOf(',') > s.lastIndexOf('.') ? ',' : '.';
-                const thousandsSep = decimalSep === ',' ? '.' : ',';
-                const n = parseFloat(s.split(thousandsSep).join('').replace(decimalSep, '.'));
-                return isNaN(n) ? null : n;
-            }
-            if (hasComma || hasDot) {
-                const sep = hasComma ? ',' : '.';
-                const parts = s.split(sep);
-                if (parts.length > 2) return parseFloat(parts.join('')) || null; // "1.234.567" -> todos miles
-                const n = parseFloat(parts[0] + '.' + parts[1]); // separador único = decimal
-                return isNaN(n) ? null : n;
-            }
-            const n = parseFloat(s);
-            return isNaN(n) ? null : n;
-        }
-
-        // Palabras que casi seguro indican que la línea NO es un producto
-        // (encabezados, totales, datos fiscales) -- se descartan directo.
-        const INVOICE_LINE_BLACKLIST = /\b(total|subtotal|iva|cuit|fecha|cae|remito|factura|pto\.?\s?vta|comprobante|domicilio|condici[oó]n|forma de pago|raz[oó]n social|c[oó]digo|descripci[oó]n|cantidad|precio|importe|bonif)/i;
-        const NUMBER_TOKEN_RE = /\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?|\d+[.,]\d+|\d+/g;
-
-        // Heurística para leer una línea de una tabla de factura escaneada.
-        // Las columnas de una tabla suelen quedar, después del OCR, separadas
-        // por 2 o más espacios (el hueco real entre columnas) -- eso separa
-        // mucho mejor el nombre de las columnas numéricas que "cortar en el
-        // primer número", que falla cuando el nombre ya trae números (ej:
-        // "COCA-COLA 12x500 Cc."). De las columnas numéricas, la PRIMERA se
-        // toma como cantidad y la ÚLTIMA como precio final por unidad (en la
-        // mayoría de facturas de mayoristas esa es la columna de la derecha,
-        // ya con descuento aplicado) -- las columnas del medio (paquete, %
-        // descuento, importe total) se ignoran. No siempre va a acertar el
-        // orden exacto de cada proveedor, por eso esto es solo un punto de
-        // partida para revisar/corregir a mano, no un resultado final.
-        function parseInvoiceLine(line) {
-            const trimmed = line.replace(/\s+$/, '');
-            if (trimmed.trim().length < 4) return null;
-            if (INVOICE_LINE_BLACKLIST.test(trimmed)) return null;
-
-            let columns = trimmed.split(/\s{2,}/).map(c => c.trim()).filter(Boolean);
-            if (columns.length < 2) {
-                const m = trimmed.match(/\d/);
-                if (!m) return null;
-                columns = [trimmed.slice(0, m.index).trim(), trimmed.slice(m.index).trim()];
-            }
-
-            const name = columns[0].replace(/^[-•*.\s]+/, '').replace(/[-.\s]+$/, '').trim();
-            if (name.length < 3 || !/[a-zA-Záéíóúñ]{3,}/.test(name)) return null;
-
-            const rest = columns.slice(1).join('  ');
-            const numTokens = rest.match(NUMBER_TOKEN_RE) || [];
-            const nums = numTokens.map(parseFlexibleNumber).filter(n => n !== null && n > 0);
-            if (nums.length === 0) return null;
-
-            let quantity = 1, unitPrice = null;
-            if (nums.length >= 2) {
-                quantity = nums[0];
-                unitPrice = nums[nums.length - 1];
-            } else {
-                unitPrice = nums[0];
-            }
-            return { name, quantity, unitPrice };
-        }
-
         async function handleInvoiceFileSelected(event) {
             const file = event.target.files[0];
             event.target.value = ''; // permite volver a elegir el mismo archivo después
@@ -511,31 +434,26 @@
             statusEl.textContent = 'Preparando archivo...';
             try {
                 const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
-                const pageImages = isPdf ? await pdfFileToDataUrls(file) : [await resizeImageToDataUrl(file)];
-                if (pageImages.length === 0) throw new Error('El PDF no tiene páginas para leer');
+                const pageDataUrls = isPdf ? await pdfFileToDataUrls(file) : [await resizeImageToDataUrl(file)];
+                if (pageDataUrls.length === 0) throw new Error('El PDF no tiene páginas para leer');
 
-                let fullText = '';
-                for (let i = 0; i < pageImages.length; i++) {
-                    const pageLabel = pageImages.length > 1 ? `página ${i + 1}/${pageImages.length}` : 'la factura';
-                    statusEl.textContent = `👀 Leyendo ${pageLabel}...`;
-                    const { data } = await Tesseract.recognize(pageImages[i], 'spa', {
-                        logger: (m) => {
-                            if (m.status === 'recognizing text') {
-                                statusEl.textContent = `👀 Leyendo ${pageLabel}... ${Math.round((m.progress || 0) * 100)}%`;
-                            }
-                        }
-                    });
-                    fullText += '\n' + (data.text || '');
-                }
+                statusEl.textContent = pageDataUrls.length > 1
+                    ? `🤖 Leyendo la factura (${pageDataUrls.length} páginas)...`
+                    : '🤖 Leyendo la factura, un momento...';
 
-                const rawLines = fullText.split('\n').map(l => l.trim()).filter(Boolean);
-                const parsedLines = rawLines.map(parseInvoiceLine).filter(Boolean);
-
-                if (parsedLines.length === 0) {
-                    statusEl.textContent = '⚠️ No se pudo detectar ninguna línea de producto. Probá con otra foto/escaneo: derecho, bien iluminado y sin recortar los bordes.';
+                const images = pageDataUrls.map(url => ({ data: url.split(',')[1], mimeType: 'image/jpeg' }));
+                const res = await fetch('https://us-central1-kioscopro.cloudfunctions.net/escanearFactura', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ images, password: window._requiredPassword || '' })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo leer la factura');
+                if (!data.items || data.items.length === 0) {
+                    statusEl.textContent = '⚠️ No se detectaron productos. Probá con otra foto/escaneo más claro y derecho.';
                     return;
                 }
-                scannedItems = parsedLines.map(it => {
+                scannedItems = data.items.map(it => {
                     const match = findBestProductMatch(it.name);
                     return {
                         localId: 'S' + Date.now() + Math.random().toString(36).slice(2, 6),
@@ -549,7 +467,7 @@
                         showSuggestions: false
                     };
                 });
-                statusEl.textContent = `✅ Se detectaron ${scannedItems.length} línea(s) posibles. Es una lectura automática aproximada -- revisá bien cada una antes de agregar.`;
+                statusEl.textContent = `✅ Se leyeron ${scannedItems.length} línea(s). Revisá cada una antes de agregar.`;
                 renderScannedItems();
             } catch (e) {
                 console.error(e);

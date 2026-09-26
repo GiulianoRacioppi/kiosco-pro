@@ -836,7 +836,7 @@
                 </div>
                 <div id="withdrawal-type-section" class="hidden">
                     <label class="block text-sm font-medium text-gray-700 mb-2">Tipo de retiro</label>
-                    <div class="flex gap-2">
+                    <div class="flex gap-2 flex-wrap">
                         <button onclick="setWithdrawalType('owner')" id="btn-wtype-owner" class="flex-1 py-2 rounded-lg border-2 border-purple-500 bg-purple-50 text-purple-700 font-bold text-xs">
                             <i class="fas fa-user-tie"></i> Dueño / Ganancias
                         </button>
@@ -846,7 +846,11 @@
                         <button onclick="setWithdrawalType('other')" id="btn-wtype-other" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-xs">
                             <i class="fas fa-receipt"></i> Otro
                         </button>
+                        <button onclick="setWithdrawalType('loan')" id="btn-wtype-loan" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-xs">
+                            <i class="fas fa-hand-holding-usd"></i> Préstamo / Capital
+                        </button>
                     </div>
+                    <p id="withdrawal-loan-hint" class="hidden text-[11px] text-gray-400 mt-1">Para devolver un préstamo o retirar capital que habías puesto vos -- no es un gasto real, así que no resta de tu Ganancia del Negocio.</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Concepto (opcional)</label>
@@ -14604,9 +14608,11 @@
             const todayCashCapital = (appState.capitalAdjustments || [])
                 .filter(adj => adj.date === today && adj.target === 'cash')
                 .map(adj => ({
-                    type: 'income',
-                    concept: adj.concept || 'Capital inyectado',
-                    amount: adj.amount,
+                    // Un monto negativo es una devolución de préstamo/retiro de capital
+                    // (ver "Préstamo/Capital" en Retirar) -- se muestra como salida, no entrada.
+                    type: adj.amount < 0 ? 'expense' : 'income',
+                    concept: adj.concept || (adj.amount < 0 ? 'Devolución de capital' : 'Capital inyectado'),
+                    amount: Math.abs(adj.amount),
                     time: new Date(adj.timestamp).toLocaleTimeString('es-ES'),
                     label: '💰 CAPITAL'
                 }));
@@ -14715,9 +14721,9 @@
             const todayBankCapital = (appState.capitalAdjustments || [])
                 .filter(adj => adj.date === today && adj.target === 'bank')
                 .map(adj => ({
-                    type: 'income',
-                    concept: adj.concept || 'Capital inyectado',
-                    amount: adj.amount,
+                    type: adj.amount < 0 ? 'expense' : 'income',
+                    concept: adj.concept || (adj.amount < 0 ? 'Devolución de capital' : 'Capital inyectado'),
+                    amount: Math.abs(adj.amount),
                     time: new Date(adj.timestamp).toLocaleTimeString('es-ES'),
                     label: '💰 CAPITAL'
                 }));
@@ -15943,11 +15949,12 @@
 
         function setWithdrawalType(type) {
             withdrawalType = type;
-            const types = ['owner', 'salary', 'other'];
+            const types = ['owner', 'salary', 'other', 'loan'];
             const colors = {
                 owner: 'border-purple-500 bg-purple-50 text-purple-700',
                 salary: 'border-blue-500 bg-blue-50 text-blue-700',
-                other: 'border-gray-500 bg-gray-50 text-gray-700'
+                other: 'border-gray-500 bg-gray-50 text-gray-700',
+                loan: 'border-amber-500 bg-amber-50 text-amber-700'
             };
             types.forEach(t => {
                 const btn = document.getElementById('btn-wtype-' + t);
@@ -15957,6 +15964,8 @@
                         : 'flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-xs';
                 }
             });
+            const hint = document.getElementById('withdrawal-loan-hint');
+            if (hint) hint.classList.toggle('hidden', type !== 'loan');
         }
 
         function setAdjustTarget(target) {
@@ -16005,7 +16014,7 @@
                 if (adjustType === 'add') {
                     concept = `Ingreso a ${adjustTarget === 'cash' ? 'caja' : 'cuenta'}`;
                 } else {
-                    const wtypeLabels = { owner: 'Retiro de dueño (ganancias)', salary: 'Pago de sueldos (empleados)', other: 'Otro gasto' };
+                    const wtypeLabels = { owner: 'Retiro de dueño (ganancias)', salary: 'Pago de sueldos (empleados)', other: 'Otro gasto', loan: 'Devolución de préstamo / capital' };
                     concept = wtypeLabels[withdrawalType] || 'Retiro de caja';
                 }
             }
@@ -16066,19 +16075,40 @@
                     });
                 }
 
-                appState.expenses.push({
-                    id: 'WITHDRAW-' + Date.now(),
-                    date: formatDateISO(appState.activeDate),
-                    concept: concept + (adjustTarget === 'reserve' ? ' (desde reserva)' : ''),
-                    amount: amount,
-                    source: adjustTarget,
-                    type: 'withdrawal',
-                    withdrawalType: withdrawalType,
-                    user: appState.currentUser ? appState.currentUser.name : null,
-                    timestamp: Date.now()
-                });
-                
-                showNotification(`$${formatMoney(amount)} retirados de ${adjustTarget === 'cash' ? 'Caja' : adjustTarget === 'bank' ? 'Cuenta' : 'Reserva'} y registrados como gasto`, 'success');
+                if (withdrawalType === 'loan' && adjustTarget !== 'reserve') {
+                    // Devolución de préstamo/capital: sale plata real, pero NO es un Gasto
+                    // (mismo criterio que "Agregar" capital, en negativo) -- si contara como
+                    // Gasto se estaría descontando dos veces: una vez cuando se gastó la plata
+                    // prestada en lo que sea, y otra vez acá al devolverla.
+                    if (!appState.capitalAdjustments) appState.capitalAdjustments = [];
+                    appState.capitalAdjustments.push({
+                        date: formatDateISO(appState.activeDate),
+                        amount: -amount,
+                        target: adjustTarget,
+                        concept: concept,
+                        user: appState.currentUser ? appState.currentUser.name : null,
+                        timestamp: Date.now()
+                    });
+                    showNotification(`$${formatMoney(amount)} retirados de ${adjustTarget === 'cash' ? 'Caja' : 'Cuenta'} como devolución de capital (no afecta tu Ganancia del Negocio)`, 'success');
+                } else if (withdrawalType !== 'loan') {
+                    appState.expenses.push({
+                        id: 'WITHDRAW-' + Date.now(),
+                        date: formatDateISO(appState.activeDate),
+                        concept: concept + (adjustTarget === 'reserve' ? ' (desde reserva)' : ''),
+                        amount: amount,
+                        source: adjustTarget,
+                        type: 'withdrawal',
+                        withdrawalType: withdrawalType,
+                        user: appState.currentUser ? appState.currentUser.name : null,
+                        timestamp: Date.now()
+                    });
+                    showNotification(`$${formatMoney(amount)} retirados de ${adjustTarget === 'cash' ? 'Caja' : adjustTarget === 'bank' ? 'Cuenta' : 'Reserva'} y registrados como gasto`, 'success');
+                } else {
+                    // loan + reserve: la reserva ya se descontó arriba y quedó registrada en
+                    // reserveMovements; la reserva es ahorro propio, no forma parte de la
+                    // Ganancia del Negocio, así que no hace falta anotar nada más.
+                    showNotification(`$${formatMoney(amount)} retirados de Reserva como devolución de capital`, 'success');
+                }
             }
 
             saveToLocalStorage();
@@ -16135,7 +16165,12 @@
             const expectedCash = openingCash + cashSales + cashFiados + cashCapitalAdded + cashAssetSales - cashExpenses - cashInvestments - cashReturns - cashAssetPayments + toCash - toBank - resDeposits + resWithdraws;
             const expectedBank = openingBank + bankSales + bankFiados + bankCapitalAdded + bankAssetSales - bankExpenses - bankInvestments - bankReturns - bankAssetPayments - toCash + toBank;
 
-            return { cash: expectedCash, bank: expectedBank, total: expectedCash + expectedBank, reserveNet: resDeposits - resWithdraws, cashFiados, bankFiados };
+            return {
+                cash: expectedCash, bank: expectedBank, total: expectedCash + expectedBank,
+                reserveNet: resDeposits - resWithdraws, cashFiados, bankFiados,
+                cashCapitalAdded, bankCapitalAdded,
+                cashAssetNet: cashAssetSales - cashAssetPayments, bankAssetNet: bankAssetSales - bankAssetPayments
+            };
         }
 
         // Abre el arqueo automáticamente una sola vez por día si aún no se hizo
@@ -16225,13 +16260,46 @@
                     ccReserve.textContent = (reserveNet >= 0 ? '-' : '+') + '$' + formatMoney(Math.abs(reserveNet));
                 }
                 document.getElementById('cc-expected').textContent = '$' + formatMoney(expected.cash);
-                
+
+                // Capital agregado/devuelto y movimientos de Equipamiento: se muestran aparte
+                // para que quede claro que suman/restan a la Caja pero NO son ganancia del
+                // negocio (solo se ven si hubo movimiento ese día).
+                const cashCapital = expected.cashCapitalAdded || 0;
+                const cashCapitalRow = document.getElementById('cc-capital-row');
+                const cashCapitalEl = document.getElementById('cc-capital');
+                if (cashCapitalRow && cashCapitalEl) {
+                    cashCapitalRow.classList.toggle('hidden', cashCapital === 0);
+                    cashCapitalEl.textContent = (cashCapital >= 0 ? '+' : '-') + '$' + formatMoney(Math.abs(cashCapital));
+                }
+                const cashAssetNet = expected.cashAssetNet || 0;
+                const cashAssetRow = document.getElementById('cc-asset-row');
+                const cashAssetEl = document.getElementById('cc-asset');
+                if (cashAssetRow && cashAssetEl) {
+                    cashAssetRow.classList.toggle('hidden', cashAssetNet === 0);
+                    cashAssetEl.textContent = (cashAssetNet >= 0 ? '+' : '-') + '$' + formatMoney(Math.abs(cashAssetNet));
+                }
+
                 document.getElementById('cc-opening-bank').textContent = '$' + formatMoney(openingBank);
                 document.getElementById('cc-sales-bank').textContent = '$' + formatMoney(todayBankSales);
                 document.getElementById('cc-fiados-bank').textContent = '$' + formatMoney(expected.bankFiados || 0);
                 document.getElementById('cc-expenses-bank').textContent = '$' + formatMoney(todayBankExpenses);
                 document.getElementById('cc-investments-bank').textContent = '$' + formatMoney(todayBankInvestments);
                 document.getElementById('cc-expected-bank').textContent = '$' + formatMoney(expected.bank);
+
+                const bankCapital = expected.bankCapitalAdded || 0;
+                const bankCapitalRow = document.getElementById('cc-capital-row-bank');
+                const bankCapitalEl = document.getElementById('cc-capital-bank');
+                if (bankCapitalRow && bankCapitalEl) {
+                    bankCapitalRow.classList.toggle('hidden', bankCapital === 0);
+                    bankCapitalEl.textContent = (bankCapital >= 0 ? '+' : '-') + '$' + formatMoney(Math.abs(bankCapital));
+                }
+                const bankAssetNet = expected.bankAssetNet || 0;
+                const bankAssetRow = document.getElementById('cc-asset-row-bank');
+                const bankAssetEl = document.getElementById('cc-asset-bank');
+                if (bankAssetRow && bankAssetEl) {
+                    bankAssetRow.classList.toggle('hidden', bankAssetNet === 0);
+                    bankAssetEl.textContent = (bankAssetNet >= 0 ? '+' : '-') + '$' + formatMoney(Math.abs(bankAssetNet));
+                }
                 
                 // Log de diagnóstico para ver el desglose exacto
                 console.log('🔍 Arqueo desglose cuenta:', {
@@ -26435,6 +26503,8 @@ RESULTADOS:
                     <div class="flex justify-between"><span>Gastos efectivo:</span><span class="font-bold text-red-600" id="cc-expenses">$0</span></div>
                     <div class="flex justify-between"><span>Compras efectivo:</span><span class="font-bold text-orange-600" id="cc-investments">$0</span></div>
                     <div class="flex justify-between" id="cc-reserve-row"><span>A reserva (caja fuerte):</span><span class="font-bold text-amber-600" id="cc-reserve">$0</span></div>
+                    <div class="flex justify-between" id="cc-capital-row"><span>Capital (no es ganancia):</span><span class="font-bold text-purple-600" id="cc-capital">$0</span></div>
+                    <div class="flex justify-between" id="cc-asset-row"><span>Equipamiento (no es ganancia):</span><span class="font-bold text-purple-600" id="cc-asset">$0</span></div>
                     <div class="flex justify-between"><span>Esperado caja:</span><span class="font-bold text-blue-600" id="cc-expected">$0</span></div>
                 </div>
                 <div class="bg-blue-50 rounded-lg p-3 space-y-2 text-sm">
@@ -26444,6 +26514,8 @@ RESULTADOS:
                     <div class="flex justify-between"><span>Cobros fiados:</span><span class="font-bold text-green-600" id="cc-fiados-bank">$0</span></div>
                     <div class="flex justify-between"><span>Gastos débito:</span><span class="font-bold text-red-600" id="cc-expenses-bank">$0</span></div>
                     <div class="flex justify-between"><span>Compras débito:</span><span class="font-bold text-orange-600" id="cc-investments-bank">$0</span></div>
+                    <div class="flex justify-between" id="cc-capital-row-bank"><span>Capital (no es ganancia):</span><span class="font-bold text-purple-600" id="cc-capital-bank">$0</span></div>
+                    <div class="flex justify-between" id="cc-asset-row-bank"><span>Equipamiento (no es ganancia):</span><span class="font-bold text-purple-600" id="cc-asset-bank">$0</span></div>
                     <div class="flex justify-between"><span>Esperado cuenta:</span><span class="font-bold text-blue-600" id="cc-expected-bank">$0</span></div>
                 </div>
                 

@@ -13,6 +13,8 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.min.js"></script>
 <style>
     body { -webkit-tap-highlight-color: transparent; }
     .card { background: white; border-radius: 1rem; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
@@ -52,6 +54,26 @@
                     <option value="">Todos / sin filtrar</option>
                 </select>
             </div>
+        </div>
+
+        <!-- Escanear factura -->
+        <div class="card p-3">
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">📄 Escanear factura (gratis)</label>
+            <p class="text-[11px] text-gray-400 mb-2">Subí una foto o un PDF escaneado de la factura y se intenta leer nombre, cantidad y precio de cada línea (todo en el celular/PC, sin costo). Es aproximado — revisá siempre cada línea antes de agregarla.</p>
+            <label class="block w-full bg-teal-600 hover:bg-teal-700 text-white text-center py-2.5 rounded-xl font-bold cursor-pointer">
+                📄 Subir foto o PDF de la factura
+                <input type="file" accept="image/*,.pdf,application/pdf" class="hidden" onchange="handleInvoiceFileSelected(event)">
+            </label>
+            <p id="invoice-scan-status" class="text-xs text-gray-500 mt-2 hidden"></p>
+        </div>
+
+        <!-- Resultados del escaneo (solo aparece si hay algo para revisar) -->
+        <div id="scanned-items-card" class="card p-3 hidden">
+            <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-bold text-gray-500 uppercase">Revisá lo que leyó la factura</label>
+                <button onclick="discardAllScannedItems()" class="text-xs text-red-500 font-bold">Descartar todo</button>
+            </div>
+            <div id="scanned-items-list" class="space-y-3"></div>
         </div>
 
         <!-- Buscador libre -->
@@ -320,6 +342,334 @@
                 </div>
             `).join('');
         }
+
+        // ==================== ESCANEAR FACTURA (IA) ====================
+        let scannedItems = [];       // [{localId, rawName, qty, unitPrice, productId, productName, supplier, searchQuery, showSuggestions}]
+        let scannedItemsFocusId = null;
+
+        // Busca el producto del inventario que más se parezca al nombre leído
+        // de la factura -- solo para pre-cargar una sugerencia, el usuario la
+        // puede cambiar. Nunca se agrega nada a la lista sin que él confirme
+        // a qué producto corresponde.
+        function findBestProductMatch(rawName) {
+            const q = normalizeText(rawName || '');
+            if (!q) return null;
+            let best = null, bestScore = 0;
+            for (const p of fullInventory) {
+                const name = normalizeText(p.name || '');
+                if (!name) continue;
+                let score = 0;
+                if (name === q) score = 100;
+                else if (name.includes(q) || q.includes(name)) score = 70;
+                else {
+                    const qWords = q.split(/\s+/).filter(Boolean);
+                    const nWords = name.split(/\s+/).filter(Boolean);
+                    const common = qWords.filter(w => nWords.includes(w)).length;
+                    score = common * 15;
+                }
+                if (score > bestScore) { bestScore = score; best = p; }
+            }
+            return bestScore >= 15 ? best : null;
+        }
+
+        // Achica la foto antes de procesarla: Tesseract tarda más y consume más
+        // memoria con fotos de 4000x3000px de un celular moderno sin ninguna
+        // ventaja real de precisión sobre una versión más chica.
+        function resizeImageToDataUrl(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+                reader.onload = () => {
+                    const img = new Image();
+                    img.onerror = () => reject(new Error('No se pudo abrir la imagen'));
+                    img.onload = () => {
+                        const maxDim = 1800;
+                        let { width, height } = img;
+                        if (width > maxDim || height > maxDim) {
+                            const scale = maxDim / Math.max(width, height);
+                            width = Math.round(width * scale);
+                            height = Math.round(height * scale);
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.85));
+                    };
+                    img.src = reader.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Escáner/impresora suelen guardar el archivo como PDF (a veces con
+        // varias páginas). pdf.js lo abre y renderiza cada página a un canvas
+        // -- desde ahí sigue exactamente el mismo camino que una foto.
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.worker.min.js';
+        }
+        async function pdfFileToDataUrls(file) {
+            const buffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+            const maxDim = 1800;
+            const urls = [];
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const base = page.getViewport({ scale: 1 });
+                const scale = maxDim / Math.max(base.width, base.height);
+                const viewport = page.getViewport({ scale: Math.max(scale, 1) });
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                urls.push(canvas.toDataURL('image/jpeg', 0.85));
+            }
+            return urls;
+        }
+
+        // Convierte un número escrito en CUALQUIERA de los dos formatos que
+        // se ven en facturas reales: "1.234,56" (miles con punto, decimal con
+        // coma -- el habitual en Argentina) o "1,234.56" (miles con coma,
+        // decimal con punto -- muy común igual en software de facturación).
+        // El separador que aparece MÁS CERCA DEL FINAL es el decimal; da igual
+        // cuál sea, porque nunca aparecen los dos con ese significado a la vez.
+        function parseFlexibleNumber(raw) {
+            const s = String(raw).trim();
+            if (!s) return null;
+            const hasComma = s.includes(',');
+            const hasDot = s.includes('.');
+            if (hasComma && hasDot) {
+                const decimalSep = s.lastIndexOf(',') > s.lastIndexOf('.') ? ',' : '.';
+                const thousandsSep = decimalSep === ',' ? '.' : ',';
+                const n = parseFloat(s.split(thousandsSep).join('').replace(decimalSep, '.'));
+                return isNaN(n) ? null : n;
+            }
+            if (hasComma || hasDot) {
+                const sep = hasComma ? ',' : '.';
+                const parts = s.split(sep);
+                if (parts.length > 2) return parseFloat(parts.join('')) || null; // "1.234.567" -> todos miles
+                const n = parseFloat(parts[0] + '.' + parts[1]); // separador único = decimal
+                return isNaN(n) ? null : n;
+            }
+            const n = parseFloat(s);
+            return isNaN(n) ? null : n;
+        }
+
+        // Palabras que casi seguro indican que la línea NO es un producto
+        // (encabezados, totales, datos fiscales) -- se descartan directo.
+        const INVOICE_LINE_BLACKLIST = /\b(total|subtotal|iva|cuit|fecha|cae|remito|factura|pto\.?\s?vta|comprobante|domicilio|condici[oó]n|forma de pago|raz[oó]n social|c[oó]digo|descripci[oó]n|cantidad|precio|importe|bonif)/i;
+        const NUMBER_TOKEN_RE = /\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?|\d+[.,]\d+|\d+/g;
+
+        // Heurística para leer una línea de una tabla de factura escaneada.
+        // Las columnas de una tabla suelen quedar, después del OCR, separadas
+        // por 2 o más espacios (el hueco real entre columnas) -- eso separa
+        // mucho mejor el nombre de las columnas numéricas que "cortar en el
+        // primer número", que falla cuando el nombre ya trae números (ej:
+        // "COCA-COLA 12x500 Cc."). De las columnas numéricas, la PRIMERA se
+        // toma como cantidad y la ÚLTIMA como precio final por unidad (en la
+        // mayoría de facturas de mayoristas esa es la columna de la derecha,
+        // ya con descuento aplicado) -- las columnas del medio (paquete, %
+        // descuento, importe total) se ignoran. No siempre va a acertar el
+        // orden exacto de cada proveedor, por eso esto es solo un punto de
+        // partida para revisar/corregir a mano, no un resultado final.
+        function parseInvoiceLine(line) {
+            const trimmed = line.replace(/\s+$/, '');
+            if (trimmed.trim().length < 4) return null;
+            if (INVOICE_LINE_BLACKLIST.test(trimmed)) return null;
+
+            let columns = trimmed.split(/\s{2,}/).map(c => c.trim()).filter(Boolean);
+            if (columns.length < 2) {
+                const m = trimmed.match(/\d/);
+                if (!m) return null;
+                columns = [trimmed.slice(0, m.index).trim(), trimmed.slice(m.index).trim()];
+            }
+
+            const name = columns[0].replace(/^[-•*.\s]+/, '').replace(/[-.\s]+$/, '').trim();
+            if (name.length < 3 || !/[a-zA-Záéíóúñ]{3,}/.test(name)) return null;
+
+            const rest = columns.slice(1).join('  ');
+            const numTokens = rest.match(NUMBER_TOKEN_RE) || [];
+            const nums = numTokens.map(parseFlexibleNumber).filter(n => n !== null && n > 0);
+            if (nums.length === 0) return null;
+
+            let quantity = 1, unitPrice = null;
+            if (nums.length >= 2) {
+                quantity = nums[0];
+                unitPrice = nums[nums.length - 1];
+            } else {
+                unitPrice = nums[0];
+            }
+            return { name, quantity, unitPrice };
+        }
+
+        async function handleInvoiceFileSelected(event) {
+            const file = event.target.files[0];
+            event.target.value = ''; // permite volver a elegir el mismo archivo después
+            if (!file) return;
+            const statusEl = document.getElementById('invoice-scan-status');
+            statusEl.classList.remove('hidden');
+            statusEl.textContent = 'Preparando archivo...';
+            try {
+                const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+                const pageImages = isPdf ? await pdfFileToDataUrls(file) : [await resizeImageToDataUrl(file)];
+                if (pageImages.length === 0) throw new Error('El PDF no tiene páginas para leer');
+
+                let fullText = '';
+                for (let i = 0; i < pageImages.length; i++) {
+                    const pageLabel = pageImages.length > 1 ? `página ${i + 1}/${pageImages.length}` : 'la factura';
+                    statusEl.textContent = `👀 Leyendo ${pageLabel}...`;
+                    const { data } = await Tesseract.recognize(pageImages[i], 'spa', {
+                        logger: (m) => {
+                            if (m.status === 'recognizing text') {
+                                statusEl.textContent = `👀 Leyendo ${pageLabel}... ${Math.round((m.progress || 0) * 100)}%`;
+                            }
+                        }
+                    });
+                    fullText += '\n' + (data.text || '');
+                }
+
+                const rawLines = fullText.split('\n').map(l => l.trim()).filter(Boolean);
+                const parsedLines = rawLines.map(parseInvoiceLine).filter(Boolean);
+
+                if (parsedLines.length === 0) {
+                    statusEl.textContent = '⚠️ No se pudo detectar ninguna línea de producto. Probá con otra foto/escaneo: derecho, bien iluminado y sin recortar los bordes.';
+                    return;
+                }
+                scannedItems = parsedLines.map(it => {
+                    const match = findBestProductMatch(it.name);
+                    return {
+                        localId: 'S' + Date.now() + Math.random().toString(36).slice(2, 6),
+                        rawName: it.name,
+                        qty: it.quantity || 1,
+                        unitPrice: it.unitPrice != null ? it.unitPrice : 0,
+                        productId: match ? match.id : null,
+                        productName: match ? match.name : '',
+                        supplier: match ? (match.supplier || '') : '',
+                        searchQuery: match ? match.name : it.name,
+                        showSuggestions: false
+                    };
+                });
+                statusEl.textContent = `✅ Se detectaron ${scannedItems.length} línea(s) posibles. Es una lectura automática aproximada -- revisá bien cada una antes de agregar.`;
+                renderScannedItems();
+            } catch (e) {
+                console.error(e);
+                statusEl.textContent = '⚠️ ' + (e.message || 'Error leyendo la factura');
+            }
+        }
+        window.handleInvoiceFileSelected = handleInvoiceFileSelected;
+
+        function renderScannedItems() {
+            const card = document.getElementById('scanned-items-card');
+            const container = document.getElementById('scanned-items-list');
+            if (!card || !container) return;
+            if (scannedItems.length === 0) { card.classList.add('hidden'); return; }
+            card.classList.remove('hidden');
+
+            container.innerHTML = scannedItems.map(item => {
+                const q = normalizeText(item.searchQuery || '');
+                const suggestions = q ? fullInventory.filter(p => normalizeText(p.name || '').includes(q)).slice(0, 5) : [];
+                const suggestionsHtml = (item.showSuggestions && suggestions.length > 0) ? `
+                    <div class="border rounded-lg mt-1 bg-white shadow-lg max-h-40 overflow-y-auto">
+                        ${suggestions.map(p => `<div onclick='selectScannedItemProduct(${JSON.stringify(item.localId)}, ${JSON.stringify(p.id)}, ${JSON.stringify(p.name).replace(/'/g, "&apos;")})' class="px-2 py-1 text-sm hover:bg-teal-50 cursor-pointer">${escapeHtml(p.name)}</div>`).join('')}
+                    </div>` : '';
+                return `
+                <div class="border rounded-xl p-2 space-y-1 ${item.productId ? '' : 'border-orange-300 bg-orange-50'}">
+                    <div class="flex justify-between items-start gap-2">
+                        <p class="text-[11px] text-gray-400 flex-1">Factura decía: "${escapeHtml(item.rawName)}"</p>
+                        <button onclick="discardScannedItem('${item.localId}')" class="text-gray-400 px-1" title="Descartar esta línea">✕</button>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-gray-400 uppercase">Producto en tu inventario</label>
+                        <input type="text" id="scan-search-${item.localId}" value="${escapeHtml(item.searchQuery || '')}" placeholder="Buscar producto..."
+                            oninput="updateScannedItemSearch('${item.localId}', this.value)"
+                            onfocus="updateScannedItemSearch('${item.localId}', this.value)"
+                            class="w-full border-2 ${item.productId ? 'border-teal-200' : 'border-orange-300'} rounded-lg px-2 py-1 text-sm">
+                        ${suggestionsHtml}
+                        ${item.productId ? `<p class="text-[11px] text-teal-600 font-bold mt-0.5">✓ ${escapeHtml(item.productName)}</p>` : `<p class="text-[11px] text-orange-500 mt-0.5">Elegí un producto de la lista de arriba</p>`}
+                    </div>
+                    <div class="flex gap-2 items-end">
+                        <div class="flex-1">
+                            <label class="block text-[10px] text-gray-400 uppercase">Cantidad</label>
+                            <input type="number" min="0" value="${item.qty}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScannedItemField('${item.localId}', 'qty', this.value)">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-[10px] text-gray-400 uppercase">Precio final unit.</label>
+                            <input type="number" min="0" step="0.01" value="${item.unitPrice}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScannedItemField('${item.localId}', 'unitPrice', this.value)">
+                        </div>
+                        <button onclick="addScannedItemToCart('${item.localId}')" class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg font-bold text-sm shrink-0">+ Agregar</button>
+                    </div>
+                </div>`;
+            }).join('');
+
+            if (scannedItemsFocusId) {
+                const el = document.getElementById(scannedItemsFocusId);
+                if (el) {
+                    el.focus();
+                    const len = el.value.length;
+                    el.setSelectionRange(len, len);
+                }
+            }
+        }
+
+        function updateScannedItemSearch(localId, value) {
+            const item = scannedItems.find(i => i.localId === localId);
+            if (!item) return;
+            item.searchQuery = value;
+            item.showSuggestions = true;
+            // Si el texto ya no coincide con el producto elegido, se destraba la selección
+            if (item.productName && normalizeText(value) !== normalizeText(item.productName)) {
+                item.productId = null;
+                item.productName = '';
+            }
+            scannedItemsFocusId = 'scan-search-' + localId;
+            renderScannedItems();
+        }
+
+        function selectScannedItemProduct(localId, productId, productName) {
+            const item = scannedItems.find(i => i.localId === localId);
+            if (!item) return;
+            const product = fullInventory.find(p => p.id === productId);
+            item.productId = productId;
+            item.productName = productName;
+            item.searchQuery = productName;
+            item.supplier = (product && product.supplier) || '';
+            item.showSuggestions = false;
+            scannedItemsFocusId = null;
+            renderScannedItems();
+        }
+        window.selectScannedItemProduct = selectScannedItemProduct;
+
+        function updateScannedItemField(localId, field, value) {
+            const item = scannedItems.find(i => i.localId === localId);
+            if (!item) return;
+            item[field] = Math.max(0, parseFloat(value) || 0);
+            renderScannedItems();
+        }
+
+        function discardScannedItem(localId) {
+            scannedItems = scannedItems.filter(i => i.localId !== localId);
+            renderScannedItems();
+        }
+
+        function discardAllScannedItems() {
+            scannedItems = [];
+            renderScannedItems();
+        }
+
+        function addScannedItemToCart(localId) {
+            const item = scannedItems.find(i => i.localId === localId);
+            if (!item) return;
+            if (!item.productId) { alert('Elegí primero a qué producto de tu inventario corresponde esta línea.'); return; }
+            if (!item.qty || item.qty <= 0) { alert('Cantidad inválida'); return; }
+            addToCart({ productId: item.productId, productName: item.productName, qty: item.qty, cost: item.unitPrice || 0, supplier: item.supplier || '' });
+            scannedItems = scannedItems.filter(i => i.localId !== localId);
+            renderScannedItems();
+        }
+        window.updateScannedItemSearch = updateScannedItemSearch;
+        window.updateScannedItemField = updateScannedItemField;
+        window.discardScannedItem = discardScannedItem;
+        window.discardAllScannedItems = discardAllScannedItems;
+        window.addScannedItemToCart = addScannedItemToCart;
 
         // ==================== CARRITO / LISTA A ENVIAR ====================
         function addToCart(info) {

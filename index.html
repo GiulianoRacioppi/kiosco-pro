@@ -4384,6 +4384,7 @@
             // algo si el número final no cierra -- en vez de confiar solo en el número
             // final, que un bug puede corromper sin dejar rastro.
             stockLedger: [],
+            invoiceNameMappings: [],
             // Flujo de caja
             recurringExpenses: [],
             cashFlowSettings: {
@@ -10695,11 +10696,20 @@
             }
             
             console.log('Mostrando notificación...');
-            showNotification(isComposite 
-                ? 'Producto compuesto creado exitosamente' 
+            showNotification(isComposite
+                ? 'Producto compuesto creado exitosamente'
                 : `Producto comprado y creado exitosamente. Pagado con ${method === 'cash' ? 'Caja' : 'Cuenta'}`, 'success');
             console.log('=== PROCESO COMPLETADO ===');
-            
+
+            // Si este producto nuevo vino de una línea de Escanear Factura,
+            // se aprende: la próxima vez que la factura diga ese mismo texto
+            // va a sugerir este producto directo, en vez de ofrecer "nuevo" de nuevo.
+            if (pendingNewProductScanRawName) {
+                learnInvoiceNameMapping(pendingNewProductScanRawName, product.id, product.name);
+                pendingNewProductScanRawName = null;
+            }
+            returnToScanInvoiceIfPending();
+
             // Volver foco al código de barras para escanear el siguiente producto
             setTimeout(() => {
                 const barcodeInput = document.getElementById('inv-barcode');
@@ -11699,6 +11709,7 @@
             // Cierre explícito (cancelar o guardar): descartar cualquier minimizado pendiente
             addStockMinimized = false;
             addStockReturnSection = null;
+            returnToScanInvoiceIfPending();
         }
 
         function handleAddStockKeypress(e) {
@@ -12237,13 +12248,58 @@
         // nuevo para dar de alta, o directamente un gasto -- nunca se carga
         // nada solo, cada línea se confirma manualmente en el modal que ya
         // corresponde (Agregar Stock / Nuevo Producto / Registrar Gasto).
-        let scanInvoiceItems = [];      // [{localId, rawName, qty, unitPrice, type, productId, productName, searchQuery, showSuggestions}]
+        let scanInvoiceItems = [];      // [{localId, rawName, qty, unitPrice, type, productId, productName, searchQuery, showSuggestions, invoiceType, paymentMethod, expiry}]
         let scanInvoiceItemsFocusId = null;
         let scanInvoicePageImages = [];  // data URLs de las páginas subidas, solo para poder verlas
+
+        // Se pone en true justo antes de mandar al usuario a Agregar Stock /
+        // Registrar Gasto / Nuevo Producto desde una línea de la factura, y se
+        // vuelve a poner en false apenas se usa -- así, cuando ese otro modal
+        // se cierra (lo haya cancelado o confirmado), se sabe que hay que
+        // volver a mostrar la factura con las líneas que faltan, sin interferir
+        // con un uso normal y manual de esos mismos modales en cualquier otro momento.
+        let scanInvoiceReturnPending = false;
+        let pendingNewProductScanRawName = null;
+
+        // Recuerda la última elección de Facturado/Sin-factura y Caja/Cuenta
+        // dentro de esta sesión de factura -- la mayoría de las líneas de una
+        // misma factura comparten esas dos cosas, así no hay que tocarlas en cada una.
+        let scanInvoiceLastInvoiceType = 'white';
+        let scanInvoiceLastPaymentMethod = 'cash';
+
+        // La IA "aprende": cada vez que confirmás a qué producto corresponde
+        // una línea, se guarda ese nombre (tal cual lo leyó de la factura) →
+        // producto elegido. La próxima vez que aparezca ese mismo texto en
+        // otra factura, se usa directo este resultado en vez de depender de
+        // que el parecido de nombres alcance -- corrige el error de una vez.
+        function learnInvoiceNameMapping(rawName, productId, productName) {
+            const key = normalizeText(rawName || '');
+            if (!key || !productId) return;
+            if (!Array.isArray(appState.invoiceNameMappings)) appState.invoiceNameMappings = [];
+            const id = 'MAP-' + key.replace(/\s+/g, '-').slice(0, 80);
+            const existing = appState.invoiceNameMappings.find(m => m.id === id);
+            if (existing) {
+                existing.productId = productId;
+                existing.productName = productName;
+                existing.updatedAt = Date.now();
+            } else {
+                appState.invoiceNameMappings.push({ id, rawName: key, productId, productName, updatedAt: Date.now() });
+            }
+        }
 
         function findBestInventoryMatch(rawName) {
             const q = normalizeText(rawName || '');
             if (!q) return null;
+
+            // 1) ¿Ya aprendió antes qué producto es este texto exacto? Si el
+            // producto sigue existiendo, se usa directo -- máxima confianza.
+            const mapping = (appState.invoiceNameMappings || []).find(m => m.rawName === q);
+            if (mapping) {
+                const mapped = appState.inventory.find(p => p.id === mapping.productId);
+                if (mapped) return mapped;
+            }
+
+            // 2) Si no, parecido de nombres como antes.
             let best = null, bestScore = 0;
             for (const p of appState.inventory) {
                 if (!p || p.isComposite) continue;
@@ -12388,7 +12444,10 @@
                         productId: match ? match.id : null,
                         productName: match ? match.name : '',
                         searchQuery: match ? match.name : it.name,
-                        showSuggestions: false
+                        showSuggestions: false,
+                        invoiceType: scanInvoiceLastInvoiceType,
+                        paymentMethod: scanInvoiceLastPaymentMethod,
+                        expiry: ''
                     };
                 });
                 statusEl.textContent = `✅ Se leyeron ${scanInvoiceItems.length} línea(s). Revisá y confirmá cada una.`;
@@ -12441,8 +12500,18 @@
                                 <label class="block text-[10px] text-gray-400 uppercase">Costo unit.</label>
                                 <input type="number" min="0" step="0.01" value="${item.unitPrice}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)">
                             </div>
-                            <button onclick="confirmScanItemAsStock('${item.localId}')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg font-bold text-sm shrink-0">Agregar Stock</button>
-                        </div>`;
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-gray-400 uppercase">Vencim.</label>
+                                <input type="date" value="${item.expiry || ''}" class="w-full border rounded-lg px-2 py-1" onchange="updateScanItemExpiry('${item.localId}', this.value)">
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-2">
+                            <button onclick="setScanItemInvoiceType('${item.localId}', 'white')" class="flex-1 py-1.5 rounded-lg border-2 text-xs font-medium ${item.invoiceType === 'white' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500'}"><i class="fas fa-file-invoice"></i> Facturado</button>
+                            <button onclick="setScanItemInvoiceType('${item.localId}', 'black')" class="flex-1 py-1.5 rounded-lg border-2 text-xs font-medium ${item.invoiceType === 'black' ? 'border-gray-700 bg-gray-100 text-gray-800 font-bold' : 'border-gray-200 text-gray-500'}"><i class="fas fa-eye-slash"></i> Sin factura</button>
+                            <button onclick="setScanItemPayment('${item.localId}', 'cash')" class="flex-1 py-1.5 rounded-lg border-2 text-xs font-medium ${item.paymentMethod === 'cash' ? 'border-green-500 bg-green-50 text-green-700 font-bold' : 'border-gray-200 text-gray-500'}">💵 Caja</button>
+                            <button onclick="setScanItemPayment('${item.localId}', 'bank')" class="flex-1 py-1.5 rounded-lg border-2 text-xs font-medium ${item.paymentMethod === 'bank' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500'}">🏦 Cuenta</button>
+                        </div>
+                        <button onclick="confirmScanItemAsStock('${item.localId}')" class="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg font-bold text-sm">Agregar Stock</button>`;
                 } else if (item.type === 'new') {
                     bodyHtml = `
                         <p class="text-[11px] text-gray-500 mb-2">Se va a abrir "Nuevo Producto (Compra)" ya cargado con nombre, costo y cantidad -- completás código de barras, categoría, proveedor y precio de venta ahí, como siempre.</p>
@@ -12532,6 +12601,31 @@
         }
         window.updateScanItemField = updateScanItemField;
 
+        function updateScanItemExpiry(localId, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item.expiry = value || '';
+        }
+        window.updateScanItemExpiry = updateScanItemExpiry;
+
+        // La mayoría de las líneas de UNA MISMA factura comparten tipo de
+        // factura y medio de pago, así que al elegirlo en una línea se aplica
+        // a todas las que todavía están pendientes (se puede cambiar de nuevo
+        // en una línea puntual si esa sí es distinta).
+        function setScanItemInvoiceType(localId, type) {
+            scanInvoiceLastInvoiceType = type;
+            scanInvoiceItems.forEach(i => { i.invoiceType = type; });
+            renderScanInvoiceItems();
+        }
+        window.setScanItemInvoiceType = setScanItemInvoiceType;
+
+        function setScanItemPayment(localId, method) {
+            scanInvoiceLastPaymentMethod = method;
+            scanInvoiceItems.forEach(i => { i.paymentMethod = method; });
+            renderScanInvoiceItems();
+        }
+        window.setScanItemPayment = setScanItemPayment;
+
         function discardScanItem(localId) {
             scanInvoiceItems = scanInvoiceItems.filter(i => i.localId !== localId);
             renderScanInvoiceItems();
@@ -12547,18 +12641,32 @@
         window.discardAllScanItems = discardAllScanItems;
 
         // Cierra el modal de factura (sin perder las líneas que quedan) y abre
-        // el modal nativo de Agregar Stock, precargado -- el usuario termina de
-        // confirmarlo ahí mismo, exactamente como si lo hubiera cargado a mano.
+        // el modal nativo de Agregar Stock, ya precargado con TODO (cantidad,
+        // costo, vencimiento, facturado/sin factura, caja/cuenta) -- el
+        // usuario solo tiene que confirmar, y queda anotado exactamente igual
+        // que si lo hubiera cargado a mano ahí mismo (misma función real).
         function confirmScanItemAsStock(localId) {
             const item = scanInvoiceItems.find(i => i.localId === localId);
             if (!item) return;
             if (!item.productId) { showNotification('Elegí primero a qué producto de tu inventario corresponde esta línea', 'error'); return; }
+            if (!item.invoiceType) { showNotification('Elegí Facturado o Sin factura', 'error'); return; }
+            if (!item.paymentMethod) { showNotification('Elegí Caja o Cuenta', 'error'); return; }
+
+            // Aprende: la próxima vez que la factura diga este mismo texto,
+            // va a sugerir directo este producto.
+            learnInvoiceNameMapping(item.rawName, item.productId, item.productName);
+
+            scanInvoiceReturnPending = true;
             closeScanInvoiceModal();
             openAddStockModal(item.productId);
             const qtyInput = document.getElementById('add-stock-qty');
             const costInput = document.getElementById('add-stock-unit-cost');
+            const expiryInput = document.getElementById('add-stock-expiry');
             if (qtyInput) qtyInput.value = item.qty;
             if (costInput) costInput.value = item.unitPrice;
+            if (expiryInput) expiryInput.value = item.expiry || '';
+            setAddStockInvoiceType(item.invoiceType);
+            setAddStockPayment(item.paymentMethod);
             updateAddStockCost();
             scanInvoiceItems = scanInvoiceItems.filter(i => i.localId !== localId);
         }
@@ -12566,10 +12674,13 @@
 
         // Cierra el modal de factura y precarga el formulario "Nuevo Producto
         // (Compra)" de Inventario -- ahí el usuario completa código de barras,
-        // categoría, proveedor y precio de venta antes de confirmar.
+        // categoría, proveedor y precio de venta antes de confirmar. Cuando lo
+        // confirme (confirmPurchase), ahí se termina de aprender el nombre.
         function confirmScanItemAsNewProduct(localId) {
             const item = scanInvoiceItems.find(i => i.localId === localId);
             if (!item) return;
+            pendingNewProductScanRawName = item.rawName;
+            scanInvoiceReturnPending = true;
             closeScanInvoiceModal();
             showSection('inventory');
             const nameInput = document.getElementById('inv-name');
@@ -12596,6 +12707,7 @@
             if (!item) return;
             const amountInput = document.getElementById('scanitem-expense-' + localId);
             const amount = amountInput ? (parseFloat(amountInput.value) || 0) : Math.round((item.qty || 1) * (item.unitPrice || 0) * 100) / 100;
+            scanInvoiceReturnPending = true;
             closeScanInvoiceModal();
             openExpenseModal();
             document.getElementById('expense-concept').value = item.rawName;
@@ -12603,6 +12715,15 @@
             scanInvoiceItems = scanInvoiceItems.filter(i => i.localId !== localId);
         }
         window.confirmScanItemAsExpense = confirmScanItemAsExpense;
+
+        // Si venía de una línea de la factura, al cerrarse este modal (lo haya
+        // confirmado o cancelado) se vuelve a mostrar la factura con lo que
+        // falta -- así no hay que ir a buscar "Escanear Factura" de nuevo.
+        function returnToScanInvoiceIfPending() {
+            if (!scanInvoiceReturnPending) return;
+            scanInvoiceReturnPending = false;
+            if (scanInvoiceItems.length > 0) openScanInvoiceModal();
+        }
 
         function setEditProdInvoiceType(type) {
             document.getElementById('edit-prod-invoice-type').value = type;
@@ -19143,6 +19264,7 @@
 
         function closeExpenseModal() {
             document.getElementById('expense-modal').classList.remove('active');
+            returnToScanInvoiceIfPending();
         }
 
         function setExpenseHasInvoice(hasInvoice) {
@@ -22067,6 +22189,7 @@ Total de productos a comprar: ${shoppingList.length}
                 losses: [],
                 returns: [],
                 stockLedger: [],
+            invoiceNameMappings: [],
                 fixedAssets: [],
                 recurringExpenses: [],
                 cashFlowSettings: { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
@@ -24904,7 +25027,8 @@ RESULTADOS:
                 main_reserveMovements: 'reserveMovements',
                 main_shiftCounts: 'shiftCounts',
                 main_stockLedger: 'stockLedger',
-                main_fixedAssets: 'fixedAssets'
+                main_fixedAssets: 'fixedAssets',
+                main_invoiceNameMappings: 'invoiceNameMappings'
             };
         }
 
@@ -25812,6 +25936,7 @@ RESULTADOS:
                 appState.investments = appState.investments.filter(i => !deletedInvIdsMaster.has(i.id));
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 appState.stockLedger = smartMergeArrays(appState.stockLedger || [], data.stockLedger || []);
+                appState.invoiceNameMappings = smartMergeArrays(appState.invoiceNameMappings || [], data.invoiceNameMappings || []);
                 appState.fixedAssets = smartMergeArrays(appState.fixedAssets || [], data.fixedAssets || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
                 appState.billedDays = smartMergeArrays(appState.billedDays || [], data.billedDays || []);
@@ -25901,6 +26026,7 @@ RESULTADOS:
                 appState.foundStock = smartMergeArrays(appState.foundStock || [], data.foundStock || []);
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 appState.stockLedger = smartMergeArrays(appState.stockLedger || [], data.stockLedger || []);
+                appState.invoiceNameMappings = smartMergeArrays(appState.invoiceNameMappings || [], data.invoiceNameMappings || []);
                 appState.fixedAssets = smartMergeArrays(appState.fixedAssets || [], data.fixedAssets || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
                 appState.billedDays = smartMergeArrays(appState.billedDays || [], data.billedDays || []);

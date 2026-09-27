@@ -12473,11 +12473,46 @@
                 }
                 scanInvoiceItems = data.items.map(it => {
                     const match = findBestInventoryMatch(it.name, scanInvoiceSupplier);
+                    const qty = it.quantity || 1;
+                    let packages = 1;
+                    let unitsPerPackage = qty;
+                    let unitPrice = it.unitPrice != null ? it.unitPrice : 0;
+
+                    // Facturas como las de Arcor venden por "display" (ej: "1 DI") o
+                    // por "bulto" (que a veces son varios displays juntos, ej: "1 B")
+                    // sin desglosar cuántas unidades trae adentro -- eso la IA no lo
+                    // puede saber sola. Si el producto ya tiene configurado
+                    // "Unidades por display" (y, para el caso bulto, también
+                    // "Displays por bulto") en Editar Producto, se usan esos números
+                    // conocidos: la cantidad leída pasa a ser "bultos" comprados, y
+                    // el precio leído (que era el del display/bulto completo) se
+                    // divide para dar el precio real por unidad individual. Si el
+                    // producto no tiene esto configurado, no se toca nada -- sigue
+                    // usando lo que la IA ya resolvió sola (caso Dulcenter, con
+                    // columnas de Cant/Paq/Unit.Final que ya vienen completas).
+                    const unitTypeNorm = it.unitType ? it.unitType.trim().toLowerCase() : '';
+                    const isDisplayLine = /^d/.test(unitTypeNorm); // "DI", "DISPLAY", "DISP"...
+                    const isBultoLine = /^b/.test(unitTypeNorm);   // "B", "BULTO"...
+                    if (match && isDisplayLine && match.unitsPerDisplay > 0) {
+                        packages = qty;
+                        unitsPerPackage = match.unitsPerDisplay;
+                        unitPrice = unitPrice > 0 ? Math.round((unitPrice / match.unitsPerDisplay) * 100) / 100 : 0;
+                    } else if (match && isBultoLine && match.unitsPerDisplay > 0 && match.displaysPerBulk > 0) {
+                        packages = qty;
+                        unitsPerPackage = match.unitsPerDisplay * match.displaysPerBulk;
+                        unitPrice = unitPrice > 0 ? Math.round((unitPrice / unitsPerPackage) * 100) / 100 : 0;
+                    }
+
                     return {
                         localId: 'SI' + Date.now() + Math.random().toString(36).slice(2, 6),
                         rawName: it.name,
-                        qty: it.quantity || 1,
-                        unitPrice: it.unitPrice != null ? it.unitPrice : 0,
+                        qty: Math.round(packages * unitsPerPackage * 100) / 100,
+                        // Reconstrucción tipo factura: por defecto "1 bulto de <qty>
+                        // unidades" (da el mismo total que ya venía) -- el usuario
+                        // puede repartir esos dos números distinto si la IA contó mal.
+                        packages,
+                        unitsPerPackage,
+                        unitPrice,
                         type: match ? 'stock' : 'new',
                         productId: match ? match.id : null,
                         productName: match ? match.name : '',
@@ -12507,6 +12542,43 @@
             container.innerHTML = scanInvoiceItems.map(item => {
                 const typeBtn = (t, label) => `<button onclick="setScanItemType('${item.localId}', '${t}')" class="flex-1 py-1.5 rounded-lg border-2 text-xs font-bold ${item.type === t ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500'}">${label}</button>`;
 
+                // Fila de reconstrucción tipo factura, común a "En stock" y
+                // "Producto nuevo": bultos × unidades por bulto = total de
+                // unidades (editable cada uno, por si la IA repartió mal el
+                // número), y precio unitario ⇄ precio total (cualquiera de los
+                // dos se puede tipear, el otro se calcula solo).
+                const totalUnidades = Math.round((item.packages || 0) * (item.unitsPerPackage || 0) * 100) / 100;
+                const totalPrice = Math.round(totalUnidades * (item.unitPrice || 0) * 100) / 100;
+                const qtyPriceRowsHtml = `
+                    <div class="flex gap-1.5 items-end mt-1">
+                        <div class="flex-1">
+                            <label class="block text-[10px] text-gray-400 uppercase">Bultos</label>
+                            <input type="number" min="0" step="0.01" value="${item.packages}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemPackages('${item.localId}', this.value)">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-[10px] text-gray-400 uppercase">Unid/bulto</label>
+                            <input type="number" min="0" step="0.01" value="${item.unitsPerPackage}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemUnitsPerPackage('${item.localId}', this.value)">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-[10px] text-gray-400 uppercase">Total unid.</label>
+                            <input type="number" value="${totalUnidades}" readonly class="w-full border rounded-lg px-2 py-1 text-center bg-gray-50 text-gray-500">
+                        </div>
+                    </div>
+                    <div class="flex gap-1.5 items-end mt-1">
+                        <div class="flex-1">
+                            <label class="block text-[10px] text-gray-400 uppercase">Precio unit.</label>
+                            <input type="number" min="0" step="0.01" value="${item.unitPrice}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-[10px] text-gray-400 uppercase">Precio total</label>
+                            <input type="number" min="0" step="0.01" value="${totalPrice}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemTotalPrice('${item.localId}', this.value)">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-[10px] text-gray-400 uppercase">Vencim.</label>
+                            <input type="date" value="${item.expiry || ''}" class="w-full border rounded-lg px-2 py-1" onchange="updateScanItemExpiry('${item.localId}', this.value)">
+                        </div>
+                    </div>`;
+
                 let bodyHtml = '';
                 if (item.type === 'stock') {
                     const matchedProduct = item.productId ? appState.inventory.find(p => p.id === item.productId) : null;
@@ -12522,7 +12594,6 @@
                                 📊 Stock: <strong>${totalStock}</strong> &nbsp;·&nbsp; Precio actual: <strong>$${formatMoney(matchedProduct.salePrice || 0)}</strong> &nbsp;·&nbsp; ${batchesInfo}
                             </div>`;
                     }
-                    const total = Math.round((item.qty || 0) * (item.unitPrice || 0) * 100) / 100;
                     const currentSalePrice = matchedProduct ? (matchedProduct.salePrice || 0) : 0;
                     const priceForMargin = (item.newPrice !== '' && item.newPrice != null) ? parseFloat(item.newPrice) : currentSalePrice;
                     const marginPct = (item.unitPrice > 0 && priceForMargin > 0) ? (((priceForMargin - item.unitPrice) / item.unitPrice) * 100) : null;
@@ -12537,20 +12608,7 @@
                             </div>
                             ${productInfoHtml}
                         </div>
-                        <div class="flex gap-1.5 items-end mt-1">
-                            <div class="flex-1">
-                                <label class="block text-[10px] text-gray-400 uppercase">Cantidad</label>
-                                <input type="number" min="0" value="${item.qty}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'qty', this.value)">
-                            </div>
-                            <div class="flex-1">
-                                <label class="block text-[10px] text-gray-400 uppercase">Costo unit.</label>
-                                <input type="number" min="0" step="0.01" value="${item.unitPrice}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)">
-                            </div>
-                            <div class="flex-1">
-                                <label class="block text-[10px] text-gray-400 uppercase">Vencim.</label>
-                                <input type="date" value="${item.expiry || ''}" class="w-full border rounded-lg px-2 py-1" onchange="updateScanItemExpiry('${item.localId}', this.value)">
-                            </div>
-                        </div>
+                        ${qtyPriceRowsHtml}
                         <div class="flex gap-1.5 items-end mt-1">
                             <div class="flex-1">
                                 <label class="block text-[10px] text-gray-400 uppercase">Nuevo precio venta</label>
@@ -12569,10 +12627,6 @@
                             <button onclick="setScanItemInvoiceType('${item.localId}', 'black')" class="flex-1 py-1 rounded-lg border-2 text-[11px] font-medium ${item.invoiceType === 'black' ? 'border-gray-700 bg-gray-100 text-gray-800 font-bold' : 'border-gray-200 text-gray-500'}"><i class="fas fa-eye-slash"></i> Sin factura</button>
                             <button onclick="setScanItemPayment('${item.localId}', 'cash')" class="flex-1 py-1 rounded-lg border-2 text-[11px] font-medium ${item.paymentMethod === 'cash' ? 'border-green-500 bg-green-50 text-green-700 font-bold' : 'border-gray-200 text-gray-500'}">💵 Caja</button>
                             <button onclick="setScanItemPayment('${item.localId}', 'bank')" class="flex-1 py-1 rounded-lg border-2 text-[11px] font-medium ${item.paymentMethod === 'bank' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500'}">🏦 Cuenta</button>
-                        </div>
-                        <div class="flex justify-between items-center mt-1 bg-indigo-50 rounded-lg px-2 py-1">
-                            <span class="text-[11px] text-indigo-600 font-bold">Costo total</span>
-                            <span class="text-sm text-indigo-700 font-bold">$${formatMoney(total)}</span>
                         </div>
                         <button onclick="confirmScanItemAsStock('${item.localId}')" class="w-full mt-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-bold text-sm">Agregar Stock</button>`;
                 } else if (item.type === 'new') {
@@ -12597,23 +12651,19 @@
                                 <input type="text" id="scanitem-new-supplier-${item.localId}" list="scan-suppliers-datalist" class="w-full border rounded-lg px-2 py-1 text-sm">
                             </div>
                         </div>
+                        ${qtyPriceRowsHtml}
                         <div class="flex gap-1.5 items-end mt-1">
                             <div class="flex-1">
-                                <label class="block text-[10px] text-gray-400 uppercase">Cantidad</label>
-                                <input type="number" min="0" value="${item.qty}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'qty', this.value)">
-                            </div>
-                            <div class="flex-1">
-                                <label class="block text-[10px] text-gray-400 uppercase">Costo unit.</label>
-                                <input type="number" min="0" step="0.01" value="${item.unitPrice}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)">
-                            </div>
-                            <div class="flex-1">
                                 <label class="block text-[10px] text-gray-400 uppercase">Precio venta</label>
-                                <input type="number" min="0" step="0.01" id="scanitem-new-price-${item.localId}" class="w-full border rounded-lg px-2 py-1 text-center">
+                                <input type="number" min="0" step="0.01" id="scanitem-new-price-${item.localId}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemNewProductPrice('${item.localId}', ${item.unitPrice})">
                             </div>
                             <div class="flex-1">
-                                <label class="block text-[10px] text-gray-400 uppercase">Vencim.</label>
-                                <input type="date" value="${item.expiry || ''}" class="w-full border rounded-lg px-2 py-1" onchange="updateScanItemExpiry('${item.localId}', this.value)">
+                                <label class="block text-[10px] text-gray-400 uppercase">Margen %</label>
+                                <input type="number" step="0.1" id="scanitem-new-margin-${item.localId}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemNewProductMargin('${item.localId}', ${item.unitPrice})">
                             </div>
+                            <label class="flex items-center gap-1 text-xs text-gray-500 cursor-pointer whitespace-nowrap pb-1.5">
+                                <input type="checkbox" ${item.vatApplied ? 'checked' : ''} onchange="toggleScanItemVat('${item.localId}')"> 💰 +IVA
+                            </label>
                         </div>
                         <button onclick="confirmScanItemAsNewProduct('${item.localId}')" class="w-full mt-1.5 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg font-bold text-sm">Dar de alta</button>`;
                 } else {
@@ -12798,6 +12848,48 @@
         }
         window.updateScanItemExpiry = updateScanItemExpiry;
 
+        function updateScanItemPackages(localId, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item.packages = Math.max(0, parseFloat(value) || 0);
+            item.qty = Math.round(item.packages * item.unitsPerPackage * 100) / 100;
+            renderScanInvoiceItems();
+        }
+        window.updateScanItemPackages = updateScanItemPackages;
+
+        function updateScanItemUnitsPerPackage(localId, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item.unitsPerPackage = Math.max(0, parseFloat(value) || 0);
+            item.qty = Math.round(item.packages * item.unitsPerPackage * 100) / 100;
+            renderScanInvoiceItems();
+        }
+        window.updateScanItemUnitsPerPackage = updateScanItemUnitsPerPackage;
+
+        // Precio total ⇄ precio unitario: tipeás cualquiera de los dos y el
+        // otro se recalcula solo, en base al total de unidades ya reconstruido.
+        function updateScanItemTotalPrice(localId, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            const total = Math.max(0, parseFloat(value) || 0);
+            if (item.qty > 0) item.unitPrice = Math.round((total / item.qty) * 100) / 100;
+            renderScanInvoiceItems();
+        }
+        window.updateScanItemTotalPrice = updateScanItemTotalPrice;
+
+        // +IVA 21% para todas las líneas "En stock"/"Producto nuevo" de una,
+        // en vez de tener que tocarlo línea por línea.
+        function toggleAllScanItemsVat(checked) {
+            scanInvoiceItems.forEach(item => {
+                if ((item.type === 'stock' || item.type === 'new') && !!item.vatApplied !== checked) {
+                    item.unitPrice = checked ? (item.unitPrice * 1.21) : (item.unitPrice / 1.21);
+                    item.vatApplied = checked;
+                }
+            });
+            renderScanInvoiceItems();
+        }
+        window.toggleAllScanItemsVat = toggleAllScanItemsVat;
+
         // Igual que el checkbox "+ IVA 21%" de Agregar Stock: multiplica/divide
         // el costo unitario ya cargado, no lo suma aparte.
         function toggleScanItemVat(localId) {
@@ -12829,6 +12921,31 @@
             renderScanInvoiceItems();
         }
         window.updateScanItemMarginPercent = updateScanItemMarginPercent;
+
+        // Precio ↔ Margen para la fila "Producto nuevo" -- estos dos campos no
+        // viven en el estado del ítem (se leen directo del DOM recién al
+        // confirmar), así que se actualizan entre sí sin re-renderizar la lista.
+        function updateScanItemNewProductPrice(localId, unitPrice) {
+            const priceInput = document.getElementById('scanitem-new-price-' + localId);
+            const marginInput = document.getElementById('scanitem-new-margin-' + localId);
+            if (!priceInput || !marginInput) return;
+            const price = parseFloat(priceInput.value) || 0;
+            if (unitPrice > 0 && price > 0) {
+                marginInput.value = (((price - unitPrice) / unitPrice) * 100).toFixed(1);
+            }
+        }
+        window.updateScanItemNewProductPrice = updateScanItemNewProductPrice;
+
+        function updateScanItemNewProductMargin(localId, unitPrice) {
+            const priceInput = document.getElementById('scanitem-new-price-' + localId);
+            const marginInput = document.getElementById('scanitem-new-margin-' + localId);
+            if (!priceInput || !marginInput) return;
+            const margin = parseFloat(marginInput.value);
+            if (unitPrice > 0 && !isNaN(margin)) {
+                priceInput.value = roundTo50Up(unitPrice * (1 + margin / 100)).toFixed(2);
+            }
+        }
+        window.updateScanItemNewProductMargin = updateScanItemNewProductMargin;
 
         // La mayoría de las líneas de UNA MISMA factura comparten tipo de
         // factura y medio de pago, así que al elegirlo en una línea se aplica
@@ -27677,7 +27794,12 @@ RESULTADOS:
             <div id="scan-invoice-items-section" class="hidden mt-4">
                 <div class="flex justify-between items-center mb-2">
                     <label class="text-xs font-bold text-gray-500 uppercase">Líneas detectadas</label>
-                    <button onclick="discardAllScanItems()" class="text-xs text-red-500 font-bold">Descartar todo</button>
+                    <div class="flex items-center gap-3">
+                        <label class="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
+                            <input type="checkbox" onchange="toggleAllScanItemsVat(this.checked)"> 💰 +IVA 21% a todos
+                        </label>
+                        <button onclick="discardAllScanItems()" class="text-xs text-red-500 font-bold">Descartar todo</button>
+                    </div>
                 </div>
                 <div id="scan-invoice-items-list" class="space-y-2"></div>
             </div>

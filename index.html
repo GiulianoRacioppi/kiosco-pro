@@ -10705,7 +10705,7 @@
             // se aprende: la próxima vez que la factura diga ese mismo texto
             // va a sugerir este producto directo, en vez de ofrecer "nuevo" de nuevo.
             if (pendingNewProductScanRawName) {
-                learnInvoiceNameMapping(pendingNewProductScanRawName, product.id, product.name);
+                learnInvoiceNameMapping(pendingNewProductScanRawName, product.id, product.name, scanInvoiceSupplier);
                 pendingNewProductScanRawName = null;
             }
             returnToScanInvoiceIfPending();
@@ -12266,36 +12266,62 @@
         let scanInvoiceLastInvoiceType = 'white';
         let scanInvoiceLastPaymentMethod = 'cash';
 
+        // Proveedor elegido para la factura que se está escaneando -- el mismo
+        // texto puede significar productos distintos según el proveedor (o el
+        // mismo producto puede llamarse distinto de una factura a otra), así
+        // que lo aprendido se guarda por proveedor, no de forma global.
+        let scanInvoiceSupplier = '';
+        function setScanInvoiceSupplier(value) {
+            scanInvoiceSupplier = value || '';
+        }
+        window.setScanInvoiceSupplier = setScanInvoiceSupplier;
+
         // La IA "aprende": cada vez que confirmás a qué producto corresponde
-        // una línea, se guarda ese nombre (tal cual lo leyó de la factura) →
-        // producto elegido. La próxima vez que aparezca ese mismo texto en
-        // otra factura, se usa directo este resultado en vez de depender de
-        // que el parecido de nombres alcance -- corrige el error de una vez.
-        function learnInvoiceNameMapping(rawName, productId, productName) {
+        // una línea, se guarda ese nombre (tal cual lo leyó de la factura,
+        // junto con el proveedor elegido) → producto elegido. La próxima vez
+        // que aparezca ese mismo texto en una factura del mismo proveedor, se
+        // usa directo este resultado en vez de depender de que el parecido de
+        // nombres alcance -- corrige el error de una vez, sin confundir
+        // nombres iguales que en otro proveedor sean otro producto distinto.
+        function learnInvoiceNameMapping(rawName, productId, productName, supplier) {
             const key = normalizeText(rawName || '');
             if (!key || !productId) return;
             if (!Array.isArray(appState.invoiceNameMappings)) appState.invoiceNameMappings = [];
-            const id = 'MAP-' + key.replace(/\s+/g, '-').slice(0, 80);
+            const supplierKey = supplier ? normalizeText(supplier) : '';
+            const id = 'MAP-' + (supplierKey ? supplierKey + '-' : '') + key.replace(/\s+/g, '-').slice(0, 80);
             const existing = appState.invoiceNameMappings.find(m => m.id === id);
             if (existing) {
                 existing.productId = productId;
                 existing.productName = productName;
                 existing.updatedAt = Date.now();
             } else {
-                appState.invoiceNameMappings.push({ id, rawName: key, productId, productName, updatedAt: Date.now() });
+                appState.invoiceNameMappings.push({ id, rawName: key, supplier: supplier || '', productId, productName, updatedAt: Date.now() });
             }
         }
 
-        function findBestInventoryMatch(rawName) {
+        function findBestInventoryMatch(rawName, supplier) {
             const q = normalizeText(rawName || '');
             if (!q) return null;
 
-            // 1) ¿Ya aprendió antes qué producto es este texto exacto? Si el
-            // producto sigue existiendo, se usa directo -- máxima confianza.
-            const mapping = (appState.invoiceNameMappings || []).find(m => m.rawName === q);
-            if (mapping) {
-                const mapped = appState.inventory.find(p => p.id === mapping.productId);
-                if (mapped) return mapped;
+            // 1) ¿Ya aprendió antes qué producto es este texto exacto PARA ESTE
+            // PROVEEDOR? Si el producto sigue existiendo, se usa directo.
+            if (supplier) {
+                const supplierKey = normalizeText(supplier);
+                const scoped = (appState.invoiceNameMappings || []).find(m => m.rawName === q && m.supplier && normalizeText(m.supplier) === supplierKey);
+                if (scoped) {
+                    const mapped = appState.inventory.find(p => p.id === scoped.productId);
+                    if (mapped) return mapped;
+                }
+            }
+
+            // 2) Si no se especificó proveedor para este escaneo, sirve
+            // cualquier aprendizaje previo con ese mismo texto (mejor esfuerzo).
+            if (!supplier) {
+                const anyMapping = (appState.invoiceNameMappings || []).find(m => m.rawName === q);
+                if (anyMapping) {
+                    const mapped = appState.inventory.find(p => p.id === anyMapping.productId);
+                    if (mapped) return mapped;
+                }
             }
 
             // 2) Si no, parecido de nombres como antes.
@@ -12372,6 +12398,19 @@
             // Muestra la factura tal cual había quedado (por ej. se cerró el modal
             // para ir a confirmar una línea en otro modal) en vez de perder el progreso.
             document.getElementById('scan-invoice-upload-section').classList.remove('hidden');
+            const supplierSel = document.getElementById('scan-invoice-supplier');
+            if (supplierSel) {
+                const current = supplierSel.value;
+                supplierSel.innerHTML = '<option value="">Sin especificar</option>' + (appState.suppliers || [])
+                    .slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                    .map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join('');
+                supplierSel.value = current || scanInvoiceSupplier || '';
+            }
+            const suppliersDatalist = document.getElementById('scan-suppliers-datalist');
+            if (suppliersDatalist) {
+                suppliersDatalist.innerHTML = (appState.suppliers || [])
+                    .map(s => `<option value="${escapeHtml(s.name)}">`).join('');
+            }
             if (scanInvoiceItems.length > 0) renderScanInvoiceItems();
             if (scanInvoicePageImages.length > 0) renderScanInvoicePages();
         }
@@ -12433,7 +12472,7 @@
                     return;
                 }
                 scanInvoiceItems = data.items.map(it => {
-                    const match = findBestInventoryMatch(it.name);
+                    const match = findBestInventoryMatch(it.name, scanInvoiceSupplier);
                     return {
                         localId: 'SI' + Date.now() + Math.random().toString(36).slice(2, 6),
                         rawName: it.name,
@@ -12445,7 +12484,8 @@
                         invoiceType: scanInvoiceLastInvoiceType,
                         paymentMethod: scanInvoiceLastPaymentMethod,
                         expiry: '',
-                        vatApplied: false
+                        vatApplied: false,
+                        newPrice: ''
                     };
                 });
                 statusEl.textContent = `✅ Se leyeron ${scanInvoiceItems.length} línea(s). Revisá y confirmá cada una.`;
@@ -12478,23 +12518,26 @@
                             ? batches.map((b, i) => `Lote ${i + 1}: ${b.stock}u${b.expiry ? ' · vence ' + b.expiry : ''}`).join(' &nbsp;·&nbsp; ')
                             : 'Sin lotes cargados';
                         productInfoHtml = `
-                            <div class="bg-gray-50 rounded-lg px-2 py-1.5 text-[11px] text-gray-500 mt-1">
-                                📊 Stock actual: <strong>${totalStock}</strong> &nbsp;·&nbsp; Último costo: <strong>$${formatMoney(matchedProduct.cost || 0)}</strong><br>${batchesInfo}
+                            <div class="bg-gray-50 rounded-lg px-2 py-1 text-[10px] text-gray-500 mt-0.5">
+                                📊 Stock: <strong>${totalStock}</strong> &nbsp;·&nbsp; Precio actual: <strong>$${formatMoney(matchedProduct.salePrice || 0)}</strong> &nbsp;·&nbsp; ${batchesInfo}
                             </div>`;
                     }
                     const total = Math.round((item.qty || 0) * (item.unitPrice || 0) * 100) / 100;
+                    const currentSalePrice = matchedProduct ? (matchedProduct.salePrice || 0) : 0;
+                    const priceForMargin = (item.newPrice !== '' && item.newPrice != null) ? parseFloat(item.newPrice) : currentSalePrice;
+                    const marginPct = (item.unitPrice > 0 && priceForMargin > 0) ? (((priceForMargin - item.unitPrice) / item.unitPrice) * 100) : null;
                     bodyHtml = `
                         <div>
                             <label class="block text-[10px] text-gray-400 uppercase">Producto en tu inventario</label>
                             <div id="scanitem-productslot-${item.localId}">
-                                <button onclick="openScanProductPicker('${item.localId}')" class="w-full text-left border-2 ${item.productId ? 'border-indigo-200' : 'border-orange-300'} rounded-lg px-2 py-1.5 text-sm flex justify-between items-center gap-2">
+                                <button onclick="openScanProductPicker('${item.localId}')" class="w-full text-left border-2 ${item.productId ? 'border-indigo-200' : 'border-orange-300'} rounded-lg px-2 py-1 text-sm flex justify-between items-center gap-2">
                                     <span class="${item.productId ? 'text-indigo-700 font-bold' : 'text-orange-500'}">${item.productId ? '✓ ' + escapeHtml(item.productName) : 'Elegí un producto...'}</span>
                                     <i class="fas fa-search text-gray-300"></i>
                                 </button>
                             </div>
                             ${productInfoHtml}
                         </div>
-                        <div class="flex gap-2 items-end mt-2">
+                        <div class="flex gap-1.5 items-end mt-1">
                             <div class="flex-1">
                                 <label class="block text-[10px] text-gray-400 uppercase">Cantidad</label>
                                 <input type="number" min="0" value="${item.qty}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'qty', this.value)">
@@ -12508,24 +12551,53 @@
                                 <input type="date" value="${item.expiry || ''}" class="w-full border rounded-lg px-2 py-1" onchange="updateScanItemExpiry('${item.localId}', this.value)">
                             </div>
                         </div>
-                        <label class="flex items-center gap-1.5 mt-1.5 text-xs text-gray-500 cursor-pointer">
-                            <input type="checkbox" ${item.vatApplied ? 'checked' : ''} onchange="toggleScanItemVat('${item.localId}')"> 💰 +IVA 21%
-                        </label>
-                        <div class="flex gap-2 mt-2">
-                            <button onclick="setScanItemInvoiceType('${item.localId}', 'white')" class="flex-1 py-1.5 rounded-lg border-2 text-xs font-medium ${item.invoiceType === 'white' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500'}"><i class="fas fa-file-invoice"></i> Facturado</button>
-                            <button onclick="setScanItemInvoiceType('${item.localId}', 'black')" class="flex-1 py-1.5 rounded-lg border-2 text-xs font-medium ${item.invoiceType === 'black' ? 'border-gray-700 bg-gray-100 text-gray-800 font-bold' : 'border-gray-200 text-gray-500'}"><i class="fas fa-eye-slash"></i> Sin factura</button>
-                            <button onclick="setScanItemPayment('${item.localId}', 'cash')" class="flex-1 py-1.5 rounded-lg border-2 text-xs font-medium ${item.paymentMethod === 'cash' ? 'border-green-500 bg-green-50 text-green-700 font-bold' : 'border-gray-200 text-gray-500'}">💵 Caja</button>
-                            <button onclick="setScanItemPayment('${item.localId}', 'bank')" class="flex-1 py-1.5 rounded-lg border-2 text-xs font-medium ${item.paymentMethod === 'bank' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500'}">🏦 Cuenta</button>
+                        <div class="flex gap-1.5 items-end mt-1">
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-gray-400 uppercase">Nuevo precio venta</label>
+                                <input type="number" min="0" step="0.01" placeholder="${currentSalePrice.toFixed(2)}" value="${item.newPrice || ''}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemNewPrice('${item.localId}', this.value)">
+                            </div>
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-gray-400 uppercase">Margen %</label>
+                                <input type="number" step="0.1" value="${marginPct != null ? marginPct.toFixed(1) : ''}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemMarginPercent('${item.localId}', this.value)">
+                            </div>
+                            <label class="flex items-center gap-1 text-xs text-gray-500 cursor-pointer whitespace-nowrap pb-1.5">
+                                <input type="checkbox" ${item.vatApplied ? 'checked' : ''} onchange="toggleScanItemVat('${item.localId}')"> 💰 +IVA
+                            </label>
                         </div>
-                        <div class="flex justify-between items-center mt-2 bg-indigo-50 rounded-lg px-3 py-1.5">
-                            <span class="text-xs text-indigo-600 font-bold">Costo total</span>
+                        <div class="flex gap-1.5 mt-1">
+                            <button onclick="setScanItemInvoiceType('${item.localId}', 'white')" class="flex-1 py-1 rounded-lg border-2 text-[11px] font-medium ${item.invoiceType === 'white' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500'}"><i class="fas fa-file-invoice"></i> Facturado</button>
+                            <button onclick="setScanItemInvoiceType('${item.localId}', 'black')" class="flex-1 py-1 rounded-lg border-2 text-[11px] font-medium ${item.invoiceType === 'black' ? 'border-gray-700 bg-gray-100 text-gray-800 font-bold' : 'border-gray-200 text-gray-500'}"><i class="fas fa-eye-slash"></i> Sin factura</button>
+                            <button onclick="setScanItemPayment('${item.localId}', 'cash')" class="flex-1 py-1 rounded-lg border-2 text-[11px] font-medium ${item.paymentMethod === 'cash' ? 'border-green-500 bg-green-50 text-green-700 font-bold' : 'border-gray-200 text-gray-500'}">💵 Caja</button>
+                            <button onclick="setScanItemPayment('${item.localId}', 'bank')" class="flex-1 py-1 rounded-lg border-2 text-[11px] font-medium ${item.paymentMethod === 'bank' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500'}">🏦 Cuenta</button>
+                        </div>
+                        <div class="flex justify-between items-center mt-1 bg-indigo-50 rounded-lg px-2 py-1">
+                            <span class="text-[11px] text-indigo-600 font-bold">Costo total</span>
                             <span class="text-sm text-indigo-700 font-bold">$${formatMoney(total)}</span>
                         </div>
-                        <button onclick="confirmScanItemAsStock('${item.localId}')" class="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg font-bold text-sm">Agregar Stock</button>`;
+                        <button onclick="confirmScanItemAsStock('${item.localId}')" class="w-full mt-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-bold text-sm">Agregar Stock</button>`;
                 } else if (item.type === 'new') {
+                    const categorySelectEl = document.getElementById('inv-category');
+                    const categoryOptions = categorySelectEl ? categorySelectEl.innerHTML : '';
                     bodyHtml = `
-                        <p class="text-[11px] text-gray-500 mb-2">Se va a abrir "Nuevo Producto (Compra)" ya cargado con nombre, costo y cantidad -- completás código de barras, categoría, proveedor y precio de venta ahí, como siempre.</p>
-                        <div class="flex gap-2 items-end">
+                        <div>
+                            <label class="block text-[10px] text-gray-400 uppercase">Nombre</label>
+                            <input type="text" id="scanitem-new-name-${item.localId}" value="${escapeHtml(item.rawName)}" class="w-full border rounded-lg px-2 py-1 text-sm">
+                        </div>
+                        <div class="flex gap-1.5 items-end mt-1">
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-gray-400 uppercase">Código de barras</label>
+                                <input type="text" id="scanitem-new-barcode-${item.localId}" class="w-full border rounded-lg px-2 py-1 text-sm">
+                            </div>
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-gray-400 uppercase">Categoría</label>
+                                <select id="scanitem-new-category-${item.localId}" class="w-full border rounded-lg px-2 py-1 text-sm">${categoryOptions}</select>
+                            </div>
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-gray-400 uppercase">Proveedor</label>
+                                <input type="text" id="scanitem-new-supplier-${item.localId}" list="scan-suppliers-datalist" class="w-full border rounded-lg px-2 py-1 text-sm">
+                            </div>
+                        </div>
+                        <div class="flex gap-1.5 items-end mt-1">
                             <div class="flex-1">
                                 <label class="block text-[10px] text-gray-400 uppercase">Cantidad</label>
                                 <input type="number" min="0" value="${item.qty}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'qty', this.value)">
@@ -12534,8 +12606,16 @@
                                 <label class="block text-[10px] text-gray-400 uppercase">Costo unit.</label>
                                 <input type="number" min="0" step="0.01" value="${item.unitPrice}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)">
                             </div>
-                            <button onclick="confirmScanItemAsNewProduct('${item.localId}')" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg font-bold text-sm shrink-0">Dar de alta</button>
-                        </div>`;
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-gray-400 uppercase">Precio venta</label>
+                                <input type="number" min="0" step="0.01" id="scanitem-new-price-${item.localId}" class="w-full border rounded-lg px-2 py-1 text-center">
+                            </div>
+                            <div class="flex-1">
+                                <label class="block text-[10px] text-gray-400 uppercase">Vencim.</label>
+                                <input type="date" value="${item.expiry || ''}" class="w-full border rounded-lg px-2 py-1" onchange="updateScanItemExpiry('${item.localId}', this.value)">
+                            </div>
+                        </div>
+                        <button onclick="confirmScanItemAsNewProduct('${item.localId}')" class="w-full mt-1.5 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg font-bold text-sm">Dar de alta</button>`;
                 } else {
                     const total = Math.round((item.qty || 1) * (item.unitPrice || 0) * 100) / 100;
                     bodyHtml = `
@@ -12729,6 +12809,27 @@
         }
         window.toggleScanItemVat = toggleScanItemVat;
 
+        function updateScanItemNewPrice(localId, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item.newPrice = value;
+            renderScanInvoiceItems();
+        }
+        window.updateScanItemNewPrice = updateScanItemNewPrice;
+
+        // Mismo cálculo que "Margen de ganancia (%)" de Agregar Stock: a partir
+        // del costo unitario y el margen pedido, arma el precio de venta.
+        function updateScanItemMarginPercent(localId, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            const margin = parseFloat(value);
+            if (!isNaN(margin) && item.unitPrice > 0) {
+                item.newPrice = roundTo50Up(item.unitPrice * (1 + margin / 100)).toFixed(2);
+            }
+            renderScanInvoiceItems();
+        }
+        window.updateScanItemMarginPercent = updateScanItemMarginPercent;
+
         // La mayoría de las líneas de UNA MISMA factura comparten tipo de
         // factura y medio de pago, así que al elegirlo en una línea se aplica
         // a todas las que todavía están pendientes (se puede cambiar de nuevo
@@ -12775,31 +12876,31 @@
 
             // Aprende: la próxima vez que la factura diga este mismo texto,
             // va a sugerir directo este producto.
-            learnInvoiceNameMapping(item.rawName, item.productId, item.productName);
+            learnInvoiceNameMapping(item.rawName, item.productId, item.productName, scanInvoiceSupplier);
 
             scanInvoiceReturnPending = true;
             closeScanInvoiceModal();
+            // Precarga el modal real de Agregar Stock y lo confirma directo (un
+            // solo clic) -- misma función real (executeAddStock), mismos lotes,
+            // mismo ledger, misma notificación de siempre al final.
             openAddStockModal(item.productId);
-            const applyValues = () => {
-                const qtyInput = document.getElementById('add-stock-qty');
-                const costInput = document.getElementById('add-stock-unit-cost');
-                const expiryInput = document.getElementById('add-stock-expiry');
-                const vatInput = document.getElementById('add-stock-vat');
-                if (qtyInput) qtyInput.value = item.qty;
-                if (costInput) costInput.value = item.unitPrice;
-                if (expiryInput) expiryInput.value = item.expiry || '';
-                if (vatInput) vatInput.checked = !!item.vatApplied;
-                addStockVatApplied = !!item.vatApplied;
-                setAddStockInvoiceType(item.invoiceType);
-                setAddStockPayment(item.paymentMethod);
-                updateAddStockCost();
-            };
-            applyValues();
-            // Reafirma los valores en el siguiente tick -- por si algo dentro de
-            // openAddStockModal (animación del modal, foco, etc.) llegara a pisar
-            // el valor recién puesto antes de que el usuario vea el modal.
-            setTimeout(applyValues, 0);
+            const qtyInput = document.getElementById('add-stock-qty');
+            const costInput = document.getElementById('add-stock-unit-cost');
+            const expiryInput = document.getElementById('add-stock-expiry');
+            const vatInput = document.getElementById('add-stock-vat');
+            const priceInput = document.getElementById('add-stock-new-price');
+            if (qtyInput) qtyInput.value = item.qty;
+            if (costInput) costInput.value = item.unitPrice;
+            if (expiryInput) expiryInput.value = item.expiry || '';
+            if (vatInput) vatInput.checked = !!item.vatApplied;
+            if (priceInput && item.newPrice) priceInput.value = item.newPrice;
+            addStockVatApplied = !!item.vatApplied;
+            setAddStockInvoiceType(item.invoiceType);
+            setAddStockPayment(item.paymentMethod);
+            updateAddStockCost();
+            updateAddStockMarginDisplay();
             scanInvoiceItems = scanInvoiceItems.filter(i => i.localId !== localId);
+            executeAddStock();
         }
         window.confirmScanItemAsStock = confirmScanItemAsStock;
 
@@ -12810,24 +12911,41 @@
         function confirmScanItemAsNewProduct(localId) {
             const item = scanInvoiceItems.find(i => i.localId === localId);
             if (!item) return;
+
+            const nameVal = document.getElementById('scanitem-new-name-' + localId);
+            const barcodeVal = document.getElementById('scanitem-new-barcode-' + localId);
+            const categoryVal = document.getElementById('scanitem-new-category-' + localId);
+            const supplierVal = document.getElementById('scanitem-new-supplier-' + localId);
+            const priceVal = document.getElementById('scanitem-new-price-' + localId);
+            const name = nameVal ? nameVal.value.trim() : item.rawName;
+            const price = priceVal ? parseFloat(priceVal.value) || 0 : 0;
+
+            if (!name) { showNotification('Ingresá el nombre del producto', 'error'); return; }
+            if (!item.unitPrice || item.unitPrice <= 0) { showNotification('El costo debe ser mayor a 0', 'error'); return; }
+            if (!item.qty || item.qty <= 0) { showNotification('La cantidad debe ser mayor a 0', 'error'); return; }
+            if (price <= 0) { showNotification('Ingresá el precio de venta', 'error'); return; }
+
+            // Precarga el formulario real "Nuevo Producto (Compra)" y lo confirma
+            // directo (un solo clic) -- misma función real (preparePurchase →
+            // confirmPurchase), mismas validaciones, misma notificación de siempre.
+            document.getElementById('inv-barcode').value = barcodeVal ? barcodeVal.value.trim() : '';
+            document.getElementById('inv-name').value = name;
+            if (categoryVal) document.getElementById('inv-category').value = categoryVal.value;
+            document.getElementById('inv-supplier').value = supplierVal ? supplierVal.value.trim() : '';
+            document.getElementById('inv-cost').value = item.unitPrice;
+            document.getElementById('inv-stock').value = item.qty;
+            document.getElementById('inv-price').value = price;
+            document.getElementById('inv-expiry').value = item.expiry || '';
+            const compositeCheckbox = document.getElementById('inv-is-composite');
+            if (compositeCheckbox) compositeCheckbox.checked = false;
+            const weightCheckbox = document.getElementById('inv-sale-by-weight');
+            if (weightCheckbox) weightCheckbox.checked = false;
+
             pendingNewProductScanRawName = item.rawName;
             scanInvoiceReturnPending = true;
-            closeScanInvoiceModal();
-            showSection('inventory');
-            const nameInput = document.getElementById('inv-name');
-            const costInput = document.getElementById('inv-cost');
-            const stockInput = document.getElementById('inv-stock');
-            const barcodeInput = document.getElementById('inv-barcode');
-            if (nameInput) nameInput.value = item.rawName;
-            if (costInput) costInput.value = item.unitPrice;
-            if (stockInput) stockInput.value = item.qty;
             scanInvoiceItems = scanInvoiceItems.filter(i => i.localId !== localId);
-            setTimeout(() => {
-                const form = document.getElementById('add-inventory-form');
-                if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                if (barcodeInput) barcodeInput.focus();
-            }, 100);
-            showNotification('📦 Completá código de barras, categoría, proveedor y precio de venta para dar de alta el producto', 'info', 7000);
+            closeScanInvoiceModal();
+            preparePurchase();
         }
         window.confirmScanItemAsNewProduct = confirmScanItemAsNewProduct;
 
@@ -27540,6 +27658,13 @@ RESULTADOS:
             <p class="text-xs text-gray-400 mb-3">Subí una foto o PDF de la factura del proveedor. Por cada línea vas a poder elegir si es stock de un producto que ya tenés, un producto nuevo para dar de alta, o un gasto (flete, embalaje, etc.) -- nada se carga solo, todo lo confirmás vos.</p>
 
             <div id="scan-invoice-upload-section">
+                <div class="mb-2">
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Proveedor de esta factura (opcional)</label>
+                    <select id="scan-invoice-supplier" onchange="setScanInvoiceSupplier(this.value)" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm">
+                        <option value="">Sin especificar</option>
+                    </select>
+                    <p class="text-[11px] text-gray-400 mt-0.5">Ayuda a que la IA aprenda: el mismo producto puede llamarse distinto según el proveedor.</p>
+                </div>
                 <label class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center py-2.5 rounded-xl font-bold cursor-pointer">
                     📄 Subir foto o PDF de la factura
                     <input type="file" accept="image/*,.pdf,application/pdf" class="hidden" onchange="handleMainInvoiceFileSelected(event)">
@@ -27554,7 +27679,7 @@ RESULTADOS:
                     <label class="text-xs font-bold text-gray-500 uppercase">Líneas detectadas</label>
                     <button onclick="discardAllScanItems()" class="text-xs text-red-500 font-bold">Descartar todo</button>
                 </div>
-                <div id="scan-invoice-items-list" class="space-y-3"></div>
+                <div id="scan-invoice-items-list" class="space-y-2"></div>
             </div>
 
             <!-- "Estacionamiento" del buscador de producto: siempre hay UN solo
@@ -27563,6 +27688,7 @@ RESULTADOS:
                  (ver openScanProductPicker) y vuelve a guardarse acá cuando no
                  se está usando -- por eso sobrevive a los re-renders de la lista. -->
             <div id="scan-inline-picker-park" class="hidden"></div>
+            <datalist id="scan-suppliers-datalist"></datalist>
         </div>
     </div>
 

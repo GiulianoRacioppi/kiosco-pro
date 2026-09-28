@@ -7558,10 +7558,21 @@
         // mirar unas veces más, espaciado, y si sigue sin coincidir avisa para que se
         // revise a mano -- sin haber movido un solo número por su cuenta.
         function verifyAndRetryStockChange(description, productId, expectedStockFn, maxRetries = 2) {
+            // Se guarda cuántos movimientos de stock tenía este producto en el momento
+            // de la acción. Si para cuando se hace la verificación (20-50s después) hubo
+            // OTRO movimiento legítimo (otra compra, otra merma, otro "+Stock", etc.), el
+            // "esperado" quedó viejo y ya no sirve para comparar -- se cancela el chequeo
+            // en vez de avisar un falso "no coincide".
+            const countMovements = () => (appState.stockLedger || []).filter(m => m.productId === productId).length;
+            const baselineMovements = countMovements();
             let retries = 0;
             const check = () => {
                 const product = appState.inventory.find(p => p.id === productId);
                 if (!product) return;
+                if (countMovements() !== baselineMovements) {
+                    console.log('ℹ️ Verificación de stock cancelada (hubo otro movimiento después):', description);
+                    return;
+                }
                 const expected = expectedStockFn();
                 const actual = getProductStock(product);
                 if (Math.abs(actual - expected) < 0.001) {
@@ -12520,7 +12531,11 @@
                         paymentMethod: scanInvoiceLastPaymentMethod,
                         expiry: '',
                         vatApplied: false,
-                        newPrice: ''
+                        newPrice: '',
+                        newProductName: null,
+                        barcode: '',
+                        category: '',
+                        supplier: ''
                     };
                 });
                 statusEl.textContent = `✅ Se leyeron ${scanInvoiceItems.length} línea(s). Revisá y confirmá cada una.`;
@@ -12647,9 +12662,17 @@
 
         function renderScanNewCard(item) {
             const categorySelectEl = document.getElementById('inv-category');
-            const categoryOptions = categorySelectEl ? categorySelectEl.innerHTML : '';
+            // Reconstruye las opciones marcando como seleccionada la categoría
+            // que ya se haya elegido para esta línea (si no, se perdería al
+            // reconstruir la tarjeta cada vez que se toca cualquier otro campo).
+            let categoryOptions = categorySelectEl ? categorySelectEl.innerHTML : '';
+            if (item.category) {
+                categoryOptions = categoryOptions.replace(`value="${item.category}"`, `value="${item.category}" selected`);
+            }
             const totalUnidades = Math.round((item.packages || 0) * (item.unitsPerPackage || 0) * 100) / 100;
             const totalPrice = Math.round(totalUnidades * (item.unitPrice || 0) * 100) / 100;
+            const currentSalePrice = item.newPrice !== '' && item.newPrice != null ? parseFloat(item.newPrice) : null;
+            const marginPct = (item.unitPrice > 0 && currentSalePrice > 0) ? (((currentSalePrice - item.unitPrice) / item.unitPrice) * 100) : null;
             return `
             <div id="scanitem-card-${item.localId}" class="border rounded-xl p-2 space-y-1">
                 <div class="flex justify-between items-start gap-2">
@@ -12662,20 +12685,20 @@
                 </div>
                 <div>
                     <label class="block text-[10px] text-gray-400 uppercase">Nombre</label>
-                    <input type="text" id="scanitem-new-name-${item.localId}" value="${escapeHtml(item.rawName)}" class="w-full border rounded-lg px-2 py-1 text-sm">
+                    <input type="text" value="${escapeHtml(item.newProductName != null ? item.newProductName : item.rawName)}" class="w-full border rounded-lg px-2 py-1 text-sm" onchange="updateScanItemNewField('${item.localId}', 'newProductName', this.value)">
                 </div>
                 <div class="flex gap-1.5 items-end mt-1">
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Código de barras</label>
-                        <input type="text" id="scanitem-new-barcode-${item.localId}" class="w-full border rounded-lg px-2 py-1 text-sm">
+                        <input type="text" value="${escapeHtml(item.barcode || '')}" class="w-full border rounded-lg px-2 py-1 text-sm" onchange="updateScanItemNewField('${item.localId}', 'barcode', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Categoría</label>
-                        <select id="scanitem-new-category-${item.localId}" class="w-full border rounded-lg px-2 py-1 text-sm">${categoryOptions}</select>
+                        <select class="w-full border rounded-lg px-2 py-1 text-sm" onchange="updateScanItemNewField('${item.localId}', 'category', this.value)">${categoryOptions}</select>
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Proveedor</label>
-                        <input type="text" id="scanitem-new-supplier-${item.localId}" list="scan-suppliers-datalist" class="w-full border rounded-lg px-2 py-1 text-sm">
+                        <input type="text" value="${escapeHtml(item.supplier || '')}" list="scan-suppliers-datalist" class="w-full border rounded-lg px-2 py-1 text-sm" onchange="updateScanItemNewField('${item.localId}', 'supplier', this.value)">
                     </div>
                 </div>
                 <div class="flex gap-1.5 items-end mt-1">
@@ -12709,11 +12732,11 @@
                 <div class="flex gap-1.5 items-end mt-1">
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Precio venta</label>
-                        <input type="number" min="0" step="0.01" id="scanitem-new-price-${item.localId}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemNewProductPrice('${item.localId}', ${item.unitPrice})">
+                        <input type="number" min="0" step="0.01" value="${item.newPrice || ''}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemNewPrice('${item.localId}', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Margen %</label>
-                        <input type="number" step="0.1" id="scanitem-new-margin-${item.localId}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemNewProductMargin('${item.localId}', ${item.unitPrice})">
+                        <input type="number" step="0.1" value="${marginPct != null ? marginPct.toFixed(1) : ''}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemMarginPercent('${item.localId}', this.value)">
                     </div>
                 </div>
                 <button onclick="confirmScanItemAsNewProduct('${item.localId}')" class="w-full mt-1.5 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg font-bold text-sm">Dar de alta</button>
@@ -12893,6 +12916,17 @@
         }
         window.updateScanItemField = updateScanItemField;
 
+        // Campos de texto de "Producto nuevo" (nombre, código de barras,
+        // categoría, proveedor) -- se guardan en el ítem para que sobrevivan
+        // cuando se reconstruye la tarjeta al tocar cualquier otro campo
+        // (antes se perdían porque solo vivían en el DOM).
+        function updateScanItemNewField(localId, field, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item[field] = value;
+        }
+        window.updateScanItemNewField = updateScanItemNewField;
+
         function updateScanItemExpiry(localId, value) {
             const item = scanInvoiceItems.find(i => i.localId === localId);
             if (!item) return;
@@ -12966,27 +13000,6 @@
         // Precio ↔ Margen para la fila "Producto nuevo" -- estos dos campos no
         // viven en el estado del ítem (se leen directo del DOM recién al
         // confirmar), así que se actualizan entre sí sin re-renderizar la lista.
-        function updateScanItemNewProductPrice(localId, unitPrice) {
-            const priceInput = document.getElementById('scanitem-new-price-' + localId);
-            const marginInput = document.getElementById('scanitem-new-margin-' + localId);
-            if (!priceInput || !marginInput) return;
-            const price = parseFloat(priceInput.value) || 0;
-            if (unitPrice > 0 && price > 0) {
-                marginInput.value = (((price - unitPrice) / unitPrice) * 100).toFixed(1);
-            }
-        }
-        window.updateScanItemNewProductPrice = updateScanItemNewProductPrice;
-
-        function updateScanItemNewProductMargin(localId, unitPrice) {
-            const priceInput = document.getElementById('scanitem-new-price-' + localId);
-            const marginInput = document.getElementById('scanitem-new-margin-' + localId);
-            if (!priceInput || !marginInput) return;
-            const margin = parseFloat(marginInput.value);
-            if (unitPrice > 0 && !isNaN(margin)) {
-                priceInput.value = roundTo50Up(unitPrice * (1 + margin / 100)).toFixed(2);
-            }
-        }
-        window.updateScanItemNewProductMargin = updateScanItemNewProductMargin;
 
         // La mayoría de las líneas de UNA MISMA factura comparten tipo de
         // factura y medio de pago, así que al elegirlo en una línea se aplica
@@ -13070,13 +13083,8 @@
             const item = scanInvoiceItems.find(i => i.localId === localId);
             if (!item) return;
 
-            const nameVal = document.getElementById('scanitem-new-name-' + localId);
-            const barcodeVal = document.getElementById('scanitem-new-barcode-' + localId);
-            const categoryVal = document.getElementById('scanitem-new-category-' + localId);
-            const supplierVal = document.getElementById('scanitem-new-supplier-' + localId);
-            const priceVal = document.getElementById('scanitem-new-price-' + localId);
-            const name = nameVal ? nameVal.value.trim() : item.rawName;
-            const price = priceVal ? parseFloat(priceVal.value) || 0 : 0;
+            const name = (item.newProductName != null ? item.newProductName : item.rawName).trim();
+            const price = item.newPrice !== '' && item.newPrice != null ? parseFloat(item.newPrice) || 0 : 0;
 
             if (!name) { showNotification('Ingresá el nombre del producto', 'error'); return; }
             if (!item.unitPrice || item.unitPrice <= 0) { showNotification('El costo debe ser mayor a 0', 'error'); return; }
@@ -13086,10 +13094,10 @@
             // Precarga el formulario real "Nuevo Producto (Compra)" y lo confirma
             // directo (un solo clic) -- misma función real (preparePurchase →
             // confirmPurchase), mismas validaciones, misma notificación de siempre.
-            document.getElementById('inv-barcode').value = barcodeVal ? barcodeVal.value.trim() : '';
+            document.getElementById('inv-barcode').value = item.barcode || '';
             document.getElementById('inv-name').value = name;
-            if (categoryVal) document.getElementById('inv-category').value = categoryVal.value;
-            document.getElementById('inv-supplier').value = supplierVal ? supplierVal.value.trim() : '';
+            if (item.category) document.getElementById('inv-category').value = item.category;
+            document.getElementById('inv-supplier').value = item.supplier || '';
             document.getElementById('inv-cost').value = item.unitPrice;
             document.getElementById('inv-stock').value = item.qty;
             document.getElementById('inv-price').value = price;
@@ -15527,7 +15535,8 @@
                     concept: adj.concept || adj.note || (adj.amount < 0 ? 'Devolución de capital' : 'Capital inyectado'),
                     amount: Math.abs(adj.amount),
                     time: new Date(adj.timestamp).toLocaleTimeString('es-ES'),
-                    label: '💰 CAPITAL'
+                    label: '💰 CAPITAL',
+                    capitalAdjId: adj.id || null
                 }));
 
             // Obtener transferencias que afectan caja hoy
@@ -15573,9 +15582,12 @@
                         <p class="font-medium text-gray-800">${m.concept}</p>
                         <p class="text-xs text-gray-500">${m.time} ${m.label || (m.type === 'investment' ? '📦 INVERSIÓN' : '')}</p>
                     </div>
-                    <span class="font-bold ${textClass}">
-                        ${m.type === 'income' ? '+' : '-'}$${formatMoney(m.amount)}
-                    </span>
+                    <div class="flex items-center gap-2">
+                        <span class="font-bold ${textClass}">
+                            ${m.type === 'income' ? '+' : '-'}$${formatMoney(m.amount)}
+                        </span>
+                        ${m.capitalAdjId ? `<button onclick="deleteCapitalAdjustment('${m.capitalAdjId}')" class="text-gray-400 hover:text-red-600 px-1" title="Borrar este movimiento de capital">✕</button>` : ''}
+                    </div>
                 </div>
             `}).join('');
             
@@ -15638,7 +15650,8 @@
                     concept: adj.concept || adj.note || (adj.amount < 0 ? 'Devolución de capital' : 'Capital inyectado'),
                     amount: Math.abs(adj.amount),
                     time: new Date(adj.timestamp).toLocaleTimeString('es-ES'),
-                    label: '💰 CAPITAL'
+                    label: '💰 CAPITAL',
+                    capitalAdjId: adj.id || null
                 }));
             
             // Obtener transferencias que afectan cuenta hoy
@@ -15684,11 +15697,14 @@
                         <p class="font-medium text-gray-800">${m.concept}</p>
                         <p class="text-xs text-gray-500">${m.time} ${m.label || (m.type === 'investment' ? '📦 INVERSIÓN' : '')}</p>
                     </div>
-                    <div class="text-right">
-                        <span class="font-bold ${textClass}">
-                            ${m.type === 'income' ? '+' : '-'}$${formatMoney(m.amount)}
-                        </span>
-                        ${m.isMercadoCredito ? `<p class="text-[10px] text-red-500">-$${formatMoney(m.fee)} comisión</p>` : ''}
+                    <div class="flex items-center gap-2">
+                        <div class="text-right">
+                            <span class="font-bold ${textClass}">
+                                ${m.type === 'income' ? '+' : '-'}$${formatMoney(m.amount)}
+                            </span>
+                            ${m.isMercadoCredito ? `<p class="text-[10px] text-red-500">-$${formatMoney(m.fee)} comisión</p>` : ''}
+                        </div>
+                        ${m.capitalAdjId ? `<button onclick="deleteCapitalAdjustment('${m.capitalAdjId}')" class="text-gray-400 hover:text-red-600 px-1" title="Borrar este movimiento de capital">✕</button>` : ''}
                     </div>
                 </div>
             `}).join('');
@@ -16946,6 +16962,7 @@
                 // Registrar como capital inyectado
                 if (!appState.capitalAdjustments) appState.capitalAdjustments = [];
                 appState.capitalAdjustments.push({
+                    id: 'ADJ-MANUAL-' + Date.now(),
                     date: formatDateISO(appState.activeDate),
                     amount: amount,
                     target: adjustTarget,
@@ -16995,6 +17012,7 @@
                     // prestada en lo que sea, y otra vez acá al devolverla.
                     if (!appState.capitalAdjustments) appState.capitalAdjustments = [];
                     appState.capitalAdjustments.push({
+                        id: 'ADJ-MANUAL-' + Date.now(),
                         date: formatDateISO(appState.activeDate),
                         amount: -amount,
                         target: adjustTarget,
@@ -17029,6 +17047,24 @@
             closeAdjustModal();
 
         }
+
+        // Borra un movimiento de capital puntual (ej: una prueba, o algo
+        // cargado mal) desde "Movimientos de Caja/Cuenta" -- revierte el
+        // efecto que tuvo sobre Caja/Cuenta y saca la línea del historial.
+        function deleteCapitalAdjustment(id) {
+            const adj = (appState.capitalAdjustments || []).find(a => a.id === id);
+            if (!adj) { showNotification('No se encontró ese movimiento', 'error'); return; }
+            if (!confirm(`¿Borrar "${adj.concept || adj.note || 'este movimiento'}" de $${formatMoney(Math.abs(adj.amount))}? Se revierte de ${adj.target === 'cash' ? 'Caja' : 'Cuenta'}.`)) return;
+
+            if (adj.target === 'cash') appState.cash -= adj.amount;
+            else if (adj.target === 'bank') appState.bank -= adj.amount;
+
+            appState.capitalAdjustments = appState.capitalAdjustments.filter(a => a.id !== id);
+            saveToLocalStorage();
+            renderAll();
+            showNotification('Movimiento de capital borrado', 'success');
+        }
+        window.deleteCapitalAdjustment = deleteCapitalAdjustment;
 
         // ==================== ARQUEO DE CAJA ====================
         function calculateCashExpected(today) {
@@ -25820,20 +25856,24 @@ RESULTADOS:
         function smartMergeArrays(localArr, remoteArr) {
             if (!Array.isArray(localArr) || localArr.length === 0) return Array.isArray(remoteArr) ? [...remoteArr] : [];
             if (!Array.isArray(remoteArr) || remoteArr.length === 0) return [...localArr];
-            
+
             const remoteMap = new Map();
+            const remoteNoId = [];
             for (const item of remoteArr) {
                 if (item && item.id) remoteMap.set(item.id, item);
+                else if (item) remoteNoId.push(item);
             }
-            
+
             const localMap = new Map();
+            const localNoId = [];
             for (const item of localArr) {
                 if (item && item.id) localMap.set(item.id, item);
+                else if (item) localNoId.push(item);
             }
-            
+
             const merged = [];
             const mergedIds = new Set();
-            
+
             // 1. Procesar todos los IDs de remote
             for (const [id, remoteItem] of remoteMap) {
                 mergedIds.add(id);
@@ -25846,14 +25886,29 @@ RESULTADOS:
                     merged.push(remoteTime > localTime ? { ...remoteItem } : { ...localItem });
                 }
             }
-            
+
             // 2. Procesar items que solo existen en local (creados offline)
             for (const [id, localItem] of localMap) {
                 if (!mergedIds.has(id)) {
                     merged.push({ ...localItem });
                 }
             }
-            
+
+            // 3. Items viejos sin "id" (de antes de que todo lo tuviera): no se pueden
+            // reconciliar por id, así que en vez de arriesgarse a perderlos en silencio
+            // (como pasaba antes), se conservan todos -- local y remoto -- descartando
+            // solo duplicados exactos (mismo contenido) para no multiplicarlos en cada sync.
+            if (localNoId.length || remoteNoId.length) {
+                const seenNoId = new Set();
+                for (const item of [...localNoId, ...remoteNoId]) {
+                    const key = JSON.stringify(item);
+                    if (!seenNoId.has(key)) {
+                        seenNoId.add(key);
+                        merged.push(item);
+                    }
+                }
+            }
+
             return merged;
         }
         

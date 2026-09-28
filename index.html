@@ -5985,6 +5985,7 @@
 
             closeWeightSaleModal();
             renderCart();
+            bumpMercadoPagoPollSpeed();
             showNotification(`${currentWeightProduct.name} ${formatMoney(grams)}g agregado`, 'success');
         }
 
@@ -6027,7 +6028,8 @@
                     quantity: qty
                 });
             }
-            
+            bumpMercadoPagoPollSpeed();
+
             // Limpiar búsqueda
             document.getElementById('sell-search-input').value = '';
             document.getElementById('sell-search-results').classList.add('hidden');
@@ -6183,6 +6185,7 @@
                     quantity: 1
                 });
             }
+            bumpMercadoPagoPollSpeed();
 
             document.getElementById('last-added').classList.remove('hidden');
             const remainingStock = getProductStock(product);
@@ -7151,6 +7154,7 @@
             closeManualSaleModal();
             showSection('sell');
             renderCart();
+            bumpMercadoPagoPollSpeed();
             showNotification(`Ítem manual agregado al carrito: ${concept} $${formatMoney(amount)}`, 'success');
         }
 
@@ -8740,17 +8744,23 @@
                 showNotification('Este pedido no tiene productos cargados', 'warning');
                 return;
             }
-            if (appState.cart.length > 0 && !(await showConfirmModal('El carrito ya tiene productos cargados. ¿Reemplazarlo con los productos de este pedido?'))) {
+
+            const yaPagado = pedidoPagoResuelto(pedido);
+
+            // Si todavía no se cobró, hace falta pasar por el carrito de Vender para que
+            // el cajero elija el método de pago -- ahí sí hay que avisar si se pisa lo
+            // que ya estaba cargado. Si ya está pagado ("Finalizar y Facturar"), el
+            // carrito ni se toca (ver más abajo), así que no hace falta preguntar nada de esto.
+            if (!yaPagado && appState.cart.length > 0 && !(await showConfirmModal('El carrito ya tiene productos cargados. ¿Reemplazarlo con los productos de este pedido?'))) {
                 return;
             }
 
-            const yaPagado = pedidoPagoResuelto(pedido);
             const confirmMsg = yaPagado
                 ? '¿Facturar este pedido? El pago ya está resuelto (cobrado o anotado como fiado): se va a registrar la venta directamente, sin pedir el pago de nuevo.'
                 : '¿Pasar este pedido al carrito de venta? Se va a marcar como entregado.';
             if (!(await showConfirmModal(confirmMsg))) return;
 
-            appState.cart = pedido.items.map(item => {
+            const pedidoCartItems = pedido.items.map(item => {
                 const product = appState.inventory.find(p => p.id === item.productId);
                 const cartItem = {
                     productId: item.productId,
@@ -8762,12 +8772,7 @@
                 if (item.weightGrams != null) cartItem.weightGrams = item.weightGrams;
                 return cartItem;
             });
-            // Recalcular subtotal/descuento/total para ESTOS items ahora mismo: si no se
-            // hace acá, completeSale() usa los valores en caché de la última vez que se
-            // renderizó el carrito de Vender (de otro cliente, o viejos) y las promociones
-            // activas no quedan reflejadas -- sobre todo en el camino "ya pagado" de abajo,
-            // que a propósito no navega a Vender ni llama a renderCart().
-            updateCartTotals();
+
             pedido.status = 'entregado';
             saveToLocalStorage();
 
@@ -8776,9 +8781,25 @@
             pendingPedidoSaleInfo = { pedidoId: pedido.id, comandaNumber: pedido.comandaNumber || null, customerName: pedido.customerName || null };
 
             if (yaPagado) {
-                // "Finalizar y Facturar": todo resuelto, se termina la venta ahí mismo -- no se
-                // navega a Vender ni se muestra el carrito, para no interrumpir al cajero
-                // si está atendiendo a otro cliente en esa pantalla.
+                // "Finalizar y Facturar": todo resuelto, se termina la venta ahí mismo. El
+                // carrito real de Vender puede tener en este momento a OTRO cliente
+                // cargado (el cajero atendiendo a alguien mientras factura una comanda
+                // de otro lado) -- no se puede tocar. Se guarda todo lo que completeSale()
+                // lee/escribe, se pisa temporalmente solo para reusar esa misma función
+                // (mismos cálculos, mismo camino ya probado), y se restaura apenas termina
+                // -- pase lo que pase adentro -- para no perder ni interrumpir esa otra venta.
+                const savedCart = appState.cart;
+                const savedSubtotal = appState.cartSubtotal;
+                const savedDiscount = appState.cartDiscount;
+                const savedFinalTotal = appState.cartFinalTotal;
+                const savedPromoInfo = appState.activePromoInfo;
+                const savedPaymentMethod = appState.paymentMethod;
+                const cashInput = document.getElementById('cash-received');
+                const savedCashReceived = cashInput ? cashInput.value : null;
+
+                appState.cart = pedidoCartItems;
+                updateCartTotals();
+
                 // "mercadopago" (pedido online ya cobrado) se trata como "qr" para la
                 // plata: en los dos casos entra a la cuenta, no a la caja física.
                 const method = (pedido.paymentMethod === 'debit' || pedido.paymentMethod === 'qr' || pedido.paymentMethod === 'fiado')
@@ -8786,18 +8807,33 @@
                     : (pedido.paymentMethod === 'mercadopago' ? 'qr' : 'cash');
                 setPaymentMethod(method);
                 if (method === 'cash') {
-                    const receivedInput = document.getElementById('cash-received');
-                    if (receivedInput) receivedInput.value = pedido.paymentReceived || appState.cartFinalTotal || pedido.total || 0;
+                    if (cashInput) cashInput.value = pedido.paymentReceived || appState.cartFinalTotal || pedido.total || 0;
                     calculateChange();
                 } else if (method === 'fiado') {
                     // Ya se anotó el nombre al marcarlo como fiado: no volver a pedirlo.
                     pendingFiadoCustomerName = pedido.customerName || 'Cliente';
                 }
-                completeSale();
+
+                try {
+                    await completeSale();
+                } finally {
+                    appState.cart = savedCart;
+                    appState.cartSubtotal = savedSubtotal;
+                    appState.cartDiscount = savedDiscount;
+                    appState.cartFinalTotal = savedFinalTotal;
+                    appState.activePromoInfo = savedPromoInfo;
+                    setPaymentMethod(savedPaymentMethod || 'cash');
+                    if (cashInput) cashInput.value = savedCashReceived != null ? savedCashReceived : '';
+                    if (savedPaymentMethod === 'cash') calculateChange();
+                    if (typeof renderCart === 'function') renderCart();
+                }
                 renderPedidos();
             } else {
                 // "Pasar a Vender": todavía no se sabe cómo se paga -- ahí sí hace falta
-                // ir a Vender para que el cajero elija el método a mano.
+                // ir a Vender para que el cajero elija el método a mano (por eso el
+                // carrito real SÍ se reemplaza, con el aviso de más arriba).
+                appState.cart = pedidoCartItems;
+                updateCartTotals();
                 showSection('sell');
                 if (typeof renderCart === 'function') renderCart();
                 renderPedidos();
@@ -21473,7 +21509,23 @@ Total de productos a comprar: ${shoppingList.length}
         // real y avisa acá con notificación + sonido, sin refrescar nada.
         let mpPaymentListener = null;
         let mpPaymentListenerFirstLoad = true;
-        let mpCheckNowInterval = null;
+        let mpPollTimer = null;
+        let mpFastPollUntil = 0;
+
+        // Si se agrega un producto al carrito es probable que el cliente esté por
+        // pagar (QR de Mercado Pago) -- durante los próximos 20 segundos se sondea
+        // cada 1 segundo para que el aviso de pago aparezca casi al instante; pasado
+        // ese rato sin agregar nada más, se vuelve al ritmo tranquilo (cada 5
+        // segundos) para no gastar de más. Cada producto agregado reinicia la ventana.
+        function bumpMercadoPagoPollSpeed() {
+            mpFastPollUntil = Date.now() + 20000;
+        }
+
+        function scheduleMercadoPagoCheck() {
+            fetch('https://us-central1-kioscopro.cloudfunctions.net/mercadopagoCheckNow').catch(() => {});
+            const delay = Date.now() < mpFastPollUntil ? 1000 : 5000;
+            mpPollTimer = setTimeout(scheduleMercadoPagoCheck, delay);
+        }
 
         async function startMercadoPagoPaymentListener() {
             if (!window.db || mpPaymentListener) return;
@@ -21499,13 +21551,10 @@ Total de productos a comprar: ${shoppingList.length}
             }
 
             // El sondeo automático del lado del servidor corre cada 1 minuto (es el
-            // mínimo que permite Cloud Scheduler), pero mientras la app está abierta
-            // podemos pedirle que revise mucho más seguido -- cada 5 segundos -- para
-            // que el aviso de un cobro o transferencia aparezca casi al instante.
-            if (!mpCheckNowInterval) {
-                mpCheckNowInterval = setInterval(() => {
-                    fetch('https://us-central1-kioscopro.cloudfunctions.net/mercadopagoCheckNow').catch(() => {});
-                }, 5000);
+            // mínimo que permite Cloud Scheduler); mientras la app está abierta se
+            // pide que revise más seguido (ver bumpMercadoPagoPollSpeed más arriba).
+            if (!mpPollTimer) {
+                scheduleMercadoPagoCheck();
             }
         }
 

@@ -12525,29 +12525,36 @@
                     let unitsPerPackage = qty;
                     let unitPrice = it.unitPrice != null ? it.unitPrice : 0;
 
-                    // Facturas como las de Arcor venden por "display" (ej: "1 DI") o
-                    // por "bulto" (que a veces son varios displays juntos, ej: "1 B")
-                    // sin desglosar cuántas unidades trae adentro -- eso la IA no lo
-                    // puede saber sola. Si el producto ya tiene configurado
-                    // "Unidades por display" (y, para el caso bulto, también
-                    // "Displays por bulto") en Editar Producto, se usan esos números
-                    // conocidos: la cantidad leída pasa a ser "bultos" comprados, y
-                    // el precio leído (que era el del display/bulto completo) se
-                    // divide para dar el precio real por unidad individual. Si el
-                    // producto no tiene esto configurado, no se toca nada -- sigue
-                    // usando lo que la IA ya resolvió sola (caso Dulcenter, con
-                    // columnas de Cant/Paq/Unit.Final que ya vienen completas).
+                    // Para "En stock" (producto ya en el inventario), el renglón se
+                    // reconstruye en 3 niveles -- bultos / displays / unidades sueltas --
+                    // usando "Unidades por display" y "Displays por bulto" que se hayan
+                    // configurado en Editar Producto para ESE producto. Si el producto se
+                    // vende por peso (ej: caramelos sueltos), en cambio se reconstruyen
+                    // gramos y costo totales directo, nada de bultos/displays/unidades.
+                    let bultos = 0, displaysQty = 0, unidadesSueltas = qty;
+                    let saleByWeight = false, totalGrams = 0, totalCost = 0;
                     const unitTypeNorm = it.unitType ? it.unitType.trim().toLowerCase() : '';
                     const isDisplayLine = /^d/.test(unitTypeNorm); // "DI", "DISPLAY", "DISP"...
                     const isBultoLine = /^b/.test(unitTypeNorm);   // "B", "BULTO"...
-                    if (match && isDisplayLine && match.unitsPerDisplay > 0) {
+                    if (match && match.saleByWeight && match.weightPerUnit > 0) {
+                        saleByWeight = true;
+                        unidadesSueltas = 0;
+                        totalGrams = Math.round(qty * match.weightPerUnit * 100) / 100;
+                        totalCost = unitPrice > 0 ? Math.round(qty * unitPrice * 100) / 100 : 0;
+                    } else if (match && isDisplayLine && match.unitsPerDisplay > 0) {
+                        displaysQty = qty;
+                        unidadesSueltas = 0;
+                        unitPrice = unitPrice > 0 ? Math.round((unitPrice / match.unitsPerDisplay) * 100) / 100 : 0;
+                        // Se mantiene también en el modelo viejo (packages/unitsPerPackage)
+                        // por si esta línea termina siendo "Producto nuevo" en vez de stock.
                         packages = qty;
                         unitsPerPackage = match.unitsPerDisplay;
-                        unitPrice = unitPrice > 0 ? Math.round((unitPrice / match.unitsPerDisplay) * 100) / 100 : 0;
                     } else if (match && isBultoLine && match.unitsPerDisplay > 0 && match.displaysPerBulk > 0) {
-                        packages = qty;
+                        bultos = qty;
+                        unidadesSueltas = 0;
                         unitsPerPackage = match.unitsPerDisplay * match.displaysPerBulk;
                         unitPrice = unitPrice > 0 ? Math.round((unitPrice / unitsPerPackage) * 100) / 100 : 0;
+                        packages = qty;
                     }
 
                     return {
@@ -12557,8 +12564,17 @@
                         // Reconstrucción tipo factura: por defecto "1 bulto de <qty>
                         // unidades" (da el mismo total que ya venía) -- el usuario
                         // puede repartir esos dos números distinto si la IA contó mal.
+                        // (packages/unitsPerPackage: usado por la tarjeta "Producto
+                        // nuevo"; bultos/displaysQty/unidadesSueltas: usado por la tabla
+                        // "En stock" -- cada tipo de línea usa el que le corresponde.)
                         packages,
                         unitsPerPackage,
+                        bultos,
+                        displaysQty,
+                        unidadesSueltas,
+                        saleByWeight,
+                        totalGrams,
+                        totalCost,
                         unitPrice,
                         type: match ? 'stock' : 'new',
                         productId: match ? match.id : null,
@@ -12603,6 +12619,11 @@
             let html = '';
 
             if (stockItems.length > 0) {
+                // El checkbox tiene que reflejar el estado REAL (si no, al reconstruirse
+                // el HTML en cada cambio siempre queda visualmente destildado -- entonces
+                // tocarlo de nuevo para sacar el IVA en realidad lo vuelve a mandar como
+                // "tildalo", que no hace nada porque los ítems ya estaban en vatApplied=true).
+                const allVatApplied = stockItems.every(i => i.vatApplied);
                 html += `
                 <div class="mb-4">
                     <h4 class="text-xs font-bold text-indigo-700 uppercase mb-1">📦 En stock (${stockItems.length})</h4>
@@ -12612,8 +12633,9 @@
                                 <tr>
                                     <th class="px-2 py-1.5 text-left">Producto</th>
                                     <th class="px-1 py-1.5">Bultos</th>
-                                    <th class="px-1 py-1.5">Unid/bulto</th>
-                                    <th class="px-1 py-1.5">Unidades</th>
+                                    <th class="px-1 py-1.5">Displays</th>
+                                    <th class="px-1 py-1.5">Sueltas</th>
+                                    <th class="px-1 py-1.5">Total unid.</th>
                                     <th class="px-1 py-1.5">Precio total</th>
                                     <th class="px-1 py-1.5">Precio unit.</th>
                                     <th class="px-1 py-1.5">Precio venta</th>
@@ -12632,7 +12654,7 @@
                         <button onclick="setScanItemPayment(null, 'cash')" class="py-1 px-3 rounded-lg border-2 text-[11px] font-medium ${scanInvoiceLastPaymentMethod === 'cash' ? 'border-green-500 bg-green-50 text-green-700 font-bold' : 'border-gray-200 text-gray-500'}">💵 Caja</button>
                         <button onclick="setScanItemPayment(null, 'bank')" class="py-1 px-3 rounded-lg border-2 text-[11px] font-medium ${scanInvoiceLastPaymentMethod === 'bank' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500'}">🏦 Cuenta</button>
                         <label class="flex items-center gap-1 text-[11px] text-gray-600 cursor-pointer ml-auto">
-                            <input type="checkbox" onchange="toggleAllScanItemsVat(this.checked)"> 💰 +IVA 21% a todos
+                            <input type="checkbox" ${allVatApplied ? 'checked' : ''} onchange="toggleAllScanItemsVat(this.checked)"> 💰 +IVA 21% a todos
                         </label>
                     </div>
                 </div>`;
@@ -12657,16 +12679,32 @@
 
         // Cada renglón de la tabla "En stock": todos los campos numéricos
         // alineados en columna con el resto de las líneas de la factura.
+        // Factores de empaquetado (bulto → display → unidad) configurados en "Editar
+        // Producto" para ESTE producto (Unidades por display / Displays por bulto). Si
+        // no están cargados ahí, dan 0 -- esos campos quedan sin efecto hasta que se
+        // configuren (no se inventa un factor 1 que daría un total incorrecto).
+        function getScanStockUnitFactors(matchedProduct) {
+            const unitsPerDisplay = (matchedProduct && matchedProduct.unitsPerDisplay > 0) ? matchedProduct.unitsPerDisplay : 0;
+            const displaysPerBulk = (matchedProduct && matchedProduct.displaysPerBulk > 0) ? matchedProduct.displaysPerBulk : 0;
+            const unitsPerBulto = (unitsPerDisplay > 0 && displaysPerBulk > 0) ? unitsPerDisplay * displaysPerBulk : 0;
+            return { unitsPerDisplay, displaysPerBulk, unitsPerBulto };
+        }
+
+        function getScanStockTotalUnits(item, matchedProduct) {
+            const { unitsPerDisplay, unitsPerBulto } = getScanStockUnitFactors(matchedProduct);
+            const fromBultos = (item.bultos || 0) * unitsPerBulto;
+            const fromDisplays = (item.displaysQty || 0) * unitsPerDisplay;
+            const fromSueltas = item.unidadesSueltas || 0;
+            return Math.round((fromBultos + fromDisplays + fromSueltas) * 100) / 100;
+        }
+
         function renderScanStockRow(item) {
             const matchedProduct = item.productId ? appState.inventory.find(p => p.id === item.productId) : null;
-            const totalUnidades = Math.round((item.packages || 0) * (item.unitsPerPackage || 0) * 100) / 100;
-            const totalPrice = Math.round(totalUnidades * (item.unitPrice || 0) * 100) / 100;
             const currentSalePrice = matchedProduct ? (matchedProduct.salePrice || 0) : 0;
-            const priceForMargin = (item.newPrice !== '' && item.newPrice != null) ? parseFloat(item.newPrice) : currentSalePrice;
-            const marginPct = (item.unitPrice > 0 && priceForMargin > 0) ? (((priceForMargin - item.unitPrice) / item.unitPrice) * 100) : null;
             const stockInfo = matchedProduct ? `Stock: ${getProductStock(matchedProduct)} · $${formatMoney(matchedProduct.salePrice || 0)}` : '';
-            return `
-            <tr class="border-t ${!item.productId ? 'bg-orange-50' : ''}">
+            const isWeightMode = !!(matchedProduct && matchedProduct.saleByWeight && matchedProduct.weightPerUnit > 0);
+
+            const productCell = `
                 <td class="px-2 py-1 min-w-[170px] align-top">
                     <div id="scanitem-productslot-${item.localId}">
                         <button onclick="openScanProductPicker('${item.localId}')" class="w-full text-left border ${item.productId ? 'border-indigo-200' : 'border-orange-300'} rounded px-1.5 py-1 text-xs flex justify-between items-center gap-1">
@@ -12680,11 +12718,61 @@
                         <button onclick="setScanItemType('${item.localId}', 'new')" class="text-[9px] text-gray-400 hover:text-green-600">🆕 Es nuevo</button>
                         <button onclick="setScanItemType('${item.localId}', 'expense')" class="text-[9px] text-gray-400 hover:text-red-600">🧾 Es gasto</button>
                     </div>
-                </td>
-                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.packages}" class="w-14 border rounded px-1 py-1 text-center" onchange="updateScanItemPackages('${item.localId}', this.value)"></td>
-                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.unitsPerPackage}" class="w-16 border rounded px-1 py-1 text-center" onchange="updateScanItemUnitsPerPackage('${item.localId}', this.value)"></td>
+                </td>`;
+
+            // Producto ya configurado como "vender por peso" (ej: caramelos sueltos):
+            // acá no hay bultos/displays/unidades, se compra y se carga en gramos.
+            if (isWeightMode) {
+                const totalGrams = item.totalGrams || 0;
+                const totalCost = item.totalCost || 0;
+                const costPerGram = totalGrams > 0 ? totalCost / totalGrams : 0;
+                const effectiveUnitCost = costPerGram * matchedProduct.weightPerUnit;
+                const priceForMargin = (item.newPrice !== '' && item.newPrice != null) ? parseFloat(item.newPrice) : currentSalePrice;
+                const marginPct = (effectiveUnitCost > 0 && priceForMargin > 0) ? (((priceForMargin - effectiveUnitCost) / effectiveUnitCost) * 100) : null;
+                return `
+                <tr class="border-t bg-blue-50/50">
+                    ${productCell}
+                    <td class="px-1 py-1 align-top" colspan="3">
+                        <label class="block text-[8px] text-blue-500 uppercase">⚖️ Gramos totales comprados</label>
+                        <input type="number" min="0" step="1" value="${totalGrams || ''}" placeholder="ej: 5000" class="w-full border rounded px-1 py-1 text-center" onchange="updateScanStockWeightField('${item.localId}', 'totalGrams', this.value)">
+                    </td>
+                    <td class="px-1 py-1 align-top">
+                        <label class="block text-[8px] text-gray-400 uppercase">Costo total</label>
+                        <input type="number" min="0" step="0.01" value="${totalCost || ''}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanStockWeightField('${item.localId}', 'totalCost', this.value)">
+                    </td>
+                    <td class="px-1 py-1 align-top">
+                        <label class="block text-[8px] text-gray-400 uppercase">$/gramo</label>
+                        <input type="number" value="${costPerGram.toFixed(2)}" readonly class="w-20 border rounded px-1 py-1 text-center bg-gray-50 text-gray-500">
+                    </td>
+                    <td class="px-1 py-1 align-top">
+                        <label class="block text-[8px] text-gray-400 uppercase">Precio (${matchedProduct.weightPerUnit}g)</label>
+                        <input type="number" min="0" step="0.01" placeholder="${currentSalePrice.toFixed(2)}" value="${item.newPrice || ''}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanItemNewPrice('${item.localId}', this.value)">
+                    </td>
+                    <td class="px-1 py-1 align-top"><input type="number" step="0.1" value="${marginPct != null ? marginPct.toFixed(1) : ''}" class="w-16 border rounded px-1 py-1 text-center" onchange="updateScanItemMarginPercent('${item.localId}', this.value)"></td>
+                    <td class="px-1 py-1 align-top"><input type="date" value="${item.expiry || ''}" class="w-32 border rounded px-1 py-1" onchange="updateScanItemExpiry('${item.localId}', this.value)"></td>
+                    <td class="px-1 py-1 align-top whitespace-nowrap">
+                        <button onclick="confirmScanItemAsStock('${item.localId}')" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-2 py-1 text-[11px] font-bold" title="Agregar Stock">✓</button>
+                        <button onclick="discardScanItem('${item.localId}')" class="text-gray-400 px-1" title="Descartar">✕</button>
+                    </td>
+                </tr>`;
+            }
+
+            const factors = getScanStockUnitFactors(matchedProduct);
+            const totalUnidades = getScanStockTotalUnits(item, matchedProduct);
+            const totalPrice = Math.round(totalUnidades * (item.unitPrice || 0) * 100) / 100;
+            const priceForMargin = (item.newPrice !== '' && item.newPrice != null) ? parseFloat(item.newPrice) : currentSalePrice;
+            const marginPct = (item.unitPrice > 0 && priceForMargin > 0) ? (((priceForMargin - item.unitPrice) / item.unitPrice) * 100) : null;
+            const factorsHint = matchedProduct && !factors.unitsPerBulto && !factors.unitsPerDisplay
+                ? `<p class="text-[8px] text-orange-400 mt-0.5 leading-tight">Configurá "Unid. por display"/"Displays por bulto" en Editar Producto para usar Bultos/Displays</p>`
+                : '';
+            return `
+            <tr class="border-t ${!item.productId ? 'bg-orange-50' : ''}">
+                ${productCell}
+                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.bultos || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" onchange="updateScanStockQtyField('${item.localId}', 'bultos', this.value)"></td>
+                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.displaysQty || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" onchange="updateScanStockQtyField('${item.localId}', 'displaysQty', this.value)"></td>
+                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.unidadesSueltas || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" onchange="updateScanStockQtyField('${item.localId}', 'unidadesSueltas', this.value)">${factorsHint}</td>
                 <td class="px-1 py-1 align-top"><input type="number" value="${totalUnidades}" readonly class="w-14 border rounded px-1 py-1 text-center bg-gray-50 text-gray-500"></td>
-                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${totalPrice}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanItemTotalPrice('${item.localId}', this.value)"></td>
+                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${totalPrice}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanStockTotalPrice('${item.localId}', this.value)"></td>
                 <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.unitPrice}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)"></td>
                 <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" placeholder="${currentSalePrice.toFixed(2)}" value="${item.newPrice || ''}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanItemNewPrice('${item.localId}', this.value)"></td>
                 <td class="px-1 py-1 align-top"><input type="number" step="0.1" value="${marginPct != null ? marginPct.toFixed(1) : ''}" class="w-16 border rounded px-1 py-1 text-center" onchange="updateScanItemMarginPercent('${item.localId}', this.value)"></td>
@@ -12695,6 +12783,36 @@
                 </td>
             </tr>`;
         }
+
+        function updateScanStockQtyField(localId, field, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item[field] = Math.max(0, parseFloat(value) || 0);
+            renderScanInvoiceItems();
+        }
+        window.updateScanStockQtyField = updateScanStockQtyField;
+
+        // Precio total ⇄ precio unitario para la fila "En stock" (3 niveles bulto/
+        // display/suelta): al tipear el total se recalcula el unitario dividiendo por
+        // el total de unidades ya reconstruido con los factores del producto.
+        function updateScanStockTotalPrice(localId, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            const matchedProduct = item.productId ? appState.inventory.find(p => p.id === item.productId) : null;
+            const totalUnidades = getScanStockTotalUnits(item, matchedProduct);
+            const total = Math.max(0, parseFloat(value) || 0);
+            item.unitPrice = totalUnidades > 0 ? Math.round((total / totalUnidades) * 100) / 100 : 0;
+            renderScanInvoiceItems();
+        }
+        window.updateScanStockTotalPrice = updateScanStockTotalPrice;
+
+        function updateScanStockWeightField(localId, field, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item[field] = Math.max(0, parseFloat(value) || 0);
+            renderScanInvoiceItems();
+        }
+        window.updateScanStockWeightField = updateScanStockWeightField;
 
         // Costo por unidad de venta, ya sea que la línea esté en modo "bultos/unidades"
         // (item.unitPrice tal cual) o en modo "por peso" (se deriva de gramos totales +
@@ -12749,6 +12867,11 @@
             const totalPrice = isWeightMode ? (item.totalCost || 0) : Math.round(totalUnidades * (item.unitPrice || 0) * 100) / 100;
             const currentSalePrice = item.newPrice !== '' && item.newPrice != null ? parseFloat(item.newPrice) : null;
             const marginPct = (effectiveUnitCost > 0 && currentSalePrice > 0) ? (((currentSalePrice - effectiveUnitCost) / effectiveUnitCost) * 100) : null;
+            // Solo para mostrar (no se manda a ningún lado): el costo y precio por
+            // GRAMO -- así se vende de verdad esto (suelto, por gramos o por precio),
+            // "Gramos por unidad/bolsa" es nomás la unidad de referencia para el stock.
+            const costPerGram = isWeightMode && (item.totalGrams || 0) > 0 ? (item.totalCost || 0) / item.totalGrams : 0;
+            const pricePerGram = isWeightMode && (item.weightPerUnit || 0) > 0 && currentSalePrice > 0 ? currentSalePrice / item.weightPerUnit : 0;
             return `
             <div id="scanitem-card-${item.localId}" class="border rounded-xl p-2 space-y-1">
                 <div class="flex justify-between items-start gap-2">
@@ -12785,18 +12908,19 @@
                         <input type="number" min="0" step="1" value="${item.totalGrams || ''}" placeholder="ej: 5000" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemWeightField('${item.localId}', 'totalGrams', this.value)">
                     </div>
                     <div class="flex-1">
-                        <label class="block text-[10px] text-blue-500 uppercase">G. por unid. venta</label>
-                        <input type="number" min="0" step="1" value="${item.weightPerUnit || ''}" placeholder="ej: 100" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemWeightField('${item.localId}', 'weightPerUnit', this.value)">
+                        <label class="block text-[10px] text-blue-500 uppercase">Gramos por unidad/bolsa</label>
+                        <input type="number" min="0" step="1" value="${item.weightPerUnit || ''}" placeholder="ej: 500" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemWeightField('${item.localId}', 'weightPerUnit', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-blue-500 uppercase">Costo total</label>
                         <input type="number" min="0" step="0.01" value="${item.totalCost || ''}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemWeightField('${item.localId}', 'totalCost', this.value)">
                     </div>
                 </div>
+                <p class="text-[10px] text-blue-500 px-0.5">El stock se maneja en bolsas, pero en ventas se vende suelto: por gramos o por precio.</p>
                 <div class="flex gap-1.5 items-end mt-1">
                     <div class="flex-1">
-                        <label class="block text-[10px] text-gray-400 uppercase">Costo por unid. venta</label>
-                        <input type="number" value="${effectiveUnitCost.toFixed(2)}" readonly class="w-full border rounded-lg px-2 py-1 text-center bg-gray-50 text-gray-500">
+                        <label class="block text-[10px] text-gray-400 uppercase">Costo por gramo</label>
+                        <input type="number" value="${costPerGram.toFixed(2)}" readonly class="w-full border rounded-lg px-2 py-1 text-center bg-gray-50 text-gray-500">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Vencim.</label>
@@ -12835,13 +12959,18 @@
                 `}
                 <div class="flex gap-1.5 items-end mt-1">
                     <div class="flex-1">
-                        <label class="block text-[10px] text-gray-400 uppercase">Precio venta${isWeightMode ? ' (por unid. venta)' : ''}</label>
+                        <label class="block text-[10px] text-gray-400 uppercase">Precio venta${isWeightMode ? ' (por bolsa)' : ''}</label>
                         <input type="number" min="0" step="0.01" value="${item.newPrice || ''}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemNewPrice('${item.localId}', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Margen %</label>
                         <input type="number" step="0.1" value="${marginPct != null ? marginPct.toFixed(1) : ''}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemMarginPercent('${item.localId}', this.value)">
                     </div>
+                    ${isWeightMode ? `
+                    <div class="flex-1">
+                        <label class="block text-[10px] text-gray-400 uppercase">Precio por gramo</label>
+                        <input type="number" value="${pricePerGram.toFixed(2)}" readonly class="w-full border rounded-lg px-2 py-1 text-center bg-gray-50 text-gray-500">
+                    </div>` : ''}
                 </div>
                 <button onclick="confirmScanItemAsNewProduct('${item.localId}')" class="w-full mt-1.5 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg font-bold text-sm">Dar de alta</button>
             </div>`;
@@ -13072,7 +13201,13 @@
         function toggleAllScanItemsVat(checked) {
             scanInvoiceItems.forEach(item => {
                 if ((item.type === 'stock' || item.type === 'new') && !!item.vatApplied !== checked) {
-                    item.unitPrice = checked ? (item.unitPrice * 1.21) : (item.unitPrice / 1.21);
+                    // En modo "por peso" el costo vive en totalCost (costo total de la
+                    // compra), no en unitPrice -- que ahí ni se usa.
+                    if (item.saleByWeight) {
+                        item.totalCost = checked ? (item.totalCost || 0) * 1.21 : (item.totalCost || 0) / 1.21;
+                    } else {
+                        item.unitPrice = checked ? (item.unitPrice * 1.21) : (item.unitPrice / 1.21);
+                    }
                     item.vatApplied = checked;
                 }
             });
@@ -13151,6 +13286,21 @@
             if (!item.invoiceType) { showNotification('Elegí Facturado o Sin factura', 'error'); return; }
             if (!item.paymentMethod) { showNotification('Elegí Caja o Cuenta', 'error'); return; }
 
+            const matchedProduct = appState.inventory.find(p => p.id === item.productId);
+            const isWeightMode = !!(matchedProduct && matchedProduct.saleByWeight && matchedProduct.weightPerUnit > 0);
+            // openAddStockModal ya sabe interpretar "gramos totales + costo total" para
+            // productos por peso, y "unidades + costo unitario" para el resto -- se le
+            // manda lo que corresponda según el producto, no lo que diga item.qty solo
+            // (que es del modelo viejo de bultos/unid-por-bulto, ya no se usa acá).
+            const qtyToAdd = isWeightMode ? (item.totalGrams || 0) : getScanStockTotalUnits(item, matchedProduct);
+            const costToUse = isWeightMode ? (item.totalCost || 0) : (item.unitPrice || 0);
+            if (isWeightMode) {
+                if (qtyToAdd <= 0) { showNotification('Ingresá los gramos totales comprados', 'error'); return; }
+                if (costToUse <= 0) { showNotification('Ingresá el costo total de la compra', 'error'); return; }
+            } else if (qtyToAdd <= 0) {
+                showNotification('Ingresá bultos, displays o unidades sueltas', 'error'); return;
+            }
+
             // Aprende: la próxima vez que la factura diga este mismo texto,
             // va a sugerir directo este producto.
             learnInvoiceNameMapping(item.rawName, item.productId, item.productName, scanInvoiceSupplier);
@@ -13166,8 +13316,8 @@
             const expiryInput = document.getElementById('add-stock-expiry');
             const vatInput = document.getElementById('add-stock-vat');
             const priceInput = document.getElementById('add-stock-new-price');
-            if (qtyInput) qtyInput.value = item.qty;
-            if (costInput) costInput.value = item.unitPrice;
+            if (qtyInput) qtyInput.value = qtyToAdd;
+            if (costInput) costInput.value = costToUse;
             if (expiryInput) expiryInput.value = item.expiry || '';
             if (vatInput) vatInput.checked = !!item.vatApplied;
             if (priceInput && item.newPrice) priceInput.value = item.newPrice;
@@ -13864,7 +14014,7 @@
                 .filter(d => d.date && d.date.startsWith(monthPrefix) && d.type === 'shortage')
                 .reduce((sum, d) => sum + Math.abs(d.amount), 0);
             const monthFoundStock = (appState.foundStock || [])
-                .filter(f => f.date && f.date.startsWith(monthPrefix))
+                .filter(f => f.date && f.date.startsWith(monthPrefix) && !f.reconciledAsPurchase)
                 .reduce((sum, f) => sum + (f.cost || 0), 0);
             const monthLosses = (appState.losses || [])
                 .filter(l => l.date && l.date.startsWith(monthPrefix))
@@ -13973,7 +14123,7 @@
                 .filter(d => d.date === dateStr && d.type === 'shortage')
                 .reduce((sum, d) => sum + Math.abs(d.amount), 0);
             const dayFoundStock = (appState.foundStock || [])
-                .filter(f => f.date === dateStr)
+                .filter(f => f.date === dateStr && !f.reconciledAsPurchase)
                 .reduce((sum, f) => sum + (f.cost || 0), 0);
             const dayLosses = (appState.losses || [])
                 .filter(l => l.date === dateStr)
@@ -15554,9 +15704,9 @@
             const filteredLosses = startDate
                 ? losses.filter(l => new Date((l.date || '') + 'T00:00:00') >= startDate)
                 : [...losses];
-            const filteredFoundStock = startDate
+            const filteredFoundStock = (startDate
                 ? foundStock.filter(f => new Date((f.date || '') + 'T00:00:00') >= startDate)
-                : [...foundStock];
+                : [...foundStock]).filter(f => !f.reconciledAsPurchase);
             const totalLossesCost = filteredLosses.reduce((sum, l) => sum + (l.cost || 0), 0);
             const totalFoundStockCost = filteredFoundStock.reduce((sum, f) => sum + (f.cost || 0), 0);
             
@@ -16438,6 +16588,7 @@
                     .filter(d => d.type === 'surplus')
                     .reduce((sum, d) => sum + d.amount, 0);
                 const totalFoundStockCost = (appState.foundStock || [])
+                    .filter(f => !f.reconciledAsPurchase)
                     .reduce((sum, f) => sum + (f.cost || 0), 0);
                 const totalLossesCost = (appState.losses || [])
                     .reduce((sum, l) => sum + (l.cost || 0), 0);
@@ -18948,11 +19099,17 @@
                 if (!(await showConfirmModal(`⚠️ Esto ($${formatMoney(totalRealCost)}) deja ${reconcileFsPaymentSource === 'cash' ? 'la caja' : 'la cuenta'} en negativo (tenés $${formatMoney(available)}). ¿Confirmar igual?`))) return;
             }
 
-            // Corrige el valor de lo ya vendido (afecta la ganancia "stock gratis" que se
-            // muestra en Dashboard/Finanzas) y marca todo el grupo como reconciliado.
+            // Corrige el costo y marca todo el grupo como reconciliado. IMPORTANTE:
+            // "reconciledAsPurchase" queda aparte de "reconciled" (que también lo marca
+            // "descartar", cuando en realidad SÍ era gratis/ya lo tenías) -- esto es lo que
+            // le dice a las cuentas de "ganancia por stock gratis" (Dashboard/Finanzas) que
+            // dejen de contar este monto como ganancia gratuita, porque ya se registró como
+            // gasto real más abajo (cash/bank + Inversión) y contarlo también acá sería
+            // duplicar la plata.
             entries.forEach(entry => {
                 entry.cost = Math.round(realCost * entry.quantity * 100) / 100;
                 entry.reconciled = true;
+                entry.reconciledAsPurchase = true;
             });
 
             const remainingQty = totalQty - coveredQty;
@@ -19105,13 +19262,15 @@
                 gift: 'Regalo',
                 sample: 'Muestra',
                 conteo: 'Conteo',
+                'auto-sale': 'Venta s/stock',
                 other: 'Otro'
             };
-            
+
             const reasonClasses = {
                 found: 'bg-green-100 text-green-700',
                 gift: 'bg-purple-100 text-purple-700',
                 sample: 'bg-blue-100 text-blue-700',
+                'auto-sale': 'bg-amber-100 text-amber-700',
                 other: 'bg-gray-100 text-gray-700'
             };
             
@@ -19133,13 +19292,20 @@
                     `;
                 }
                 const reason = found.reason || 'other';
+                // Si ya se reconcilió contra una compra real, el costo dejó de ser
+                // "ganancia gratis" (se registró como gasto real aparte, en Inversiones) --
+                // se marca distinto acá para que quede claro que ese monto ya no cuenta
+                // como stock gratis en los totales de ganancia.
+                const badge = found.reconciledAsPurchase
+                    ? `<span class="px-2 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700" title="Ya no cuenta como ganancia por stock gratis: se registró como gasto real en Inversiones">💳 Compra real</span>`
+                    : `<span class="px-2 py-1 rounded-full text-xs font-bold ${reasonClasses[reason] || reasonClasses.other}">${reasonLabels[reason] || 'Otro'}</span>`;
                 html += `
                     <tr>
                         <td class="px-4 py-3 text-sm text-gray-600">${found.date || '-'}</td>
                         <td class="px-4 py-3 font-medium text-gray-900">${escapeHtml(found.productName || '-')}</td>
                         <td class="px-4 py-3 text-center font-bold text-gray-700">${found.grams ? Math.round(found.grams) + 'g' : (found.quantity || 0)}</td>
                         <td class="px-4 py-3">
-                            <span class="px-2 py-1 rounded-full text-xs font-bold ${reasonClasses[reason] || reasonClasses.other}">${reasonLabels[reason] || 'Otro'}</span>
+                            ${badge}
                         </td>
                         <td class="px-4 py-3 text-right text-gray-600">$${formatMoney(found.cost || 0)}</td>
                         <td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(found.notes || '-')}</td>

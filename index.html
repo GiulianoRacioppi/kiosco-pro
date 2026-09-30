@@ -564,9 +564,9 @@
                     <button onclick="stockCountPrev()" id="stock-count-prev" class="bg-gray-200 text-gray-700 px-4 py-3 rounded-xl font-bold">←</button>
                     <button onclick="stockCountNext()" id="stock-count-next-btn" class="flex-1 bg-teal-600 text-white py-3 rounded-xl font-bold shadow hover:bg-teal-700">Siguiente →</button>
                 </div>
-                <button onclick="pauseStockCount()" class="w-full mt-2 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-xl font-bold text-sm">💾 Salir y seguir después (no se borra nada)</button>
-                <button onclick="stockCountFinish(true)" class="w-full mt-2 text-xs text-gray-500 hover:text-red-600 underline">Terminar antes (resume solo lo ya contado)</button>
-                <button onclick="stockCountSkipForever()" class="w-full mt-1 text-xs text-gray-400 hover:text-orange-600 underline">🚫 No contar este producto nunca (ej: elementos del negocio)</button>
+                <button onclick="pauseStockCount()" class="w-full mt-3 bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-xl font-bold text-base border-2 border-gray-200">💾 Salir y seguir después <span class="font-normal text-sm">(no se borra nada)</span></button>
+                <button onclick="stockCountFinish(true)" class="w-full mt-2 bg-amber-50 hover:bg-amber-100 text-amber-700 py-3 rounded-xl font-bold text-base border-2 border-amber-200">Terminar antes <span class="font-normal text-sm">(resume solo lo ya contado)</span></button>
+                <button onclick="stockCountSkipForever()" class="w-full mt-2 bg-red-50 hover:bg-red-100 text-red-600 py-3 rounded-xl font-bold text-base border-2 border-red-200">🚫 No contar este producto nunca <span class="font-normal text-sm">(ej: elementos del negocio)</span></button>
             </div>
             <div id="stock-count-summary" class="hidden">
                 <div id="stock-count-summary-list" class="space-y-2 max-h-72 overflow-y-auto custom-scrollbar mb-3"></div>
@@ -12696,6 +12696,42 @@
             </tr>`;
         }
 
+        // Costo por unidad de venta, ya sea que la línea esté en modo "bultos/unidades"
+        // (item.unitPrice tal cual) o en modo "por peso" (se deriva de gramos totales +
+        // costo total + gramos por unidad de venta) -- un solo lugar para no repetir la
+        // cuenta en el render y en el cálculo del margen.
+        function getScanItemEffectiveUnitCost(item) {
+            if (item.saleByWeight) {
+                const totalGrams = item.totalGrams || 0;
+                const weightPerUnit = item.weightPerUnit || 0;
+                const totalCost = item.totalCost || 0;
+                return (totalGrams > 0 && weightPerUnit > 0) ? (totalCost / totalGrams) * weightPerUnit : 0;
+            }
+            return item.unitPrice || 0;
+        }
+
+        function toggleScanItemWeightMode(localId) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item.saleByWeight = !item.saleByWeight;
+            // Al pasar a "por peso" por primera vez, precargar con lo que ya se había
+            // cargado en modo unidades como punto de partida (el usuario lo corrige).
+            if (item.saleByWeight && !item.totalGrams && !item.totalCost) {
+                item.totalGrams = item.qty || 0;
+                item.totalCost = Math.round((item.qty || 0) * (item.unitPrice || 0) * 100) / 100;
+            }
+            renderScanInvoiceItems();
+        }
+        window.toggleScanItemWeightMode = toggleScanItemWeightMode;
+
+        function updateScanItemWeightField(localId, field, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item[field] = Math.max(0, parseFloat(value) || 0);
+            renderScanInvoiceItems();
+        }
+        window.updateScanItemWeightField = updateScanItemWeightField;
+
         function renderScanNewCard(item) {
             const categorySelectEl = document.getElementById('inv-category');
             // Reconstruye las opciones marcando como seleccionada la categoría
@@ -12705,15 +12741,20 @@
             if (item.category) {
                 categoryOptions = categoryOptions.replace(`value="${item.category}"`, `value="${item.category}" selected`);
             }
-            const totalUnidades = Math.round((item.packages || 0) * (item.unitsPerPackage || 0) * 100) / 100;
-            const totalPrice = Math.round(totalUnidades * (item.unitPrice || 0) * 100) / 100;
+            const isWeightMode = !!item.saleByWeight;
+            const effectiveUnitCost = getScanItemEffectiveUnitCost(item);
+            const totalUnidades = isWeightMode
+                ? (((item.weightPerUnit || 0) > 0) ? Math.round(((item.totalGrams || 0) / item.weightPerUnit) * 100) / 100 : 0)
+                : Math.round((item.packages || 0) * (item.unitsPerPackage || 0) * 100) / 100;
+            const totalPrice = isWeightMode ? (item.totalCost || 0) : Math.round(totalUnidades * (item.unitPrice || 0) * 100) / 100;
             const currentSalePrice = item.newPrice !== '' && item.newPrice != null ? parseFloat(item.newPrice) : null;
-            const marginPct = (item.unitPrice > 0 && currentSalePrice > 0) ? (((currentSalePrice - item.unitPrice) / item.unitPrice) * 100) : null;
+            const marginPct = (effectiveUnitCost > 0 && currentSalePrice > 0) ? (((currentSalePrice - effectiveUnitCost) / effectiveUnitCost) * 100) : null;
             return `
             <div id="scanitem-card-${item.localId}" class="border rounded-xl p-2 space-y-1">
                 <div class="flex justify-between items-start gap-2">
                     <p class="text-[11px] text-gray-400 flex-1">Factura decía: "${escapeHtml(item.rawName)}"</p>
                     <div class="flex gap-2">
+                        <button onclick="toggleScanItemWeightMode('${item.localId}')" class="text-[10px] font-bold ${isWeightMode ? 'text-blue-600' : 'text-gray-400 hover:text-blue-600'}">${isWeightMode ? '🔢 Es por unidad' : '⚖️ Es por peso'}</button>
                         <button onclick="setScanItemType('${item.localId}', 'stock')" class="text-[10px] text-gray-400 hover:text-indigo-600">📦 Es stock</button>
                         <button onclick="setScanItemType('${item.localId}', 'expense')" class="text-[10px] text-gray-400 hover:text-red-600">🧾 Es gasto</button>
                         <button onclick="discardScanItem('${item.localId}')" class="text-gray-400 px-1" title="Descartar esta línea">✕</button>
@@ -12737,6 +12778,32 @@
                         <input type="text" value="${escapeHtml(item.supplier || '')}" list="scan-suppliers-datalist" class="w-full border rounded-lg px-2 py-1 text-sm" onchange="updateScanItemNewField('${item.localId}', 'supplier', this.value)">
                     </div>
                 </div>
+                ${isWeightMode ? `
+                <div class="flex gap-1.5 items-end mt-1 bg-blue-50 rounded-lg p-1.5 border border-blue-200">
+                    <div class="flex-1">
+                        <label class="block text-[10px] text-blue-500 uppercase">Gramos totales</label>
+                        <input type="number" min="0" step="1" value="${item.totalGrams || ''}" placeholder="ej: 5000" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemWeightField('${item.localId}', 'totalGrams', this.value)">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-[10px] text-blue-500 uppercase">G. por unid. venta</label>
+                        <input type="number" min="0" step="1" value="${item.weightPerUnit || ''}" placeholder="ej: 100" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemWeightField('${item.localId}', 'weightPerUnit', this.value)">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-[10px] text-blue-500 uppercase">Costo total</label>
+                        <input type="number" min="0" step="0.01" value="${item.totalCost || ''}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemWeightField('${item.localId}', 'totalCost', this.value)">
+                    </div>
+                </div>
+                <div class="flex gap-1.5 items-end mt-1">
+                    <div class="flex-1">
+                        <label class="block text-[10px] text-gray-400 uppercase">Costo por unid. venta</label>
+                        <input type="number" value="${effectiveUnitCost.toFixed(2)}" readonly class="w-full border rounded-lg px-2 py-1 text-center bg-gray-50 text-gray-500">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-[10px] text-gray-400 uppercase">Vencim.</label>
+                        <input type="date" value="${item.expiry || ''}" class="w-full border rounded-lg px-2 py-1" onchange="updateScanItemExpiry('${item.localId}', this.value)">
+                    </div>
+                </div>
+                ` : `
                 <div class="flex gap-1.5 items-end mt-1">
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Bultos</label>
@@ -12765,9 +12832,10 @@
                         <input type="date" value="${item.expiry || ''}" class="w-full border rounded-lg px-2 py-1" onchange="updateScanItemExpiry('${item.localId}', this.value)">
                     </div>
                 </div>
+                `}
                 <div class="flex gap-1.5 items-end mt-1">
                     <div class="flex-1">
-                        <label class="block text-[10px] text-gray-400 uppercase">Precio venta</label>
+                        <label class="block text-[10px] text-gray-400 uppercase">Precio venta${isWeightMode ? ' (por unid. venta)' : ''}</label>
                         <input type="number" min="0" step="0.01" value="${item.newPrice || ''}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemNewPrice('${item.localId}', this.value)">
                     </div>
                     <div class="flex-1">
@@ -13021,13 +13089,15 @@
         window.updateScanItemNewPrice = updateScanItemNewPrice;
 
         // Mismo cálculo que "Margen de ganancia (%)" de Agregar Stock: a partir
-        // del costo unitario y el margen pedido, arma el precio de venta.
+        // del costo unitario (o, en modo "por peso", el costo por unidad de venta
+        // derivado de gramos/costo total) y el margen pedido, arma el precio de venta.
         function updateScanItemMarginPercent(localId, value) {
             const item = scanInvoiceItems.find(i => i.localId === localId);
             if (!item) return;
             const margin = parseFloat(value);
-            if (!isNaN(margin) && item.unitPrice > 0) {
-                item.newPrice = roundTo50Up(item.unitPrice * (1 + margin / 100)).toFixed(2);
+            const cost = getScanItemEffectiveUnitCost(item);
+            if (!isNaN(margin) && cost > 0) {
+                item.newPrice = roundTo50Up(cost * (1 + margin / 100)).toFixed(2);
             }
             renderScanInvoiceItems();
         }
@@ -13121,27 +13191,44 @@
 
             const name = (item.newProductName != null ? item.newProductName : item.rawName).trim();
             const price = item.newPrice !== '' && item.newPrice != null ? parseFloat(item.newPrice) || 0 : 0;
+            const isWeightMode = !!item.saleByWeight;
 
             if (!name) { showNotification('Ingresá el nombre del producto', 'error'); return; }
-            if (!item.unitPrice || item.unitPrice <= 0) { showNotification('El costo debe ser mayor a 0', 'error'); return; }
-            if (!item.qty || item.qty <= 0) { showNotification('La cantidad debe ser mayor a 0', 'error'); return; }
+            if (isWeightMode) {
+                if (!item.weightPerUnit || item.weightPerUnit <= 0) { showNotification('Ingresá los gramos por unidad de venta', 'error'); return; }
+                if (!item.totalGrams || item.totalGrams <= 0) { showNotification('Ingresá los gramos totales comprados', 'error'); return; }
+                if (!item.totalCost || item.totalCost <= 0) { showNotification('Ingresá el costo total de la compra', 'error'); return; }
+            } else {
+                if (!item.unitPrice || item.unitPrice <= 0) { showNotification('El costo debe ser mayor a 0', 'error'); return; }
+                if (!item.qty || item.qty <= 0) { showNotification('La cantidad debe ser mayor a 0', 'error'); return; }
+            }
             if (price <= 0) { showNotification('Ingresá el precio de venta', 'error'); return; }
 
             // Precarga el formulario real "Nuevo Producto (Compra)" y lo confirma
             // directo (un solo clic) -- misma función real (preparePurchase →
             // confirmPurchase), mismas validaciones, misma notificación de siempre.
+            // En modo "por peso" se precarga igual que si lo hubieras tildado a mano
+            // ahí (costo TOTAL en Costo, gramos TOTALES en Stock).
             document.getElementById('inv-barcode').value = item.barcode || '';
             document.getElementById('inv-name').value = name;
             if (item.category) document.getElementById('inv-category').value = item.category;
             document.getElementById('inv-supplier').value = item.supplier || '';
-            document.getElementById('inv-cost').value = item.unitPrice;
-            document.getElementById('inv-stock').value = item.qty;
-            document.getElementById('inv-price').value = price;
             document.getElementById('inv-expiry').value = item.expiry || '';
             const compositeCheckbox = document.getElementById('inv-is-composite');
             if (compositeCheckbox) compositeCheckbox.checked = false;
             const weightCheckbox = document.getElementById('inv-sale-by-weight');
-            if (weightCheckbox) weightCheckbox.checked = false;
+            if (weightCheckbox) weightCheckbox.checked = isWeightMode;
+            if (isWeightMode) {
+                const weightPerUnitInput = document.getElementById('inv-weight-per-unit');
+                if (weightPerUnitInput) weightPerUnitInput.value = item.weightPerUnit;
+                document.getElementById('inv-cost').value = item.totalCost;
+                document.getElementById('inv-stock').value = item.totalGrams;
+            } else {
+                document.getElementById('inv-cost').value = item.unitPrice;
+                document.getElementById('inv-stock').value = item.qty;
+            }
+            if (typeof toggleWeightSection === 'function') toggleWeightSection();
+            document.getElementById('inv-price').value = price;
 
             pendingNewProductScanRawName = item.rawName;
             scanInvoiceReturnPending = true;
@@ -18006,6 +18093,19 @@
         function renderStockCountStep() {
             if (!stockCountSession) return;
             const item = stockCountSession.items[stockCountSession.index];
+            // Si todavía no se contó este producto, actualizar "según el sistema hay" con
+            // el stock AHORA (pudo cambiar por una venta mientras el conteo estaba en pausa
+            // o contando otro producto) -- así no se marca un faltante/sobrante fantasma
+            // por haber vendido algo recién. Los productos ya contados NO se tocan: su
+            // "expected" queda congelado al momento en que se contaron, que es lo correcto
+            // para comparar contra lo que se anotó a mano.
+            if (item.counted === null) {
+                const liveProduct = appState.inventory.find(p => p.id === item.productId);
+                if (liveProduct) {
+                    const liveUnits = getProductStock(liveProduct) || 0;
+                    item.expected = item.isWeight ? Math.round(liveUnits * liveProduct.weightPerUnit) : liveUnits;
+                }
+            }
             const total = stockCountSession.items.length;
             const n = stockCountSession.index + 1;
             document.getElementById('stock-count-progress').textContent = n + ' de ' + total;
@@ -18025,6 +18125,16 @@
             const item = stockCountSession ? stockCountSession.items[stockCountSession.index] : null;
             const el = document.getElementById('stock-count-diff');
             if (!item) { el.textContent = ''; return; }
+            // Refrescar "expected" con el stock AHORA (por si se vendió algo de este
+            // producto en otra sección sin salir del conteo) -- mientras no se haya
+            // confirmado el conteo de este ítem, siempre se compara contra lo más actual.
+            if (item.counted === null) {
+                const liveProduct = appState.inventory.find(p => p.id === item.productId);
+                if (liveProduct) {
+                    const liveUnits = getProductStock(liveProduct) || 0;
+                    item.expected = item.isWeight ? Math.round(liveUnits * liveProduct.weightPerUnit) : liveUnits;
+                }
+            }
             const raw = document.getElementById('stock-count-input').value;
             if (raw === '' || isNaN(parseFloat(raw))) { el.textContent = ''; return; }
             const counted = parseFloat(raw);
@@ -18047,6 +18157,18 @@
             const item = stockCountSession.items[stockCountSession.index];
             const raw = document.getElementById('stock-count-input').value.trim();
             if (raw === '' || isNaN(parseFloat(raw)) || parseFloat(raw) < 0) return false;
+            // Último refresco justo antes de congelar el conteo: si se vendió algo de este
+            // producto en cualquier momento desde que se llegó a este paso (en otra sección,
+            // sin salir del conteo, o durante una pausa), "expected" tiene que quedar con el
+            // stock de AHORA -- es contra eso que se compara lo contado, no contra lo que
+            // decía el sistema cuando se abrió este paso.
+            if (item.counted === null) {
+                const liveProduct = appState.inventory.find(p => p.id === item.productId);
+                if (liveProduct) {
+                    const liveUnits = getProductStock(liveProduct) || 0;
+                    item.expected = item.isWeight ? Math.round(liveUnits * liveProduct.weightPerUnit) : liveUnits;
+                }
+            }
             item.counted = parseFloat(raw);
             return true;
         }
@@ -18683,7 +18805,17 @@
 
         // ==================== RECORDATORIOS DE AJUSTES AUTOMÁTICOS ====================
         // Lista, en Reponer, los ajustes de Stock Gratis creados por vender sin stock
-        // cargado que todavía no se confirmaron contra la compra real.
+        // cargado que todavía no se confirmaron contra la compra real. Se agrupan por
+        // producto (no uno por venta): si el mismo producto se vendió sin stock varias
+        // veces antes de reconciliar, aparecen sumados en un solo recordatorio -- así al
+        // reconciliar se cubren todas esas ventas juntas contra la compra real, en vez de
+        // ir una por una (que hacía fácil que las unidades "extra" de una reconciliación
+        // en realidad correspondieran a otra venta sin stock todavía pendiente, y terminara
+        // sin cuadrar).
+        function getPendingAutoSaleEntries(productId) {
+            return (appState.foundStock || []).filter(f => f.reason === 'auto-sale' && f.reconciled === false && f.productId === productId);
+        }
+
         function renderAutoAdjustReminders() {
             const card = document.getElementById('auto-adjust-reminders');
             const list = document.getElementById('auto-adjust-reminders-list');
@@ -18695,19 +18827,31 @@
                 return;
             }
             card.classList.remove('hidden');
-            list.innerHTML = pending.map(f => {
-                const unitCost = f.quantity > 0 ? f.cost / f.quantity : 0;
+
+            const byProduct = new Map();
+            pending.forEach(f => {
+                if (!byProduct.has(f.productId)) byProduct.set(f.productId, []);
+                byProduct.get(f.productId).push(f);
+            });
+
+            list.innerHTML = Array.from(byProduct.values()).map(entries => {
+                const productId = entries[0].productId;
+                const productName = entries[0].productName;
+                const totalQty = entries.reduce((sum, f) => sum + f.quantity, 0);
+                const totalCost = entries.reduce((sum, f) => sum + f.cost, 0);
+                const unitCost = totalQty > 0 ? totalCost / totalQty : 0;
+                const earliestDate = entries.map(f => f.date).sort()[0];
                 return `
                 <div class="bg-white rounded-xl p-3 border border-amber-200 flex flex-wrap justify-between items-center gap-2">
                     <div>
-                        <p class="font-bold text-gray-800">${escapeHtml(f.productName)}</p>
-                        <p class="text-xs text-gray-500">${f.date} · ${f.quantity} unidad${f.quantity > 1 ? 'es' : ''} vendida${f.quantity > 1 ? 's' : ''} sin stock cargado · costo usado: $${formatMoney(unitCost)}/u</p>
+                        <p class="font-bold text-gray-800">${escapeHtml(productName)}</p>
+                        <p class="text-xs text-gray-500">${entries.length > 1 ? `${entries.length} ventas sin stock desde el ${earliestDate}` : earliestDate} · ${totalQty} unidad${totalQty > 1 ? 'es' : ''} vendida${totalQty > 1 ? 's' : ''} sin stock cargado · costo usado: $${formatMoney(unitCost)}/u</p>
                     </div>
                     <div class="flex gap-2">
-                        <button onclick="openReconcileFoundStockModal('${f.id}')" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg font-bold text-xs">
+                        <button onclick="openReconcileFoundStockModal('${productId}')" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg font-bold text-xs">
                             <i class="fas fa-check"></i> Confirmar compra real
                         </button>
-                        <button onclick="dismissAutoAdjustReminder('${f.id}')" class="bg-gray-100 hover:bg-gray-200 text-gray-500 px-3 py-2 rounded-lg text-xs" title="No hace falta reconciliar esto">
+                        <button onclick="dismissAutoAdjustReminder('${productId}')" class="bg-gray-100 hover:bg-gray-200 text-gray-500 px-3 py-2 rounded-lg text-xs" title="No hace falta reconciliar esto">
                             Descartar
                         </button>
                     </div>
@@ -18715,38 +18859,42 @@
             }).join('');
         }
 
-        function dismissAutoAdjustReminder(foundId) {
-            const entry = (appState.foundStock || []).find(f => f.id === foundId);
-            if (!entry) return;
-            entry.reconciled = true;
+        function dismissAutoAdjustReminder(productId) {
+            const entries = getPendingAutoSaleEntries(productId);
+            if (entries.length === 0) return;
+            entries.forEach(entry => { entry.reconciled = true; });
             saveToLocalStorage();
             renderAutoAdjustReminders();
         }
 
-        let reconcileFsId = null;
+        let reconcileFsProductId = null;
         let reconcileFsInvoiceType = 'white';
         let reconcileFsPaymentSource = 'cash';
 
-        function openReconcileFoundStockModal(foundId) {
-            const entry = (appState.foundStock || []).find(f => f.id === foundId);
-            if (!entry) return;
-            reconcileFsId = foundId;
+        function openReconcileFoundStockModal(productId) {
+            const entries = getPendingAutoSaleEntries(productId);
+            if (entries.length === 0) return;
+            reconcileFsProductId = productId;
             setReconcileFsInvoiceType('white');
             setReconcileFsPayment('cash');
 
-            const unitCost = entry.quantity > 0 ? entry.cost / entry.quantity : 0;
-            document.getElementById('reconcile-fs-summary').textContent =
-                `${entry.productName}: ya se vendió ${entry.quantity} unidad${entry.quantity > 1 ? 'es' : ''} usando un costo estimado de $${formatMoney(unitCost)}/u.`;
-            document.getElementById('reconcile-fs-total-qty').value = entry.quantity;
+            const coveredQty = entries.reduce((sum, f) => sum + f.quantity, 0);
+            const coveredCost = entries.reduce((sum, f) => sum + f.cost, 0);
+            const unitCost = coveredQty > 0 ? coveredCost / coveredQty : 0;
+            const productName = entries[0].productName;
+            document.getElementById('reconcile-fs-summary').textContent = entries.length > 1
+                ? `${productName}: ya se vendieron ${coveredQty} unidades en ${entries.length} ventas sin stock cargado, usando un costo estimado de $${formatMoney(unitCost)}/u.`
+                : `${productName}: ya se vendió ${coveredQty} unidad${coveredQty > 1 ? 'es' : ''} usando un costo estimado de $${formatMoney(unitCost)}/u.`;
+            document.getElementById('reconcile-fs-total-qty').value = coveredQty;
             document.getElementById('reconcile-fs-qty-hint').textContent =
-                `Ya se cubrieron y vendieron ${entry.quantity} con el ajuste automático. Si compraste más en esa entrega, poné el total acá (ej: compraste 4 → poné 4, y se agregan solo las 3 que faltan).`;
+                `Ya se cubrieron y vendieron ${coveredQty} con el/los ajuste(s) automático(s). Si compraste más en esa entrega, poné el total acá (ej: compraste 4 → poné 4, y se agregan solo las que falten).`;
             document.getElementById('reconcile-fs-cost').value = unitCost.toFixed(2);
             document.getElementById('reconcile-found-stock-modal').classList.add('active');
         }
 
         function closeReconcileFoundStockModal() {
             document.getElementById('reconcile-found-stock-modal').classList.remove('active');
-            reconcileFsId = null;
+            reconcileFsProductId = null;
         }
 
         function setReconcileFsInvoiceType(type) {
@@ -18765,24 +18913,28 @@
             if (btnBank) btnBank.className = 'flex-1 py-2 rounded-lg border-2 text-sm font-medium ' + (source === 'bank' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500');
         }
 
-        // Confirma el ajuste automático contra la compra real: corrige el costo (el
-        // ajuste automático usó el costo que el producto tenía guardado en ese momento,
-        // que puede estar desactualizado) y agrega SOLO las unidades que falten -- las
-        // que ya se sumaron y vendieron con el ajuste no se vuelven a cargar.
+        // Confirma el ajuste automático (o el grupo de ajustes, si el mismo producto se
+        // vendió sin stock varias veces) contra la compra real: corrige el costo, agrega
+        // a STOCK solo las unidades que falten (las ya vendidas con el ajuste no se
+        // vuelven a cargar), y registra en Inversiones (con su salida real de plata) el
+        // costo de TODO lo que se compró en esa entrega -- incluidas las unidades que ya
+        // se habían vendido antes de cargar la compra, que hasta ahora no quedaban
+        // anotadas en ningún lado como plata gastada de verdad.
         async function confirmReconcileFoundStock() {
-            const entry = (appState.foundStock || []).find(f => f.id === reconcileFsId);
-            if (!entry) { closeReconcileFoundStockModal(); return; }
-            const product = appState.inventory.find(p => p.id === entry.productId);
+            const entries = getPendingAutoSaleEntries(reconcileFsProductId);
+            if (entries.length === 0) { closeReconcileFoundStockModal(); return; }
+            const product = appState.inventory.find(p => p.id === reconcileFsProductId);
             if (!product) {
                 showNotification('Ese producto ya no existe', 'error');
                 closeReconcileFoundStockModal();
                 return;
             }
 
+            const coveredQty = entries.reduce((sum, f) => sum + f.quantity, 0);
             const totalQty = parseInt(document.getElementById('reconcile-fs-total-qty').value) || 0;
             const realCost = parseFloat(document.getElementById('reconcile-fs-cost').value) || 0;
-            if (totalQty < entry.quantity) {
-                showNotification(`La cantidad total no puede ser menor a las ${entry.quantity} que ya se cubrieron con el ajuste`, 'error');
+            if (totalQty < coveredQty) {
+                showNotification(`La cantidad total no puede ser menor a las ${coveredQty} que ya se cubrieron con el/los ajuste(s)`, 'error');
                 return;
             }
             if (realCost <= 0) {
@@ -18790,22 +18942,49 @@
                 return;
             }
 
-            // Corrige el valor de lo que ya se sumó (afecta la ganancia "stock gratis"
-            // mostrada en Dashboard/Finanzas, calculada a partir de este monto).
-            entry.cost = Math.round(realCost * entry.quantity * 100) / 100;
-            entry.reconciled = true;
+            const totalRealCost = Math.round(totalQty * realCost * 100) / 100;
+            const available = reconcileFsPaymentSource === 'cash' ? appState.cash : appState.bank;
+            if (totalRealCost > available) {
+                if (!(await showConfirmModal(`⚠️ Esto ($${formatMoney(totalRealCost)}) deja ${reconcileFsPaymentSource === 'cash' ? 'la caja' : 'la cuenta'} en negativo (tenés $${formatMoney(available)}). ¿Confirmar igual?`))) return;
+            }
 
-            const remainingQty = totalQty - entry.quantity;
+            // Corrige el valor de lo ya vendido (afecta la ganancia "stock gratis" que se
+            // muestra en Dashboard/Finanzas) y marca todo el grupo como reconciliado.
+            entries.forEach(entry => {
+                entry.cost = Math.round(realCost * entry.quantity * 100) / 100;
+                entry.reconciled = true;
+            });
+
+            const remainingQty = totalQty - coveredQty;
             if (remainingQty > 0) {
-                const totalCost = remainingQty * realCost;
-                const available = reconcileFsPaymentSource === 'cash' ? appState.cash : appState.bank;
-                if (totalCost > available) {
-                    if (!(await showConfirmModal(`⚠️ Esto ($${formatMoney(totalCost)}) deja ${reconcileFsPaymentSource === 'cash' ? 'la caja' : 'la cuenta'} en negativo (tenés $${formatMoney(available)}). ¿Confirmar igual?`))) return;
-                }
                 applyPurchaseLine({ product, qty: remainingQty, cost: realCost, expiry: null, source: reconcileFsPaymentSource, invoiceType: reconcileFsInvoiceType, conceptPrefix: 'Compra real (reconciliada)' });
             } else {
                 // No hay unidades extra: solo se corrige el costo de referencia del producto.
                 product.cost = realCost;
+            }
+
+            // La parte ya cubierta por el/los ajuste(s) automático(s) (coveredQty) no pasa
+            // por applyPurchaseLine porque ese stock ya se sumó (y vendió) antes -- pero la
+            // plata real que costó SÍ hay que registrarla ahora, que es cuando se sabe.
+            const coveredRealCost = Math.round(coveredQty * realCost * 100) / 100;
+            if (coveredRealCost > 0) {
+                if (reconcileFsPaymentSource === 'cash') appState.cash -= coveredRealCost;
+                else appState.bank -= coveredRealCost;
+                if (!appState.invoiceTracking) appState.invoiceTracking = { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 };
+                if (reconcileFsInvoiceType === 'white') appState.invoiceTracking.purchasedWhite += coveredRealCost;
+                else appState.invoiceTracking.purchasedBlack += coveredRealCost;
+                appState.investments.push({
+                    id: 'PURCHASE-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                    date: formatDateISO(appState.activeDate || new Date()),
+                    concept: `Compra real (reconciliada, ya vendida): ${product.name} (${coveredQty} unidades)`,
+                    amount: coveredRealCost,
+                    source: reconcileFsPaymentSource,
+                    type: 'purchase',
+                    productId: product.id,
+                    batchId: null,
+                    vatApplied: null,
+                    timestamp: Date.now()
+                });
             }
 
             saveToLocalStorage();

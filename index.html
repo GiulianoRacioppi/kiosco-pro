@@ -12774,14 +12774,14 @@
                 <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.bultos || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" oninput="scanStockQtyQuietSync('${item.localId}', 'bultos', this.value)" onchange="updateScanStockQtyField('${item.localId}', 'bultos', this.value)"></td>
                 <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.displaysQty || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" oninput="scanStockQtyQuietSync('${item.localId}', 'displaysQty', this.value)" onchange="updateScanStockQtyField('${item.localId}', 'displaysQty', this.value)"></td>
                 <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.unidadesSueltas || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" oninput="scanStockQtyQuietSync('${item.localId}', 'unidadesSueltas', this.value)" onchange="updateScanStockQtyField('${item.localId}', 'unidadesSueltas', this.value)">${factorsHint}</td>
-                <td class="px-1 py-1 align-top"><input type="number" value="${totalUnidades}" readonly class="w-14 border rounded px-1 py-1 text-center bg-gray-50 text-gray-500"></td>
+                <td class="px-1 py-1 align-top"><input type="number" id="scanstock-totalunid-${item.localId}" value="${totalUnidades}" readonly class="w-14 border rounded px-1 py-1 text-center bg-gray-50 text-gray-500"></td>
                 <td class="px-1 py-1 align-top">
                     <input type="number" min="0" step="0.01" value="${totalPrice}" class="w-20 border rounded px-1 py-1 text-center" oninput="scanStockTotalPriceQuietSync('${item.localId}', this.value)" onchange="updateScanStockTotalPrice('${item.localId}', this.value)">
                     ${totalUnidades > 0 ? `<p class="text-[8px] text-gray-400 mt-0.5 leading-tight">De las ${totalUnidades} u. juntas (si lo cambiás, se recalcula el unitario solo)</p>` : ''}
                 </td>
-                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${(item.unitPrice || 0).toFixed(2)}" class="w-20 border rounded px-1 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'unitPrice', this.value)" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)"></td>
+                <td class="px-1 py-1 align-top"><input type="number" id="scanstock-unitprice-${item.localId}" min="0" step="0.01" value="${(item.unitPrice || 0).toFixed(2)}" class="w-20 border rounded px-1 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'unitPrice', this.value)" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)"></td>
                 <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" placeholder="${currentSalePrice.toFixed(2)}" value="${item.newPrice || ''}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanItemNewPrice('${item.localId}', this.value)"></td>
-                <td class="px-1 py-1 align-top"><input type="number" step="0.1" value="${marginPct != null ? marginPct.toFixed(1) : ''}" class="w-16 border rounded px-1 py-1 text-center" onchange="updateScanItemMarginPercent('${item.localId}', this.value)"></td>
+                <td class="px-1 py-1 align-top"><input type="number" id="scanstock-margin-${item.localId}" step="0.1" value="${marginPct != null ? marginPct.toFixed(1) : ''}" class="w-16 border rounded px-1 py-1 text-center" onchange="updateScanItemMarginPercent('${item.localId}', this.value)"></td>
                 <td class="px-1 py-1 align-top"><input type="date" value="${item.expiry || ''}" class="w-32 border rounded px-1 py-1" onchange="updateScanItemExpiry('${item.localId}', this.value)"></td>
                 <td class="px-1 py-1 align-top whitespace-nowrap">
                     <button onclick="confirmScanItemAsStock('${item.localId}')" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded px-2 py-1 text-[11px] font-bold" title="Agregar Stock">✓</button>
@@ -12793,6 +12793,7 @@
         function updateScanStockQtyField(localId, field, value) {
             const item = scanInvoiceItems.find(i => i.localId === localId);
             if (!item) return;
+            ensureScanStockAnchorTotal(item);
             item[field] = Math.max(0, parseFloat(value) || 0);
             reapplyScanStockEnteredTotal(item);
             renderScanInvoiceItems();
@@ -12808,6 +12809,20 @@
             const matchedProduct = item.productId ? appState.inventory.find(p => p.id === item.productId) : null;
             const totalUnidades = getScanStockTotalUnits(item, matchedProduct);
             item.unitPrice = totalUnidades > 0 ? (item.enteredTotalPrice / totalUnidades) : 0;
+        }
+
+        // El precio total tiene que quedar fijo CUALQUIERA sea su origen -- tanto si
+        // lo escribiste vos como si vino directo de la factura leída (sin tocarlo
+        // nunca). Si todavía no hay un total "anclado" (enteredTotalPrice), se toma el
+        // total actual (unidades de ANTES del cambio × precio unitario actual) como
+        // punto de partida la primera vez que se toca cualquier cantidad -- así, al
+        // agregar o sacar bultos/displays/sueltas, lo que se mantiene fijo es siempre
+        // el total, y lo que se ajusta es el precio por unidad, nunca al revés.
+        function ensureScanStockAnchorTotal(item) {
+            if (item.enteredTotalPrice != null) return;
+            const matchedProduct = item.productId ? appState.inventory.find(p => p.id === item.productId) : null;
+            const oldTotalUnidades = getScanStockTotalUnits(item, matchedProduct);
+            item.enteredTotalPrice = Math.round(oldTotalUnidades * (item.unitPrice || 0) * 100) / 100;
         }
 
         // Guarda el valor en el ítem SIN reconstruir la lista (eso solo pasa en el
@@ -12828,10 +12843,31 @@
         function scanStockQtyQuietSync(localId, field, value) {
             const item = scanInvoiceItems.find(i => i.localId === localId);
             if (!item) return;
+            ensureScanStockAnchorTotal(item);
             item[field] = Math.max(0, parseFloat(value) || 0);
             reapplyScanStockEnteredTotal(item);
+            liveUpdateScanStockRow(item);
         }
         window.scanStockQtyQuietSync = scanStockQtyQuietSync;
+
+        // Actualiza en vivo, SIN reconstruir toda la lista (reconstruir las 30+ filas
+        // en cada tecla es lo que trababa la pantalla antes), los campos de ESTA fila
+        // que dependen de bultos/displays/sueltas/precio total: Total unid., Precio
+        // unit. y Margen % -- así se ven los números correctos apenas tocás +/- o
+        // escribís, no recién al salir del campo (que es cuando antes se actualizaban).
+        function liveUpdateScanStockRow(item) {
+            const matchedProduct = item.productId ? appState.inventory.find(p => p.id === item.productId) : null;
+            const totalUnidades = getScanStockTotalUnits(item, matchedProduct);
+            const totalEl = document.getElementById('scanstock-totalunid-' + item.localId);
+            if (totalEl) totalEl.value = totalUnidades;
+            const unitPriceEl = document.getElementById('scanstock-unitprice-' + item.localId);
+            if (unitPriceEl) unitPriceEl.value = (item.unitPrice || 0).toFixed(2);
+            const currentSalePrice = matchedProduct ? (matchedProduct.salePrice || 0) : 0;
+            const priceForMargin = (item.newPrice !== '' && item.newPrice != null) ? parseFloat(item.newPrice) : currentSalePrice;
+            const marginPct = (item.unitPrice > 0 && priceForMargin > 0) ? (((priceForMargin - item.unitPrice) / item.unitPrice) * 100) : null;
+            const marginEl = document.getElementById('scanstock-margin-' + item.localId);
+            if (marginEl) marginEl.value = marginPct != null ? marginPct.toFixed(1) : '';
+        }
 
         // Igual que scanItemQuietSync, pero para Bultos/Unid-por-bulto de la tarjeta
         // "Producto nuevo" -- esos dos también recalculan item.qty (lo hacen
@@ -12839,6 +12875,7 @@
         function scanItemQuietSyncPackaging(localId, field, value) {
             const item = scanInvoiceItems.find(i => i.localId === localId);
             if (!item) return;
+            ensureScanItemAnchorTotal(item);
             item[field] = Math.max(0, parseFloat(value) || 0);
             item.qty = Math.round((item.packages || 0) * (item.unitsPerPackage || 0) * 100) / 100;
             reapplyScanItemEnteredTotal(item);
@@ -12890,6 +12927,7 @@
             const total = Math.max(0, parseFloat(value) || 0);
             item.enteredTotalPrice = total;
             item.unitPrice = totalUnidades > 0 ? (total / totalUnidades) : 0;
+            liveUpdateScanStockRow(item);
         }
         window.scanStockTotalPriceQuietSync = scanStockTotalPriceQuietSync;
 
@@ -13265,9 +13303,19 @@
             item.unitPrice = item.qty > 0 ? (item.enteredTotalPrice / item.qty) : 0;
         }
 
+        // Igual que ensureScanStockAnchorTotal: el precio total tiene que quedar fijo
+        // aunque haya venido directo de la factura (sin que el usuario lo haya
+        // tocado nunca) -- se ancla al total actual la primera vez que se cambia
+        // cualquier cantidad.
+        function ensureScanItemAnchorTotal(item) {
+            if (item.enteredTotalPrice != null) return;
+            item.enteredTotalPrice = Math.round((item.qty || 0) * (item.unitPrice || 0) * 100) / 100;
+        }
+
         function updateScanItemPackages(localId, value) {
             const item = scanInvoiceItems.find(i => i.localId === localId);
             if (!item) return;
+            ensureScanItemAnchorTotal(item);
             item.packages = Math.max(0, parseFloat(value) || 0);
             item.qty = Math.round(item.packages * item.unitsPerPackage * 100) / 100;
             reapplyScanItemEnteredTotal(item);
@@ -13278,6 +13326,7 @@
         function updateScanItemUnitsPerPackage(localId, value) {
             const item = scanInvoiceItems.find(i => i.localId === localId);
             if (!item) return;
+            ensureScanItemAnchorTotal(item);
             item.unitsPerPackage = Math.max(0, parseFloat(value) || 0);
             item.qty = Math.round(item.packages * item.unitsPerPackage * 100) / 100;
             reapplyScanItemEnteredTotal(item);

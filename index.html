@@ -12732,11 +12732,11 @@
                     ${productCell}
                     <td class="px-1 py-1 align-top" colspan="3">
                         <label class="block text-[8px] text-blue-500 uppercase">⚖️ Gramos totales comprados</label>
-                        <input type="number" min="0" step="1" value="${totalGrams || ''}" placeholder="ej: 5000" class="w-full border rounded px-1 py-1 text-center" onchange="updateScanStockWeightField('${item.localId}', 'totalGrams', this.value)">
+                        <input type="number" min="0" step="1" value="${totalGrams || ''}" placeholder="ej: 5000" class="w-full border rounded px-1 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'totalGrams', this.value)" onchange="updateScanStockWeightField('${item.localId}', 'totalGrams', this.value)">
                     </td>
                     <td class="px-1 py-1 align-top">
                         <label class="block text-[8px] text-gray-400 uppercase">Costo total</label>
-                        <input type="number" min="0" step="0.01" value="${totalCost || ''}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanStockWeightField('${item.localId}', 'totalCost', this.value)">
+                        <input type="number" min="0" step="0.01" value="${totalCost || ''}" class="w-20 border rounded px-1 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'totalCost', this.value)" onchange="updateScanStockWeightField('${item.localId}', 'totalCost', this.value)">
                     </td>
                     <td class="px-1 py-1 align-top">
                         <label class="block text-[8px] text-gray-400 uppercase">$/gramo</label>
@@ -12766,15 +12766,15 @@
             return `
             <tr class="border-t ${!item.productId ? 'bg-orange-50' : ''}">
                 ${productCell}
-                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.bultos || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" onchange="updateScanStockQtyField('${item.localId}', 'bultos', this.value)"></td>
-                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.displaysQty || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" onchange="updateScanStockQtyField('${item.localId}', 'displaysQty', this.value)"></td>
-                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.unidadesSueltas || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" onchange="updateScanStockQtyField('${item.localId}', 'unidadesSueltas', this.value)">${factorsHint}</td>
+                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.bultos || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'bultos', this.value)" onchange="updateScanStockQtyField('${item.localId}', 'bultos', this.value)"></td>
+                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.displaysQty || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'displaysQty', this.value)" onchange="updateScanStockQtyField('${item.localId}', 'displaysQty', this.value)"></td>
+                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.unidadesSueltas || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'unidadesSueltas', this.value)" onchange="updateScanStockQtyField('${item.localId}', 'unidadesSueltas', this.value)">${factorsHint}</td>
                 <td class="px-1 py-1 align-top"><input type="number" value="${totalUnidades}" readonly class="w-14 border rounded px-1 py-1 text-center bg-gray-50 text-gray-500"></td>
                 <td class="px-1 py-1 align-top">
                     <input type="number" min="0" step="0.01" value="${totalPrice}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanStockTotalPrice('${item.localId}', this.value)">
                     ${totalUnidades > 0 ? `<p class="text-[8px] text-gray-400 mt-0.5 leading-tight">De las ${totalUnidades} u. juntas (si lo cambiás, se recalcula el unitario solo)</p>` : ''}
                 </td>
-                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${(item.unitPrice || 0).toFixed(2)}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)"></td>
+                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${(item.unitPrice || 0).toFixed(2)}" class="w-20 border rounded px-1 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'unitPrice', this.value)" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)"></td>
                 <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" placeholder="${currentSalePrice.toFixed(2)}" value="${item.newPrice || ''}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanItemNewPrice('${item.localId}', this.value)"></td>
                 <td class="px-1 py-1 align-top"><input type="number" step="0.1" value="${marginPct != null ? marginPct.toFixed(1) : ''}" class="w-16 border rounded px-1 py-1 text-center" onchange="updateScanItemMarginPercent('${item.localId}', this.value)"></td>
                 <td class="px-1 py-1 align-top"><input type="date" value="${item.expiry || ''}" class="w-32 border rounded px-1 py-1" onchange="updateScanItemExpiry('${item.localId}', this.value)"></td>
@@ -12792,6 +12792,29 @@
             renderScanInvoiceItems();
         }
         window.updateScanStockQtyField = updateScanStockQtyField;
+
+        // Guarda el valor en el ítem SIN reconstruir la lista (eso solo pasa en el
+        // "change" de más arriba, al salir del campo) -- así, si el usuario toca otro
+        // botón (ej: el buscador de producto 🔍) antes de que el navegador llegue a
+        // disparar el "change" del campo anterior, lo tipeado ya está guardado y no se
+        // pierde cuando esa otra acción fuerza un re-render de toda la lista.
+        function scanItemQuietSync(localId, field, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item[field] = Math.max(0, parseFloat(value) || 0);
+        }
+        window.scanItemQuietSync = scanItemQuietSync;
+
+        // Igual que scanItemQuietSync, pero para Bultos/Unid-por-bulto de la tarjeta
+        // "Producto nuevo" -- esos dos también recalculan item.qty (lo hacen
+        // updateScanItemPackages/updateScanItemUnitsPerPackage al salir del campo).
+        function scanItemQuietSyncPackaging(localId, field, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item[field] = Math.max(0, parseFloat(value) || 0);
+            item.qty = Math.round((item.packages || 0) * (item.unitsPerPackage || 0) * 100) / 100;
+        }
+        window.scanItemQuietSyncPackaging = scanItemQuietSyncPackaging;
 
         // Precio total ⇄ precio unitario para la fila "En stock" (3 niveles bulto/
         // display/suelta): al tipear el total se recalcula el unitario dividiendo por
@@ -12913,15 +12936,15 @@
                 <div class="flex gap-1.5 items-end mt-1 bg-blue-50 rounded-lg p-1.5 border border-blue-200">
                     <div class="flex-1">
                         <label class="block text-[10px] text-blue-500 uppercase">Gramos totales</label>
-                        <input type="number" min="0" step="1" value="${item.totalGrams || ''}" placeholder="ej: 5000" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemWeightField('${item.localId}', 'totalGrams', this.value)">
+                        <input type="number" min="0" step="1" value="${item.totalGrams || ''}" placeholder="ej: 5000" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'totalGrams', this.value)" onchange="updateScanItemWeightField('${item.localId}', 'totalGrams', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-blue-500 uppercase">Gramos por unidad/bolsa</label>
-                        <input type="number" min="0" step="1" value="${item.weightPerUnit || ''}" placeholder="ej: 500" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemWeightField('${item.localId}', 'weightPerUnit', this.value)">
+                        <input type="number" min="0" step="1" value="${item.weightPerUnit || ''}" placeholder="ej: 500" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'weightPerUnit', this.value)" onchange="updateScanItemWeightField('${item.localId}', 'weightPerUnit', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-blue-500 uppercase">Costo total</label>
-                        <input type="number" min="0" step="0.01" value="${item.totalCost || ''}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemWeightField('${item.localId}', 'totalCost', this.value)">
+                        <input type="number" min="0" step="0.01" value="${item.totalCost || ''}" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'totalCost', this.value)" onchange="updateScanItemWeightField('${item.localId}', 'totalCost', this.value)">
                     </div>
                 </div>
                 <p class="text-[10px] text-blue-500 px-0.5">El stock se maneja en bolsas, pero en ventas se vende suelto: por gramos o por precio.</p>
@@ -12939,11 +12962,11 @@
                 <div class="flex gap-1.5 items-end mt-1">
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Bultos</label>
-                        <input type="number" min="0" step="0.01" value="${item.packages}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemPackages('${item.localId}', this.value)">
+                        <input type="number" min="0" step="0.01" value="${item.packages}" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanItemQuietSyncPackaging('${item.localId}', 'packages', this.value)" onchange="updateScanItemPackages('${item.localId}', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Unid/bulto</label>
-                        <input type="number" min="0" step="0.01" value="${item.unitsPerPackage}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemUnitsPerPackage('${item.localId}', this.value)">
+                        <input type="number" min="0" step="0.01" value="${item.unitsPerPackage}" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanItemQuietSyncPackaging('${item.localId}', 'unitsPerPackage', this.value)" onchange="updateScanItemUnitsPerPackage('${item.localId}', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Total unid.</label>
@@ -12953,7 +12976,7 @@
                 <div class="flex gap-1.5 items-end mt-1">
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Precio unit.</label>
-                        <input type="number" min="0" step="0.01" value="${(item.unitPrice || 0).toFixed(2)}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)">
+                        <input type="number" min="0" step="0.01" value="${(item.unitPrice || 0).toFixed(2)}" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'unitPrice', this.value)" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Precio total</label>

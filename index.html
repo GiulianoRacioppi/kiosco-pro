@@ -17595,8 +17595,14 @@
             // Caja/Cuenta -- los retiros YA se cuentan solos porque se guardan como Gasto
             // (más abajo), pero los ingresos de capital vivían en un array aparte que
             // esta cuenta nunca miraba, y por eso el arqueo daba un "sobrante" falso.
-            const cashCapitalAdded = (appState.capitalAdjustments || []).filter(a => a.date === today && a.target === 'cash').reduce((sum, a) => sum + (a.amount || 0), 0);
-            const bankCapitalAdded = (appState.capitalAdjustments || []).filter(a => a.date === today && a.target === 'bank').reduce((sum, a) => sum + (a.amount || 0), 0);
+            // OJO: se excluyen los "ADJ-CLOSE-*" -- esos son el AJUSTE que el propio
+            // cierre de caja de este mismo día genera (el sobrante/faltante ya
+            // guardado), no plata nueva que entró. Si no se excluyen, rehacer el
+            // arqueo del mismo día (ej. "Deshacer apertura" y volver a cerrar con los
+            // mismos montos) suma ese ajuste de vuelta acá, corriendo el "esperado" y
+            // dando un sobrante/faltante distinto cada vez sin que cambie nada real.
+            const cashCapitalAdded = (appState.capitalAdjustments || []).filter(a => a.date === today && a.target === 'cash' && !(a.id && a.id.startsWith('ADJ-CLOSE-'))).reduce((sum, a) => sum + (a.amount || 0), 0);
+            const bankCapitalAdded = (appState.capitalAdjustments || []).filter(a => a.date === today && a.target === 'bank' && !(a.id && a.id.startsWith('ADJ-CLOSE-'))).reduce((sum, a) => sum + (a.amount || 0), 0);
 
             // Pagos y ventas de Equipamiento/Activos Fijos: mueven caja/cuenta real pero
             // no son Gasto ni Inversión, así que tampoco entraban en ninguna cuenta de acá.

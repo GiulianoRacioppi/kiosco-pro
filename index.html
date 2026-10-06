@@ -1419,8 +1419,8 @@
 
                         <!-- Código de precio especial (empleados/socios): todo el carrito pasa a costo +10% -->
                         <div id="special-price-input-section" class="bg-gradient-to-r from-amber-50 to-yellow-100 rounded-xl p-4 border-2 border-amber-300 mb-4">
-                            <h4 class="text-sm font-bold text-amber-800 mb-2 flex items-center gap-2">
-                                <i class="fas fa-id-badge"></i> Código de Precio Especial
+                            <h4 class="text-xs font-bold text-amber-800 mb-2 flex items-center gap-2">
+                                <i class="fas fa-id-badge"></i> Código de descuento o cliente
                             </h4>
                             <div class="flex gap-2 mb-2">
                                 <input type="text" id="special-price-code-input" placeholder="Código"
@@ -8018,7 +8018,16 @@
             }
 
             showSuccessOverlay(finalTotal);
-            
+
+            // Foco al buscador al toque, sin esperar al resto de la limpieza del
+            // carrito (que sigue tardando lo mismo abajo) -- así se puede escanear el
+            // primer producto de la próxima venta ya mismo, sin esperar nada.
+            const searchInputNow = document.getElementById('sell-search-input');
+            if (searchInputNow) {
+                searchInputNow.focus();
+                searchInputNow.select();
+            }
+
             setTimeout(() => {
                 appState.cart = [];
                 saleInProgress = false;

@@ -27074,6 +27074,12 @@ RESULTADOS:
         
         // Backup automático de seguridad antes de operaciones destructivas
         function createAutoBackup(reason) {
+            // En un dispositivo que no es el principal (celular, ya marcado como tal)
+            // esto ocupa una copia entera de los datos aparte de "kioscopro-data" --
+            // justo lo que llena el almacenamiento, chico en el celular. Ese dispositivo
+            // no lo necesita: no hace operaciones destructivas pesadas y, si algo
+            // pasara, la nube y la PC principal son la copia real.
+            if (typeof backupUnsupportedAcknowledged !== 'undefined' && backupUnsupportedAcknowledged) return;
             try {
                 const backup = JSON.parse(JSON.stringify(appState));
                 backup._backupReason = reason || 'auto';
@@ -27760,10 +27766,21 @@ RESULTADOS:
                 try {
                     localStorage.setItem('kioscopro-data', JSON.stringify(appState));
                     markLocalWrite();
-                    showNotification('⚠️ Almacenamiento casi lleno: se liberó espacio. Tus datos están a salvo en la nube.', 'warning', 8000);
+                    // En un dispositivo que no es el principal (ej: celular, ya marcado
+                    // así desde el cartel de respaldo) no hace falta el aviso -- ese
+                    // dispositivo no depende de tener una copia local, vive de la nube.
+                    if (!backupUnsupportedAcknowledged) {
+                        showNotification('⚠️ Almacenamiento casi lleno: se liberó espacio. Tus datos están a salvo en la nube.', 'warning', 8000);
+                    }
                 } catch (e2) {
                     console.error('localStorage sigue lleno tras liberar backup:', e2);
-                    showNotification('❌ Almacenamiento del navegador lleno: los cambios NO se están guardando localmente (la nube sigue al día). Avisá al administrador.', 'error', 15000);
+                    // Mismo caso: en el dispositivo principal esto SÍ importa (se avisa),
+                    // pero en un celular/dispositivo secundario ya marcado como tal, no
+                    // tiene sentido taparle la pantalla con esto en cada acción -- la
+                    // nube sigue al día igual, que es de donde ese dispositivo lee.
+                    if (!backupUnsupportedAcknowledged) {
+                        showNotification('❌ Almacenamiento del navegador lleno: los cambios NO se están guardando localmente (la nube sigue al día). Avisá al administrador.', 'error', 15000);
+                    }
                 }
             }
 
@@ -27993,6 +28010,20 @@ RESULTADOS:
         // sentido tapar la pantalla cada vez que se abre -- se avisa una vez y se guarda en
         // localStorage (por dispositivo/navegador) para no volver a preguntar.
         let backupUnsupportedAcknowledged = localStorage.getItem('kioscopro-backup-unsupported-ack') === '1';
+
+        // Si es la primera vez que se abre en ESTE dispositivo y se puede saber de
+        // entrada que nunca va a poder tener el respaldo en carpeta (celular: la función
+        // no existe en ningún navegador de Android/iPhone, o directo es un touch-device
+        // chico), se marca solo -- sin que haga falta tocar ningún botón ni ver ningún
+        // cartel primero. Así, instalar la app en el celular funciona directo, como
+        // cualquier app normal (nada técnico que resolver antes de poder usarla).
+        if (!backupUnsupportedAcknowledged && localStorage.getItem('kioscopro-backup-unsupported-ack') === null) {
+            const esMobileUA = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+            if (!fsBackupSupported || esMobileUA) {
+                backupUnsupportedAcknowledged = true;
+                try { localStorage.setItem('kioscopro-backup-unsupported-ack', '1'); } catch (_) {}
+            }
+        }
 
         // Cartel obligatorio: si el respaldo en carpeta no está activo, tapa la pantalla
         // hasta que se elija carpeta o se renueve el permiso. Se llama al abrir la app y

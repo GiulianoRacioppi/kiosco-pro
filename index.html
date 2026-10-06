@@ -1437,7 +1437,7 @@
                             <div class="flex justify-between items-center">
                                 <div>
                                     <p class="text-xs text-amber-800 font-bold">🏷️ Precio especial aplicado: <span id="applied-special-price-name">-</span></p>
-                                    <p class="text-xs text-amber-700">Todo el carrito a costo + 10% (redondeado a $100)</p>
+                                    <p class="text-xs text-amber-700">Todo el carrito a costo + el % de este código (redondeado a $100)</p>
                                 </div>
                                 <button onclick="clearSpecialPriceCode()" class="text-red-500 hover:text-red-700 text-xs font-bold">
                                     <i class="fas fa-times"></i> Quitar
@@ -3231,6 +3231,11 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Código</label>
                             <input type="text" id="special-price-code-value-input" class="w-full border rounded-lg px-3 py-2 font-mono uppercase" placeholder="Ej: JUAN2026">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Porcentaje sobre el costo (%)</label>
+                            <input type="number" id="special-price-markup-input" class="w-full border rounded-lg px-3 py-2" placeholder="10" min="0" step="0.1" value="10">
+                            <p class="text-xs text-gray-500 mt-1">Precio = costo + este %, redondeado a $100. Cada código puede tener el suyo.</p>
                         </div>
                         <div class="flex gap-2">
                             <button onclick="cancelEditSpecialPriceCode()" id="btn-cancel-edit-special-price" class="hidden flex-1 bg-gray-200 text-gray-700 py-2 rounded-xl font-bold text-sm">Cancelar</button>
@@ -6922,8 +6927,9 @@
         // aplicarse, cada línea del carrito pasa a costo + 10% (redondeado a $100) en
         // vez del precio de venta normal -- se recalcula en base al costo de cada
         // línea, así que funciona bien con cualquier mezcla de productos.
-        function computeSpecialPrice(cost) {
-            return roundTo100Up((cost || 0) * 1.10);
+        function computeSpecialPrice(cost, markupPct) {
+            const pct = markupPct != null ? markupPct : 10;
+            return roundTo100Up((cost || 0) * (1 + pct / 100));
         }
 
         // Se llama desde updateCartTotals() en CADA cambio del carrito -- así, si el
@@ -6932,9 +6938,10 @@
         // lógica en cada función que agrega al carrito.
         function applySpecialPriceToCart() {
             if (!appState.activeSpecialPriceCode) return;
+            const markupPct = appState.activeSpecialPriceCode.markupPct;
             appState.cart.forEach(item => {
                 if (!item.productId || item.isManual) return;
-                item.price = computeSpecialPrice(item.cost || 0);
+                item.price = computeSpecialPrice(item.cost || 0, markupPct);
                 item.isSpecialPrice = true;
             });
         }
@@ -6945,12 +6952,13 @@
             if (!code) { showNotification('Ingresá un código', 'error'); return; }
             const entry = (appState.specialPriceCodes || []).find(c => c.code.toLowerCase() === code.toLowerCase());
             if (!entry) { showNotification('Código no válido', 'error'); return; }
-            appState.activeSpecialPriceCode = { id: entry.id, name: entry.name, code: entry.code };
+            const markupPct = entry.markupPct != null ? entry.markupPct : 10;
+            appState.activeSpecialPriceCode = { id: entry.id, name: entry.name, code: entry.code, markupPct };
             applySpecialPriceToCart();
             if (input) input.value = '';
             document.getElementById('special-price-input-section').classList.add('hidden');
             document.getElementById('applied-special-price-section').classList.remove('hidden');
-            document.getElementById('applied-special-price-name').textContent = entry.name;
+            document.getElementById('applied-special-price-name').textContent = entry.name + ' (costo +' + markupPct + '%)';
             updateCartTotals();
             renderCart();
             showNotification('🏷️ Precio especial aplicado: ' + entry.name, 'success');
@@ -18528,7 +18536,7 @@
             container.innerHTML = codes.map(c => `
                 <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-sm">
                     <div class="flex-1 min-w-0">
-                        <p class="font-bold text-gray-700">🏷️ ${escapeHtml(c.name)}</p>
+                        <p class="font-bold text-gray-700">🏷️ ${escapeHtml(c.name)} <span class="text-amber-600 font-normal">· costo +${c.markupPct != null ? c.markupPct : 10}%</span></p>
                         <p class="text-xs text-gray-500 font-mono">${escapeHtml(c.code)}</p>
                     </div>
                     <button onclick="editSpecialPriceCode('${c.id}')" class="text-blue-500 hover:text-blue-700 p-1" title="Editar">
@@ -18545,8 +18553,13 @@
             const id = document.getElementById('special-price-edit-id').value;
             const name = document.getElementById('special-price-name-input').value.trim();
             const code = document.getElementById('special-price-code-value-input').value.trim();
+            const markupPct = parseFloat(document.getElementById('special-price-markup-input').value);
             if (!name || !code) {
                 showNotification('Completá nombre y código', 'error');
+                return;
+            }
+            if (isNaN(markupPct) || markupPct < 0) {
+                showNotification('Ingresá un porcentaje válido', 'error');
                 return;
             }
             if (!appState.specialPriceCodes) appState.specialPriceCodes = [];
@@ -18560,9 +18573,10 @@
                 if (!entry) return;
                 entry.name = name;
                 entry.code = code;
+                entry.markupPct = markupPct;
                 showNotification('Código actualizado', 'success');
             } else {
-                appState.specialPriceCodes.push({ id: 'SPCODE-' + Date.now(), name, code });
+                appState.specialPriceCodes.push({ id: 'SPCODE-' + Date.now(), name, code, markupPct });
                 showNotification('Código creado', 'success');
             }
             cancelEditSpecialPriceCode();
@@ -18577,6 +18591,7 @@
             document.getElementById('special-price-edit-id').value = entry.id;
             document.getElementById('special-price-name-input').value = entry.name;
             document.getElementById('special-price-code-value-input').value = entry.code;
+            document.getElementById('special-price-markup-input').value = entry.markupPct != null ? entry.markupPct : 10;
             document.getElementById('special-price-save-label').textContent = 'Guardar Cambios';
             document.getElementById('btn-cancel-edit-special-price').classList.remove('hidden');
         }
@@ -18586,6 +18601,7 @@
             document.getElementById('special-price-edit-id').value = '';
             document.getElementById('special-price-name-input').value = '';
             document.getElementById('special-price-code-value-input').value = '';
+            document.getElementById('special-price-markup-input').value = '10';
             document.getElementById('special-price-save-label').textContent = 'Agregar Código';
             document.getElementById('btn-cancel-edit-special-price').classList.add('hidden');
         }
@@ -27985,9 +28001,18 @@ RESULTADOS:
         function checkBackupRequired() {
             const modal = document.getElementById('backup-required-modal');
             if (!modal) return true;
-            const estado = estadoBackupCarpeta();
+            // Una vez que se marcó "no es mi dispositivo principal" en ESTE dispositivo
+            // (celular, el de un empleado, etc.), no se vuelve a pedir nunca más acá --
+            // sea cual sea el estado del respaldo. Es una decisión del dueño, explícita
+            // y por dispositivo (localStorage), no algo que dependa de si el navegador
+            // soporta o no la carpeta.
+            if (backupUnsupportedAcknowledged) {
+                modal.classList.remove('active');
+                return true;
+            }
 
-            if (estado === 'activo' || (estado === 'no-soportado' && backupUnsupportedAcknowledged)) {
+            const estado = estadoBackupCarpeta();
+            if (estado === 'activo') {
                 modal.classList.remove('active');
                 return true;
             }
@@ -28001,21 +28026,21 @@ RESULTADOS:
                 btn.textContent = '🔄 Reactivar respaldo';
                 btn.onclick = () => reactivarCarpetaBackup().then(checkBackupRequired);
                 btn.classList.remove('hidden');
-                btnSkip.classList.add('hidden');
             } else if (estado === 'sin-carpeta') {
                 detailEl.textContent = 'Todavía no elegiste una carpeta de la PC para guardar el respaldo automático. Elegí una (por ejemplo Documentos) para poder seguir vendiendo.';
                 btn.textContent = '📁 Elegir carpeta de respaldo';
                 btn.onclick = () => elegirCarpetaBackup().then(checkBackupRequired);
                 btn.classList.remove('hidden');
-                btnSkip.classList.add('hidden');
             } else {
                 // 'no-soportado': no se puede pedir carpeta en este navegador/dispositivo.
-                // Se deja una salida para no bloquear por completo un dispositivo que
-                // nunca va a poder cumplir esto (ej: celular).
                 detailEl.textContent = 'Este dispositivo/navegador no soporta el respaldo en carpeta (funciona en Chrome o Edge de PC). Usá la PC principal para tener el respaldo activo.';
                 btn.classList.add('hidden');
-                btnSkip.classList.remove('hidden');
             }
+            // El botón de "no es mi dispositivo principal" siempre está disponible, sea
+            // cual sea el estado -- así en el celu (aunque el navegador SÍ soporte la
+            // carpeta y pida elegir una) hay una salida explícita, sin depender de que
+            // la detección automática acierte.
+            btnSkip.classList.remove('hidden');
 
             modal.classList.add('active');
             return false;
@@ -28970,7 +28995,7 @@ RESULTADOS:
                 📁 Elegir carpeta de respaldo
             </button>
             <button type="button" id="backup-required-btn-skip" onclick="closeBackupRequiredModal()" class="w-full mt-2 text-xs text-gray-400 hover:text-gray-600 underline hidden">
-                Continuar sin respaldo (no recomendado)
+                📱 No es mi dispositivo principal (ej: celular) — no volver a pedir esto acá
             </button>
         </div>
     </div>

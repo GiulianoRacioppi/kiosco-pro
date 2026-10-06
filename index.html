@@ -1416,7 +1416,35 @@
                                 </button>
                             </div>
                         </div>
-                        
+
+                        <!-- Código de precio especial (empleados/socios): todo el carrito pasa a costo +10% -->
+                        <div id="special-price-input-section" class="bg-gradient-to-r from-amber-50 to-yellow-100 rounded-xl p-4 border-2 border-amber-300 mb-4">
+                            <h4 class="text-sm font-bold text-amber-800 mb-2 flex items-center gap-2">
+                                <i class="fas fa-id-badge"></i> Código de Precio Especial
+                            </h4>
+                            <div class="flex gap-2 mb-2">
+                                <input type="text" id="special-price-code-input" placeholder="Código"
+                                    class="flex-1 border-2 border-amber-300 rounded-lg px-3 py-2 text-center font-mono font-bold uppercase tracking-widest"
+                                    onkeydown="if(event.key==='Enter'){event.preventDefault();applySpecialPriceCode();}">
+                                <button onclick="applySpecialPriceCode()" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-bold text-sm">
+                                    <i class="fas fa-check"></i> Aplicar
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Precio especial aplicado activo -->
+                        <div id="applied-special-price-section" class="bg-amber-50 rounded-xl p-3 border border-amber-300 mb-4 hidden">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <p class="text-xs text-amber-800 font-bold">🏷️ Precio especial aplicado: <span id="applied-special-price-name">-</span></p>
+                                    <p class="text-xs text-amber-700">Todo el carrito a costo + 10% (redondeado a $100)</p>
+                                </div>
+                                <button onclick="clearSpecialPriceCode()" class="text-red-500 hover:text-red-700 text-xs font-bold">
+                                    <i class="fas fa-times"></i> Quitar
+                                </button>
+                            </div>
+                        </div>
+
                         <button onclick="toggleTicketInput()" id="btn-toggle-ticket" class="w-full text-sm text-yellow-700 hover:text-yellow-800 font-bold py-2 flex items-center justify-center gap-2">
                             <i class="fas fa-ticket-alt"></i> Tengo un ticket de descuento
                         </button>
@@ -3187,6 +3215,32 @@
                     </div>
                 </div>
 
+                <!-- Códigos de Precio Especial (empleados/socios) -->
+                <div class="bg-white rounded-2xl p-6 shadow-lg">
+                    <h3 class="text-xl font-bold mb-2 flex items-center gap-2 text-amber-600">
+                        <i class="fas fa-id-badge"></i> Códigos de Precio Especial
+                    </h3>
+                    <p class="text-xs text-gray-500 mb-6">Para empleados o "socios": al aplicar el código en una venta, todo el carrito pasa a costo + 10% (redondeado a $100). De uso ilimitado -- cada uno queda anotado en el historial de ventas para saber quién lo usó.</p>
+                    <div class="space-y-4">
+                        <div id="special-price-codes-list" class="space-y-2 max-h-48 overflow-y-auto"></div>
+                        <input type="hidden" id="special-price-edit-id" value="">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+                            <input type="text" id="special-price-name-input" class="w-full border rounded-lg px-3 py-2" placeholder="Ej: Juan (empleado)">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Código</label>
+                            <input type="text" id="special-price-code-value-input" class="w-full border rounded-lg px-3 py-2 font-mono uppercase" placeholder="Ej: JUAN2026">
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="cancelEditSpecialPriceCode()" id="btn-cancel-edit-special-price" class="hidden flex-1 bg-gray-200 text-gray-700 py-2 rounded-xl font-bold text-sm">Cancelar</button>
+                            <button onclick="saveSpecialPriceCode()" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg">
+                                <i class="fas fa-save"></i> <span id="special-price-save-label">Agregar Código</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Facturación ARCA -->
                 <div class="bg-white rounded-2xl p-6 shadow-lg">
                     <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-orange-600">
@@ -4359,6 +4413,11 @@
             deletedInvestmentIds: [],
             // Promociones eliminadas (para evitar que vuelvan por sync)
             deletedPromotionIds: [],
+            // Códigos de precio especial (empleados, "socios", etc.): de uso ilimitado,
+            // uno por persona para poder ver quién lo usó. Al aplicarse en una venta,
+            // todos los productos pasan a costo + 10% (redondeado a $100).
+            specialPriceCodes: [],
+            activeSpecialPriceCode: null,
             // Stock gratis / encontrado / regalado
             foundStock: [],
             // Mermas y pérdidas
@@ -5228,6 +5287,7 @@
                         <div>
                             <p class="font-bold text-gray-800">Venta #${sale.id.slice(-4)}</p>
                             ${sale.fromPedido ? `<p class="text-xs font-bold text-orange-600">📋 Pedido — Comanda #${sale.comandaNumber || '?'}${sale.pedidoCustomerName ? ' — ' + escapeHtml(sale.pedidoCustomerName) : ''}</p>` : ''}
+                            ${sale.specialPriceCodeName ? `<p class="text-xs font-bold text-amber-600">🏷️ Precio especial: ${escapeHtml(sale.specialPriceCodeName)}</p>` : ''}
                             <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵 Efectivo' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.paymentMethod === 'qr' ? '📱 QR' : '💳 Débito'))}</p>
                         </div>
                         <div class="text-right">
@@ -6266,11 +6326,11 @@
                         const availableStock = product ? getProductStock(product) : 0;
                         const stockText = product ? `Stock: ${availableStock} disponible${item.quantity > 1 ? ` (llevas ${item.quantity})` : ''}` : '';
                         const stockColor = availableStock <= (product?.min || 5) && availableStock > 0 ? 'text-orange-600' : (availableStock === 0 ? 'text-red-600' : 'text-green-600');
-                        
+
                         return `
-                        <div class="sale-item flex justify-between items-center p-3 rounded-lg border">
+                        <div class="sale-item flex justify-between items-center p-3 rounded-lg border ${item.isSpecialPrice ? 'border-amber-300 bg-amber-50' : ''}">
                             <div class="flex-1">
-                                <p class="font-bold text-gray-800">${escapeHtml(item.name || 'Producto')}</p>
+                                <p class="font-bold text-gray-800">${escapeHtml(item.name || 'Producto')}${item.isSpecialPrice ? ' <span class="text-[10px] bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full font-bold align-middle">🏷️ Precio especial</span>' : ''}</p>
                                 <p class="text-sm text-gray-500">$${formatMoney(price)} c/u</p>
                                 <p class="text-xs ${stockColor} font-medium">${stockText}</p>
                             </div>
@@ -6677,6 +6737,7 @@
             
             appState.cart = [];
             removeAppliedTicket(false);
+            clearSpecialPriceCode(false);
             window.comboNotified = false;
             pendingPedidoSaleInfo = null;
             renderCart();
@@ -6855,8 +6916,72 @@
             if (statusMsg) statusMsg.classList.add('hidden');
             if (render) renderCart();
         }
-        
+
+        // ==================== CÓDIGO DE PRECIO ESPECIAL (empleados/socios) ====================
+        // De uso ilimitado, uno por persona (se administran en Configuración). Al
+        // aplicarse, cada línea del carrito pasa a costo + 10% (redondeado a $100) en
+        // vez del precio de venta normal -- se recalcula en base al costo de cada
+        // línea, así que funciona bien con cualquier mezcla de productos.
+        function computeSpecialPrice(cost) {
+            return roundTo100Up((cost || 0) * 1.10);
+        }
+
+        // Se llama desde updateCartTotals() en CADA cambio del carrito -- así, si el
+        // código ya estaba aplicado y se agrega un producto nuevo a mitad de la venta,
+        // ese producto nuevo también queda a precio especial sin tener que repetir la
+        // lógica en cada función que agrega al carrito.
+        function applySpecialPriceToCart() {
+            if (!appState.activeSpecialPriceCode) return;
+            appState.cart.forEach(item => {
+                if (!item.productId || item.isManual) return;
+                item.price = computeSpecialPrice(item.cost || 0);
+                item.isSpecialPrice = true;
+            });
+        }
+
+        function applySpecialPriceCode() {
+            const input = document.getElementById('special-price-code-input');
+            const code = input ? input.value.trim() : '';
+            if (!code) { showNotification('Ingresá un código', 'error'); return; }
+            const entry = (appState.specialPriceCodes || []).find(c => c.code.toLowerCase() === code.toLowerCase());
+            if (!entry) { showNotification('Código no válido', 'error'); return; }
+            appState.activeSpecialPriceCode = { id: entry.id, name: entry.name, code: entry.code };
+            applySpecialPriceToCart();
+            if (input) input.value = '';
+            document.getElementById('special-price-input-section').classList.add('hidden');
+            document.getElementById('applied-special-price-section').classList.remove('hidden');
+            document.getElementById('applied-special-price-name').textContent = entry.name;
+            updateCartTotals();
+            renderCart();
+            showNotification('🏷️ Precio especial aplicado: ' + entry.name, 'success');
+        }
+        window.applySpecialPriceCode = applySpecialPriceCode;
+
+        function clearSpecialPriceCode(render = true) {
+            if (!appState.activeSpecialPriceCode) return;
+            appState.activeSpecialPriceCode = null;
+            // Restaurar el precio de venta normal de cada línea (se vuelve a buscar en
+            // el inventario, no quedó guardado aparte en el ítem del carrito).
+            appState.cart.forEach(item => {
+                if (!item.productId || item.isManual) return;
+                const product = appState.inventory.find(p => p.id === item.productId);
+                if (product) item.price = product.salePrice || 0;
+                item.isSpecialPrice = false;
+            });
+            const inputSection = document.getElementById('special-price-input-section');
+            const appliedSection = document.getElementById('applied-special-price-section');
+            if (inputSection) inputSection.classList.remove('hidden');
+            if (appliedSection) appliedSection.classList.add('hidden');
+            if (render) {
+                updateCartTotals();
+                renderCart();
+                showNotification('Precio especial quitado', 'success');
+            }
+        }
+        window.clearSpecialPriceCode = clearSpecialPriceCode;
+
         function updateCartTotals() {
+            applySpecialPriceToCart();
             const subtotal = appState.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             
             // Calcular ambos descuentos y usar el mayor
@@ -7783,6 +7908,14 @@
                 pendingPedidoSaleInfo = null;
             }
 
+            // Si se vendió con un código de precio especial (empleados/socios), queda
+            // anotado en la venta -- para poder ver después quién lo usó y cuánto, y
+            // que no se pueda abusar sin que quede registro.
+            if (appState.activeSpecialPriceCode) {
+                sale.specialPriceCodeName = appState.activeSpecialPriceCode.name;
+                sale.specialPriceCode = appState.activeSpecialPriceCode.code;
+            }
+
             // ========== FASE 2: DESCONTAR STOCK CON SNAPSHOT ==========
             const { snapshot: stockSnapshot, saleWhiteTotal, saleBlackTotal, itemBreakdown } = deductStockWithSnapshot(appState.cart, sale.id);
             
@@ -7899,6 +8032,13 @@
                 document.getElementById('ticket-input-section').classList.add('hidden');
                 document.getElementById('cart-ticket-code').value = '';
                 document.getElementById('cash-received').value = '';
+                // El precio especial es por venta -- no tiene que quedar pegado para
+                // el próximo cliente.
+                appState.activeSpecialPriceCode = null;
+                const appliedSpecialSection = document.getElementById('applied-special-price-section');
+                const specialInputSection = document.getElementById('special-price-input-section');
+                if (appliedSpecialSection) appliedSpecialSection.classList.add('hidden');
+                if (specialInputSection) specialInputSection.classList.remove('hidden');
                 
                 // Mostrar notificación para imprimir ticket de venta
                 showTicketNotification(sale);
@@ -8568,6 +8708,7 @@
             // Si el pedido vino del carrito de Vender, ese carrito ya cumplió su función
             if (wasFromCart) {
                 appState.cart = [];
+                clearSpecialPriceCode(false);
                 if (typeof renderCart === 'function') renderCart();
             }
 
@@ -8731,6 +8872,37 @@
         // sentido pedirle de nuevo el pago al cajero, así que se completa la venta directo con
         // esos datos ("Finalizar y Facturar"). Si todavía no se cobró, se carga al carrito y el
         // cajero elige el pago como siempre ("Pasar a Vender").
+        // Si falta stock cargado para algún producto de la comanda (ej: ya se vendió
+        // ese mismo producto por otro lado mientras tanto), ofrece cubrir la
+        // diferencia como Stock Gratis -- mismo mecanismo que al vender normal sin
+        // stock suficiente (ensureStockForSale): se puede facturar igual, y queda un
+        // recordatorio en Reponer para conciliarlo después contra la compra real. Si
+        // el usuario no quiere cubrirlo, devuelve false y no se toca nada (el pedido
+        // sigue activo para reintentar más tarde).
+        async function coverStockShortagesForPedido(pedidoItems) {
+            const shortages = [];
+            for (const item of pedidoItems) {
+                if (!item.productId) continue;
+                const product = appState.inventory.find(p => p.id === item.productId);
+                if (!product) continue;
+                const available = getProductStock(product);
+                const shortfall = item.quantity - available;
+                if (shortfall > 0) shortages.push({ product, shortfall });
+            }
+            if (shortages.length === 0) return true;
+            const lines = shortages.map(s => `• ${s.product.name}: faltan ${s.shortfall}`).join('\n');
+            const ok = await showConfirmModal(
+                `⚠️ No hay stock cargado suficiente para facturar esta comanda:\n${lines}\n\n¿Cubrir automáticamente como Stock Gratis y facturar igual? Queda un recordatorio en Reponer para confirmarlo después contra la compra real.`
+            );
+            if (!ok) return false;
+            for (const s of shortages) {
+                const unitCost = s.product.isComposite ? calculateCompositeCost(s.product) : (s.product.cost || 0);
+                applyFoundStock(s.product, s.shortfall, Math.round(unitCost * s.shortfall * 100) / 100, 'auto-sale', 'Ajuste automático: comanda facturada sin stock suficiente cargado');
+            }
+            saveToLocalStorage();
+            return true;
+        }
+
         async function cargarPedidoEnVenta(id) {
             const pedido = (appState.pedidos || []).find(p => p.id === id);
             if (!pedido) return;
@@ -8767,8 +8939,16 @@
                 return cartItem;
             });
 
-            pedido.status = 'entregado';
-            saveToLocalStorage();
+            // Antes de tocar nada: si falta stock, resolverlo primero (cubrir como
+            // Stock Gratis o cancelar). El pedido NO se marca "entregado" todavía --
+            // recién se marca más abajo, una vez confirmado que la venta se completó
+            // de verdad. Si esto se hiciera antes y la venta después fallara por
+            // cualquier motivo, el pedido desaparecería de la lista sin haberse
+            // facturado nada (así estaba antes, y era el bug reportado).
+            if (!(await coverStockShortagesForPedido(pedidoCartItems))) {
+                showNotification('Factura cancelada: falta stock y no se cubrió. El pedido sigue pendiente.', 'warning');
+                return;
+            }
 
             // Para que completeSale() etiquete la venta con el pedido/comanda de origen
             // (se consume y se limpia solo ahí, o al vaciar el carrito si no llega a venderse).
@@ -8781,34 +8961,41 @@
                 // de otro lado) -- no se puede tocar. Se guarda todo lo que completeSale()
                 // lee/escribe, se pisa temporalmente solo para reusar esa misma función
                 // (mismos cálculos, mismo camino ya probado), y se restaura apenas termina
-                // -- pase lo que pase adentro -- para no perder ni interrumpir esa otra venta.
+                // -- pase lo que pase adentro, incluso si algo de acá arriba tira error --
+                // para no perder ni interrumpir esa otra venta.
                 const savedCart = appState.cart;
                 const savedSubtotal = appState.cartSubtotal;
                 const savedDiscount = appState.cartDiscount;
                 const savedFinalTotal = appState.cartFinalTotal;
                 const savedPromoInfo = appState.activePromoInfo;
                 const savedPaymentMethod = appState.paymentMethod;
+                const savedSpecialPriceCode = appState.activeSpecialPriceCode;
                 const cashInput = document.getElementById('cash-received');
                 const savedCashReceived = cashInput ? cashInput.value : null;
-
-                appState.cart = pedidoCartItems;
-                updateCartTotals();
-
-                // "mercadopago" (pedido online ya cobrado) se trata como "qr" para la
-                // plata: en los dos casos entra a la cuenta, no a la caja física.
-                const method = (pedido.paymentMethod === 'debit' || pedido.paymentMethod === 'qr' || pedido.paymentMethod === 'fiado')
-                    ? pedido.paymentMethod
-                    : (pedido.paymentMethod === 'mercadopago' ? 'qr' : 'cash');
-                setPaymentMethod(method);
-                if (method === 'cash') {
-                    if (cashInput) cashInput.value = pedido.paymentReceived || appState.cartFinalTotal || pedido.total || 0;
-                    calculateChange();
-                } else if (method === 'fiado') {
-                    // Ya se anotó el nombre al marcarlo como fiado: no volver a pedirlo.
-                    pendingFiadoCustomerName = pedido.customerName || 'Cliente';
-                }
+                const salesCountBefore = appState.sales.length;
 
                 try {
+                    appState.cart = pedidoCartItems;
+                    // El precio de la comanda ya estaba fijado al armarla -- si el
+                    // cajero tiene un código de precio especial activo en SU carrito
+                    // (otro cliente), no tiene que filtrarse acá.
+                    appState.activeSpecialPriceCode = null;
+                    updateCartTotals();
+
+                    // "mercadopago" (pedido online ya cobrado) se trata como "qr" para la
+                    // plata: en los dos casos entra a la cuenta, no a la caja física.
+                    const method = (pedido.paymentMethod === 'debit' || pedido.paymentMethod === 'qr' || pedido.paymentMethod === 'fiado')
+                        ? pedido.paymentMethod
+                        : (pedido.paymentMethod === 'mercadopago' ? 'qr' : 'cash');
+                    setPaymentMethod(method);
+                    if (method === 'cash') {
+                        if (cashInput) cashInput.value = pedido.paymentReceived || appState.cartFinalTotal || pedido.total || 0;
+                        calculateChange();
+                    } else if (method === 'fiado') {
+                        // Ya se anotó el nombre al marcarlo como fiado: no volver a pedirlo.
+                        pendingFiadoCustomerName = pedido.customerName || 'Cliente';
+                    }
+
                     await completeSale();
                 } finally {
                     appState.cart = savedCart;
@@ -8816,16 +9003,32 @@
                     appState.cartDiscount = savedDiscount;
                     appState.cartFinalTotal = savedFinalTotal;
                     appState.activePromoInfo = savedPromoInfo;
+                    appState.activeSpecialPriceCode = savedSpecialPriceCode;
                     setPaymentMethod(savedPaymentMethod || 'cash');
                     if (cashInput) cashInput.value = savedCashReceived != null ? savedCashReceived : '';
                     if (savedPaymentMethod === 'cash') calculateChange();
                     if (typeof renderCart === 'function') renderCart();
                 }
+
+                // Solo se marca "entregado" (y desaparece de la lista) si de verdad se
+                // registró la venta -- se detecta porque completeSale() agrega un
+                // registro nuevo a appState.sales. Si falló por cualquier otro motivo
+                // (monto inválido, apertura de caja pendiente, etc.), el pedido queda
+                // como estaba para poder reintentarlo.
+                if (appState.sales.length > salesCountBefore) {
+                    pedido.status = 'entregado';
+                    saveToLocalStorage();
+                } else {
+                    showNotification('No se pudo facturar la comanda. Revisá el aviso anterior y volvé a intentar.', 'error');
+                }
                 renderPedidos();
             } else {
                 // "Pasar a Vender": todavía no se sabe cómo se paga -- ahí sí hace falta
                 // ir a Vender para que el cajero elija el método a mano (por eso el
-                // carrito real SÍ se reemplaza, con el aviso de más arriba).
+                // carrito real SÍ se reemplaza, con el aviso de más arriba). El stock ya
+                // se cubrió arriba si hacía falta, así que acá no debería volver a fallar.
+                pedido.status = 'entregado';
+                saveToLocalStorage();
                 appState.cart = pedidoCartItems;
                 updateCartTotals();
                 showSection('sell');
@@ -9810,6 +10013,10 @@
         // Función auxiliar para redondear a 50 hacia arriba
         function roundTo50Up(price) {
             return Math.ceil(price / 50) * 50;
+        }
+
+        function roundTo100Up(price) {
+            return Math.ceil(price / 100) * 100;
         }
 
         function toggleRoundPriceCheckbox() {
@@ -14435,6 +14642,7 @@
                     <div class="flex-1 cursor-pointer" onclick="showSaleDetail('${sale.id}')">
                         <p class="font-bold text-gray-800">${invoiceBadge}Venta #${sale.id.slice(-4)}</p>
                         ${sale.fromPedido ? `<p class="text-xs font-bold text-orange-600">📋 Pedido — Comanda #${sale.comandaNumber || '?'}${sale.pedidoCustomerName ? ' — ' + escapeHtml(sale.pedidoCustomerName) : ''}</p>` : ''}
+                        ${sale.specialPriceCodeName ? `<p class="text-xs font-bold text-amber-600">🏷️ Precio especial: ${escapeHtml(sale.specialPriceCodeName)}</p>` : ''}
                         <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.paymentMethod === 'qr' ? '📱 QR' : (sale.isMercadoCredito ? '💳 MercadoCrédito' : '💳 Débito')))}</p>
                     </div>
                     <div class="text-right mr-4">
@@ -18298,6 +18506,92 @@
             renderUsersList();
             renderLoginUsers();
         }
+
+        // ==================== CÓDIGOS DE PRECIO ESPECIAL ====================
+        function renderSpecialPriceCodesList() {
+            const container = document.getElementById('special-price-codes-list');
+            if (!container) return;
+            const codes = appState.specialPriceCodes || [];
+            if (codes.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-400 py-2 text-sm">Sin códigos cargados</p>';
+                return;
+            }
+            container.innerHTML = codes.map(c => `
+                <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-sm">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-bold text-gray-700">🏷️ ${escapeHtml(c.name)}</p>
+                        <p class="text-xs text-gray-500 font-mono">${escapeHtml(c.code)}</p>
+                    </div>
+                    <button onclick="editSpecialPriceCode('${c.id}')" class="text-blue-500 hover:text-blue-700 p-1" title="Editar">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button onclick="deleteSpecialPriceCode('${c.id}')" class="text-red-500 hover:text-red-700 p-1" title="Eliminar">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function saveSpecialPriceCode() {
+            const id = document.getElementById('special-price-edit-id').value;
+            const name = document.getElementById('special-price-name-input').value.trim();
+            const code = document.getElementById('special-price-code-value-input').value.trim();
+            if (!name || !code) {
+                showNotification('Completá nombre y código', 'error');
+                return;
+            }
+            if (!appState.specialPriceCodes) appState.specialPriceCodes = [];
+            const duplicate = appState.specialPriceCodes.find(c => c.code.toLowerCase() === code.toLowerCase() && c.id !== id);
+            if (duplicate) {
+                showNotification('Ya existe un código igual (de "' + duplicate.name + '")', 'error');
+                return;
+            }
+            if (id) {
+                const entry = appState.specialPriceCodes.find(c => c.id === id);
+                if (!entry) return;
+                entry.name = name;
+                entry.code = code;
+                showNotification('Código actualizado', 'success');
+            } else {
+                appState.specialPriceCodes.push({ id: 'SPCODE-' + Date.now(), name, code });
+                showNotification('Código creado', 'success');
+            }
+            cancelEditSpecialPriceCode();
+            saveToLocalStorage();
+            renderSpecialPriceCodesList();
+        }
+        window.saveSpecialPriceCode = saveSpecialPriceCode;
+
+        function editSpecialPriceCode(id) {
+            const entry = (appState.specialPriceCodes || []).find(c => c.id === id);
+            if (!entry) return;
+            document.getElementById('special-price-edit-id').value = entry.id;
+            document.getElementById('special-price-name-input').value = entry.name;
+            document.getElementById('special-price-code-value-input').value = entry.code;
+            document.getElementById('special-price-save-label').textContent = 'Guardar Cambios';
+            document.getElementById('btn-cancel-edit-special-price').classList.remove('hidden');
+        }
+        window.editSpecialPriceCode = editSpecialPriceCode;
+
+        function cancelEditSpecialPriceCode() {
+            document.getElementById('special-price-edit-id').value = '';
+            document.getElementById('special-price-name-input').value = '';
+            document.getElementById('special-price-code-value-input').value = '';
+            document.getElementById('special-price-save-label').textContent = 'Agregar Código';
+            document.getElementById('btn-cancel-edit-special-price').classList.add('hidden');
+        }
+        window.cancelEditSpecialPriceCode = cancelEditSpecialPriceCode;
+
+        function deleteSpecialPriceCode(id) {
+            const entry = (appState.specialPriceCodes || []).find(c => c.id === id);
+            if (!entry) return;
+            if (!confirm('¿Eliminar el código de "' + entry.name + '"?')) return;
+            appState.specialPriceCodes = appState.specialPriceCodes.filter(c => c.id !== id);
+            saveToLocalStorage();
+            renderSpecialPriceCodesList();
+            showNotification('Código eliminado', 'success');
+        }
+        window.deleteSpecialPriceCode = deleteSpecialPriceCode;
 
         // ==================== RESERVA / CAJA FUERTE ====================
         let reserveMoveType = 'deposit';
@@ -22558,6 +22852,7 @@ Total de productos a comprar: ${shoppingList.length}
             const fontScaleEl = document.getElementById('settings-font-scale');
             if (fontScaleEl) fontScaleEl.value = String(appState.fontScale || 100);
             renderUsersList();
+            renderSpecialPriceCodesList();
             // Config ARCA
             const arcaCfg = appState.arcaConfig || {};
             const arcaUrlEl = document.getElementById('arca-backend-url');
@@ -26098,7 +26393,8 @@ RESULTADOS:
                 main_shiftCounts: 'shiftCounts',
                 main_stockLedger: 'stockLedger',
                 main_fixedAssets: 'fixedAssets',
-                main_invoiceNameMappings: 'invoiceNameMappings'
+                main_invoiceNameMappings: 'invoiceNameMappings',
+                main_specialPriceCodes: 'specialPriceCodes'
             };
         }
 
@@ -27026,6 +27322,7 @@ RESULTADOS:
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 appState.stockLedger = smartMergeArrays(appState.stockLedger || [], data.stockLedger || []);
                 appState.invoiceNameMappings = smartMergeArrays(appState.invoiceNameMappings || [], data.invoiceNameMappings || []);
+                appState.specialPriceCodes = smartMergeArrays(appState.specialPriceCodes || [], data.specialPriceCodes || []);
                 appState.fixedAssets = smartMergeArrays(appState.fixedAssets || [], data.fixedAssets || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
                 appState.billedDays = smartMergeArrays(appState.billedDays || [], data.billedDays || []);
@@ -27116,6 +27413,7 @@ RESULTADOS:
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 appState.stockLedger = smartMergeArrays(appState.stockLedger || [], data.stockLedger || []);
                 appState.invoiceNameMappings = smartMergeArrays(appState.invoiceNameMappings || [], data.invoiceNameMappings || []);
+                appState.specialPriceCodes = smartMergeArrays(appState.specialPriceCodes || [], data.specialPriceCodes || []);
                 appState.fixedAssets = smartMergeArrays(appState.fixedAssets || [], data.fixedAssets || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
                 appState.billedDays = smartMergeArrays(appState.billedDays || [], data.billedDays || []);

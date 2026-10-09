@@ -21134,49 +21134,6 @@
         }
         
         // Si en un período hubo un quiebre de stock (llegó a 0) antes de que terminara,
-        // lo que se vendió ese período queda "tapado" por la falta de mercadería, no
-        // porque no hubiera más demanda -- usar ese número tal cual para promediar
-        // termina sugiriendo comprar lo mismo que ya no alcanzó. Se busca en el libro
-        // de movimientos de stock (appState.stockLedger, ya existe para esto) el primer
-        // momento en que el stock llegó a 0 dentro del período, y si pasó con días
-        // abiertos todavía por delante, se proyecta el ritmo de venta hasta ese punto
-        // sobre el período completo -- nunca para abajo del total real vendido.
-        function adjustPeriodTotalForStockout(productId, rawTotal, periodStartDate, periodDays) {
-            if (rawTotal <= 0) return rawTotal;
-            const ledger = (appState.stockLedger || []).filter(m => m.productId === productId);
-            if (ledger.length === 0) return rawTotal;
-
-            const start = new Date(periodStartDate);
-            start.setHours(0, 0, 0, 0);
-
-            let stockoutOpenDayIndex = null;
-            for (const m of ledger) {
-                if (m.stockAfter == null || m.stockAfter > 0.01) continue;
-                if (!m.date) continue;
-                const mDate = new Date(m.date + 'T00:00:00');
-                if (isNaN(mDate.getTime())) continue;
-                const diffDays = Math.round((mDate - start) / 86400000);
-                if (diffDays < 0 || diffDays >= periodDays) continue; // fuera de este período
-                // Días ABIERTOS desde el inicio del período hasta este movimiento (inclusive)
-                let openCount = 0;
-                const d = new Date(start);
-                for (let i = 0; i <= diffDays; i++) {
-                    if (isOpenDay(d.getDay())) openCount++;
-                    d.setDate(d.getDate() + 1);
-                }
-                if (stockoutOpenDayIndex == null || openCount < stockoutOpenDayIndex) {
-                    stockoutOpenDayIndex = openCount;
-                }
-            }
-
-            // Si no se agotó, o se agotó el último día del período (no quedaba nada por
-            // perder), no hay nada que corregir.
-            if (stockoutOpenDayIndex == null || stockoutOpenDayIndex >= periodDays) return rawTotal;
-            const daysUntilStockout = Math.max(1, stockoutOpenDayIndex);
-            const estimated = rawTotal * (periodDays / daysUntilStockout);
-            return Math.max(rawTotal, estimated);
-        }
-
         // Calcular demanda promedio por períodos completos de N días.
         // Ej: si periodDays = 7, agrupa ventas por semana y devuelve el promedio semanal.
         function calculatePeriodDemand(productId, productSales, periodDays = 7) {
@@ -21215,19 +21172,6 @@
                 return count;
             }
 
-            // Inversa de getOpenDayIndex: la fecha calendario del N-ésimo día abierto
-            // desde baseDate -- para saber en qué fecha arranca cada período.
-            function getDateAtOpenDayOffset(baseDate, offset) {
-                const d = new Date(baseDate);
-                d.setHours(0, 0, 0, 0);
-                let count = 0;
-                while (count < offset) {
-                    d.setDate(d.getDate() + 1);
-                    if (isOpenDay(d.getDay())) count++;
-                }
-                return d;
-            }
-
             sortedSales.forEach(sale => {
                 if (!sale.date) return;
                 const saleDate = new Date(sale.date + 'T00:00:00');
@@ -21242,15 +21186,6 @@
                     }
                 }
             });
-
-            // Corregir cada período donde se detecte que el stock se agotó antes de
-            // tiempo (ver adjustPeriodTotalForStockout) -- así el promedio refleja la
-            // demanda real, no la demanda recortada por no tener más para vender.
-            for (let i = 0; i < numPeriods; i++) {
-                if (periodTotals[i] <= 0) continue;
-                const periodStartDate = getDateAtOpenDayOffset(firstSaleDate, i * periodDays);
-                periodTotals[i] = adjustPeriodTotalForStockout(productId, periodTotals[i], periodStartDate, periodDays);
-            }
 
             const avg = periodTotals.reduce((sum, qty) => sum + qty, 0) / numPeriods;
             return { periods: periodTotals, avg: avg };

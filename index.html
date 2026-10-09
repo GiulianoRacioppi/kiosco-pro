@@ -12946,8 +12946,92 @@
                 </div>`;
             }
 
+            html += renderScanInvoiceGrandSummary();
+
             container.innerHTML = html;
         }
+
+        // Si ya se escribió "lo que pagué" (por redondeo en efectivo suele no coincidir
+        // justo con el total calculado), se recuerda para que no se pierda al
+        // reconstruirse la lista en cada cambio.
+        let scanInvoicePaidAmount = null;
+
+        // Total de TODA la factura (En stock + Producto nuevo + Gasto, como estén en
+        // este momento), con y sin IVA -- cada línea aporta según su propio estado de
+        // IVA (no asume que todas lo tengan o no).
+        function computeScanInvoiceGrandTotals() {
+            let totalConIva = 0;
+            let totalSinIva = 0;
+
+            scanInvoiceItems.forEach(item => {
+                if (item.type === 'expense') {
+                    const amountInput = document.getElementById('scanitem-expense-' + item.localId);
+                    const amount = amountInput ? (parseFloat(amountInput.value) || 0) : Math.round((item.qty || 1) * (item.unitPrice || 0) * 100) / 100;
+                    totalConIva += amount;
+                    totalSinIva += amount; // los gastos no tienen desglose de IVA acá
+                    return;
+                }
+                if (item.type !== 'stock' && item.type !== 'new') return;
+
+                let lineTotal = 0;
+                if (item.saleByWeight) {
+                    lineTotal = item.totalCost || 0;
+                } else if (item.type === 'stock') {
+                    const matchedProduct = item.productId ? appState.inventory.find(p => p.id === item.productId) : null;
+                    const totalUnidades = getScanStockTotalUnits(item, matchedProduct);
+                    lineTotal = totalUnidades > 0
+                        ? Math.round(totalUnidades * (item.unitPrice || 0) * 100) / 100
+                        : (item.enteredTotalPrice != null ? item.enteredTotalPrice : 0);
+                } else {
+                    const totalUnidades = Math.round((item.packages || 0) * (item.unitsPerPackage || 0) * 100) / 100;
+                    lineTotal = totalUnidades > 0
+                        ? Math.round(totalUnidades * (item.unitPrice || 0) * 100) / 100
+                        : (item.enteredTotalPrice != null ? item.enteredTotalPrice : 0);
+                }
+
+                if (item.vatApplied) {
+                    totalConIva += lineTotal;
+                    totalSinIva += lineTotal / 1.21;
+                } else {
+                    totalConIva += lineTotal * 1.21;
+                    totalSinIva += lineTotal;
+                }
+            });
+
+            return {
+                totalConIva: Math.round(totalConIva * 100) / 100,
+                totalSinIva: Math.round(totalSinIva * 100) / 100
+            };
+        }
+
+        function renderScanInvoiceGrandSummary() {
+            const { totalConIva, totalSinIva } = computeScanInvoiceGrandTotals();
+            const ivaAmount = Math.round((totalConIva - totalSinIva) * 100) / 100;
+            const paid = scanInvoicePaidAmount;
+            const diff = paid != null ? Math.round((paid - totalConIva) * 100) / 100 : null;
+            return `
+            <div class="mt-3 pt-3 border-t-2 border-dashed border-gray-300">
+                <div class="flex justify-end gap-4 text-xs text-gray-500">
+                    <span>Sin IVA: <strong class="text-gray-700">$${formatMoney(totalSinIva)}</strong></span>
+                    <span>IVA (21%): <strong class="text-gray-700">$${formatMoney(ivaAmount)}</strong></span>
+                </div>
+                <div class="flex justify-end items-baseline gap-2 mt-0.5">
+                    <span class="text-sm text-gray-600">Total con IVA:</span>
+                    <span class="text-xl font-bold text-indigo-700">$${formatMoney(totalConIva)}</span>
+                </div>
+                <div class="flex justify-end items-center gap-2 mt-2">
+                    <label class="text-xs text-gray-500">Precio que pagué:</label>
+                    <input type="number" min="0" step="0.01" value="${paid != null ? paid : ''}" placeholder="$${formatMoney(totalConIva)}" class="w-28 border rounded-lg px-2 py-1 text-sm text-right" onchange="updateScanInvoicePaidAmount(this.value)">
+                    ${diff != null && Math.abs(diff) > 0.01 ? `<span class="text-xs font-bold ${diff > 0 ? 'text-orange-600' : 'text-red-600'}">${diff > 0 ? '+' : ''}$${formatMoney(diff)} ${diff > 0 ? 'de más' : 'de menos'}</span>` : (diff != null ? `<span class="text-xs font-bold text-green-600">✓ coincide</span>` : '')}
+                </div>
+            </div>`;
+        }
+
+        function updateScanInvoicePaidAmount(value) {
+            scanInvoicePaidAmount = value === '' ? null : (parseFloat(value) || 0);
+            renderScanInvoiceItems();
+        }
+        window.updateScanInvoicePaidAmount = updateScanInvoicePaidAmount;
 
         // Cada renglón de la tabla "En stock": todos los campos numéricos
         // alineados en columna con el resto de las líneas de la factura.
@@ -13702,6 +13786,7 @@
         function discardAllScanItems() {
             scanInvoiceItems = [];
             scanInvoicePageImages = [];
+            scanInvoicePaidAmount = null;
             renderScanInvoiceItems();
             renderScanInvoicePages();
         }

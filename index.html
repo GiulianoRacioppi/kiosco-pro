@@ -12902,6 +12902,18 @@
                         packages = qty;
                     }
 
+                    // Por defecto, +IVA solo si la línea es "Facturado" -- sin factura no
+                    // hay IVA que pagar. El precio que lee la IA es siempre neto (sin IVA);
+                    // al ser Monotributo ese IVA no se puede descontar de ningún lado, así
+                    // que es costo real y hay que sumarlo acá (mismo 1.21 que aplica el
+                    // toggle "+IVA 21%" al tildarse, para que unitPrice/totalCost y
+                    // vatApplied queden siempre coherentes entre sí).
+                    const vatApplied = scanInvoiceLastInvoiceType === 'white';
+                    if (vatApplied) {
+                        if (saleByWeight) totalCost = Math.round(totalCost * 1.21 * 100) / 100;
+                        else unitPrice = Math.round(unitPrice * 1.21 * 100) / 100;
+                    }
+
                     return {
                         localId: 'SI' + Date.now() + Math.random().toString(36).slice(2, 6),
                         rawName: it.name,
@@ -12927,12 +12939,13 @@
                         invoiceType: scanInvoiceLastInvoiceType,
                         paymentMethod: scanInvoiceLastPaymentMethod,
                         expiry: '',
-                        vatApplied: false,
+                        vatApplied,
                         newPrice: '',
                         newProductName: null,
                         barcode: '',
                         category: '',
                         supplier: '',
+                        selected: false,
                         // Eco de lo que la IA leyó, SIN tocar nunca después -- sirve para
                         // comparar contra lo que el usuario termine confirmando y, si
                         // difiere, aprender una corrección para este proveedor.
@@ -12976,6 +12989,7 @@
                 // tocarlo de nuevo para sacar el IVA en realidad lo vuelve a mandar como
                 // "tildalo", que no hace nada porque los ítems ya estaban en vatApplied=true).
                 const allVatApplied = stockItems.every(i => i.vatApplied);
+                const selectedStockCount = stockItems.filter(i => i.selected).length;
                 html += `
                 <div class="mb-4">
                     <h4 class="text-xs font-bold text-indigo-700 uppercase mb-1">📦 En stock (${stockItems.length})</h4>
@@ -12983,6 +12997,7 @@
                         <table class="w-full text-xs border-collapse">
                             <thead class="bg-indigo-50 text-[10px] text-indigo-500 uppercase">
                                 <tr>
+                                    <th class="px-1 py-1.5"><input type="checkbox" ${stockItems.length > 0 && stockItems.every(i => i.selected) ? 'checked' : ''} onchange="toggleAllScanStockSelected(this.checked)" title="Seleccionar todas"></th>
                                     <th class="px-2 py-1.5 text-left">Producto</th>
                                     <th class="px-1 py-1.5">Bultos</th>
                                     <th class="px-1 py-1.5">Displays</th>
@@ -13005,9 +13020,10 @@
                         <button onclick="setScanItemInvoiceType(null, 'black')" class="py-1 px-3 rounded-lg border-2 text-[11px] font-medium ${scanInvoiceLastInvoiceType === 'black' ? 'border-gray-700 bg-gray-100 text-gray-800 font-bold' : 'border-gray-200 text-gray-500'}"><i class="fas fa-eye-slash"></i> Sin factura</button>
                         <button onclick="setScanItemPayment(null, 'cash')" class="py-1 px-3 rounded-lg border-2 text-[11px] font-medium ${scanInvoiceLastPaymentMethod === 'cash' ? 'border-green-500 bg-green-50 text-green-700 font-bold' : 'border-gray-200 text-gray-500'}">💵 Caja</button>
                         <button onclick="setScanItemPayment(null, 'bank')" class="py-1 px-3 rounded-lg border-2 text-[11px] font-medium ${scanInvoiceLastPaymentMethod === 'bank' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-500'}">🏦 Cuenta</button>
-                        <label class="flex items-center gap-1 text-[11px] text-gray-600 cursor-pointer ml-auto">
+                        <label class="flex items-center gap-1 text-[11px] text-gray-600 cursor-pointer">
                             <input type="checkbox" ${allVatApplied ? 'checked' : ''} onchange="toggleAllScanItemsVat(this.checked)"> 💰 +IVA 21% a todos
                         </label>
+                        <button onclick="confirmSelectedScanItemsAsStock()" ${selectedStockCount === 0 ? 'disabled' : ''} class="ml-auto py-1.5 px-3 rounded-lg text-[11px] font-bold text-white ${selectedStockCount === 0 ? 'bg-gray-300 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}">✓ Agregar seleccionadas (${selectedStockCount})</button>
                     </div>
                 </div>`;
             }
@@ -13142,6 +13158,8 @@
             const stockInfo = matchedProduct ? `Stock: ${getProductStock(matchedProduct)} · $${formatMoney(matchedProduct.salePrice || 0)}` : '';
             const isWeightMode = !!(matchedProduct && matchedProduct.saleByWeight && matchedProduct.weightPerUnit > 0);
 
+            const selectCell = `<td class="px-1 py-1 align-top text-center"><input type="checkbox" ${item.selected ? 'checked' : ''} onchange="toggleScanStockItemSelected('${item.localId}', this.checked)"></td>`;
+
             const productCell = `
                 <td class="px-2 py-1 min-w-[170px] align-top">
                     <div id="scanitem-productslot-${item.localId}">
@@ -13166,11 +13184,12 @@
                 const totalGrams = item.totalGrams || 0;
                 const totalCost = item.totalCost || 0;
                 const costPerGram = totalGrams > 0 ? totalCost / totalGrams : 0;
-                const effectiveUnitCost = costPerGram * matchedProduct.weightPerUnit;
+                const effectiveUnitCost = getScanItemEffectiveUnitCost(item);
                 const priceForMargin = (item.newPrice !== '' && item.newPrice != null) ? parseFloat(item.newPrice) : currentSalePrice;
                 const marginPct = (effectiveUnitCost > 0 && priceForMargin > 0) ? (((priceForMargin - effectiveUnitCost) / effectiveUnitCost) * 100) : null;
                 return `
                 <tr class="border-t bg-blue-50/50">
+                    ${selectCell}
                     ${productCell}
                     <td class="px-1 py-1 align-top" colspan="3">
                         <label class="block text-[8px] text-blue-500 uppercase">⚖️ Gramos totales comprados</label>
@@ -13206,12 +13225,14 @@
                 ? Math.round(totalUnidades * (item.unitPrice || 0) * 100) / 100
                 : (item.enteredTotalPrice != null ? item.enteredTotalPrice : 0);
             const priceForMargin = (item.newPrice !== '' && item.newPrice != null) ? parseFloat(item.newPrice) : currentSalePrice;
-            const marginPct = (item.unitPrice > 0 && priceForMargin > 0) ? (((priceForMargin - item.unitPrice) / item.unitPrice) * 100) : null;
+            const effectiveUnitCost = getScanItemEffectiveUnitCost(item);
+            const marginPct = (effectiveUnitCost > 0 && priceForMargin > 0) ? (((priceForMargin - effectiveUnitCost) / effectiveUnitCost) * 100) : null;
             const factorsHint = matchedProduct && !factors.unitsPerBulto && !factors.unitsPerDisplay
                 ? `<p class="text-[8px] text-orange-400 mt-0.5 leading-tight">Configurá "Unidades por display" y/o "Viene en bulto de" en Editar Producto para usar Bultos/Displays</p>`
                 : '';
             return `
             <tr class="border-t ${!item.productId ? 'bg-orange-50' : ''}">
+                ${selectCell}
                 ${productCell}
                 <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.bultos || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" oninput="scanStockQtyQuietSync('${item.localId}', 'bultos', this.value)" onchange="updateScanStockQtyField('${item.localId}', 'bultos', this.value)"></td>
                 <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.displaysQty || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" oninput="scanStockQtyQuietSync('${item.localId}', 'displaysQty', this.value)" onchange="updateScanStockQtyField('${item.localId}', 'displaysQty', this.value)"></td>
@@ -13392,6 +13413,9 @@
                 const totalCost = item.totalCost || 0;
                 return (totalGrams > 0 && weightPerUnit > 0) ? (totalCost / totalGrams) * weightPerUnit : 0;
             }
+            // item.unitPrice ya está en el valor que corresponde usar tal cual: si la
+            // línea tiene +IVA tildado, el toggle ya lo multiplicó por 1.21 al tildarse
+            // (ver toggleAllScanItemsVat/toggleScanItemVat) -- no hay que tocarlo de nuevo.
             return item.unitPrice || 0;
         }
 
@@ -13793,6 +13817,39 @@
         }
         window.updateScanItemTotalPrice = updateScanItemTotalPrice;
 
+        function toggleScanStockItemSelected(localId, checked) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            item.selected = checked;
+            renderScanInvoiceItems();
+        }
+        window.toggleScanStockItemSelected = toggleScanStockItemSelected;
+
+        function toggleAllScanStockSelected(checked) {
+            scanInvoiceItems.forEach(item => { if (item.type === 'stock') item.selected = checked; });
+            renderScanInvoiceItems();
+        }
+        window.toggleAllScanStockSelected = toggleAllScanStockSelected;
+
+        // Agrega de una todas las líneas "En stock" marcadas -- misma función real
+        // (confirmScanItemAsStock) que el botón ✓ de cada fila, una por una. Si a
+        // alguna le falta producto/facturación/pago, esa queda en la lista (con su
+        // propio aviso) para que el usuario la revise, sin frenar al resto.
+        function confirmSelectedScanItemsAsStock() {
+            const selectedIds = scanInvoiceItems.filter(i => i.type === 'stock' && i.selected).map(i => i.localId);
+            if (selectedIds.length === 0) return;
+            let added = 0, pending = 0;
+            selectedIds.forEach(id => {
+                const before = scanInvoiceItems.length;
+                confirmScanItemAsStock(id);
+                if (scanInvoiceItems.length < before) added++; else pending++;
+            });
+            if (added > 0) {
+                showNotification(`✅ ${added} línea(s) agregada(s) a stock` + (pending > 0 ? ` -- ${pending} quedaron pendiente(s) de revisar` : ''), 'success');
+            }
+        }
+        window.confirmSelectedScanItemsAsStock = confirmSelectedScanItemsAsStock;
+
         // +IVA 21% para todas las líneas "En stock"/"Producto nuevo" de una,
         // en vez de tener que tocarlo línea por línea.
         function toggleAllScanItemsVat(checked) {
@@ -13891,6 +13948,11 @@
             // manda lo que corresponda según el producto, no lo que diga item.qty solo
             // (que es del modelo viejo de bultos/unid-por-bulto, ya no se usa acá).
             const qtyToAdd = isWeightMode ? (item.totalGrams || 0) : getScanStockTotalUnits(item, matchedProduct);
+            // item.unitPrice/totalCost ya quedan en lo que corresponde cargar en
+            // Agregar Stock tal cual -- si la línea tiene +IVA tildado, el toggle ya
+            // multiplicó el número guardado por 1.21 en el momento en que se tildó
+            // (ver toggleAllScanItemsVat/toggleScanItemVat), así que acá no hay que
+            // volver a multiplicar.
             const costToUse = isWeightMode ? (item.totalCost || 0) : (item.unitPrice || 0);
             if (isWeightMode) {
                 if (qtyToAdd <= 0) { showNotification('Ingresá los gramos totales comprados', 'error'); return; }
@@ -13902,10 +13964,23 @@
             // Aprende: la próxima vez que la factura diga este mismo texto,
             // va a sugerir directo este producto.
             learnInvoiceNameMapping(item.rawName, item.productId, item.productName, scanInvoiceSupplier);
-            // Aprende también si lo que terminó confirmando (unidades/precio reales)
-            // no coincide con lo que la IA leyó -- para no repetir el mismo error
-            // con este proveedor la próxima vez.
-            if (!isWeightMode) recordInvoiceSupplierCorrection(item, qtyToAdd, costToUse);
+            // Aprende también si lo que terminó confirmando no coincide con lo que la
+            // IA leyó -- para no repetir el mismo error con este proveedor la próxima
+            // vez. item.aiRawQuantity/aiRawUnitPrice son por "Cant." (ej. por fardo),
+            // netos (sin IVA) -- pero para esta línea item.unitPrice/qtyToAdd pueden
+            // estar ya repartidos en unidades individuales (vía bultos×unidadesPorBulto)
+            // y con el 21% de IVA sumado (si +IVA está tildado). Hay que deshacer ambas
+            // conversiones antes de comparar, si no compara fardos contra unidades
+            // sueltas y siempre "corrige" aunque la IA haya leído bien.
+            if (!isWeightMode) {
+                const cantUnitQty = item.bultos || item.displaysQty || item.unidadesSueltas || 0;
+                const factors = getScanStockUnitFactors(matchedProduct);
+                let pricePerCantUnit = item.unitPrice || 0;
+                if (item.bultos > 0 && factors.unitsPerBulto > 0) pricePerCantUnit = pricePerCantUnit * factors.unitsPerBulto;
+                else if (item.displaysQty > 0 && factors.unitsPerDisplay > 0) pricePerCantUnit = pricePerCantUnit * factors.unitsPerDisplay;
+                if (item.vatApplied) pricePerCantUnit = pricePerCantUnit / 1.21;
+                recordInvoiceSupplierCorrection(item, cantUnitQty, Math.round(pricePerCantUnit * 100) / 100);
+            }
 
             scanInvoiceReturnPending = true;
             closeScanInvoiceModal();
@@ -13952,7 +14027,15 @@
             }
 
             learnInvoiceNameMapping(item.rawName, item.productId, item.productName, scanInvoiceSupplier);
-            if (!isWeightMode) recordInvoiceSupplierCorrection(item, qtyToUse, item.unitPrice || 0);
+            if (!isWeightMode) {
+                const cantUnitQty = item.bultos || item.displaysQty || item.unidadesSueltas || 0;
+                const factors = getScanStockUnitFactors(product);
+                let pricePerCantUnit = item.unitPrice || 0;
+                if (item.bultos > 0 && factors.unitsPerBulto > 0) pricePerCantUnit = pricePerCantUnit * factors.unitsPerBulto;
+                else if (item.displaysQty > 0 && factors.unitsPerDisplay > 0) pricePerCantUnit = pricePerCantUnit * factors.unitsPerDisplay;
+                if (item.vatApplied) pricePerCantUnit = pricePerCantUnit / 1.21;
+                recordInvoiceSupplierCorrection(item, cantUnitQty, Math.round(pricePerCantUnit * 100) / 100);
+            }
 
             scanInvoiceReturnPending = true;
             closeScanInvoiceModal();

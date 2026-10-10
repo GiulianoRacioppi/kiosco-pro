@@ -4442,6 +4442,7 @@
             // final, que un bug puede corromper sin dejar rastro.
             stockLedger: [],
             invoiceNameMappings: [],
+            invoiceSupplierCorrections: [],
             // Flujo de caja
             recurringExpenses: [],
             cashFlowSettings: {
@@ -12618,6 +12619,68 @@
             }
         }
 
+        // Aprende reglas de LECTURA (cantidad/tipo de unidad/precio) por proveedor --
+        // distinto de learnInvoiceNameMapping, que aprende a qué PRODUCTO corresponde
+        // un texto. Acá se guarda, por proveedor, cada vez que lo que el usuario
+        // termina confirmando (unidades totales reales) no coincide con lo que la IA
+        // leyó para esa misma línea -- la próxima vez que se escanee una factura de
+        // ese proveedor, esos ejemplos se le mandan a la IA junto con la foto como
+        // "así corresponde leer este proveedor", para que no repita el mismo error.
+        function recordInvoiceSupplierCorrection(item, correctTotalUnits, correctUnitPrice) {
+            const supplier = (item && (item.scanSupplier || scanInvoiceSupplier)) || '';
+            if (!supplier) return; // sin proveedor elegido no hay en qué "aprender" por proveedor
+            if (!item || item.aiRawQuantity == null) return;
+
+            const qtyChanged = Math.round((correctTotalUnits || 0) * 100) !== Math.round((item.aiRawQuantity || 0) * 100);
+            const priceChanged = correctUnitPrice > 0 && item.aiRawUnitPrice != null &&
+                Math.round(correctUnitPrice * 100) !== Math.round((item.aiRawUnitPrice || 0) * 100);
+            if (!qtyChanged && !priceChanged) return; // la IA le pegó, no hace falta anotar nada
+
+            if (!Array.isArray(appState.invoiceSupplierCorrections)) appState.invoiceSupplierCorrections = [];
+            const supplierKey = normalizeText(supplier);
+            const nameKey = normalizeText(item.rawName || '').replace(/\s+/g, '-').slice(0, 80);
+            const id = 'CORR-' + supplierKey + '-' + nameKey;
+            const entry = {
+                id, supplier,
+                rawName: item.rawName || '',
+                aiQuantity: item.aiRawQuantity,
+                aiUnitType: item.aiRawUnitType,
+                aiUnitPrice: item.aiRawUnitPrice,
+                correctTotalUnits,
+                correctUnitPrice: correctUnitPrice > 0 ? correctUnitPrice : null,
+                updatedAt: Date.now()
+            };
+            const idx = appState.invoiceSupplierCorrections.findIndex(c => c.id === id);
+            if (idx >= 0) appState.invoiceSupplierCorrections[idx] = entry;
+            else appState.invoiceSupplierCorrections.push(entry);
+
+            // No dejar crecer sin límite la lista de un mismo proveedor -- con los
+            // ejemplos más recientes alcanza para que la IA agarre el patrón.
+            const sameSupplier = appState.invoiceSupplierCorrections.filter(c => normalizeText(c.supplier) === supplierKey);
+            if (sameSupplier.length > 40) {
+                sameSupplier.sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0));
+                const toDrop = new Set(sameSupplier.slice(0, sameSupplier.length - 40).map(c => c.id));
+                appState.invoiceSupplierCorrections = appState.invoiceSupplierCorrections.filter(c => !toDrop.has(c.id));
+            }
+        }
+
+        // Arma, para un proveedor, el texto con los últimos ejemplos corregidos --
+        // se manda junto con la foto a la IA para que aplique el mismo criterio a
+        // líneas parecidas de la factura nueva.
+        function getInvoiceSupplierNotes(supplier) {
+            if (!supplier) return [];
+            const supplierKey = normalizeText(supplier);
+            return (appState.invoiceSupplierCorrections || [])
+                .filter(c => normalizeText(c.supplier) === supplierKey)
+                .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+                .slice(0, 25)
+                .map(c => {
+                    const aiPart = `la IA había leído cantidad=${c.aiQuantity}${c.aiUnitType ? ' unitType="' + c.aiUnitType + '"' : ' sin unitType'}${c.aiUnitPrice != null ? ' precio unit.=' + c.aiUnitPrice : ''}`;
+                    const correctPart = `lo correcto para esta línea era: total de unidades individuales=${c.correctTotalUnits}${c.correctUnitPrice ? ', precio unit.=' + c.correctUnitPrice : ''}`;
+                    return `- "${c.rawName}": ${aiPart} → ${correctPart}.`;
+                });
+        }
+
         function findBestInventoryMatch(rawName, supplier) {
             const q = normalizeText(rawName || '');
             if (!q) return null;
@@ -12782,7 +12845,12 @@
                 const res = await fetch('https://us-central1-kioscopro.cloudfunctions.net/escanearFactura', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ images, password: appState.comprasAppPassword || '' })
+                    body: JSON.stringify({
+                        images,
+                        password: appState.comprasAppPassword || '',
+                        supplier: scanInvoiceSupplier || '',
+                        supplierNotes: getInvoiceSupplierNotes(scanInvoiceSupplier)
+                    })
                 });
                 const data = await res.json();
                 if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo leer la factura');
@@ -12859,7 +12927,14 @@
                         newProductName: null,
                         barcode: '',
                         category: '',
-                        supplier: ''
+                        supplier: '',
+                        // Eco de lo que la IA leyó, SIN tocar nunca después -- sirve para
+                        // comparar contra lo que el usuario termine confirmando y, si
+                        // difiere, aprender una corrección para este proveedor.
+                        aiRawQuantity: qty,
+                        aiRawUnitType: it.unitType || null,
+                        aiRawUnitPrice: it.unitPrice != null ? it.unitPrice : null,
+                        scanSupplier: scanInvoiceSupplier || ''
                     };
                 });
                 statusEl.textContent = `✅ Se leyeron ${scanInvoiceItems.length} línea(s). Revisá y confirmá cada una.`;
@@ -13822,6 +13897,10 @@
             // Aprende: la próxima vez que la factura diga este mismo texto,
             // va a sugerir directo este producto.
             learnInvoiceNameMapping(item.rawName, item.productId, item.productName, scanInvoiceSupplier);
+            // Aprende también si lo que terminó confirmando (unidades/precio reales)
+            // no coincide con lo que la IA leyó -- para no repetir el mismo error
+            // con este proveedor la próxima vez.
+            if (!isWeightMode) recordInvoiceSupplierCorrection(item, qtyToAdd, costToUse);
 
             scanInvoiceReturnPending = true;
             closeScanInvoiceModal();
@@ -13868,6 +13947,7 @@
             }
 
             learnInvoiceNameMapping(item.rawName, item.productId, item.productName, scanInvoiceSupplier);
+            if (!isWeightMode) recordInvoiceSupplierCorrection(item, qtyToUse, item.unitPrice || 0);
 
             scanInvoiceReturnPending = true;
             closeScanInvoiceModal();
@@ -14149,11 +14229,13 @@
             document.getElementById('edit-prod-price').value = product.salePrice || 0;
             document.getElementById('edit-prod-category').value = product.category || 'snacks';
             
-            // Determinar tipo de factura del primer lote (FIFO) o default white
-            const firstBatchType = product.batches && product.batches.length > 0 
-                ? (product.batches[0].invoiceType || 'white') 
-                : 'white';
-            setEditProdInvoiceType(firstBatchType);
+            // Determinar tipo de factura: en productos compuestos no hay lotes
+            // (siempre quedan vacíos a propósito), así que el tipo se guarda
+            // directo en el producto -- para el resto, el del primer lote (FIFO).
+            const initialInvoiceType = product.isComposite
+                ? (product.invoiceType || 'white')
+                : (product.batches && product.batches.length > 0 ? (product.batches[0].invoiceType || 'white') : 'white');
+            setEditProdInvoiceType(initialInvoiceType);
             
             // Renderizar lotes editables
             renderEditProdBatches(product);
@@ -23810,6 +23892,7 @@ Total de productos a comprar: ${shoppingList.length}
                 returns: [],
                 stockLedger: [],
             invoiceNameMappings: [],
+            invoiceSupplierCorrections: [],
                 fixedAssets: [],
                 recurringExpenses: [],
                 cashFlowSettings: { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
@@ -26649,6 +26732,7 @@ RESULTADOS:
                 main_stockLedger: 'stockLedger',
                 main_fixedAssets: 'fixedAssets',
                 main_invoiceNameMappings: 'invoiceNameMappings',
+                main_invoiceSupplierCorrections: 'invoiceSupplierCorrections',
                 main_specialPriceCodes: 'specialPriceCodes'
             };
         }
@@ -27583,6 +27667,7 @@ RESULTADOS:
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 appState.stockLedger = smartMergeArrays(appState.stockLedger || [], data.stockLedger || []);
                 appState.invoiceNameMappings = smartMergeArrays(appState.invoiceNameMappings || [], data.invoiceNameMappings || []);
+                appState.invoiceSupplierCorrections = smartMergeArrays(appState.invoiceSupplierCorrections || [], data.invoiceSupplierCorrections || []);
                 appState.specialPriceCodes = smartMergeArrays(appState.specialPriceCodes || [], data.specialPriceCodes || []);
                 appState.fixedAssets = smartMergeArrays(appState.fixedAssets || [], data.fixedAssets || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
@@ -27674,6 +27759,7 @@ RESULTADOS:
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 appState.stockLedger = smartMergeArrays(appState.stockLedger || [], data.stockLedger || []);
                 appState.invoiceNameMappings = smartMergeArrays(appState.invoiceNameMappings || [], data.invoiceNameMappings || []);
+                appState.invoiceSupplierCorrections = smartMergeArrays(appState.invoiceSupplierCorrections || [], data.invoiceSupplierCorrections || []);
                 appState.specialPriceCodes = smartMergeArrays(appState.specialPriceCodes || [], data.specialPriceCodes || []);
                 appState.fixedAssets = smartMergeArrays(appState.fixedAssets || [], data.fixedAssets || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
@@ -29096,7 +29182,7 @@ RESULTADOS:
                     <select id="scan-invoice-supplier" onchange="setScanInvoiceSupplier(this.value)" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm">
                         <option value="">Sin especificar</option>
                     </select>
-                    <p class="text-[11px] text-gray-400 mt-0.5">Ayuda a que la IA aprenda: el mismo producto puede llamarse distinto según el proveedor.</p>
+                    <p class="text-[11px] text-gray-400 mt-0.5">Ayuda a que la IA aprenda: el mismo producto puede llamarse distinto según el proveedor, y cada proveedor imprime la factura distinto. Elegilo antes de subir la foto -- la IA va a usar las reglas y correcciones ya aprendidas para ESE proveedor.</p>
                 </div>
                 <label class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center py-2.5 rounded-xl font-bold cursor-pointer">
                     📄 Subir foto o PDF de la factura

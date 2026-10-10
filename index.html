@@ -12875,7 +12875,12 @@
                     let saleByWeight = false, totalGrams = 0, totalCost = 0;
                     const unitTypeNorm = it.unitType ? it.unitType.trim().toLowerCase() : '';
                     const isDisplayLine = /^d/.test(unitTypeNorm); // "DI", "DISPLAY", "DISP"...
-                    const isBultoLine = /^b/.test(unitTypeNorm);   // "B", "BULTO"...
+                    const isLooseUnitLine = !unitTypeNorm || /^u/.test(unitTypeNorm); // null, "", "U", "UN", "UNIDAD"...
+                    // Cualquier letra de envase cerrado que no sea Display ni unidad suelta
+                    // cuenta como "bulto" a los efectos de convertirlo a unidades individuales
+                    // (no solo "B" -- un "Fardo", "Caja", "Pack", etc. se reparte exactamente
+                    // igual usando "Viene en bulto de" configurado en Editar Producto).
+                    const isBultoLine = !isDisplayLine && !isLooseUnitLine;
                     if (match && match.saleByWeight && match.weightPerUnit > 0) {
                         saleByWeight = true;
                         unidadesSueltas = 0;

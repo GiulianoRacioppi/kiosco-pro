@@ -2138,7 +2138,7 @@
                             <option value="black">🙈 Solo Negro</option>
                             <option value="mixed">🔀 Mixto (blanco y negro)</option>
                         </select>
-                        <input type="text" id="search-inventory" placeholder="Buscar..." class="border rounded-lg px-3 py-1 text-sm" onkeyup="renderInventory()">
+                        <input type="text" id="search-inventory" placeholder="Buscar..." class="border rounded-lg px-3 py-1 text-sm" onkeyup="renderInventoryDebounced()">
                     </div>
                 </div>
                 <div class="px-4 py-2 border-b bg-gray-50 flex items-center gap-2">
@@ -2503,7 +2503,7 @@
                 </div>
                 <div class="relative mb-3">
                     <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                    <input type="text" id="expenses-search" class="w-full border-2 border-gray-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:border-purple-400 focus:outline-none" placeholder="Buscar gasto por concepto (ej: sueldo, luz, proveedor...)" oninput="renderExpensesTable()">
+                    <input type="text" id="expenses-search" class="w-full border-2 border-gray-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:border-purple-400 focus:outline-none" placeholder="Buscar gasto por concepto (ej: sueldo, luz, proveedor...)" oninput="renderExpensesTableDebounced()">
                 </div>
                 <div id="expenses-selection-summary" class="hidden mb-3 bg-purple-50 border border-purple-200 rounded-xl px-4 py-2 flex items-center justify-between text-sm">
                     <span class="text-purple-700 font-medium"><span id="expenses-selection-count">0</span> gasto(s) seleccionado(s)</span>
@@ -4636,6 +4636,9 @@
             
             // Confirmar al salir con carrito activo
             window.addEventListener('beforeunload', (e) => {
+                // Asegura que un guardado agrupado (ver saveToLocalStorage) no se
+                // pierda si la pestaña se cierra justo dentro de esa ventana de ~200ms.
+                flushSaveToLocalStorageNow();
                 if (appState.cart.length > 0) {
                     e.preventDefault();
                     e.returnValue = 'Tienes productos en el carrito. ¿Seguro que quieres salir?';
@@ -5593,14 +5596,15 @@
         }
 
         function getLast7DaysSales() {
-            const sales = [];
+            // Un solo pase por todo el historial en vez de un .filter() completo POR
+            // CADA uno de los 7 días (7 recorridos del historial entero para armar esto).
+            const wantedDates = new Set();
             for (let i = 0; i < 7; i++) {
                 const date = new Date();
                 date.setDate(date.getDate() - i);
-                const dateStr = formatDateISO(date);
-                sales.push(...appState.sales.filter(s => saleRevenueDate(s) === dateStr));
+                wantedDates.add(formatDateISO(date));
             }
-            return sales;
+            return appState.sales.filter(s => wantedDates.has(saleRevenueDate(s)));
         }
 
         // Función simple para generar predicciones para el dashboard
@@ -5662,23 +5666,30 @@
         let sellSearchSelectedIndex = -1;
         let sellSearchCurrentResults = [];
 
+        let sellSearchDebounceTimer = null;
         function handleSellSearch() {
             const search = document.getElementById('sell-search-input').value.trim();
             const resultsContainer = document.getElementById('sell-search-results');
-            
+
+            clearTimeout(sellSearchDebounceTimer);
             if (!search) {
                 resultsContainer.classList.add('hidden');
                 sellSearchSelectedIndex = -1;
                 sellSearchCurrentResults = [];
                 return;
             }
-            
-            const activeInv = getActiveInventory().filter(p => !p.hiddenFromSale);
-            const results = fuzzySearchProducts(search, activeInv, 15, { sortBySales: true });
-            sellSearchCurrentResults = results;
-            sellSearchSelectedIndex = results.length > 0 ? 0 : -1;
-            
-            renderSellSearchResults();
+
+            // Pequeña demora (imperceptible al tipear normal) para no rehacer la
+            // búsqueda difusa sobre todo el inventario en CADA tecla si se escribe
+            // rápido -- es el campo más usado de toda la app.
+            sellSearchDebounceTimer = setTimeout(() => {
+                const activeInv = getActiveInventory().filter(p => !p.hiddenFromSale);
+                const results = fuzzySearchProducts(search, activeInv, 15, { sortBySales: true });
+                sellSearchCurrentResults = results;
+                sellSearchSelectedIndex = results.length > 0 ? 0 : -1;
+
+                renderSellSearchResults();
+            }, 100);
         }
         
         function renderSellSearchResults() {
@@ -11084,6 +11095,28 @@
             return matrix[str2.length][str1.length];
         }
         
+        // Cachea, EN el propio producto, lo que fuzzySearchProducts necesita ya
+        // normalizado/separado en palabras -- se recalculaba desde cero (toLowerCase
+        // + normalize + split) para los MISMOS productos en CADA tecla tipeada en el
+        // buscador de ventas (el campo más usado de toda la app). Se invalida solo si
+        // el nombre/código de barras realmente cambió (ej: se editó el producto).
+        function getProductSearchIndex(product) {
+            const cached = product._searchIdx;
+            if (cached && cached.srcName === product.name && cached.srcBarcode === product.barcode) {
+                return cached;
+            }
+            const normalizedName = normalizeText(product.name);
+            const idx = {
+                srcName: product.name,
+                srcBarcode: product.barcode,
+                normalizedName,
+                nameWords: normalizedName.split(/\s+/),
+                normalizedBarcode: normalizeText(product.barcode)
+            };
+            product._searchIdx = idx;
+            return idx;
+        }
+
         // Buscar productos con tolerancia a errores
         function fuzzySearchProducts(query, products, maxResults = 10, options = {}) {
             if (!query || query.trim() === '') return products;
@@ -11093,23 +11126,22 @@
             const { sortBySales = false } = options;
             
             return products.map(product => {
-                const normalizedName = normalizeText(product.name);
-                const normalizedBarcode = normalizeText(product.barcode);
-                const nameWords = normalizedName.split(/\s+/);
-                
+                const { normalizedName, nameWords, normalizedBarcode } = getProductSearchIndex(product);
+
                 let score = 0;
                 let matchedWords = 0;
-                
+
                 // Coincidencia exacta de toda la frase (sin tildes)
                 if (normalizedName.includes(normalizedQuery)) {
                     score += 100;
                     if (normalizedName.startsWith(normalizedQuery)) score += 50;
                 }
-                
+
                 // Coincidencia por palabras en CUALQUIER ORDEN
                 queryWords.forEach(qWord => {
                     let wordMatched = false;
                     nameWords.forEach(nWord => {
+                        const cheapMatch = nWord.includes(qWord) || nWord === qWord;
                         if (nWord.includes(qWord)) {
                             score += 30;
                             wordMatched = true;
@@ -11118,9 +11150,13 @@
                             score += 50;
                             wordMatched = true;
                         }
-                        
-                        // Tolerancia a errores ortográficos (palabras de 3+ caracteres)
-                        if (qWord.length >= 3 && nWord.length >= 3) {
+
+                        // Tolerancia a errores ortográficos (palabras de 3+ caracteres) --
+                        // solo vale la pena calcularla cuando el par NO matcheó ya por la
+                        // vía barata de arriba (si ya matcheó, el resultado es el mismo
+                        // con o sin el bonus extra de similitud, y Levenshtein es la parte
+                        // cara de esta búsqueda -- se ejecuta en CADA tecla tipeada).
+                        if (!cheapMatch && qWord.length >= 3 && nWord.length >= 3) {
                             const distance = levenshteinDistance(qWord, nWord);
                             const similarity = 1 - (distance / Math.max(qWord.length, nWord.length));
                             if (similarity >= 0.6) { // 60% similar (más permisivo)
@@ -11236,7 +11272,26 @@
             renderInventory();
         }
 
+        // Wrapper SOLO para el campo de búsqueda (onkeyup) -- agrupa tecleo rápido en
+        // una sola re-renderización de la tabla (hasta 100 filas, cada una recalcula
+        // margen/costo compuesto/vencimientos). Los demás que llaman renderInventory()
+        // directo (ordenar, filtrar, o después de agregar/editar un producto) siguen
+        // siendo instantáneos, no pasan por acá.
+        let renderInventorySearchDebounceTimer = null;
+        function renderInventoryDebounced() {
+            clearTimeout(renderInventorySearchDebounceTimer);
+            renderInventorySearchDebounceTimer = setTimeout(renderInventory, 150);
+        }
+        window.renderInventoryDebounced = renderInventoryDebounced;
+
         function renderInventory() {
+            // Todo lo que pinta esta función vive dentro de la página de Inventario
+            // (showSection ya la llama directo al abrirla, así que no hace falta
+            // rehacer la tabla -- hasta 100 filas, cada una con margen/costo
+            // compuesto/vencimientos -- cada vez que algo cambia en OTRA pantalla).
+            const invSection = document.getElementById('inventory');
+            if (!invSection || invSection.classList.contains('hidden')) return;
+
             const activeInventory = getActiveInventory();
             console.log('renderInventory llamado. Total productos:', activeInventory.length);
             renderAutoAdjustReminders();
@@ -14700,20 +14755,41 @@
             const daysInMonth = new Date(year, month + 1, 0).getDate();
             
             let html = '';
-            
+
             for (let i = 0; i < firstDay; i++) {
                 html += '<div class="calendar-day bg-gray-50 rounded-lg"></div>';
             }
-            
+
             const today = new Date();
-            
+            const calendarMonthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+
+            // Un solo pase por cada array grande (agrupando por fecha, solo de ESTE
+            // mes) en vez de un .filter() de los 3 arrays COMPLETOS por cada día del
+            // mes (hasta 31 veces) -- con años de historial esto recorría todas las
+            // ventas/gastos/inversiones de siempre, una y otra vez, solo para pintar
+            // la grilla de un mes.
+            const salesByDate = new Map();
+            for (const s of appState.sales) {
+                const d = saleRevenueDate(s); // percibido: un fiado cuenta el día que se cobra, no el que se hizo
+                if (!d || !d.startsWith(calendarMonthPrefix)) continue;
+                (salesByDate.get(d) || salesByDate.set(d, []).get(d)).push(s);
+            }
+            const expensesByDate = new Map();
+            for (const e of appState.expenses) {
+                if (!e.date || !e.date.startsWith(calendarMonthPrefix)) continue;
+                (expensesByDate.get(e.date) || expensesByDate.set(e.date, []).get(e.date)).push(e);
+            }
+            const investmentsByDate = new Map();
+            for (const i of appState.investments) {
+                if (!i.date || !i.date.startsWith(calendarMonthPrefix)) continue;
+                (investmentsByDate.get(i.date) || investmentsByDate.set(i.date, []).get(i.date)).push(i);
+            }
+
             for (let day = 1; day <= daysInMonth; day++) {
                 const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                // Percibido: un fiado cuenta el día que se cobra (saleRevenueDate), no el día que se hizo
-                let daySales = appState.sales.filter(s => saleRevenueDate(s) === dateStr);
-
-                const dayExpenses = appState.expenses.filter(e => e.date === dateStr);
-                const dayInvestments = appState.investments.filter(i => i.date === dateStr);
+                const daySales = salesByDate.get(dateStr) || [];
+                const dayExpenses = expensesByDate.get(dateStr) || [];
+                const dayInvestments = investmentsByDate.get(dateStr) || [];
                 const totalSales = daySales.reduce((sum, s) => sum + s.total, 0);
                 const totalExpenses = dayExpenses.reduce((sum, e) => sum + e.amount, 0);
                 const totalInvestments = dayInvestments.reduce((sum, i) => sum + i.amount, 0);
@@ -14751,12 +14827,13 @@
             
             document.getElementById('calendar-grid').innerHTML = html;
             
-            // Calcular y mostrar métricas del mes
-            const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
-            // Percibido: el fiado suma al mes en que se cobra, no en el que se hizo
-            const monthSales = appState.sales.filter(s => { const d = saleRevenueDate(s); return d && d.startsWith(monthPrefix); });
-            const monthExpenses = appState.expenses.filter(e => e.date && e.date.startsWith(monthPrefix));
-            const monthInvestments = appState.investments.filter(i => i.date && i.date.startsWith(monthPrefix));
+            // Calcular y mostrar métricas del mes -- reusa los mismos buckets de
+            // arriba (ya son solo de este mes) en vez de volver a recorrer los
+            // arrays completos.
+            const monthPrefix = calendarMonthPrefix;
+            const monthSales = [...salesByDate.values()].flat();
+            const monthExpenses = [...expensesByDate.values()].flat();
+            const monthInvestments = [...investmentsByDate.values()].flat();
             
             const monthSalesTotal = monthSales.reduce((sum, s) => sum + s.total, 0);
             const monthProfitTotal = monthSales.reduce((sum, s) => sum + s.profit, 0);
@@ -15655,6 +15732,17 @@
             document.getElementById('expenses-selection-count').textContent = selectedExpenses.size;
             document.getElementById('expenses-selection-total').textContent = formatMoney(total);
         }
+
+        // Wrapper SOLO para el campo de búsqueda (oninput) -- agrupa tecleo rápido en
+        // una sola re-renderización (sin texto busca en TODO el historial de gastos).
+        // Los demás que llaman renderExpensesTable() directo (cambiar de mes, o
+        // después de cargar/editar un gasto) siguen siendo instantáneos.
+        let renderExpensesTableDebounceTimer = null;
+        function renderExpensesTableDebounced() {
+            clearTimeout(renderExpensesTableDebounceTimer);
+            renderExpensesTableDebounceTimer = setTimeout(renderExpensesTable, 150);
+        }
+        window.renderExpensesTableDebounced = renderExpensesTableDebounced;
 
         // Detalle de gastos: sin texto en el buscador muestra el mes elegido (con las
         // flechitas); con texto busca en TODOS los gastos por concepto, sin importar el mes.
@@ -21965,21 +22053,23 @@
         }
 
         function renderPredictions() {
+            // El caché se limpia siempre (es barato, Map.clear() no depende del
+            // historial) para que calculateProductStats() no devuelva datos viejos a
+            // quien sea que lo use en otra pantalla (ej: el cartelito "🔥 N vendidos"
+            // del buscador de Vender). Lo caro es lo de ABAJO: todo lo que arma esta
+            // función (lista de compras sugerida, vencimientos, top productos, mermas,
+            // stock gratis) vive dentro de la página de Inventario -- si no está
+            // visible, no tiene sentido rehacer esos cálculos (incluye recorrer TODO
+            // el inventario con predictDemand) cada vez que algo cambia en CUALQUIER
+            // parte de la app (esta función se llama desde renderAll(), que se dispara
+            // después de casi cualquier acción, no solo al abrir esta página).
             statsCache.clear();
+            const section = document.getElementById('inventory');
+            if (!section || section.classList.contains('hidden')) return;
             try {
                 renderPredictionsContent();
             } catch (err) {
                 console.error('Error en renderPredictions:', err);
-                const cardsContainer = document.getElementById('prediction-cards');
-                if (cardsContainer) {
-                    cardsContainer.innerHTML = `
-                        <div class="col-span-3 text-center py-8 text-red-500">
-                            <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
-                            <p>Error al generar predicciones. Intentá recargar la página.</p>
-                            <p class="text-sm mt-2 text-gray-500">${err.message}</p>
-                        </div>
-                    `;
-                }
             }
         }
         
@@ -21988,17 +22078,6 @@
             const hasInventory = inventory.length > 0;
             
             if (!hasInventory) {
-                const cardsContainer = document.getElementById('prediction-cards');
-                if (cardsContainer) {
-                    cardsContainer.innerHTML = `
-                        <div class="col-span-5 text-center py-8 text-gray-400">
-                            <i class="fas fa-box-open text-4xl mb-3"></i>
-                            <p class="text-lg font-medium mb-1">No hay productos en el inventario</p>
-                            <p class="text-sm">Agregá productos para ver el control de stock</p>
-                        </div>
-                    `;
-                }
-                
                 const shoppingContainer = document.getElementById('auto-shopping-list');
                 if (shoppingContainer) {
                     shoppingContainer.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">No hay productos en el inventario</td></tr>';
@@ -22012,110 +22091,6 @@
                 const countElement = document.getElementById('shopping-list-count');
                 if (countElement) countElement.textContent = '0 productos';
                 return;
-            }
-            
-            // Calcular resumen de stock
-            let criticalCount = 0;
-            let lowCount = 0;
-            let normalCount = 0;
-            let totalBuyQty = 0;
-            let expiringSoonCount = 0;
-            const today = new Date();
-            const targetDays = appState.stockTargetDays || 7;
-            
-            inventory.forEach(product => {
-                const stock = getProductStock(product);
-                const minStock = parseInt(product.min) || 5;
-                const prediction = predictDemand(product.id, targetDays);
-                const avgPeriodDemand = prediction?.stats?.avgPeriodDemand || 0;
-                const avgDaily = targetDays > 0 ? (avgPeriodDemand / targetDays) : (prediction?.stats?.avgDaily || 0);
-                const targetDemand = avgPeriodDemand;
-                const targetStock = Math.ceil(targetDemand + minStock);
-                const suggestedQty = Math.max(0, targetStock - stock);
-                const daysUntilStockout = avgDaily > 0 ? Math.floor(stock / avgDaily) : 999;
-                
-                if (suggestedQty > 0) {
-                    totalBuyQty += suggestedQty;
-                    if (stock === 0 || daysUntilStockout <= 2) criticalCount++;
-                    else if (daysUntilStockout <= 5) lowCount++;
-                    else lowCount++;
-                } else {
-                    normalCount++;
-                }
-                
-                // Contar productos próximos a vencer
-                if (product.batches && product.batches.length > 0) {
-                    product.batches.forEach(batch => {
-                        if (batch.expiry && batch.stock > 0) {
-                            const daysUntil = Math.ceil((new Date(batch.expiry) - today) / (1000 * 60 * 60 * 24));
-                            if (daysUntil <= 30 && daysUntil >= 0) expiringSoonCount++;
-                        }
-                    });
-                } else if (product.expiry) {
-                    const daysUntil = Math.ceil((new Date(product.expiry) - today) / (1000 * 60 * 60 * 24));
-                    if (stock > 0 && daysUntil <= 30 && daysUntil >= 0) expiringSoonCount++;
-                }
-            });
-            
-            // Renderizar tarjetas de resumen de stock
-            const cardsContainer = document.getElementById('prediction-cards');
-            if (cardsContainer) {
-                cardsContainer.innerHTML = `
-                    <div class="bg-gradient-to-br from-red-50 to-white rounded-xl p-4 border border-red-200">
-                        <div class="flex items-center gap-3 mb-2">
-                            <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                                <i class="fas fa-exclamation-triangle text-red-600"></i>
-                            </div>
-                            <span class="text-red-600 font-bold">Stock Crítico</span>
-                        </div>
-                        <p class="text-3xl font-bold text-gray-800 mb-1">${criticalCount}</p>
-                        <p class="text-sm text-gray-500">productos agotados o casi</p>
-                    </div>
-                    
-                    <div class="bg-gradient-to-br from-orange-50 to-white rounded-xl p-4 border border-orange-200">
-                        <div class="flex items-center gap-3 mb-2">
-                            <div class="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
-                                <i class="fas fa-arrow-down text-orange-600"></i>
-                            </div>
-                            <span class="text-orange-600 font-bold">Stock Bajo</span>
-                        </div>
-                        <p class="text-3xl font-bold text-gray-800 mb-1">${lowCount}</p>
-                        <p class="text-sm text-gray-500">necesitan reposición</p>
-                    </div>
-                    
-                    <div class="bg-gradient-to-br from-blue-50 to-white rounded-xl p-4 border border-blue-200">
-                        <div class="flex items-center gap-3 mb-2">
-                            <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                                <i class="fas fa-shopping-cart text-blue-600"></i>
-                            </div>
-                            <span class="text-blue-600 font-bold">Total a Comprar</span>
-                        </div>
-                        <p class="text-3xl font-bold text-gray-800 mb-1">${totalBuyQty}</p>
-                        <p class="text-sm text-gray-500">unidades sugeridas</p>
-                    </div>
-                    
-                    <div class="bg-gradient-to-br from-green-50 to-white rounded-xl p-4 border border-green-200">
-                        <div class="flex items-center gap-3 mb-2">
-                            <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                                <i class="fas fa-check-circle text-green-600"></i>
-                            </div>
-                            <span class="text-green-600 font-bold">Stock OK</span>
-                        </div>
-                        <p class="text-3xl font-bold text-gray-800 mb-1">${normalCount}</p>
-                        <p class="text-sm text-gray-500">productos con stock normal</p>
-                    </div>
-                    
-                    <div class="bg-gradient-to-br from-yellow-50 to-white rounded-xl p-4 border border-yellow-200">
-                        <div class="flex items-center gap-3 mb-2">
-                            <div class="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center">
-                                <i class="fas fa-clock text-yellow-600"></i>
-                            </div>
-                            <span class="text-yellow-600 font-bold">Próx. a Vencer</span>
-                        </div>
-                        <p class="text-3xl font-bold text-gray-800 mb-1">${expiringSoonCount}</p>
-                        <p class="text-sm text-gray-500">en los próximos 30 días</p>
-                    </div>
-                `;
             }
             
             // Generar y renderizar lista de compras (agrupada por proveedor)
@@ -23633,6 +23608,12 @@ Total de productos a comprar: ${shoppingList.length}
         }
 
         function renderBilling() {
+            // Todo lo que pinta esta función vive dentro de la página de Facturación
+            // (showSection ya la llama directo al abrirla) -- no hace falta rehacerla
+            // cada vez que algo cambia en OTRA pantalla (se llama desde renderAll()).
+            const billingSection = document.getElementById('billing');
+            if (!billingSection || billingSection.classList.contains('hidden')) return;
+
             const data = getBillingPeriodData(billingPeriod);
 
             // Etiquetas del período: el botón de mes muestra el nombre del mes elegido y un caption describe el rango
@@ -26742,6 +26723,11 @@ RESULTADOS:
                 setTimeout(() => {
                     forceSync();
                 }, 500);
+            } else {
+                // Al pasar a segundo plano (ej: celular que bloquea pantalla o cambia
+                // de app) puede no llegar a dispararse "beforeunload" -- se fuerza acá
+                // el guardado agrupado pendiente para no perderlo.
+                flushSaveToLocalStorageNow();
             }
         });
         
@@ -28155,7 +28141,39 @@ RESULTADOS:
         }
 
         // ==================== LOCAL STORAGE ====================
+        // saveToLocalStorage() se llama desde ~100 lugares distintos, muchas veces
+        // varias veces seguidas en el mismo instante (ej: tipear, o un loop que
+        // confirma varias líneas de una factura). JSON.stringify de appState entero
+        // en CADA una de esas llamadas es cada vez más caro a medida que crece el
+        // historial (ventas, movimientos de stock, etc. de meses/años) -- acá se
+        // agrupan las llamadas pegadas en una sola escritura real, ~200ms después de
+        // la última. No hace falta que sea instantáneo: nada lee el valor recién
+        // guardado de localStorage en el mismo instante (appState en memoria ya tiene
+        // el dato actualizado para cualquier lectura inmediata), y la copia real de
+        // seguridad es Firebase, no esta -- unos cientos de ms de demora acá no arriesgan
+        // nada que no se arriesgue ya hoy.
+        let saveToLocalStorageTimer = null;
+        let saveToLocalStoragePendingSync = false;
         function saveToLocalStorage(triggerSync = true) {
+            saveToLocalStoragePendingSync = saveToLocalStoragePendingSync || triggerSync;
+            if (saveToLocalStorageTimer) return;
+            saveToLocalStorageTimer = setTimeout(() => {
+                saveToLocalStorageTimer = null;
+                const doSync = saveToLocalStoragePendingSync;
+                saveToLocalStoragePendingSync = false;
+                flushSaveToLocalStorage(doSync);
+            }, 200);
+        }
+        // Por si hace falta forzar la escritura ya mismo (ej: antes de cerrar la pestaña).
+        function flushSaveToLocalStorageNow() {
+            if (!saveToLocalStorageTimer) return;
+            clearTimeout(saveToLocalStorageTimer);
+            saveToLocalStorageTimer = null;
+            const doSync = saveToLocalStoragePendingSync;
+            saveToLocalStoragePendingSync = false;
+            flushSaveToLocalStorage(doSync);
+        }
+        function flushSaveToLocalStorage(triggerSync) {
             try {
                 localStorage.setItem('kioscopro-data', JSON.stringify(appState));
                 markLocalWrite();

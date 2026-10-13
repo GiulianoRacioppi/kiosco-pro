@@ -1608,39 +1608,8 @@
                     <div class="text-center text-xs font-bold text-gray-500 py-2">Sáb</div>
                 </div>
                 <div id="calendar-grid" class="grid grid-cols-7 gap-2"></div>
-                
-                <!-- Métricas del mes -->
-                <div class="mt-6 pt-4 border-t border-gray-200">
-                    <h4 class="text-sm font-bold text-gray-600 mb-3 uppercase">Resumen del mes</h4>
-                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-                        <div class="bg-purple-50 rounded-xl p-3 text-center">
-                            <p class="text-xs text-purple-600 font-bold uppercase">Ventas</p>
-                            <p class="text-xl font-bold text-purple-800" id="calendar-month-sales">$0</p>
-                            <p class="text-xs text-purple-500" id="calendar-month-sales-count">0 ventas</p>
-                        </div>
-                        <div class="bg-green-50 rounded-xl p-3 text-center">
-                            <p class="text-xs text-green-600 font-bold uppercase">Ganancia</p>
-                            <p class="text-xl font-bold text-green-800" id="calendar-month-profit">$0</p>
-                            <p class="text-[10px] text-green-600 mt-1" id="calendar-month-profit-extra"></p>
-                        </div>
-                        <div class="bg-red-50 rounded-xl p-3 text-center">
-                            <p class="text-xs text-red-600 font-bold uppercase">Gastos</p>
-                            <p class="text-xl font-bold text-red-800" id="calendar-month-expenses">$0</p>
-                            <p class="text-[10px] text-red-600 mt-1" id="calendar-month-expenses-extra"></p>
-                        </div>
-                        <div class="bg-teal-50 rounded-xl p-3 text-center">
-                            <p class="text-xs text-teal-600 font-bold uppercase">Balance</p>
-                            <p class="text-xl font-bold text-teal-800" id="calendar-month-balance">$0</p>
-                            <p class="text-[10px] text-teal-600 mt-1" id="calendar-month-balance-extra">Ganancia neta</p>
-                        </div>
-                        <div class="bg-blue-50 rounded-xl p-3 text-center">
-                            <p class="text-xs text-blue-600 font-bold uppercase">Inversión</p>
-                            <p class="text-xl font-bold text-blue-800" id="calendar-month-investments">$0</p>
-                        </div>
-                    </div>
-                </div>
             </div>
-            
+
             <div id="day-detail" class="bg-white rounded-2xl shadow-lg p-6 hidden">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-xl font-bold text-purple-600" id="day-detail-title"></h3>
@@ -2268,6 +2237,38 @@
                 </h2>
                 <p class="text-sm text-gray-500">Plata que tenés ahora mismo: caja y cuenta bancaria, más el arqueo del día</p>
             </div>
+
+            <!-- Resumen del mes (movido acá desde Historial de Ventas) -->
+            <div class="bg-white rounded-2xl shadow-lg p-6">
+                <h4 class="text-sm font-bold text-gray-600 mb-3 uppercase">Resumen del mes</h4>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <div class="bg-purple-50 rounded-xl p-3 text-center">
+                        <p class="text-xs text-purple-600 font-bold uppercase">Ventas</p>
+                        <p class="text-xl font-bold text-purple-800" id="calendar-month-sales">$0</p>
+                        <p class="text-xs text-purple-500" id="calendar-month-sales-count">0 ventas</p>
+                    </div>
+                    <div class="bg-green-50 rounded-xl p-3 text-center">
+                        <p class="text-xs text-green-600 font-bold uppercase">Ganancia</p>
+                        <p class="text-xl font-bold text-green-800" id="calendar-month-profit">$0</p>
+                        <p class="text-[10px] text-green-600 mt-1" id="calendar-month-profit-extra"></p>
+                    </div>
+                    <div class="bg-red-50 rounded-xl p-3 text-center">
+                        <p class="text-xs text-red-600 font-bold uppercase">Gastos</p>
+                        <p class="text-xl font-bold text-red-800" id="calendar-month-expenses">$0</p>
+                        <p class="text-[10px] text-red-600 mt-1" id="calendar-month-expenses-extra"></p>
+                    </div>
+                    <div class="bg-teal-50 rounded-xl p-3 text-center">
+                        <p class="text-xs text-teal-600 font-bold uppercase">Balance</p>
+                        <p class="text-xl font-bold text-teal-800" id="calendar-month-balance">$0</p>
+                        <p class="text-[10px] text-teal-600 mt-1" id="calendar-month-balance-extra">Ganancia neta</p>
+                    </div>
+                    <div class="bg-blue-50 rounded-xl p-3 text-center">
+                        <p class="text-xs text-blue-600 font-bold uppercase">Inversión</p>
+                        <p class="text-xl font-bold text-blue-800" id="calendar-month-investments">$0</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- Tarjetas Principales: Caja y Cuenta -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
@@ -3549,6 +3550,14 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-2">La pide compras-mayorista.html antes de dejar cargar nada. Se guarda en el celular después de ponerla bien una vez.</p>
                         </div>
+                        <div class="bg-gray-50 rounded-xl p-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">🔒 Contraseña del panel de Finanzas</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="settings-finances-password" class="flex-1 border rounded-lg px-3 py-2" placeholder="Dejar vacío = sin contraseña">
+                                <button onclick="saveFinancesPassword()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm">Guardar</button>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2">La pide antes de entrar a Finanzas, aparte de ser administrador. Se pide una vez por sesión.</p>
+                        </div>
                         <button onclick="forceSync()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg">
                             <i class="fas fa-sync"></i> Sincronizar Ahora
                         </button>
@@ -4456,6 +4465,8 @@
             qrFee: 0,
             // Contraseña para entrar a la app aparte de Compra Mayorista (celular). Vacío = sin contraseña.
             comprasAppPassword: 'admin123',
+            // Contraseña para entrar al panel de Finanzas. Vacío = sin contraseña.
+            financesPassword: 'GiulianoR4',
             // Configuración de stock
             stockTargetDays: 7,
             // Proveedores
@@ -4843,7 +4854,11 @@
         function isAdmin() {
             return appState.currentUser && appState.currentUser.role === 'admin';
         }
-        
+
+        // Se pide una sola vez por sesión (vive solo en memoria, se resetea al
+        // recargar la página) -- ver el chequeo de contraseña en showSection().
+        let financesUnlockedThisSession = false;
+
         // ==================== DEMO DATA ====================
         // ==================== NAVIGATION ====================
         function showSection(sectionId) {
@@ -4861,6 +4876,21 @@
             if (adminOnlySections.includes(sectionId) && !isAdmin()) {
                 showNotification('Acceso restringido solo para administradores', 'error');
                 sectionId = 'sell';
+            }
+
+            // Finanzas pide además su propia contraseña (aparte de ser administrador) --
+            // se pide una sola vez por sesión (se resetea al recargar la página).
+            if (sectionId === 'cashflow' && !financesUnlockedThisSession) {
+                const requiredPass = appState.financesPassword || '';
+                if (requiredPass) {
+                    const entered = prompt('🔒 Contraseña del panel de Finanzas:');
+                    if (entered !== requiredPass) {
+                        if (entered !== null) showNotification('Contraseña incorrecta', 'error');
+                        sectionId = currentSection || 'sell';
+                    } else {
+                        financesUnlockedThisSession = true;
+                    }
+                }
             }
 
             // Modal de agregar stock abierto: al cambiar de sección se minimiza
@@ -13894,11 +13924,24 @@
             const selectedIds = scanInvoiceItems.filter(i => i.type === 'stock' && i.selected).map(i => i.localId);
             if (selectedIds.length === 0) return;
             let added = 0, pending = 0;
-            selectedIds.forEach(id => {
-                const before = scanInvoiceItems.length;
-                confirmScanItemAsStock(id);
-                if (scanInvoiceItems.length < before) added++; else pending++;
-            });
+            // Mientras dure el lote: cada línea confirmada reconstruye TODA la app
+            // (renderAll, ~15 funciones) y reabre/recierra el modal de la factura --
+            // con esto activo, eso se salta línea por línea y se hace UNA sola vez al
+            // final, en vez de una vez completa por cada línea (era la demora real al
+            // confirmar varias juntas).
+            suppressRenderAllForBatch = true;
+            try {
+                selectedIds.forEach(id => {
+                    const before = scanInvoiceItems.length;
+                    confirmScanItemAsStock(id);
+                    if (scanInvoiceItems.length < before) added++; else pending++;
+                });
+            } finally {
+                suppressRenderAllForBatch = false;
+            }
+            saveToLocalStorage();
+            renderAll();
+            if (scanInvoiceItems.length > 0) openScanInvoiceModal();
             if (added > 0) {
                 showNotification(`✅ ${added} línea(s) agregada(s) a stock` + (pending > 0 ? ` -- ${pending} quedaron pendiente(s) de revisar` : ''), 'success');
             }
@@ -14224,6 +14267,12 @@
         function returnToScanInvoiceIfPending() {
             if (!scanInvoiceReturnPending) return;
             scanInvoiceReturnPending = false;
+            // Durante "Agregar seleccionadas" (confirmSelectedScanItemsAsStock) esto se
+            // llama una vez POR CADA línea -- reabrir el modal y reconstruir la tabla
+            // de la factura en cada vuelta es puro trabajo de más (nadie lo ve, todo
+            // pasa en el mismo instante); esa función reabre el modal una sola vez,
+            // al final, con lo que haya quedado pendiente.
+            if (suppressRenderAllForBatch) return;
             if (scanInvoiceItems.length > 0) openScanInvoiceModal();
         }
 
@@ -14826,20 +14875,35 @@
             }
             
             document.getElementById('calendar-grid').innerHTML = html;
-            
-            // Calcular y mostrar métricas del mes -- reusa los mismos buckets de
-            // arriba (ya son solo de este mes) en vez de volver a recorrer los
-            // arrays completos.
-            const monthPrefix = calendarMonthPrefix;
-            const monthSales = [...salesByDate.values()].flat();
-            const monthExpenses = [...expensesByDate.values()].flat();
-            const monthInvestments = [...investmentsByDate.values()].flat();
-            
+        }
+
+        // "Resumen del mes" -- antes vivía en Historial de Ventas (atado al mes que
+        // se estuviera navegando ahí); ahora vive en Finanzas, así que muestra el mes
+        // CALENDARIO ACTUAL siempre (no depende de qué mes se haya navegado en el
+        // calendario de Historial).
+        function renderFinanceMonthSummary() {
+            // Al igual que renderInventory/renderBilling/renderPredictions: se llama
+            // desde renderAll() (que se dispara tras casi cualquier acción), así que
+            // si la página de Finanzas no está abierta no vale la pena recorrer el
+            // historial del mes para actualizar algo que nadie está mirando.
+            const financeSection = document.getElementById('cashflow');
+            if (!financeSection || financeSection.classList.contains('hidden')) return;
+
+            const monthSalesEl = document.getElementById('calendar-month-sales');
+            if (!monthSalesEl) return; // la sección de Finanzas ni está en el DOM
+
+            const now = new Date();
+            const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+            const monthSales = appState.sales.filter(s => { const d = saleRevenueDate(s); return d && d.startsWith(monthPrefix); });
+            const monthExpenses = appState.expenses.filter(e => e.date && e.date.startsWith(monthPrefix));
+            const monthInvestments = appState.investments.filter(i => i.date && i.date.startsWith(monthPrefix));
+
             const monthSalesTotal = monthSales.reduce((sum, s) => sum + s.total, 0);
             const monthProfitTotal = monthSales.reduce((sum, s) => sum + s.profit, 0);
             const monthExpensesTotal = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
             const monthInvestmentsTotal = monthInvestments.reduce((sum, i) => sum + i.amount, 0);
-            
+
             // Ajustes del mes que no son ventas/gastos "normales":
             //   ganancia += sobrantes de caja + stock gratis/encontrado
             //   gastos   += mermas/pérdidas   (el faltante de caja ya está cargado como gasto real)
@@ -14855,9 +14919,7 @@
             const monthLosses = (appState.losses || [])
                 .filter(l => l.date && l.date.startsWith(monthPrefix))
                 .reduce((sum, l) => sum + (l.cost || 0), 0);
-            const monthBalance = monthSurplus + monthFoundStock - monthLosses;
-            
-            const monthSalesEl = document.getElementById('calendar-month-sales');
+
             const monthSalesCountEl = document.getElementById('calendar-month-sales-count');
             const monthProfitEl = document.getElementById('calendar-month-profit');
             const monthProfitExtraEl = document.getElementById('calendar-month-profit-extra');
@@ -14865,13 +14927,12 @@
             const monthExpensesExtraEl = document.getElementById('calendar-month-expenses-extra');
             const monthBalanceEl = document.getElementById('calendar-month-balance');
             const monthInvestmentsEl = document.getElementById('calendar-month-investments');
-            
-            if (monthSalesEl) monthSalesEl.textContent = '$' + formatMoney(monthSalesTotal);
+
+            monthSalesEl.textContent = '$' + formatMoney(monthSalesTotal);
             if (monthSalesCountEl) monthSalesCountEl.textContent = monthSales.length + ' ventas';
-            
+
             // Ganancia mostrada  = ganancia de ventas + sobrantes de caja + stock gratis
             // Gastos mostrados   = gastos reales (ya incluyen el faltante de caja) + mermas
-            // El neto no cambia respecto del cálculo anterior (profit + monthBalance - gastos).
             const displayedProfit = monthProfitTotal + monthSurplus + monthFoundStock;
             const displayedExpenses = monthExpensesTotal + monthLosses;
 
@@ -14892,7 +14953,7 @@
 
             const netBalance = displayedProfit - displayedExpenses;
             if (monthBalanceEl) monthBalanceEl.textContent = '$' + formatMoney(netBalance);
-            
+
             if (monthInvestmentsEl) monthInvestmentsEl.textContent = '$' + formatMoney(monthInvestmentsTotal);
         }
 
@@ -15918,12 +15979,13 @@
             
             renderReserve();
             renderShiftCountsList();
-            
+            renderFinanceMonthSummary();
+
             updateInventoryValues();
-            
+
             const today = formatDateISO(appState.activeDate);
             const currentMonth = today.slice(0, 7);
-            
+
             const todayExpenses = appState.expenses.filter(e => e.date === today).reduce((sum, e) => sum + e.amount, 0);
             const monthExpenses = appState.expenses.filter(e => e.date.startsWith(currentMonth)).reduce((sum, e) => sum + e.amount, 0);
             const totalExpenses = appState.expenses.reduce((sum, e) => sum + e.amount, 0);
@@ -23348,6 +23410,8 @@ Total de productos a comprar: ${shoppingList.length}
             }
             const comprasPassInput = document.getElementById('settings-compras-app-password');
             if (comprasPassInput) comprasPassInput.value = appState.comprasAppPassword || '';
+            const financesPassInput = document.getElementById('settings-finances-password');
+            if (financesPassInput) financesPassInput.value = appState.financesPassword || '';
 
             // Renderizar proveedores y horarios
             populateSupplierSelects();
@@ -23874,6 +23938,7 @@ Total de productos a comprar: ${shoppingList.length}
                             mercadoCreditoFee: 5,
                             qrFee: 0,
                             comprasAppPassword: 'admin123',
+                            financesPassword: 'GiulianoR4',
                             stockTargetDays: 7,
                             balancesUpdatedAt: 0,
                             cashFlowSettings: { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
@@ -24548,11 +24613,19 @@ RESULTADOS:
             }
         }
 
+        // Se activa mientras se confirman varias líneas de "Escanear Factura" seguidas
+        // (botón "Agregar seleccionadas") -- cada línea confirmada llama executeAddStock(),
+        // que SIEMPRE termina en renderAll() (dashboard, caja, inventario, sidebar, etc.,
+        // ~15 funciones). Con esto activo, renderAll() no hace nada mientras dure el lote
+        // -- se llama una sola vez al final, en vez de una vez completa POR CADA línea
+        // (con 20-30 líneas, eso era literalmente 20-30 refrescos completos seguidos).
+        let suppressRenderAllForBatch = false;
         function renderAll() {
+            if (suppressRenderAllForBatch) return;
             // Asegurar que productos eliminados no estén en el inventario
             cleanupDeletedProducts();
             cleanupDeletedInvestments();
-            
+
             try {
                 renderDashboard();
             } catch(e) { console.error('Error en renderDashboard:', e); }
@@ -26823,6 +26896,7 @@ RESULTADOS:
                 mercadoCreditoFee: parseFloat(appState.mercadoCreditoFee) || 5,
                 qrFee: parseFloat(appState.qrFee) || 0,
                 comprasAppPassword: appState.comprasAppPassword || '',
+                financesPassword: appState.financesPassword || '',
                 stockTargetDays: parseInt(appState.stockTargetDays) || 7,
                 balancesUpdatedAt: appState.balancesUpdatedAt || 0,
                 cashFlowSettings: appState.cashFlowSettings || { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 },
@@ -27690,6 +27764,7 @@ RESULTADOS:
                     if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
                     if (data.qrFee !== undefined) appState.qrFee = parseFloat(data.qrFee) || 0;
                     if (data.comprasAppPassword !== undefined) appState.comprasAppPassword = data.comprasAppPassword || '';
+                    if (data.financesPassword !== undefined) appState.financesPassword = data.financesPassword || '';
                     if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
                     if (data.cashFlowSettings && typeof data.cashFlowSettings === 'object') {
                         appState.cashFlowSettings = {
@@ -27847,6 +27922,7 @@ RESULTADOS:
                     if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
                     if (data.qrFee !== undefined) appState.qrFee = parseFloat(data.qrFee) || 0;
                     if (data.comprasAppPassword !== undefined) appState.comprasAppPassword = data.comprasAppPassword || '';
+                    if (data.financesPassword !== undefined) appState.financesPassword = data.financesPassword || '';
                     if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
                     if (data.cashFlowSettings && typeof data.cashFlowSettings === 'object') {
                         appState.cashFlowSettings = {
@@ -28042,6 +28118,16 @@ RESULTADOS:
             appState.comprasAppPassword = input ? input.value.trim() : '';
             saveToLocalStorage();
             showNotification(appState.comprasAppPassword ? '🔒 Contraseña guardada' : 'Contraseña quitada: la app de compras queda sin pedirla', 'success');
+        }
+
+        function saveFinancesPassword() {
+            const input = document.getElementById('settings-finances-password');
+            appState.financesPassword = input ? input.value.trim() : '';
+            // Si se cambia la contraseña, que la vuelva a pedir -- si no, alguien que
+            // ya entró en esta sesión seguiría adentro con la contraseña vieja.
+            financesUnlockedThisSession = false;
+            saveToLocalStorage();
+            showNotification(appState.financesPassword ? '🔒 Contraseña guardada' : 'Contraseña quitada: Finanzas queda sin pedirla', 'success');
         }
         
                 async function downloadFromCloud() {

@@ -4859,6 +4859,34 @@
         // recargar la página) -- ver el chequeo de contraseña en showSection().
         let financesUnlockedThisSession = false;
 
+        function openFinancesPasswordModal() {
+            const modal = document.getElementById('finances-password-modal');
+            const input = document.getElementById('finances-password-input');
+            if (input) input.value = '';
+            if (modal) modal.classList.add('active');
+            setTimeout(() => { if (input) input.focus(); }, 50);
+        }
+        window.openFinancesPasswordModal = openFinancesPasswordModal;
+
+        function closeFinancesPasswordModal() {
+            const modal = document.getElementById('finances-password-modal');
+            if (modal) modal.classList.remove('active');
+        }
+        window.closeFinancesPasswordModal = closeFinancesPasswordModal;
+
+        function confirmFinancesPassword() {
+            const input = document.getElementById('finances-password-input');
+            const entered = input ? input.value : '';
+            if (entered === (appState.financesPassword || '')) {
+                financesUnlockedThisSession = true;
+                closeFinancesPasswordModal();
+                showSection('cashflow');
+            } else {
+                showNotification('Contraseña incorrecta', 'error');
+            }
+        }
+        window.confirmFinancesPassword = confirmFinancesPassword;
+
         // ==================== DEMO DATA ====================
         // ==================== NAVIGATION ====================
         function showSection(sectionId) {
@@ -4880,17 +4908,12 @@
 
             // Finanzas pide además su propia contraseña (aparte de ser administrador) --
             // se pide una sola vez por sesión (se resetea al recargar la página).
-            if (sectionId === 'cashflow' && !financesUnlockedThisSession) {
-                const requiredPass = appState.financesPassword || '';
-                if (requiredPass) {
-                    const entered = prompt('🔒 Contraseña del panel de Finanzas:');
-                    if (entered !== requiredPass) {
-                        if (entered !== null) showNotification('Contraseña incorrecta', 'error');
-                        sectionId = currentSection || 'sell';
-                    } else {
-                        financesUnlockedThisSession = true;
-                    }
-                }
+            // OJO: acá NO se puede usar prompt() -- Electron (la app de escritorio) no
+            // lo soporta, se queda "sin hacer nada" como si no hubiera pasado nada al
+            // tocar Finanzas. Por eso un modal propio en vez de un diálogo nativo.
+            if (sectionId === 'cashflow' && !financesUnlockedThisSession && (appState.financesPassword || '')) {
+                openFinancesPasswordModal();
+                return;
             }
 
             // Modal de agregar stock abierto: al cambiar de sección se minimiza
@@ -29612,6 +29635,18 @@ RESULTADOS:
          ventana principal (bug conocido de Electron en modo kiosko/sin bordes): la app queda
          "trabada" porque en realidad está esperando un click en un dialogo que no se ve. Este
          modal propio siempre se dibuja arriba de todo, dentro de la misma ventana. -->
+    <div id="finances-password-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmFinancesPassword();}else if(event.key==='Escape'){closeFinancesPasswordModal();}">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4">
+            <h3 class="text-lg font-bold mb-1 text-gray-800">🔒 Finanzas</h3>
+            <p class="text-sm text-gray-500 mb-4">Ingresá la contraseña para entrar.</p>
+            <input type="password" id="finances-password-input" class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 mb-4" placeholder="Contraseña" autocomplete="off">
+            <div class="flex gap-2">
+                <button onclick="closeFinancesPasswordModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                <button onclick="confirmFinancesPassword()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700">Entrar</button>
+            </div>
+        </div>
+    </div>
+
     <div id="app-confirm-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('app-confirm-ok-btn').click();}else if(event.key==='Escape'){document.getElementById('app-confirm-cancel-btn').click();}">
         <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4">
             <p id="app-confirm-message" class="text-gray-800 font-medium mb-6 whitespace-pre-line"></p>

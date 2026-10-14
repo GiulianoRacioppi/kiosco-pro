@@ -708,6 +708,16 @@
                         </div>
                     </div>
                 </div>
+                <div class="bg-teal-50 rounded-xl p-4 border border-teal-200">
+                    <p class="text-sm font-bold text-teal-800 mb-2">🧀 Agregados / Toppings (suman $ extra al vender)</p>
+                    <div class="flex gap-2">
+                        <input type="text" id="edit-prod-topping-name" class="flex-1 border rounded-lg px-3 py-2 text-sm" placeholder="Nombre (ej: Mayonesa)">
+                        <input type="number" id="edit-prod-topping-price" class="w-24 border rounded-lg px-3 py-2 text-sm" placeholder="$" min="0" step="1" onkeydown="if(event.key==='Enter'){event.preventDefault();addEditProdTopping();}">
+                        <button type="button" onclick="addEditProdTopping()" class="bg-teal-500 hover:bg-teal-600 text-white px-3 py-2 rounded-lg text-sm font-bold">+</button>
+                    </div>
+                    <div id="edit-prod-toppings-list" class="space-y-1 mt-2"></div>
+                    <p class="text-xs text-gray-500 mt-2">Al vender este producto, el que cobra elige cuáles agregar -- cada uno suma su precio al de este producto.</p>
+                </div>
                 <div id="edit-prod-global-invoice-section">
                     <label class="block text-sm font-medium text-gray-700 mb-2">Facturación del producto</label>
                     <div class="flex gap-2">
@@ -1353,6 +1363,9 @@
                         </div>
                         <button onclick="openManualSaleModal()" class="w-full mt-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition">
                             <i class="fas fa-coins"></i> Venta Manual (sin stock)
+                        </button>
+                        <button onclick="openCandyMixModal()" class="w-full mt-2 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition">
+                            <i class="fas fa-candy-cane"></i> Surtido de Caramelos por Monto
                         </button>
                     </div>
 
@@ -6112,6 +6125,281 @@
             showNotification(`${currentWeightProduct.name} ${formatMoney(grams)}g agregado`, 'success');
         }
 
+        // ==================== AGREGADOS / TOPPINGS AL VENDER ====================
+        // Modal que aparece al agregar un producto que tiene "agregados" configurados
+        // (ver Editar Producto) -- deja elegir cuáles sumar antes de agregarlo al
+        // carrito de Vender o a un Pedido. Cada combinación distinta de agregados
+        // queda como su propia línea (no se mezcla con otra combinación del mismo
+        // producto), identificada por "toppingSignature".
+        let currentToppingProduct = null;
+        let currentToppingDestination = 'cart';
+        let currentToppingQty = 1;
+        let selectedToppingIds = new Set();
+
+        function openToppingPickerModal(product, destination, qty) {
+            currentToppingProduct = product;
+            currentToppingDestination = destination || 'cart';
+            currentToppingQty = qty || 1;
+            selectedToppingIds = new Set();
+            document.getElementById('topping-picker-product-name').textContent = product.name;
+            document.getElementById('topping-picker-base-price').textContent = '$' + formatMoney(product.salePrice || 0);
+            renderToppingPickerList();
+            updateToppingPickerTotal();
+            document.getElementById('topping-picker-modal').classList.add('active');
+        }
+
+        function renderToppingPickerList() {
+            const container = document.getElementById('topping-picker-list');
+            if (!container || !currentToppingProduct) return;
+            const toppings = currentToppingProduct.toppings || [];
+            if (toppings.length === 0) {
+                container.innerHTML = '<p class="text-sm text-gray-400">Este producto no tiene agregados configurados (se puede hacer desde Editar Producto).</p>';
+                return;
+            }
+            container.innerHTML = toppings.map(t => `
+                <label class="flex items-center justify-between gap-2 p-2 border rounded-lg cursor-pointer hover:bg-teal-50">
+                    <span class="flex items-center gap-2 text-sm text-gray-800">
+                        <input type="checkbox" onchange="toggleToppingSelection('${t.id}', this.checked)" ${selectedToppingIds.has(t.id) ? 'checked' : ''}>
+                        ${escapeHtml(t.name)}
+                    </span>
+                    <span class="text-teal-700 font-bold text-sm">+$${formatMoney(t.price)}</span>
+                </label>
+            `).join('');
+        }
+        window.renderToppingPickerList = renderToppingPickerList;
+
+        function toggleToppingSelection(id, checked) {
+            if (checked) selectedToppingIds.add(id); else selectedToppingIds.delete(id);
+            updateToppingPickerTotal();
+        }
+        window.toggleToppingSelection = toggleToppingSelection;
+
+        function updateToppingPickerTotal() {
+            if (!currentToppingProduct) return;
+            const toppings = (currentToppingProduct.toppings || []).filter(t => selectedToppingIds.has(t.id));
+            const unitPrice = (currentToppingProduct.salePrice || 0) + toppings.reduce((s, t) => s + t.price, 0);
+            document.getElementById('topping-picker-unit-price').textContent = '$' + formatMoney(unitPrice);
+            document.getElementById('topping-picker-total').textContent = '$' + formatMoney(unitPrice * currentToppingQty);
+        }
+
+        function closeToppingPickerModal() {
+            document.getElementById('topping-picker-modal').classList.remove('active');
+            currentToppingProduct = null;
+        }
+        window.closeToppingPickerModal = closeToppingPickerModal;
+
+        async function confirmToppingPicker() {
+            const product = currentToppingProduct;
+            if (!product) return;
+            const chosenToppings = (product.toppings || []).filter(t => selectedToppingIds.has(t.id)).map(t => ({ name: t.name, price: t.price }));
+            const unitPrice = (product.salePrice || 0) + chosenToppings.reduce((s, t) => s + t.price, 0);
+            const qty = currentToppingQty;
+            const signature = chosenToppings.map(t => t.name).sort().join('|');
+            const toppingsLabel = chosenToppings.length ? ' (' + chosenToppings.map(t => t.name).join(', ') + ')' : '';
+
+            if (currentToppingDestination === 'pedido') {
+                const existing = pendingPedidoItems.find(i => i.productId === product.id && (i.toppingSignature || '') === signature);
+                if (existing) {
+                    existing.quantity += qty;
+                } else {
+                    pendingPedidoItems.push({ productId: product.id, name: product.name, price: unitPrice, quantity: qty, toppings: chosenToppings, toppingSignature: signature });
+                }
+                closeToppingPickerModal();
+                renderPedidoItemsList();
+                showNotification(`${product.name}${toppingsLabel} agregado al pedido`, 'success');
+                return;
+            }
+
+            // Carrito de Vender: el stock se controla sobre el TOTAL de unidades de
+            // este producto ya en el carrito (sumando todas las líneas, tengan o no
+            // los mismos agregados), no solo esta línea nueva.
+            const existingTotalQty = appState.cart.filter(i => i.productId === product.id).reduce((s, i) => s + (i.quantity || 0), 0);
+            const canSell = await ensureStockForSale(product, existingTotalQty + qty);
+            if (!canSell) return;
+
+            const existing = appState.cart.find(i => i.productId === product.id && (i.toppingSignature || '') === signature);
+            if (existing) {
+                existing.quantity += qty;
+            } else {
+                appState.cart.push({
+                    productId: product.id,
+                    name: product.name,
+                    price: unitPrice,
+                    cost: product.isComposite ? calculateCompositeCost(product) : product.cost,
+                    quantity: qty,
+                    toppings: chosenToppings,
+                    toppingSignature: signature
+                });
+            }
+            bumpMercadoPagoPollSpeed();
+            closeToppingPickerModal();
+            renderCart();
+            showNotification(`${product.name}${toppingsLabel} agregado`, 'success');
+        }
+        window.confirmToppingPicker = confirmToppingPicker;
+
+        // ==================== SURTIDO DE CARAMELOS POR MONTO ====================
+        // El cliente dice "quiero $2000 de caramelos surtidos" entre varias
+        // variedades que elige -- esto reparte el monto en partes iguales entre
+        // las variedades elegidas y, para cada una, calcula cuántos caramelos
+        // enteros salen según SU propio precio. Lo que sobra por el redondeo
+        // (porque $2000/3 no da un número entero de caramelos) se reparte de a
+        // un caramelo extra por vez, en el mismo orden en que se eligieron las
+        // variedades, hasta que no entre ni uno más -- así el total gastado
+        // siempre llega lo más cerca posible del monto pedido, nunca se "pierde"
+        // plata del reparto por culpa del redondeo.
+        let candyMixProducts = [];
+
+        function computeCandyMixDistribution(targetTotal, products) {
+            const n = products.length;
+            if (n === 0 || !targetTotal || targetTotal <= 0) {
+                return products.map(p => ({ product: p, qty: 0, subtotal: 0 }));
+            }
+            const share = targetTotal / n;
+            const results = products.map(p => {
+                const price = p.salePrice || 0;
+                const qty = price > 0 ? Math.floor(share / price) : 0;
+                return { product: p, qty, subtotal: qty * price };
+            });
+            let spent = results.reduce((s, r) => s + r.subtotal, 0);
+            let remainder = targetTotal - spent;
+            let progress = true;
+            let guard = 0;
+            while (remainder > 0.004 && progress && guard < 10000) {
+                guard++;
+                progress = false;
+                for (const r of results) {
+                    const price = r.product.salePrice || 0;
+                    if (price > 0 && price <= remainder + 0.004) {
+                        r.qty += 1;
+                        r.subtotal += price;
+                        remainder -= price;
+                        progress = true;
+                    }
+                    if (remainder <= 0.004) break;
+                }
+            }
+            return results;
+        }
+
+        function openCandyMixModal() {
+            candyMixProducts = [];
+            const targetInput = document.getElementById('candy-mix-target');
+            const searchInput = document.getElementById('candy-mix-search');
+            if (targetInput) targetInput.value = '';
+            if (searchInput) searchInput.value = '';
+            document.getElementById('candy-mix-search-results').classList.add('hidden');
+            renderCandyMixList();
+            document.getElementById('candy-mix-modal').classList.add('active');
+            setTimeout(() => targetInput && targetInput.focus(), 100);
+        }
+        window.openCandyMixModal = openCandyMixModal;
+
+        function closeCandyMixModal() {
+            document.getElementById('candy-mix-modal').classList.remove('active');
+        }
+        window.closeCandyMixModal = closeCandyMixModal;
+
+        function filterCandyMixSearch() {
+            const search = document.getElementById('candy-mix-search')?.value.trim() || '';
+            const container = document.getElementById('candy-mix-search-results');
+            if (!container) return;
+            if (!search) { container.classList.add('hidden'); container.innerHTML = ''; return; }
+            const chosenIds = new Set(candyMixProducts.map(p => p.id));
+            // Caramelos sueltos por peso no entran acá -- este modal reparte en
+            // UNIDADES enteras, no en gramos.
+            const candidates = getActiveInventory().filter(p => !p.saleByWeight && !chosenIds.has(p.id));
+            const results = fuzzySearchProducts(search, candidates, 8);
+            if (results.length === 0) {
+                container.innerHTML = '<p class="p-2 text-xs text-gray-400">No se encontraron productos</p>';
+                container.classList.remove('hidden');
+                return;
+            }
+            container.innerHTML = results.map(p => `
+                <div class="p-2 hover:bg-pink-50 cursor-pointer text-sm border-b last:border-b-0 flex justify-between items-center" onclick="selectCandyMixProduct('${p.id}')">
+                    <span>${escapeHtml(p.name)}</span>
+                    <span class="font-bold text-pink-600">$${formatMoney(p.salePrice || 0)}</span>
+                </div>
+            `).join('');
+            container.classList.remove('hidden');
+        }
+        window.filterCandyMixSearch = filterCandyMixSearch;
+
+        function selectCandyMixProduct(productId) {
+            const product = appState.inventory.find(p => p.id === productId);
+            if (!product) return;
+            if (!candyMixProducts.find(p => p.id === productId)) candyMixProducts.push(product);
+            document.getElementById('candy-mix-search').value = '';
+            document.getElementById('candy-mix-search-results').classList.add('hidden');
+            renderCandyMixList();
+        }
+        window.selectCandyMixProduct = selectCandyMixProduct;
+
+        function removeCandyMixProduct(productId) {
+            candyMixProducts = candyMixProducts.filter(p => p.id !== productId);
+            renderCandyMixList();
+        }
+        window.removeCandyMixProduct = removeCandyMixProduct;
+
+        function renderCandyMixList() {
+            const target = parseFloat(document.getElementById('candy-mix-target')?.value) || 0;
+            const container = document.getElementById('candy-mix-list');
+            const spentEl = document.getElementById('candy-mix-spent');
+            if (!container) return;
+            if (candyMixProducts.length === 0) {
+                container.innerHTML = '<p class="text-xs text-gray-400 text-center py-2">Buscá y agregá las variedades que quiera el cliente</p>';
+                if (spentEl) spentEl.textContent = '$0 / $' + formatMoney(target);
+                return;
+            }
+            const distribution = computeCandyMixDistribution(target, candyMixProducts);
+            container.innerHTML = distribution.map(({ product, qty, subtotal }) => `
+                <div class="flex justify-between items-center gap-2 bg-gray-50 rounded-lg p-2 border text-sm">
+                    <span class="flex-1 font-medium text-gray-800">${escapeHtml(product.name)} <span class="text-xs text-gray-400">($${formatMoney(product.salePrice || 0)} c/u)</span></span>
+                    <span class="font-bold text-pink-700 w-20 text-center">${qty} u.</span>
+                    <span class="text-xs text-gray-500 w-16 text-right">$${formatMoney(subtotal)}</span>
+                    <button type="button" onclick="removeCandyMixProduct('${product.id}')" class="text-red-500 hover:text-red-700 text-xs font-bold">✕</button>
+                </div>
+            `).join('');
+            const totalSpent = distribution.reduce((s, r) => s + r.subtotal, 0);
+            if (spentEl) spentEl.textContent = '$' + formatMoney(totalSpent) + ' / $' + formatMoney(target);
+        }
+        window.renderCandyMixList = renderCandyMixList;
+
+        async function confirmCandyMix() {
+            const target = parseFloat(document.getElementById('candy-mix-target')?.value) || 0;
+            if (candyMixProducts.length === 0) { showNotification('Agregá al menos una variedad', 'error'); return; }
+            if (target <= 0) { showNotification('Ingresá un monto mayor a 0', 'error'); return; }
+
+            const distribution = computeCandyMixDistribution(target, candyMixProducts).filter(r => r.qty > 0);
+            if (distribution.length === 0) { showNotification('El monto no alcanza para ni un caramelo de las variedades elegidas', 'error'); return; }
+
+            let anyFailed = false;
+            for (const { product, qty } of distribution) {
+                const existingItem = appState.cart.find(item => item.productId === product.id);
+                const totalNeeded = (existingItem ? existingItem.quantity : 0) + qty;
+                const canSell = await ensureStockForSale(product, totalNeeded);
+                if (!canSell) { anyFailed = true; continue; }
+                if (existingItem) {
+                    existingItem.quantity = totalNeeded;
+                } else {
+                    appState.cart.push({
+                        productId: product.id,
+                        name: product.name,
+                        price: product.salePrice,
+                        cost: product.isComposite ? calculateCompositeCost(product) : product.cost,
+                        quantity: qty
+                    });
+                }
+            }
+            bumpMercadoPagoPollSpeed();
+            closeCandyMixModal();
+            renderCart();
+            showNotification(anyFailed
+                ? '🍬 Surtido agregado (algunas variedades no tenían stock suficiente)'
+                : '🍬 Surtido de caramelos agregado al carrito', anyFailed ? 'warning' : 'success');
+        }
+        window.confirmCandyMix = confirmCandyMix;
+
         async function addToCartFromSearch(productId, qty = 1) {
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
@@ -6126,6 +6414,15 @@
             // modal maneja su propio aviso de stock, no se toca acá.
             if (product.saleByWeight && product.weightPerUnit > 0) {
                 openWeightSaleModal(product);
+                document.getElementById('sell-search-input').value = '';
+                document.getElementById('sell-search-results').classList.add('hidden');
+                return;
+            }
+
+            // Si tiene agregados configurados (ej: hamburguesa con cheddar/panceta),
+            // abrir el modal para elegir cuáles sumar antes de agregarlo.
+            if (product.toppings && product.toppings.length > 0) {
+                openToppingPickerModal(product, 'cart', qty);
                 document.getElementById('sell-search-input').value = '';
                 document.getElementById('sell-search-results').classList.add('hidden');
                 return;
@@ -6400,6 +6697,7 @@
                         <div class="sale-item flex justify-between items-center p-3 rounded-lg border ${item.isSpecialPrice ? 'border-amber-300 bg-amber-50' : ''}">
                             <div class="flex-1">
                                 <p class="font-bold text-gray-800">${escapeHtml(item.name || 'Producto')}${item.isSpecialPrice ? ' <span class="text-[10px] bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full font-bold align-middle">🏷️ Precio especial</span>' : ''}</p>
+                                ${(item.toppings && item.toppings.length) ? `<p class="text-xs text-teal-600">+ ${escapeHtml(item.toppings.map(t => t.name).join(', '))}</p>` : ''}
                                 <p class="text-sm text-gray-500">$${formatMoney(price)} c/u</p>
                                 <p class="text-xs ${stockColor} font-medium">${stockText}</p>
                             </div>
@@ -8624,7 +8922,13 @@
                 return;
             }
 
-            const existing = pendingPedidoItems.find(i => i.productId === productId);
+            // Con agregados configurados: elegir cuáles sumar antes de agregarlo.
+            if (product.toppings && product.toppings.length > 0) {
+                openToppingPickerModal(product, 'pedido', 1);
+                return;
+            }
+
+            const existing = pendingPedidoItems.find(i => i.productId === productId && !(i.toppings && i.toppings.length));
             if (existing) {
                 existing.quantity += 1;
             } else {
@@ -8672,9 +8976,10 @@
                             <span class="w-6 text-center font-bold">${item.quantity}</span>
                             <button type="button" onclick="updatePedidoItemQty(${i}, 1)" class="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs font-bold">+</button>
                         </div>`;
+                    const toppingsNote = (item.toppings && item.toppings.length) ? `<p class="text-[11px] text-teal-600">+ ${escapeHtml(item.toppings.map(t => t.name).join(', '))}</p>` : '';
                     return `
                     <div class="flex justify-between items-center gap-2 bg-gray-50 rounded-lg p-2 border text-sm">
-                        <span class="flex-1 font-medium text-gray-800">${escapeHtml(item.name)}</span>
+                        <span class="flex-1 font-medium text-gray-800">${escapeHtml(item.name)}${toppingsNote}</span>
                         ${qtyControl}
                         <span class="text-xs text-gray-500 w-16 text-right">$${formatMoney(item.price * item.quantity)}</span>
                         <button type="button" onclick="removePedidoItem(${i})" class="text-red-500 hover:text-red-700 text-xs font-bold">✕</button>
@@ -8888,18 +9193,17 @@
                 setTimeout(() => document.getElementById('pedido-cobro-fiado-name')?.focus(), 50);
             }
 
-            const btnFiado = document.getElementById('pedido-cobro-btn-fiado');
-            const btnCash = document.getElementById('pedido-cobro-btn-cash');
-            const btnDebit = document.getElementById('pedido-cobro-btn-debit');
-            const btnQr = document.getElementById('pedido-cobro-btn-qr');
-            if (btnFiado) btnFiado.className = 'w-full py-2 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-2 ' +
-                (method === 'fiado' ? 'border-amber-500 bg-amber-100 text-amber-800' : 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100');
-            if (btnCash) btnCash.className = 'w-full p-4 rounded-xl border-2 text-left flex items-center gap-3 transition ' +
-                (method === 'cash' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-green-400');
-            if (btnDebit) btnDebit.className = 'w-full p-4 rounded-xl border-2 text-left flex items-center gap-3 transition ' +
-                (method === 'debit' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-400');
-            if (btnQr) btnQr.className = 'w-full p-4 rounded-xl border-2 text-left flex items-center gap-3 transition ' +
-                (method === 'qr' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-purple-400');
+            const base = 'py-3 rounded-lg border-2 text-sm font-bold flex items-center justify-center gap-2 transition ';
+            const styles = {
+                cash: 'border-green-500 bg-green-50 text-green-700',
+                debit: 'border-blue-500 bg-blue-50 text-blue-700',
+                qr: 'border-purple-500 bg-purple-50 text-purple-700',
+                fiado: 'border-amber-500 bg-amber-50 text-amber-700'
+            };
+            ['cash', 'debit', 'qr', 'fiado'].forEach(m => {
+                const btn = document.getElementById('pedido-cobro-btn-' + m);
+                if (btn) btn.className = base + (m === method ? styles[m] : 'border-gray-200 text-gray-600 hover:border-gray-400');
+            });
 
             const confirmBtn = document.getElementById('pedido-cobro-confirm-btn');
             if (confirmBtn) confirmBtn.textContent = method === 'fiado' ? 'Anotar como fiado' : 'Confirmar pago';
@@ -9290,7 +9594,8 @@
                         <button onclick="marcarPedidoListo('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-green-50">${pedido.status === 'listo' ? '↩️ Volver a preparación' : '✅ Marcar como Listo'}</button>
                         <button onclick="${pedido.paymentStatus === 'pagado' ? `togglePedidoPagado('${pedido.id}')` : `openPedidoCobroModal('${pedido.id}')`}" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-green-50">${pedido.paymentStatus === 'pagado' ? '↩️ Marcar sin pagar' : '💰 Cobrar'}</button>
                         ${pedido.items && pedido.items.length > 0 ? `<button onclick="cargarPedidoEnVenta('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-purple-50">${pedidoPagoResuelto(pedido) ? '🧾 Finalizar y Facturar' : '🛒 Pasar a Vender'}</button>` : ''}
-                        <button onclick="printComanda(findPedido('${pedido.id}'))" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-blue-50">🖨️ Reimprimir</button>
+                        <button onclick="printComanda(findPedido('${pedido.id}'))" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-blue-50">🖨️ Comanda</button>
+                        <button onclick="printPedidoVentaTicket(findPedido('${pedido.id}'))" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-blue-50">🖨️ Venta</button>
                         <button onclick="openPedidoModal('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-yellow-50">✏️ Editar</button>
                         <button onclick="cancelarPedido('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-red-50 text-red-600">🚫 Cancelar</button>
                         <button onclick="eliminarPedido('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-red-50 text-red-600" title="Eliminar definitivamente">🗑️</button>
@@ -9381,6 +9686,81 @@
                     ${itemsHtml}
                     ${totalHtml}
                     ${pedido.notes ? `<hr><p style="font-weight:bold;">NOTAS:</p><p>${escapeHtml(pedido.notes)}</p>` : ''}
+                </body>
+                </html>
+            `);
+            w.print();
+        }
+
+        // Ticket "de venta" para un pedido -- a diferencia de la comanda (que es para
+        // cocina/mostrador, con prioridad/horario), este es para darle al cliente: dice
+        // VENTA, sin datos de preparación, y muestra si está pagado/fiado/pendiente.
+        function buildPedidoVentaLines(pedido) {
+            const lines = [];
+            if (pedido.customerName) lines.push({ text: pedido.customerName, align: 'center', bold: true });
+            const now = new Date();
+            lines.push({ text: now.toLocaleDateString('es-AR') + ' ' + now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }), align: 'center' });
+            lines.push({ hr: true });
+
+            (pedido.items || []).forEach(item => {
+                const cantidadTexto = item.weightGrams != null ? Math.round(item.weightGrams) + 'g' : item.quantity + 'x';
+                lines.push({ left: cantidadTexto + ' ' + item.name, right: '$' + formatMoney(item.price * item.quantity) });
+            });
+            if (pedido.items && pedido.items.length > 0) {
+                lines.push({ hr: true });
+                lines.push({ left: 'TOTAL', right: '$' + formatMoney(pedido.total || 0), bold: true });
+            }
+            lines.push({ hr: true });
+            const paymentLabel = pedido.paymentStatus === 'pagado'
+                ? 'PAGADO — ' + paymentMethodLabel(pedido).toUpperCase()
+                : (pedido.paymentMethod === 'fiado' ? 'FIADO (PAGA DESPUÉS)' : 'PENDIENTE DE PAGO');
+            lines.push({ text: paymentLabel, align: 'center', bold: true });
+            return lines;
+        }
+
+        function printPedidoVentaTicket(pedido) {
+            if (!pedido) return;
+
+            if (window.kioscoDesktop && window.kioscoDesktop.isElectron) {
+                window.kioscoDesktop.print({
+                    header: 'VENTA',
+                    lines: buildPedidoVentaLines(pedido),
+                    large: true
+                }).then(res => {
+                    if (!res || !res.ok) {
+                        showNotification('❌ No se pudo imprimir el ticket: ' + ((res && res.error) || 'error desconocido'), 'error', 8000);
+                    }
+                }).catch(err => {
+                    showNotification('❌ Error al imprimir el ticket: ' + (err && err.message ? err.message : err), 'error', 8000);
+                });
+                return;
+            }
+
+            const w = window.open('', '_blank');
+            const now = new Date();
+            const emitidoHtml = now.toLocaleDateString('es-AR') + ' ' + now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+            const itemsHtml = (pedido.items || []).map(item => {
+                const cantidadTexto = item.weightGrams != null ? Math.round(item.weightGrams) + 'g' : item.quantity + 'x';
+                return `<div style="display:flex; justify-content:space-between;"><span>${cantidadTexto} ${escapeHtml(item.name)}</span><span>$${formatMoney(item.price * item.quantity)}</span></div>`;
+            }).join('');
+            const totalHtml = (pedido.items && pedido.items.length > 0)
+                ? `<hr><div style="display:flex; justify-content:space-between; font-weight:bold;"><span>TOTAL</span><span>$${formatMoney(pedido.total || 0)}</span></div>`
+                : '';
+            const paymentLabel = pedido.paymentStatus === 'pagado'
+                ? 'PAGADO — ' + paymentMethodLabel(pedido).toUpperCase()
+                : (pedido.paymentMethod === 'fiado' ? 'FIADO (PAGA DESPUÉS)' : 'PENDIENTE DE PAGO');
+            w.document.write(`
+                <html>
+                <head><title>Venta</title></head>
+                <body style="font-family: monospace; font-size: 20px; padding: 20px; max-width: 300px;">
+                    <h2 style="text-align: center; font-size: 26px;">VENTA</h2>
+                    ${pedido.customerName ? `<p style="text-align: center; font-weight: bold;">${escapeHtml(pedido.customerName)}</p>` : ''}
+                    <p style="text-align: center;">${emitidoHtml}</p>
+                    <hr>
+                    ${itemsHtml}
+                    ${totalHtml}
+                    <hr>
+                    <p style="text-align: center; font-weight: bold;">${paymentLabel}</p>
                 </body>
                 </html>
             `);
@@ -10215,6 +10595,53 @@
         // ==================== PRODUCTOS COMPUESTOS / RECETAS ====================
         let pendingComponents = [];
         let editProdComponents = [];
+
+        // ==================== AGREGADOS / TOPPINGS (reusable, por producto) ====================
+        // Cada producto puede tener su propia lista de "agregados" (ej: mayonesa en
+        // un cono de papas, cheddar/panceta en una hamburguesa) -- cada uno suma su
+        // propio precio al vender. Se configuran acá (Editar Producto) y se eligen
+        // al momento de agregar el producto al carrito (ver openToppingPickerModal).
+        let editProdToppings = [];
+
+        function addEditProdTopping() {
+            const nameInput = document.getElementById('edit-prod-topping-name');
+            const priceInput = document.getElementById('edit-prod-topping-price');
+            if (!nameInput || !priceInput) return;
+            const name = nameInput.value.trim();
+            const price = parseFloat(priceInput.value);
+            if (!name) { showNotification('Ingresá el nombre del agregado', 'error'); return; }
+            if (!price || price <= 0) { showNotification('Ingresá un precio válido', 'error'); return; }
+            editProdToppings.push({ id: 'TOP-' + Date.now() + Math.random().toString(36).slice(2, 6), name, price });
+            nameInput.value = '';
+            priceInput.value = '';
+            nameInput.focus();
+            renderEditProdToppingsList();
+        }
+        window.addEditProdTopping = addEditProdTopping;
+
+        function removeEditProdTopping(index) {
+            editProdToppings.splice(index, 1);
+            renderEditProdToppingsList();
+        }
+        window.removeEditProdTopping = removeEditProdTopping;
+
+        function renderEditProdToppingsList() {
+            const container = document.getElementById('edit-prod-toppings-list');
+            if (!container) return;
+            if (editProdToppings.length === 0) {
+                container.innerHTML = '<p class="text-xs text-gray-400">Sin agregados configurados</p>';
+                return;
+            }
+            container.innerHTML = editProdToppings.map((t, i) => `
+                <div class="flex justify-between items-center bg-white rounded p-2 border text-sm">
+                    <span>${escapeHtml(t.name)}</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-teal-700 font-bold">+$${formatMoney(t.price)}</span>
+                        <button type="button" onclick="removeEditProdTopping(${i})" class="text-red-500 hover:text-red-700 text-xs font-bold">✕</button>
+                    </div>
+                </div>
+            `).join('');
+        }
 
         function toggleCompositeSection() {
             const checkbox = document.getElementById('inv-is-composite');
@@ -14488,7 +14915,11 @@
                     document.getElementById('edit-prod-composite-section').classList.add('hidden');
                 }
             }
-            
+
+            // Cargar agregados/toppings (cualquier producto, no solo compuestos)
+            editProdToppings = product.toppings ? JSON.parse(JSON.stringify(product.toppings)) : [];
+            renderEditProdToppingsList();
+
             // Cargar estado de IVA
             const vatCheckbox = document.getElementById('edit-prod-vat');
             if (vatCheckbox) {
@@ -14716,7 +15147,10 @@
                     delete product.components;
                     // El tipo de factura ahora se maneja por lote (selector en cada fila)
                 }
-                
+
+                // Guardar agregados/toppings (independiente de si es compuesto o no)
+                product.toppings = editProdToppings.length > 0 ? editProdToppings : [];
+
                 // Guardar venta por peso
                 const saleByWeightEdit = document.getElementById('edit-prod-sale-by-weight')?.checked || false;
                 if (saleByWeightEdit) {
@@ -29149,6 +29583,61 @@ RESULTADOS:
         </div>
     </div>
 
+    <!-- ==================== AGREGADOS / TOPPINGS AL VENDER ==================== -->
+    <div id="topping-picker-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-1 text-teal-600"><i class="fas fa-cheese"></i> <span id="topping-picker-product-name">Producto</span></h3>
+            <p class="text-sm text-gray-500 mb-4">Precio base: <span id="topping-picker-base-price">$0</span></p>
+            <div id="topping-picker-list" class="space-y-2 max-h-64 overflow-y-auto"></div>
+            <div class="mt-4 p-3 bg-teal-50 rounded-xl flex justify-between items-center">
+                <div>
+                    <p class="text-xs text-gray-500">Precio c/u con agregados</p>
+                    <p class="font-bold text-teal-800" id="topping-picker-unit-price">$0</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-xs text-gray-500">Total</p>
+                    <p class="text-2xl font-bold text-teal-800" id="topping-picker-total">$0</p>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-4">
+                <button onclick="closeToppingPickerModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                <button onclick="confirmToppingPicker()" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-3 rounded-xl font-bold shadow-lg"><i class="fas fa-cart-plus"></i> Agregar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SURTIDO DE CARAMELOS POR MONTO ==================== -->
+    <!-- Poné un monto total y elegí varias variedades: reparte la plata en partes
+         iguales entre ellas y calcula cuántos caramelos de cada una salen según
+         el precio de cada una (ver computeCandyMixDistribution). -->
+    <div id="candy-mix-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 class="text-xl font-bold mb-1 text-pink-600"><i class="fas fa-candy-cane"></i> Surtido de Caramelos por Monto</h3>
+            <p class="text-sm text-gray-500 mb-4">Poné cuánta plata quiere gastar el cliente y elegí las variedades -- reparte entre todas y te dice cuántos caramelos de cada una.</p>
+
+            <label class="block text-sm font-medium text-gray-700 mb-1">Monto total</label>
+            <input type="number" id="candy-mix-target" class="w-full border-2 border-pink-200 rounded-xl px-4 py-3 text-xl font-bold mb-4" placeholder="$0" min="0" step="1" oninput="renderCandyMixList()">
+
+            <label class="block text-sm font-medium text-gray-700 mb-1">Agregar variedad</label>
+            <div class="relative mb-2">
+                <input type="text" id="candy-mix-search" class="w-full border-2 border-pink-200 rounded-xl px-4 py-2 text-sm" placeholder="Buscar caramelo por nombre..." oninput="filterCandyMixSearch()" autocomplete="off">
+                <div id="candy-mix-search-results" class="absolute z-20 w-full bg-white border rounded-xl shadow-lg max-h-48 overflow-y-auto hidden"></div>
+            </div>
+
+            <div id="candy-mix-list" class="space-y-2 my-3"></div>
+
+            <div class="p-3 bg-pink-50 rounded-xl flex justify-between items-center mb-4">
+                <span class="text-sm text-gray-600">Gastado / Monto</span>
+                <span class="font-bold text-pink-800" id="candy-mix-spent">$0 / $0</span>
+            </div>
+
+            <div class="flex gap-2">
+                <button onclick="closeCandyMixModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                <button onclick="confirmCandyMix()" class="flex-1 bg-pink-600 hover:bg-pink-700 text-white py-3 rounded-xl font-bold shadow-lg"><i class="fas fa-cart-plus"></i> Agregar todo al carrito</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ==================== GASTOS FIJOS MODAL ==================== -->
     <div id="recurring-expenses-modal" class="modal">
         <div class="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
@@ -29567,60 +30056,45 @@ RESULTADOS:
          cargado el pedido de OTRO cliente) sin usar "Pasar a Vender". No toca stock ni
          appState.cart -- solo registra que se cobró y cuánto vuelto se dio. -->
     <div id="pedido-cobro-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmPedidoCobro();}">
-        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <h3 class="text-xl font-bold mb-4 text-green-600"><i class="fas fa-money-bill-wave"></i> Cobrar pedido</h3>
-            <div class="p-3 bg-gray-50 rounded-xl border mb-4 flex justify-between items-center">
+        <div class="bg-white rounded-2xl p-5 max-w-sm w-full mx-4 max-h-[95vh] overflow-y-auto">
+            <h3 class="text-lg font-bold mb-3 text-green-600"><i class="fas fa-money-bill-wave"></i> Cobrar pedido</h3>
+            <div class="p-2.5 bg-gray-50 rounded-xl border mb-3 flex justify-between items-center">
                 <span class="text-sm text-gray-600">Total del pedido</span>
                 <span id="pedido-cobro-total" class="text-xl font-bold text-gray-800">$0</span>
             </div>
 
-            <div class="space-y-3 mb-4">
-                <button type="button" onclick="setPedidoCobroMethod('fiado')" id="pedido-cobro-btn-fiado" class="w-full py-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition flex items-center justify-center gap-2">
-                    <i class="fas fa-hand-holding-usd"></i> Fiado (paga después)
+            <!-- Mismo diseño compacto 2x2 que el pago en línea dentro del modal de
+                 Pedido (pedido-inline-btn-*) -- antes esto eran 4 tarjetas grandes
+                 apiladas que no entraban en pantallas chicas sin hacer scroll. -->
+            <div class="grid grid-cols-2 gap-2 mb-3">
+                <button type="button" onclick="setPedidoCobroMethod('cash')" id="pedido-cobro-btn-cash" class="py-3 rounded-lg border-2 text-sm font-bold flex items-center justify-center gap-2 transition">
+                    <i class="fas fa-money-bill-wave"></i> Efectivo
                 </button>
-                <button type="button" onclick="setPedidoCobroMethod('cash')" id="pedido-cobro-btn-cash" class="w-full p-4 rounded-xl border-2 border-green-500 bg-green-50 text-left flex items-center gap-3 transition">
-                    <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white">
-                        <i class="fas fa-money-bill-wave"></i>
-                    </div>
-                    <div>
-                        <p class="font-bold text-gray-800">Efectivo</p>
-                        <p class="text-sm text-gray-500">Calcular vuelto</p>
-                    </div>
+                <button type="button" onclick="setPedidoCobroMethod('debit')" id="pedido-cobro-btn-debit" class="py-3 rounded-lg border-2 text-sm font-bold flex items-center justify-center gap-2 transition">
+                    <i class="fas fa-credit-card"></i> Débito
                 </button>
-                <button type="button" onclick="setPedidoCobroMethod('debit')" id="pedido-cobro-btn-debit" class="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 text-left flex items-center gap-3 transition">
-                    <div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white">
-                        <i class="fas fa-credit-card"></i>
-                    </div>
-                    <div>
-                        <p class="font-bold text-gray-800">Débito</p>
-                        <p class="text-sm text-gray-500">Transferencia/Tarjeta</p>
-                    </div>
+                <button type="button" onclick="setPedidoCobroMethod('qr')" id="pedido-cobro-btn-qr" class="py-3 rounded-lg border-2 text-sm font-bold flex items-center justify-center gap-2 transition">
+                    <i class="fas fa-qrcode"></i> QR
                 </button>
-                <button type="button" onclick="setPedidoCobroMethod('qr')" id="pedido-cobro-btn-qr" class="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-purple-400 text-left flex items-center gap-3 transition">
-                    <div class="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center text-white">
-                        <i class="fas fa-qrcode"></i>
-                    </div>
-                    <div>
-                        <p class="font-bold text-gray-800">QR</p>
-                        <p class="text-sm text-gray-500">Va a la cuenta, con comisión</p>
-                    </div>
+                <button type="button" onclick="setPedidoCobroMethod('fiado')" id="pedido-cobro-btn-fiado" class="py-3 rounded-lg border-2 text-sm font-bold flex items-center justify-center gap-2 transition">
+                    <i class="fas fa-hand-holding-usd"></i> Fiado
                 </button>
             </div>
 
             <div id="pedido-cobro-cash-details">
-                <div class="mb-4">
+                <div class="mb-3">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Monto recibido</label>
-                    <input type="number" id="pedido-cobro-received" class="w-full border-2 border-green-300 rounded-xl px-4 py-3 text-lg font-bold" placeholder="0" oninput="calculatePedidoChange()">
+                    <input type="number" id="pedido-cobro-received" class="w-full border-2 border-green-300 rounded-xl px-4 py-2.5 text-lg font-bold" placeholder="0" oninput="calculatePedidoChange()">
                 </div>
-                <div class="p-4 bg-green-100 rounded-xl mb-4">
-                    <p class="text-sm text-green-700 mb-1">Vuelto:</p>
-                    <p class="text-3xl font-bold text-green-800" id="pedido-cobro-change">$0</p>
+                <div class="p-3 bg-green-100 rounded-xl mb-3 flex justify-between items-center">
+                    <p class="text-sm text-green-700">Vuelto:</p>
+                    <p class="text-2xl font-bold text-green-800" id="pedido-cobro-change">$0</p>
                 </div>
             </div>
 
-            <div id="pedido-cobro-fiado-details" class="hidden mb-4">
+            <div id="pedido-cobro-fiado-details" class="hidden mb-3">
                 <label class="block text-sm font-medium text-gray-700 mb-1">Nombre del cliente (fiado)</label>
-                <input type="text" id="pedido-cobro-fiado-name" class="w-full border-2 border-amber-300 rounded-xl px-4 py-3 text-lg font-bold" placeholder="¿A nombre de quién?">
+                <input type="text" id="pedido-cobro-fiado-name" class="w-full border-2 border-amber-300 rounded-xl px-4 py-2.5 text-lg font-bold" placeholder="¿A nombre de quién?">
             </div>
 
             <div class="flex gap-2">

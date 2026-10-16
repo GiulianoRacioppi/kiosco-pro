@@ -626,10 +626,19 @@
                         <span class="text-sm font-bold text-blue-800">⚖️ Vender por peso (gramos)</span>
                     </label>
                     <div id="edit-prod-weight-section" class="hidden space-y-3 mt-3">
-                        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="edit-prod-is-candy" onchange="toggleEditCandySection()">
+                            <span class="text-xs font-bold text-pink-700">🍬 Es un caramelo a granel (se puede vender por unidad en "Surtido de Caramelos")</span>
+                        </label>
+                        <div id="edit-prod-candy-section" class="hidden bg-pink-50 rounded-lg p-3 border border-pink-200">
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Peso de 10 caramelos (g)</label>
+                            <input type="number" id="edit-prod-candy-weight-10" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="ej: 47" min="0.1" step="0.1" oninput="updateEditCandyWeightPerUnit()">
+                            <p class="text-xs text-pink-600 mt-1">1 caramelo ≈ <span id="edit-prod-candy-weight-each">0</span>g -- es solo estimado, para calcular costo y margen por caramelo. El stock real se sigue manejando en gramos exactos, así que vender de a uno nunca acumula error con el tiempo.</p>
+                        </div>
+                        <div id="edit-prod-weight-per-unit-row" class="grid grid-cols-2 md:grid-cols-3 gap-4">
                             <div>
                                 <label class="block text-xs font-medium text-gray-600 mb-1">Gramos por unidad/bolsa</label>
-                                <input type="number" id="edit-prod-weight-per-unit" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="ej: 500" min="1" step="1" oninput="updateEditWeightCalculations()">
+                                <input type="number" id="edit-prod-weight-per-unit" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="ej: 500" min="0.001" step="any" oninput="updateEditWeightCalculations()">
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-gray-600 mb-1">Costo por gramo</label>
@@ -4851,11 +4860,11 @@
             if (sidebar) sidebar.classList.remove('hidden');
         }
 
-        function logout() {
-            if (!confirm('¿Cerrar sesión?')) return;
+        async function logout() {
+            if (!(await showConfirmModal('¿Cerrar sesión?'))) return;
             // Si es empleado, ofrecer hacer el conteo de turno antes de salir
             if (appState.currentUser && appState.currentUser.role === 'collaborator') {
-                if (confirm('¿Hacer el conteo de turno antes de salir?')) {
+                if (await showConfirmModal('¿Hacer el conteo de turno antes de salir?')) {
                     sessionStorage.setItem('kioscopro-logout-after-shift', '1');
                     openShiftCountModal();
                     return;
@@ -5961,6 +5970,37 @@
             updateEditCostPerGram();
             updateEditPricePerGram();
         }
+
+        // "Es un caramelo a granel": en vez de pedir directo "gramos por unidad"
+        // (un número chico y poco intuitivo, ej 4.7g), se pesan 10 caramelos
+        // juntos (más fácil con una balanza común) y se calcula solo. El peso de
+        // CADA caramelo queda aproximado (puede dar con coma larga), pero eso no
+        // importa: el stock real nunca se mide "de a un caramelo redondeado" --
+        // cada venta descuenta exactamente 1 unidad (caramelo) del stock, y el
+        // peso solo se usa para ESTIMAR costo/margen por caramelo. Por eso nunca
+        // se acumula error aunque se vendan de a uno, 1000 veces seguidas.
+        function toggleEditCandySection() {
+            const checked = document.getElementById('edit-prod-is-candy')?.checked || false;
+            const section = document.getElementById('edit-prod-candy-section');
+            const weightRow = document.getElementById('edit-prod-weight-per-unit-row');
+            if (section) section.classList.toggle('hidden', !checked);
+            // Con "es caramelo" tildado, "gramos por unidad" se calcula solo a partir
+            // del peso de 10 -- no hace falta tiparlo a mano (se puede seguir viendo
+            // el campo real si hace falta revisarlo, no se oculta por completo).
+            if (checked) updateEditCandyWeightPerUnit();
+        }
+        window.toggleEditCandySection = toggleEditCandySection;
+
+        function updateEditCandyWeightPerUnit() {
+            const weight10 = parseFloat(document.getElementById('edit-prod-candy-weight-10')?.value) || 0;
+            const perUnit = weight10 / 10; // sin redondear -- la precisión completa queda en weightPerUnit
+            const weightInput = document.getElementById('edit-prod-weight-per-unit');
+            if (weightInput) weightInput.value = perUnit > 0 ? perUnit : '';
+            const eachEl = document.getElementById('edit-prod-candy-weight-each');
+            if (eachEl) eachEl.textContent = fmtNumber(perUnit, 3);
+            updateEditWeightCalculations();
+        }
+        window.updateEditCandyWeightPerUnit = updateEditCandyWeightPerUnit;
         
         function openWeightSaleModal(product, destination) {
             if (!product || !product.saleByWeight) return;
@@ -6289,6 +6329,7 @@
             if (targetInput) targetInput.value = '';
             if (searchInput) searchInput.value = '';
             document.getElementById('candy-mix-search-results').classList.add('hidden');
+            document.getElementById('candy-mix-config-panel')?.classList.add('hidden');
             renderCandyMixList();
             document.getElementById('candy-mix-modal').classList.add('active');
             setTimeout(() => targetInput && targetInput.focus(), 100);
@@ -6300,15 +6341,102 @@
         }
         window.closeCandyMixModal = closeCandyMixModal;
 
+        // Engranaje del modal: marcar qué productos a granel son "caramelos" (sin
+        // tener que ir a Inventario) y, si hace falta ajustar algo más (peso de 10,
+        // precio, etc.), un botón "Editar" que abre el mismo Editar Producto de
+        // siempre -- se puede seguir editando desde ahí o desde acá, da igual.
+        function toggleCandyMixConfigPanel() {
+            const panel = document.getElementById('candy-mix-config-panel');
+            if (!panel) return;
+            const show = panel.classList.contains('hidden');
+            panel.classList.toggle('hidden', !show);
+            if (show) renderCandyMixConfigList();
+        }
+        window.toggleCandyMixConfigPanel = toggleCandyMixConfigPanel;
+
+        function renderCandyMixConfigList() {
+            const container = document.getElementById('candy-mix-config-list');
+            if (!container) return;
+            const candyProducts = getActiveInventory()
+                .filter(p => p.isCandy)
+                .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            if (candyProducts.length === 0) {
+                container.innerHTML = '<p class="text-xs text-gray-400">Todavía no marcaste ningún producto como caramelo -- buscalo abajo.</p>';
+                return;
+            }
+            container.innerHTML = candyProducts.map(p => `
+                <div class="flex items-center justify-between gap-2 bg-white rounded-lg p-2 border text-sm">
+                    <label class="flex items-center gap-2 flex-1 cursor-pointer">
+                        <input type="checkbox" checked onchange="toggleCandyFlag('${p.id}', this.checked)">
+                        <span class="text-gray-800">${escapeHtml(p.name)}</span>
+                        ${p.saleByWeight ? '<span class="text-[10px] text-blue-500">⚖️ por peso</span>' : ''}
+                    </label>
+                    <button type="button" onclick="editProductFromCandyMix('${p.id}')" class="text-xs text-indigo-600 hover:text-indigo-800 font-bold px-2 py-1">✏️ Editar</button>
+                </div>
+            `).join('');
+        }
+        window.renderCandyMixConfigList = renderCandyMixConfigList;
+
+        function filterCandyMixConfigSearch() {
+            const search = document.getElementById('candy-mix-config-search')?.value.trim() || '';
+            const container = document.getElementById('candy-mix-config-search-results');
+            if (!container) return;
+            if (!search) { container.innerHTML = ''; return; }
+            const candidates = getActiveInventory().filter(p => !p.isCandy);
+            const results = fuzzySearchProducts(search, candidates, 8);
+            if (results.length === 0) {
+                container.innerHTML = '<p class="text-xs text-gray-400 p-1">No se encontraron productos</p>';
+                return;
+            }
+            container.innerHTML = results.map(p => `
+                <div class="flex items-center justify-between gap-2 bg-white rounded-lg p-2 border text-sm">
+                    <span class="text-gray-800">${escapeHtml(p.name)}</span>
+                    <button type="button" onclick="toggleCandyFlag('${p.id}', true)" class="text-xs bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold px-2 py-1 rounded-lg">+ Marcar</button>
+                </div>
+            `).join('');
+        }
+        window.filterCandyMixConfigSearch = filterCandyMixConfigSearch;
+
+        function toggleCandyFlag(productId, checked) {
+            const product = appState.inventory.find(p => p.id === productId);
+            if (!product) return;
+            product.isCandy = checked;
+            product.updatedAt = new Date().toISOString();
+            saveToLocalStorage();
+            if (checked && product.saleByWeight && !(product.weightPerUnit > 0)) {
+                showNotification('⚠️ "' + product.name + '" marcado como caramelo, pero todavía no tiene el peso configurado -- tocá "Editar" y cargá el peso de 10 caramelos', 'warning', 6000);
+            }
+            // Refrescar la lista y limpiar la búsqueda (si se marcó desde ahí, ya
+            // dejó de ser candidato -- no tiene sentido que siga apareciendo).
+            const searchInput = document.getElementById('candy-mix-config-search');
+            if (searchInput) searchInput.value = '';
+            const searchResults = document.getElementById('candy-mix-config-search-results');
+            if (searchResults) searchResults.innerHTML = '';
+            renderCandyMixConfigList();
+        }
+        window.toggleCandyFlag = toggleCandyFlag;
+
+        // Cierra el surtido y abre el Editar Producto de siempre -- al terminar,
+        // volvés a tocar el botón de "Surtido de Caramelos" para seguir armándolo
+        // (no hace falta reabrir nada especial, los cambios ya quedan guardados).
+        function editProductFromCandyMix(productId) {
+            closeCandyMixModal();
+            openEditProductModal(productId);
+        }
+        window.editProductFromCandyMix = editProductFromCandyMix;
+
         function filterCandyMixSearch() {
             const search = document.getElementById('candy-mix-search')?.value.trim() || '';
             const container = document.getElementById('candy-mix-search-results');
             if (!container) return;
             if (!search) { container.classList.add('hidden'); container.innerHTML = ''; return; }
             const chosenIds = new Set(candyMixProducts.map(p => p.id));
-            // Caramelos sueltos por peso no entran acá -- este modal reparte en
-            // UNIDADES enteras, no en gramos.
-            const candidates = getActiveInventory().filter(p => !p.saleByWeight && !chosenIds.has(p.id));
+            // Solo entran productos marcados como caramelo (product.isCandy) -- antes
+            // entraba CUALQUIER producto normal que matcheara el texto (ej. "papas
+            // fritas" aparecía buscando "frutales"), porque el filtro solo excluía
+            // productos por peso sin marcar. El engranaje (⚙️) de este modal es donde
+            // se marca qué productos son caramelo, sean por peso o no.
+            const candidates = getActiveInventory().filter(p => p.isCandy && !chosenIds.has(p.id));
             const results = fuzzySearchProducts(search, candidates, 8);
             if (results.length === 0) {
                 container.innerHTML = '<p class="p-2 text-xs text-gray-400">No se encontraron productos</p>';
@@ -6375,20 +6503,27 @@
 
             let anyFailed = false;
             for (const { product, qty } of distribution) {
+                const isCandyWeight = !!(product.saleByWeight && product.isCandy && product.weightPerUnit > 0);
                 const existingItem = appState.cart.find(item => item.productId === product.id);
                 const totalNeeded = (existingItem ? existingItem.quantity : 0) + qty;
                 const canSell = await ensureStockForSale(product, totalNeeded);
                 if (!canSell) { anyFailed = true; continue; }
                 if (existingItem) {
                     existingItem.quantity = totalNeeded;
+                    if (isCandyWeight) existingItem.weightGrams = (existingItem.weightGrams || 0) + (qty * product.weightPerUnit);
                 } else {
-                    appState.cart.push({
+                    const newItem = {
                         productId: product.id,
                         name: product.name,
                         price: product.salePrice,
                         cost: product.isComposite ? calculateCompositeCost(product) : product.cost,
                         quantity: qty
-                    });
+                    };
+                    // Caramelo a granel: cada caramelo descuenta exactamente 1 unidad
+                    // del stock (sin redondear, sea cual sea su peso estimado) -- acá
+                    // solo se anota el peso equivalente para mostrarlo en el carrito.
+                    if (isCandyWeight) newItem.weightGrams = qty * product.weightPerUnit;
+                    appState.cart.push(newItem);
                 }
             }
             bumpMercadoPagoPollSpeed();
@@ -6673,12 +6808,19 @@
                         }
                         
                         if (isWeight) {
+                            // Caramelo a granel: mostrar en unidades (caramelos), no en
+                            // gramos -- el cliente/vendedor piensa "7 caramelos", no
+                            // "32.9g", aunque por dentro el stock siga en gramos exactos.
+                            const isCandy = product.isCandy;
                             return `
                             <div class="sale-item flex justify-between items-center p-3 rounded-lg border border-blue-200 bg-blue-50">
                                 <div class="flex-1">
                                     <p class="font-bold text-gray-800">${escapeHtml(item.name || 'Producto')}</p>
-                                    <p class="text-sm text-gray-500">$${formatMoney(price)} por ${product.weightPerUnit}g</p>
-                                    <p class="text-sm text-blue-700 font-bold">${formatMoney(grams)}g = $${formatMoney(subtotal)}</p>
+                                    ${isCandy
+                                        ? `<p class="text-sm text-gray-500">$${formatMoney(price)} c/u</p>
+                                           <p class="text-sm text-blue-700 font-bold">${fmtNumber(item.quantity, 0)} caramelos = $${formatMoney(subtotal)}</p>`
+                                        : `<p class="text-sm text-gray-500">$${formatMoney(price)} por ${product.weightPerUnit}g</p>
+                                           <p class="text-sm text-blue-700 font-bold">${formatMoney(grams)}g = $${formatMoney(subtotal)}</p>`}
                                 </div>
                                 <div class="flex items-center gap-3">
                                     <button onclick="removeFromCart(${index})" class="text-red-500 hover:text-red-700 ml-2">
@@ -7098,9 +7240,9 @@
             renderCart();
         }
 
-        function clearCart() {
+        async function clearCart() {
             if (appState.cart.length === 0) return;
-            if (!confirm('¿Vaciar el carrito?')) return;
+            if (!(await showConfirmModal('¿Vaciar el carrito?'))) return;
             
             appState.cart = [];
             removeAppliedTicket(false);
@@ -8695,6 +8837,37 @@
             });
         }
 
+        // Reemplazo de prompt() nativo -- Electron directamente NO lo soporta (ver
+        // comentario del modal de Finanzas), así que esto no es opcional como
+        // showConfirmModal, es la única forma de pedir un texto corto en la app de
+        // escritorio. Devuelve Promise<string|null> (null = canceló, igual que prompt()).
+        function showPromptModal(message, defaultValue) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('app-prompt-modal');
+                const msgEl = document.getElementById('app-prompt-message');
+                const input = document.getElementById('app-prompt-input');
+                const okBtn = document.getElementById('app-prompt-ok-btn');
+                const cancelBtn = document.getElementById('app-prompt-cancel-btn');
+                if (!modal || !msgEl || !input || !okBtn || !cancelBtn) { resolve(window.prompt(message, defaultValue)); return; }
+
+                msgEl.textContent = message;
+                input.value = defaultValue != null ? defaultValue : '';
+                modal.classList.add('active');
+
+                const cleanup = (result) => {
+                    modal.classList.remove('active');
+                    okBtn.removeEventListener('click', onOk);
+                    cancelBtn.removeEventListener('click', onCancel);
+                    resolve(result);
+                };
+                const onOk = () => cleanup(input.value);
+                const onCancel = () => cleanup(null);
+                okBtn.addEventListener('click', onOk);
+                cancelBtn.addEventListener('click', onCancel);
+                setTimeout(() => { input.focus(); input.select(); }, 50);
+            });
+        }
+
         // ==================== PEDIDOS (RESERVAS CON COMANDA Y RECORDATORIO) ====================
         let pendingPedidoItems = [];
         let editingPedidoId = null;
@@ -9568,7 +9741,10 @@
             const statusLabels = { pendiente: '👨‍🍳 En preparación', listo: '✅ Listo', entregado: 'Entregado' };
 
             container.innerHTML = pedidos.map(pedido => {
-                const itemsResumen = (pedido.items || []).map(i => `${i.quantity}x ${i.name}`).join(', ');
+                // Si es un producto por peso (ej: jamón, caramelos sueltos), mostrar los
+                // gramos en vez de la cantidad "en unidades" (que puede ser una fracción
+                // rarísima, tipo 0.00009, sin ningún sentido para leer de un vistazo).
+                const itemsResumen = (pedido.items || []).map(i => `${i.weightGrams != null ? Math.round(i.weightGrams) + 'g' : i.quantity + 'x'} ${i.name}`).join(', ');
                 const isUrgent = !pedido.scheduledTime && pedido.status === 'pendiente';
                 const cardClass = isUrgent ? 'border-red-500 bg-red-50 animate-pulse' : (statusColors[pedido.status] || 'border-gray-300 bg-gray-50');
                 const whenLabel = pedido.scheduledTime
@@ -10068,7 +10244,7 @@
                 : Math.round(itemsSel.reduce((s, it) => s + it.price * it.quantity, 0) * 100) / 100;
 
             const avisoParcial = esVentaCompleta ? '' : ' (parcial: ' + indexes.length + ' de ' + sale.items.length + ' ítems)';
-            if (!auto && !confirm('¿Emitir factura en ARCA por $' + formatMoney(total) + avisoParcial + '?')) return;
+            if (!auto && !(await showConfirmModal('¿Emitir factura en ARCA por $' + formatMoney(total) + avisoParcial + '?'))) return;
             showNotification((auto ? 'Auto-facturando' : 'Enviando') + ' a ARCA...', 'info');
             try {
                 const res = await fetch(cfg.backendUrl.replace(/\/+$/, '') + '/facturar', {
@@ -10421,7 +10597,7 @@
                 return;
             }
             const total = reg.pendientes.reduce((s, p) => s + p.total, 0);
-            if (!confirm('¿Emitir ' + reg.pendientes.length + ' facturas REALES en ARCA por un total de $' + formatMoney(total) + '?')) return;
+            if (!(await showConfirmModal('¿Emitir ' + reg.pendientes.length + ' facturas REALES en ARCA por un total de $' + formatMoney(total) + '?'))) return;
             for (const p of reg.pendientes) {
                 await facturarVenta(p.sale.id, true, p.indexes.length === p.sale.items.length ? undefined : p.indexes);
             }
@@ -10484,8 +10660,8 @@
             }
             const ncTipo = { 1: 3, 6: 8, 11: 13 }[f.cbteTipo] || 13;
             const total = (f.total !== undefined ? f.total : sale.total) || 0;
-            if (!auto && !confirm('¿Emitir Nota de Crédito ' + arcaCbteLetra(ncTipo) + ' por $' + formatMoney(total) +
-                ' para anular la factura N° ' + f.cbteNro + '?\n\nLa Nota de Crédito es un comprobante REAL y descuenta lo facturado ante ARCA.')) return;
+            if (!auto && !(await showConfirmModal('¿Emitir Nota de Crédito ' + arcaCbteLetra(ncTipo) + ' por $' + formatMoney(total) +
+                ' para anular la factura N° ' + f.cbteNro + '?\n\nLa Nota de Crédito es un comprobante REAL y descuenta lo facturado ante ARCA.'))) return;
             showNotification((auto ? 'Auto-emitiendo' : 'Enviando') + ' Nota de Crédito a ARCA...', 'info');
             try {
                 const res = await fetch(cfg.backendUrl.replace(/\/+$/, '') + '/facturar', {
@@ -12111,15 +12287,15 @@
         let addStockPaymentMethod = 'cash';
         let currentAddStockProduct = null;
 
-        function deleteProduct(productId) {
+        async function deleteProduct(productId) {
             try {
                 const product = appState.inventory.find(p => p.id === productId);
                 if (!product) {
                     showNotification('Producto no encontrado en el inventario', 'error');
                     return;
                 }
-                
-                if (!confirm(`¿Estás seguro de que querés eliminar "${product.name}" del inventario?\n\nEsta acción no se puede deshacer. Si el producto tiene ventas históricas, seguirán apareciendo en los registros.`)) {
+
+                if (!(await showConfirmModal(`¿Estás seguro de que querés eliminar "${product.name}" del inventario?\n\nEsta acción no se puede deshacer. Si el producto tiene ventas históricas, seguirán apareciendo en los registros.`))) {
                     return;
                 }
                 
@@ -13395,86 +13571,25 @@
                 }
                 scanInvoiceItems = data.items.map(it => {
                     const match = findBestInventoryMatch(it.name, scanInvoiceSupplier);
-                    const qty = it.quantity || 1;
-                    let packages = 1;
-                    let unitsPerPackage = qty;
-                    let unitPrice = it.unitPrice != null ? it.unitPrice : 0;
 
-                    // Para "En stock" (producto ya en el inventario), el renglón se
-                    // reconstruye en 3 niveles -- bultos / displays / unidades sueltas --
-                    // usando "Unidades por display" y "Viene en bulto de" que se hayan
-                    // configurado en Editar Producto para ESE producto. Si el producto se
-                    // vende por peso (ej: caramelos sueltos), en cambio se reconstruyen
-                    // gramos y costo totales directo, nada de bultos/displays/unidades.
-                    let bultos = 0, displaysQty = 0, unidadesSueltas = qty;
-                    let saleByWeight = false, totalGrams = 0, totalCost = 0;
-                    const unitTypeNorm = it.unitType ? it.unitType.trim().toLowerCase() : '';
-                    const isDisplayLine = /^d/.test(unitTypeNorm); // "DI", "DISPLAY", "DISP"...
-                    const isLooseUnitLine = !unitTypeNorm || /^u/.test(unitTypeNorm); // null, "", "U", "UN", "UNIDAD"...
-                    // Cualquier letra de envase cerrado que no sea Display ni unidad suelta
-                    // cuenta como "bulto" a los efectos de convertirlo a unidades individuales
-                    // (no solo "B" -- un "Fardo", "Caja", "Pack", etc. se reparte exactamente
-                    // igual usando "Viene en bulto de" configurado en Editar Producto).
-                    const isBultoLine = !isDisplayLine && !isLooseUnitLine;
-                    if (match && match.saleByWeight && match.weightPerUnit > 0) {
-                        saleByWeight = true;
-                        unidadesSueltas = 0;
-                        totalGrams = Math.round(qty * match.weightPerUnit * 100) / 100;
-                        totalCost = unitPrice > 0 ? Math.round(qty * unitPrice * 100) / 100 : 0;
-                    } else if (match && isDisplayLine && match.unitsPerDisplay > 0) {
-                        displaysQty = qty;
-                        unidadesSueltas = 0;
-                        unitPrice = unitPrice > 0 ? Math.round((unitPrice / match.unitsPerDisplay) * 100) / 100 : 0;
-                        // Se mantiene también en el modelo viejo (packages/unitsPerPackage)
-                        // por si esta línea termina siendo "Producto nuevo" en vez de stock.
-                        packages = qty;
-                        unitsPerPackage = match.unitsPerDisplay;
-                    } else if (match && isBultoLine && match.bulkPackSize > 0) {
-                        bultos = qty;
-                        unidadesSueltas = 0;
-                        unitsPerPackage = match.bulkPackSize;
-                        unitPrice = unitPrice > 0 ? Math.round((unitPrice / unitsPerPackage) * 100) / 100 : 0;
-                        packages = qty;
-                    }
-
-                    // Por defecto, +IVA solo si la línea es "Facturado" -- sin factura no
-                    // hay IVA que pagar. El precio que lee la IA es siempre neto (sin IVA);
-                    // al ser Monotributo ese IVA no se puede descontar de ningún lado, así
-                    // que es costo real y hay que sumarlo acá (mismo 1.21 que aplica el
-                    // toggle "+IVA 21%" al tildarse, para que unitPrice/totalCost y
-                    // vatApplied queden siempre coherentes entre sí).
-                    const vatApplied = scanInvoiceLastInvoiceType === 'white';
-                    if (vatApplied) {
-                        if (saleByWeight) totalCost = Math.round(totalCost * 1.21 * 100) / 100;
-                        else unitPrice = Math.round(unitPrice * 1.21 * 100) / 100;
-                    }
-
-                    return {
+                    const item = {
                         localId: 'SI' + Date.now() + Math.random().toString(36).slice(2, 6),
                         rawName: it.name,
-                        qty: Math.round(packages * unitsPerPackage * 100) / 100,
-                        // Reconstrucción tipo factura: por defecto "1 bulto de <qty>
-                        // unidades" (da el mismo total que ya venía) -- el usuario
-                        // puede repartir esos dos números distinto si la IA contó mal.
-                        // (packages/unitsPerPackage: usado por la tarjeta "Producto
-                        // nuevo"; bultos/displaysQty/unidadesSueltas: usado por la tabla
-                        // "En stock" -- cada tipo de línea usa el que le corresponde.)
-                        packages,
-                        unitsPerPackage,
-                        bultos,
-                        displaysQty,
-                        unidadesSueltas,
-                        saleByWeight,
-                        totalGrams,
-                        totalCost,
-                        unitPrice,
+                        qty: 0, packages: 1, unitsPerPackage: 1,
+                        bultos: 0, displaysQty: 0, unidadesSueltas: 0,
+                        saleByWeight: false, totalGrams: 0, totalCost: 0, unitPrice: 0,
                         type: match ? 'stock' : 'new',
                         productId: match ? match.id : null,
                         productName: match ? match.name : '',
                         invoiceType: scanInvoiceLastInvoiceType,
                         paymentMethod: scanInvoiceLastPaymentMethod,
                         expiry: '',
-                        vatApplied,
+                        // Por defecto, +IVA solo si la línea es "Facturado" -- sin factura
+                        // no hay IVA que pagar. El precio que lee la IA es siempre neto (sin
+                        // IVA); al ser Monotributo ese IVA no se puede descontar de ningún
+                        // lado, así que es costo real y hay que sumarlo (mismo 1.21 que
+                        // aplica el toggle "+IVA 21%" al tildarse).
+                        vatApplied: scanInvoiceLastInvoiceType === 'white',
                         newPrice: '',
                         newProductName: null,
                         barcode: '',
@@ -13482,13 +13597,19 @@
                         supplier: '',
                         selected: false,
                         // Eco de lo que la IA leyó, SIN tocar nunca después -- sirve para
-                        // comparar contra lo que el usuario termine confirmando y, si
-                        // difiere, aprender una corrección para este proveedor.
-                        aiRawQuantity: qty,
+                        // comparar contra lo que el usuario termine confirmando (aprender
+                        // correcciones) y para poder reconstruir bultos/displays/sueltas de
+                        // nuevo si se cambia a qué producto corresponde la línea.
+                        aiRawQuantity: it.quantity || 1,
                         aiRawUnitType: it.unitType || null,
                         aiRawUnitPrice: it.unitPrice != null ? it.unitPrice : null,
                         scanSupplier: scanInvoiceSupplier || ''
                     };
+                    // Reparte bultos/displays/sueltas (o gramos) y precio unitario según
+                    // el producto matcheado -- misma función que usa selectScanPickerResult()
+                    // al cambiar el producto a mano, para que ambos caminos den lo mismo.
+                    recomputeScanItemPackaging(item, match);
+                    return item;
                 });
                 statusEl.textContent = `✅ Se leyeron ${scanInvoiceItems.length} línea(s). Revisá y confirmá cada una.`;
                 renderScanInvoiceItems();
@@ -13685,6 +13806,71 @@
             const fromDisplays = (item.displaysQty || 0) * unitsPerDisplay;
             const fromSueltas = item.unidadesSueltas || 0;
             return Math.round((fromBultos + fromDisplays + fromSueltas) * 100) / 100;
+        }
+
+        // Reconstruye bultos/displays/sueltas (o gramos si es por peso) para una
+        // línea de "Escanear Factura" a partir de la lectura CRUDA de la IA
+        // (aiRawQuantity/aiRawUnitType/aiRawUnitPrice -- esos nunca se tocan) y el
+        // producto que esté matcheado AHORA. La usa tanto la lectura inicial de la
+        // factura como selectScanPickerResult() al cambiar a mano a qué producto
+        // corresponde una línea -- antes, cambiar el producto desde la lupa dejaba
+        // bultos/displays/sueltas y precio en 0 porque nunca se recalculaban para
+        // el producto nuevo (quedaban pensados para el que tenía antes, o en 0 si
+        // la línea no tenía ningún producto matcheado todavía).
+        function recomputeScanItemPackaging(item, match) {
+            const qty = item.aiRawQuantity != null ? item.aiRawQuantity : (item.qty || 1);
+            let packages = 1;
+            let unitsPerPackage = qty;
+            let unitPrice = item.aiRawUnitPrice != null ? item.aiRawUnitPrice : 0;
+
+            let bultos = 0, displaysQty = 0, unidadesSueltas = qty;
+            let saleByWeight = false, totalGrams = 0, totalCost = 0;
+            const unitTypeNorm = item.aiRawUnitType ? item.aiRawUnitType.trim().toLowerCase() : '';
+            const isDisplayLine = /^d/.test(unitTypeNorm);
+            const isLooseUnitLine = !unitTypeNorm || /^u/.test(unitTypeNorm);
+            const isBultoLine = !isDisplayLine && !isLooseUnitLine;
+
+            if (match && match.saleByWeight && match.weightPerUnit > 0) {
+                saleByWeight = true;
+                unidadesSueltas = 0;
+                totalGrams = Math.round(qty * match.weightPerUnit * 100) / 100;
+                totalCost = unitPrice > 0 ? Math.round(qty * unitPrice * 100) / 100 : 0;
+            } else if (match && isDisplayLine && match.unitsPerDisplay > 0) {
+                displaysQty = qty;
+                unidadesSueltas = 0;
+                unitPrice = unitPrice > 0 ? Math.round((unitPrice / match.unitsPerDisplay) * 100) / 100 : 0;
+                packages = qty;
+                unitsPerPackage = match.unitsPerDisplay;
+            } else if (match && isBultoLine && match.bulkPackSize > 0) {
+                bultos = qty;
+                unidadesSueltas = 0;
+                unitsPerPackage = match.bulkPackSize;
+                unitPrice = unitPrice > 0 ? Math.round((unitPrice / unitsPerPackage) * 100) / 100 : 0;
+                packages = qty;
+            }
+
+            // Mantiene el estado de +IVA que ya tenía la línea (cambiar de producto
+            // no lo resetea) -- si estaba tildado, se reaplica sobre el neto recién
+            // recalculado.
+            if (item.vatApplied) {
+                if (saleByWeight) totalCost = Math.round(totalCost * 1.21 * 100) / 100;
+                else unitPrice = Math.round(unitPrice * 1.21 * 100) / 100;
+            }
+
+            item.qty = Math.round(packages * unitsPerPackage * 100) / 100;
+            item.packages = packages;
+            item.unitsPerPackage = unitsPerPackage;
+            item.bultos = bultos;
+            item.displaysQty = displaysQty;
+            item.unidadesSueltas = unidadesSueltas;
+            item.saleByWeight = saleByWeight;
+            item.totalGrams = totalGrams;
+            item.totalCost = totalCost;
+            item.unitPrice = unitPrice;
+            // El total "anclado" (si lo había) ya no corresponde a este reparto
+            // nuevo -- se limpia para que se vuelva a anclar fresco la próxima vez
+            // que se toque cualquier cantidad.
+            item.enteredTotalPrice = null;
         }
 
         function renderScanStockRow(item) {
@@ -14265,6 +14451,10 @@
             if (!item || !product) return;
             item.productId = product.id;
             item.productName = product.name;
+            // Recalcular bultos/displays/sueltas (o gramos) y precio unitario para
+            // ESTE producto -- si no, quedaban en 0 (pensados para el producto de
+            // antes, o nunca calculados si la línea no tenía ningún match todavía).
+            recomputeScanItemPackaging(item, product);
             closeScanProductPicker();
         }
         window.selectScanPickerResult = selectScanPickerResult;
@@ -14933,6 +15123,18 @@
                 saleByWeightCheckbox.checked = product.saleByWeight || false;
                 if (product.saleByWeight) {
                     document.getElementById('edit-prod-weight-per-unit').value = product.weightPerUnit || '';
+                    const candyCheckbox = document.getElementById('edit-prod-is-candy');
+                    if (candyCheckbox) {
+                        candyCheckbox.checked = product.isCandy || false;
+                        // El peso de 10 no se guarda aparte -- se reconstruye desde
+                        // weightPerUnit (que si ES el dato guardado) para no pedirlo
+                        // de nuevo cada vez que se reabre el producto.
+                        const weight10Input = document.getElementById('edit-prod-candy-weight-10');
+                        if (weight10Input) weight10Input.value = product.isCandy && product.weightPerUnit ? (product.weightPerUnit * 10) : '';
+                        const eachEl = document.getElementById('edit-prod-candy-weight-each');
+                        if (eachEl) eachEl.textContent = fmtNumber(product.weightPerUnit || 0, 3);
+                    }
+                    toggleEditCandySection();
                     toggleEditWeightSection();
                     updateEditWeightCalculations();
                 } else {
@@ -15156,9 +15358,11 @@
                 if (saleByWeightEdit) {
                     product.saleByWeight = true;
                     product.weightPerUnit = parseFloat(document.getElementById('edit-prod-weight-per-unit')?.value) || 0;
+                    product.isCandy = document.getElementById('edit-prod-is-candy')?.checked || false;
                 } else {
                     delete product.saleByWeight;
                     delete product.weightPerUnit;
+                    delete product.isCandy;
                 }
 
                 // Guardar ocultar de la venta
@@ -15668,7 +15872,7 @@
                     ? '\n\nLa venta tiene factura emitida: se va a generar la Nota de Crédito automáticamente.'
                     : '\n\n⚠️ La venta tiene factura emitida en ARCA: para anularla fiscalmente, emití la Nota de Crédito desde el detalle de la venta.';
             }
-            if (!confirm(aviso)) return;
+            if (!(await showConfirmModal(aviso))) return;
 
             // Cancelar factura programada de esta venta (si tenía una en cola)
             if (appState.facturasProgramadas && appState.facturasProgramadas.length > 0) {
@@ -15761,8 +15965,8 @@
             }
         }
 
-        function deleteExpense(expenseId, dateStr) {
-            if (!confirm('¿Estás seguro de que deseas eliminar este gasto? Se devolverá el dinero.')) return;
+        async function deleteExpense(expenseId, dateStr) {
+            if (!(await showConfirmModal('¿Estás seguro de que deseas eliminar este gasto? Se devolverá el dinero.'))) return;
 
             const expenseIndex = appState.expenses.findIndex(e => e.id === expenseId);
             if (expenseIndex === -1) return;
@@ -15794,7 +15998,7 @@
             showNotification('Gasto eliminado correctamente', 'success');
         }
 
-        function editInvestment(investmentId, dateStr) {
+        async function editInvestment(investmentId, dateStr) {
             const investment = appState.investments.find(i => i.id === investmentId);
             if (!investment) return;
 
@@ -15813,7 +16017,7 @@
             }
 
             // Edición básica para investments sin productId (datos antiguos)
-            const newAmountStr = prompt('Nuevo monto:', investment.amount);
+            const newAmountStr = await showPromptModal('Nuevo monto:', investment.amount);
             if (newAmountStr === null) return;
             const newAmount = parseFloat(newAmountStr);
             if (isNaN(newAmount) || newAmount < 0) {
@@ -15821,7 +16025,7 @@
                 return;
             }
 
-            const changeSource = confirm(`¿Cambiar fuente? Actual: ${investment.source === 'cash' ? '💵 Caja' : '🏦 Cuenta'}\n\nAceptar = Cambiar a la otra\nCancelar = Mantener la misma`);
+            const changeSource = await showConfirmModal(`¿Cambiar fuente? Actual: ${investment.source === 'cash' ? '💵 Caja' : '🏦 Cuenta'}\n\nAceptar = Cambiar a la otra\nCancelar = Mantener la misma`);
             let newSource = investment.source;
             if (changeSource) {
                 newSource = investment.source === 'cash' ? 'bank' : 'cash';
@@ -15842,7 +16046,7 @@
             }
 
             // Editar fecha
-            const newDateStr = prompt('Nueva fecha (AAAA-MM-DD):', investment.date);
+            const newDateStr = await showPromptModal('Nueva fecha (AAAA-MM-DD):', investment.date);
             if (newDateStr !== null) {
                 if (/^\d{4}-\d{2}-\d{2}$/.test(newDateStr)) {
                     investment.date = newDateStr;
@@ -15869,8 +16073,8 @@
             showNotification('Inversión actualizada correctamente', 'success');
         }
 
-        function deleteInvestment(investmentId, dateStr) {
-            if (!confirm('¿Estás seguro de que deseas eliminar esta inversión? Se devolverá el dinero y se ajustará el stock del producto.')) return;
+        async function deleteInvestment(investmentId, dateStr) {
+            if (!(await showConfirmModal('¿Estás seguro de que deseas eliminar esta inversión? Se devolverá el dinero y se ajustará el stock del producto.'))) return;
 
             const investmentIndex = appState.investments.findIndex(i => i.id === investmentId);
             if (investmentIndex === -1) return;
@@ -17007,8 +17211,8 @@
             onRecExpenseFrequencyChange();
         }
         
-        function deleteRecurringExpense(id) {
-            if (!confirm('¿Eliminar este gasto fijo?')) return;
+        async function deleteRecurringExpense(id) {
+            if (!(await showConfirmModal('¿Eliminar este gasto fijo?'))) return;
             appState.recurringExpenses = (appState.recurringExpenses || []).filter(r => r.id !== id);
             saveToLocalStorage();
             resetRecurringExpenseForm();
@@ -18698,10 +18902,10 @@
         // Borra un movimiento de capital puntual (ej: una prueba, o algo
         // cargado mal) desde "Movimientos de Caja/Cuenta" -- revierte el
         // efecto que tuvo sobre Caja/Cuenta y saca la línea del historial.
-        function deleteCapitalAdjustment(id) {
+        async function deleteCapitalAdjustment(id) {
             const adj = (appState.capitalAdjustments || []).find(a => a.id === id);
             if (!adj) { showNotification('No se encontró ese movimiento', 'error'); return; }
-            if (!confirm(`¿Borrar "${adj.concept || adj.note || 'este movimiento'}" de $${formatMoney(Math.abs(adj.amount))}? Se revierte de ${adj.target === 'cash' ? 'Caja' : 'Cuenta'}.`)) return;
+            if (!(await showConfirmModal(`¿Borrar "${adj.concept || adj.note || 'este movimiento'}" de $${formatMoney(Math.abs(adj.amount))}? Se revierte de ${adj.target === 'cash' ? 'Caja' : 'Cuenta'}.`))) return;
 
             if (adj.target === 'cash') appState.cash -= adj.amount;
             else if (adj.target === 'bank') appState.bank -= adj.amount;
@@ -18966,7 +19170,7 @@
             document.getElementById('cash-count-notes').value = '';
         }
 
-        function saveCashOpening() {
+        async function saveCashOpening() {
             const cashAmount = parseFloat(document.getElementById('cash-count-opening').value) || 0;
             const bankAmount = parseFloat(document.getElementById('cash-count-opening-bank').value) || 0;
             if (cashAmount < 0 || bankAmount < 0) {
@@ -18975,11 +19179,11 @@
             }
             const modal = document.getElementById('cash-count-modal');
             const targetDate = modal.dataset.cashCountDate || formatDateISO(appState.activeDate || new Date());
-            
+
             // Validación de seguridad: la fecha del modal debe coincidir con la fecha activa
             const activeDate = formatDateISO(appState.activeDate || new Date());
             if (targetDate !== activeDate) {
-                if (!confirm(`⚠️ La fecha del arqueo (${targetDate}) no coincide con la fecha activa (${activeDate}). ¿Guardar igual para ${targetDate}?`)) {
+                if (!(await showConfirmModal(`⚠️ La fecha del arqueo (${targetDate}) no coincide con la fecha activa (${activeDate}). ¿Guardar igual para ${targetDate}?`))) {
                     return;
                 }
             }
@@ -19087,7 +19291,7 @@
             totalAmount.textContent = '$' + formatMoney(Math.abs(diffTotal));
         }
 
-        function deleteCashCount(date) {
+        async function deleteCashCount(date) {
             const modal = document.getElementById('cash-count-modal');
             const targetDate = date || modal.dataset.cashCountDate || formatDateISO(appState.activeDate || new Date());
             if (!appState.cashCounts) return;
@@ -19098,7 +19302,7 @@
                 return;
             }
             
-            if (!confirm('¿Eliminar el registro de arqueo del ' + targetDate + '?')) return;
+            if (!(await showConfirmModal('¿Eliminar el registro de arqueo del ' + targetDate + '?'))) return;
             
             appState.cashCounts.splice(idx, 1);
             // También eliminar el sobrante/faltante asociado a esa fecha
@@ -19119,7 +19323,7 @@
             showNotification('Arqueo eliminado', 'success');
         }
 
-        function reopenCashCount(date) {
+        async function reopenCashCount(date) {
             if (!appState.cashCounts) return;
             const record = appState.cashCounts.find(c => c.date === date);
             if (!record) {
@@ -19130,7 +19334,7 @@
                 showNotification('Ese día no tiene cierre registrado', 'error');
                 return;
             }
-            if (!confirm('¿Eliminar solo el CIERRE del ' + date + '?\n\nSe mantiene la apertura y el día queda como "sin cerrar".')) return;
+            if (!(await showConfirmModal('¿Eliminar solo el CIERRE del ' + date + '?\n\nSe mantiene la apertura y el día queda como "sin cerrar".'))) return;
 
             // Dejar el arqueo como nunca cerrado
             record.closingCash = null;
@@ -19211,7 +19415,7 @@
             }).join('');
         }
 
-        function saveCashClosing() {
+        async function saveCashClosing() {
             const closingCashRaw = document.getElementById('cash-count-closing').value;
             const closingBankRaw = document.getElementById('cash-count-closing-bank').value;
             const closingCash = closingCashRaw === '' ? expected.cash : parseFloat(closingCashRaw);
@@ -19222,11 +19426,11 @@
             }
             const modal = document.getElementById('cash-count-modal');
             const targetDate = modal.dataset.cashCountDate || formatDateISO(appState.activeDate || new Date());
-            
+
             // Validación de seguridad: la fecha del modal debe coincidir con la fecha activa
             const activeDate = formatDateISO(appState.activeDate || new Date());
             if (targetDate !== activeDate) {
-                if (!confirm(`⚠️ La fecha del arqueo (${targetDate}) no coincide con la fecha activa (${activeDate}). ¿Guardar el cierre igual para ${targetDate}?`)) {
+                if (!(await showConfirmModal(`⚠️ La fecha del arqueo (${targetDate}) no coincide con la fecha activa (${activeDate}). ¿Guardar el cierre igual para ${targetDate}?`))) {
                     return;
                 }
             }
@@ -19418,14 +19622,14 @@
             document.getElementById('btn-cancel-edit-user').classList.add('hidden');
         }
 
-        function deleteUser(id) {
+        async function deleteUser(id) {
             const user = appState.users.find(u => u.id === id);
             if (!user) return;
             if (user.role === 'admin' && appState.users.filter(u => u.role === 'admin' && u.active !== false).length <= 1) {
                 showNotification('Debe quedar al menos un administrador', 'error');
                 return;
             }
-            if (!confirm('¿Eliminar el usuario "' + user.name + '"?')) return;
+            if (!(await showConfirmModal('¿Eliminar el usuario "' + user.name + '"?'))) return;
             appState.users = appState.users.filter(u => u.id !== id);
             saveToLocalStorage();
             renderUsersList();
@@ -19529,10 +19733,10 @@
         }
         window.cancelEditSpecialPriceCode = cancelEditSpecialPriceCode;
 
-        function deleteSpecialPriceCode(id) {
+        async function deleteSpecialPriceCode(id) {
             const entry = (appState.specialPriceCodes || []).find(c => c.id === id);
             if (!entry) return;
-            if (!confirm('¿Eliminar el código de "' + entry.name + '"?')) return;
+            if (!(await showConfirmModal('¿Eliminar el código de "' + entry.name + '"?'))) return;
             appState.specialPriceCodes = appState.specialPriceCodes.filter(c => c.id !== id);
             saveToLocalStorage();
             renderSpecialPriceCodesList();
@@ -19618,12 +19822,12 @@
         // físicamente contra el stock del sistema. NO modifica el stock.
         let stockCountSession = null;
 
-        function openStockCountModal() {
+        async function openStockCountModal() {
             // Si hay un conteo guardado a medias, ofrecer seguir donde quedó
             const saved = loadSavedStockCountSession();
             if (saved) {
                 const contadosGuardados = saved.items.filter(i => i.counted !== null).length;
-                if (confirm('💾 Hay un conteo sin terminar (' + contadosGuardados + ' de ' + saved.items.length + ' productos contados).\n\nAceptar = seguir donde quedaste\nCancelar = empezar uno nuevo (se borra el anterior)')) {
+                if (await showConfirmModal('💾 Hay un conteo sin terminar (' + contadosGuardados + ' de ' + saved.items.length + ' productos contados).\n\nAceptar = seguir donde quedaste\nCancelar = empezar uno nuevo (se borra el anterior)')) {
                     stockCountSession = saved;
                     // Sacar productos que ya no existen en el inventario
                     stockCountSession.items = stockCountSession.items.filter(i => appState.inventory.some(p => p.id === i.productId));
@@ -19822,11 +20026,11 @@
 
         // Saca el producto actual del conteo para siempre (queda en el inventario;
         // se puede reactivar editando el producto → "No incluir en el conteo de stock")
-        function stockCountSkipForever() {
+        async function stockCountSkipForever() {
             if (!stockCountSession) return;
             const item = stockCountSession.items[stockCountSession.index];
             if (!item) return;
-            if (!confirm('¿Sacar "' + item.name + '" del conteo de stock para siempre? Podés reactivarlo editando el producto.')) return;
+            if (!(await showConfirmModal('¿Sacar "' + item.name + '" del conteo de stock para siempre? Podés reactivarlo editando el producto.'))) return;
             const product = appState.inventory.find(p => p.id === item.productId);
             if (product) {
                 product.skipStockCount = true;
@@ -19847,7 +20051,7 @@
             showNotification('🚫 "' + item.name + '" ya no aparecerá en el conteo', 'success');
         }
 
-        function stockCountFinish(early) {
+        async function stockCountFinish(early) {
             if (!stockCountSession) return;
             if (early) {
                 stockCountCapture(); // conservar lo escrito si es válido
@@ -19856,7 +20060,7 @@
                     showNotification('Todavía no contaste ningún producto', 'warning');
                     return;
                 }
-                if (!confirm('¿Terminar el conteo antes? Se resumen solo los ' + contados + ' productos ya contados.')) return;
+                if (!(await showConfirmModal('¿Terminar el conteo antes? Se resumen solo los ' + contados + ' productos ya contados.'))) return;
             }
             const countedItems = stockCountSession.items.filter(i => i.counted !== null);
             let sobrantes = 0, faltantes = 0, exactos = 0;
@@ -20363,7 +20567,17 @@
             if (!product || !(units > 0)) return;
             if (Array.isArray(product.batches)) {
                 if (product.batches.length > 0) {
-                    product.batches[0].stock += units;
+                    // Al lote MÁS VIEJO -- mismo criterio FIFO que getFifoBatchBreakdown
+                    // (por fecha de alta, y si empatan, por vencimiento más próximo), no
+                    // simplemente el primero del array, que no siempre queda ordenado así.
+                    const oldestBatch = [...product.batches].sort((a, b) => {
+                        const dateA = a.dateAdded ? new Date(a.dateAdded).getTime() : 0;
+                        const dateB = b.dateAdded ? new Date(b.dateAdded).getTime() : 0;
+                        if (dateA !== dateB) return dateA - dateB;
+                        if (a.expiry && b.expiry) return new Date(a.expiry) - new Date(b.expiry);
+                        return 0;
+                    })[0];
+                    oldestBatch.stock += units;
                 } else {
                     product.batches.push({
                         id: 'BATCH-FOUND-' + Date.now(),
@@ -20750,7 +20964,7 @@
                 estimatedCost = Math.round((product.cost || 0) * units * 100) / 100;
             }
             
-            // Agregar stock al producto. Si maneja lotes, sumar al primero; si el
+            // Agregar stock al producto. Si maneja lotes, sumar al más viejo; si el
             // array quedó vacío (se consumieron todos), crear un lote nuevo —
             // getProductStock suma lotes e ignoraría un stock suelto.
             applyFoundStock(product, units, estimatedCost, foundStockReason, notes, isWeight ? grams : null);
@@ -20761,8 +20975,8 @@
             showNotification(`Stock gratis registrado: ${qtyDisplay} de ${product.name}`, 'success');
         }
         
-        function deleteFoundStock(foundId) {
-            if (!confirm('¿Eliminar este registro de stock gratis? El stock será descontado del producto.')) return;
+        async function deleteFoundStock(foundId) {
+            if (!(await showConfirmModal('¿Eliminar este registro de stock gratis? El stock será descontado del producto.'))) return;
             
             const idx = appState.foundStock.findIndex(f => f.id === foundId);
             if (idx === -1) {
@@ -21129,6 +21343,8 @@
                 cost = (isPrep ? calculateCompositeCost(product) : (product.cost || 0)) * units;
             }
 
+            const affectedBatches = [];
+
             if (isPrep) {
                 // Preparación: descontar cada subproducto (mismo criterio FIFO que una venta)
                 for (const comp of product.components) {
@@ -21159,7 +21375,12 @@
                     compProduct.updatedAt = new Date().toISOString();
                 }
             } else {
-                // Producto normal: restar del lote que vence primero (FEFO)
+                // Producto normal: restar del lote que vence primero (FEFO) -- se anota
+                // en affectedBatches qué lote(s) se tocaron y cuánto, con su vencimiento
+                // y costo ORIGINALES, antes de tocar nada. Si un lote se consume entero
+                // más abajo se borra del array (y con él su fecha de vencimiento/costo
+                // para siempre) -- este registro es lo único que permite devolver
+                // exactamente eso si se elimina la merma después.
                 let remaining = units;
                 if (product.batches && product.batches.length > 0) {
                     product.batches.sort((a, b) => {
@@ -21168,8 +21389,20 @@
                         return new Date(a.expiry) - new Date(b.expiry);
                     });
                     for (let i = 0; i < product.batches.length && remaining > 0; i++) {
-                        const deduct = Math.min(remaining, product.batches[i].stock);
-                        product.batches[i].stock -= deduct;
+                        const batch = product.batches[i];
+                        const deduct = Math.min(remaining, batch.stock);
+                        if (deduct > 0) {
+                            affectedBatches.push({
+                                batchId: batch.id,
+                                deducted: deduct,
+                                expiry: batch.expiry || null,
+                                cost: batch.cost,
+                                dateAdded: batch.dateAdded,
+                                invoiceType: batch.invoiceType,
+                                source: batch.source
+                            });
+                        }
+                        batch.stock -= deduct;
                         remaining -= deduct;
                     }
                     product.batches = product.batches.filter(b => b.stock > 0);
@@ -21189,6 +21422,7 @@
                 grams: isWeight ? grams : null,
                 isComposite: isPrep || undefined,
                 components: isPrep ? product.components.map(c => ({ productId: c.productId, quantity: c.quantity || 1 })) : undefined,
+                affectedBatches: (!isPrep && affectedBatches.length > 0) ? affectedBatches : undefined,
                 reason: lossReason,
                 cost: cost,
                 notes: notes,
@@ -21556,10 +21790,10 @@
             showNotification('✅ Venta registrada', 'success');
         }
 
-        function deleteFixedAsset(assetId) {
+        async function deleteFixedAsset(assetId) {
             const asset = (appState.fixedAssets || []).find(a => a.id === assetId);
             if (!asset) return;
-            if (!confirm('¿Eliminar este equipo? Se van a revertir todos los pagos (y la venta, si la tenía) a la caja/cuenta.')) return;
+            if (!(await showConfirmModal('¿Eliminar este equipo? Se van a revertir todos los pagos (y la venta, si la tenía) a la caja/cuenta.'))) return;
             (asset.payments || []).forEach(p => {
                 if (p.source === 'cash') appState.cash += p.amount; else appState.bank += p.amount;
             });
@@ -22515,8 +22749,8 @@
             tbody.innerHTML = html;
         }
         
-        function deleteLoss(lossId) {
-            if (!confirm('¿Eliminar esta merma? El stock será devuelto al producto.')) return;
+        async function deleteLoss(lossId) {
+            if (!(await showConfirmModal('¿Eliminar esta merma? El stock será devuelto al producto.'))) return;
             
             const idx = appState.losses.findIndex(l => l.id === lossId);
             if (idx === -1) {
@@ -22540,20 +22774,52 @@
                 const isWeight = product.saleByWeight && product.weightPerUnit > 0;
                 const restoreUnits = (isWeight && loss.grams) ? (loss.grams / product.weightPerUnit) : loss.quantity;
 
-                if (product.batches && product.batches.length > 0) {
-                    // Agregar al primer lote existente o crear uno nuevo
-                    const firstBatch = product.batches[0];
-                    if (firstBatch) {
-                        firstBatch.stock += restoreUnits;
-                    } else {
-                        product.batches.push({
-                            id: 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-                            stock: restoreUnits,
-                            cost: product.cost || 0,
-                            date: formatDateISO(new Date()),
-                            source: 'cash'
-                        });
+                if (Array.isArray(loss.affectedBatches) && loss.affectedBatches.length > 0) {
+                    // Devolver exactamente a los lotes de los que salió, con su
+                    // vencimiento y costo ORIGINALES -- si el lote se había consumido
+                    // entero y se borró del array, se recrea tal cual estaba (mismo id).
+                    if (!Array.isArray(product.batches)) product.batches = [];
+                    for (const ab of loss.affectedBatches) {
+                        const batch = product.batches.find(b => b.id === ab.batchId);
+                        if (batch) {
+                            batch.stock += ab.deducted;
+                        } else {
+                            product.batches.push({
+                                id: ab.batchId,
+                                stock: ab.deducted,
+                                expiry: ab.expiry || '',
+                                cost: ab.cost,
+                                dateAdded: ab.dateAdded,
+                                invoiceType: ab.invoiceType,
+                                source: ab.source
+                            });
+                        }
                     }
+                    product.stock = product.batches.reduce((s, b) => s + (b.stock || 0), 0);
+                } else if (product.batches && product.batches.length > 0) {
+                    // Mermas viejas sin ese detalle guardado: mejor esfuerzo, al lote
+                    // más viejo (mismo criterio FIFO que stock gratis).
+                    const oldestBatch = [...product.batches].sort((a, b) => {
+                        const dateA = a.dateAdded ? new Date(a.dateAdded).getTime() : 0;
+                        const dateB = b.dateAdded ? new Date(b.dateAdded).getTime() : 0;
+                        if (dateA !== dateB) return dateA - dateB;
+                        if (a.expiry && b.expiry) return new Date(a.expiry) - new Date(b.expiry);
+                        return 0;
+                    })[0];
+                    oldestBatch.stock += restoreUnits;
+                } else if (Array.isArray(product.batches)) {
+                    // El array de lotes existe pero está vacío (se consumió entero y
+                    // no hay detalle guardado de cuál era) -- hay que crear un lote
+                    // nuevo: getProductStock() ignora por completo product.stock
+                    // cuando product.batches es un array (aunque esté vacío), así que
+                    // sin esto el stock devuelto quedaba invisible para siempre.
+                    product.batches.push({
+                        id: 'BATCH-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+                        stock: restoreUnits,
+                        expiry: '',
+                        cost: product.cost || 0,
+                        dateAdded: formatDateISO(new Date())
+                    });
                 } else {
                     product.stock = (product.stock || 0) + restoreUnits;
                 }
@@ -24224,8 +24490,8 @@ Total de productos a comprar: ${shoppingList.length}
             return '<span class="text-gray-300">—</span>';
         }
 
-        function resetInvoiceTracking() {
-            if (!confirm('¿Estás seguro de resetear los contadores de facturación? Esto no afecta las ventas ni compras guardadas, solo los totales acumulados.')) return;
+        async function resetInvoiceTracking() {
+            if (!(await showConfirmModal('¿Estás seguro de resetear los contadores de facturación? Esto no afecta las ventas ni compras guardadas, solo los totales acumulados.'))) return;
             appState.invoiceTracking = { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 };
             saveToLocalStorage();
             renderBilling();
@@ -24371,9 +24637,9 @@ Total de productos a comprar: ${shoppingList.length}
         }
 
         async function resetAllData() {
-            if (!confirm('⚠️ ¿ESTÁS SEGURO?\n\nSe eliminarán TODOS los datos:\n- Todos los productos\n- Todas las ventas\n- Todos los gastos\n- Toda la configuración\n- Todas las promociones y tickets\n\nEsta acción NO se puede deshacer.\n\n¿Deseas continuar?')) return;
-            
-            if (!confirm('🚨 CONFIRMACIÓN FINAL\n\n¿Estás 100% seguro de que querés borrar TODO incluyendo la base de datos?')) return;
+            if (!(await showConfirmModal('⚠️ ¿ESTÁS SEGURO?\n\nSe eliminarán TODOS los datos:\n- Todos los productos\n- Todas las ventas\n- Todos los gastos\n- Toda la configuración\n- Todas las promociones y tickets\n\nEsta acción NO se puede deshacer.\n\n¿Deseas continuar?'))) return;
+
+            if (!(await showConfirmModal('🚨 CONFIRMACIÓN FINAL\n\n¿Estás 100% seguro de que querés borrar TODO incluyendo la base de datos?'))) return;
             
             showNotification('🗑️ Borrando datos locales y de Firebase...', 'info');
             
@@ -24680,8 +24946,8 @@ Total de productos a comprar: ${shoppingList.length}
             return Array.isArray(product.buyDays) ? product.buyDays : [];
         }
 
-        function deleteSupplier(supplierId) {
-            if (!confirm('¿Eliminar este proveedor? Los productos asociados mantendrán el nombre pero no se vincularán más.')) return;
+        async function deleteSupplier(supplierId) {
+            if (!(await showConfirmModal('¿Eliminar este proveedor? Los productos asociados mantendrán el nombre pero no se vincularán más.'))) return;
             appState.suppliers = (appState.suppliers || []).filter(s => s.id !== supplierId);
             saveToLocalStorage();
             renderSuppliersList();
@@ -25303,9 +25569,9 @@ RESULTADOS:
             downloadFile(data, `kioscopro_backup_${formatDateISO(new Date())}.json`, 'application/json');
         }
 
-        function applyBackupData(backupData, sourceName) {
+        async function applyBackupData(backupData, sourceName) {
             // CONFIRMAR antes de borrar todo
-            if (!confirm('⚠️ ¿Estás seguro? Esto reemplazará TODOS los datos actuales por los del backup.\n\nSe restaurarán:\n• ' + (backupData.inventory?.length || 0) + ' productos\n• ' + (backupData.sales?.length || 0) + ' ventas\n• ' + (backupData.expenses?.length || 0) + ' gastos\n• $' + formatMoney((backupData.cash || 0)) + ' en caja\n\nLos datos actuales se perderán.')) {
+            if (!(await showConfirmModal('⚠️ ¿Estás seguro? Esto reemplazará TODOS los datos actuales por los del backup.\n\nSe restaurarán:\n• ' + (backupData.inventory?.length || 0) + ' productos\n• ' + (backupData.sales?.length || 0) + ' ventas\n• ' + (backupData.expenses?.length || 0) + ' gastos\n• $' + formatMoney((backupData.cash || 0)) + ' en caja\n\nLos datos actuales se perderán.'))) {
                 return false;
             }
 
@@ -25408,10 +25674,10 @@ RESULTADOS:
             }
 
             const reader = new FileReader();
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 try {
                     const backupData = JSON.parse(e.target.result);
-                    const restored = applyBackupData(backupData, file.name);
+                    const restored = await applyBackupData(backupData, file.name);
 
                     // Subir el archivo de backup dividido en pedazos a la nube
                     if (restored && window.db && navigator.onLine) {
@@ -25507,7 +25773,7 @@ RESULTADOS:
             try {
                 const text = await downloadCloudBackupText(backupId);
                 const backupData = JSON.parse(text);
-                applyBackupData(backupData, 'nube');
+                await applyBackupData(backupData, 'nube');
             } catch (err) {
                 console.error('Error restaurando backup de la nube:', err);
                 showNotification('❌ Error al restaurar backup de la nube: ' + err.message, 'error');
@@ -25536,7 +25802,7 @@ RESULTADOS:
 
         // Eliminar un backup de archivo de la nube
         async function deleteCloudBackup(backupId) {
-            if (!confirm('¿Eliminar este backup de la nube?')) return;
+            if (!(await showConfirmModal('¿Eliminar este backup de la nube?'))) return;
             if (!window.db) return;
             const { doc, deleteDoc, collection, getDocs } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
             const chunksSnap = await getDocs(collection(window.db, 'kioscos', 'backupFiles', backupId, 'chunks'));
@@ -26440,8 +26706,8 @@ RESULTADOS:
             showNotification(rule.active ? 'Regla activada' : 'Regla desactivada', 'success');
         }
 
-        function deleteTicketRule(id) {
-            if (!confirm('¿Eliminar esta regla?')) return;
+        async function deleteTicketRule(id) {
+            if (!(await showConfirmModal('¿Eliminar esta regla?'))) return;
             appState.ticketRules = appState.ticketRules.filter(r => r.id !== id);
             saveToLocalStorage();
             renderTicketRules();
@@ -26956,8 +27222,8 @@ RESULTADOS:
             }
         }
 
-        function deletePromotion(id) {
-            if (!confirm('¿Eliminar esta promoción?')) return;
+        async function deletePromotion(id) {
+            if (!(await showConfirmModal('¿Eliminar esta promoción?'))) return;
             appState.promotions = appState.promotions.filter(p => p.id !== id);
             // Registrar ID eliminado para evitar que vuelva por sync
             if (!appState.deletedPromotionIds) appState.deletedPromotionIds = [];
@@ -27128,10 +27394,10 @@ RESULTADOS:
             showNotification('Ticket marcado como usado', 'success');
         }
 
-        function deleteTicket(id) {
+        async function deleteTicket(id) {
             const ticket = appState.discountTickets.find(t => t.id === id);
             if (!ticket) return;
-            if (!confirm(`¿Eliminar del historial el ticket #${ticket.ticketNumber || id.slice(0, 8).toUpperCase()}?\nEsta acción no se puede deshacer.`)) return;
+            if (!(await showConfirmModal(`¿Eliminar del historial el ticket #${ticket.ticketNumber || id.slice(0, 8).toUpperCase()}?\nEsta acción no se puede deshacer.`))) return;
             appState.discountTickets = appState.discountTickets.filter(t => t.id !== id);
             saveToLocalStorage();
             renderDiscountTickets();
@@ -28012,7 +28278,7 @@ RESULTADOS:
         }
         
         // Restaurar desde backup automático (emergencia)
-        function restoreFromAutoBackup() {
+        async function restoreFromAutoBackup() {
             try {
                 const saved = localStorage.getItem('kioscopro-auto-backup');
                 if (!saved) {
@@ -28020,7 +28286,7 @@ RESULTADOS:
                     return false;
                 }
                 const backup = JSON.parse(saved);
-                if (!confirm('¿Restaurar datos desde el backup automático del ' + (backup._backupTime ? new Date(backup._backupTime).toLocaleString() : 'desconocido') + '? Esto reemplazará tus datos actuales.')) {
+                if (!(await showConfirmModal('¿Restaurar datos desde el backup automático del ' + (backup._backupTime ? new Date(backup._backupTime).toLocaleString() : 'desconocido') + '? Esto reemplazará tus datos actuales.'))) {
                     return false;
                 }
                 // No restaurar campos temporales
@@ -28676,9 +28942,9 @@ RESULTADOS:
         }
 
         // Botón "Actualizar ahora" del cartel
-        function kioscoApplyPendingReload() {
+        async function kioscoApplyPendingReload() {
             if (Array.isArray(appState.cart) && appState.cart.length > 0) {
-                if (!confirm('Tenés una venta sin terminar en el carrito. Si actualizás ahora se va a vaciar. ¿Actualizar igual?')) return;
+                if (!(await showConfirmModal('Tenés una venta sin terminar en el carrito. Si actualizás ahora se va a vaciar. ¿Actualizar igual?'))) return;
             }
             location.reload();
         }
@@ -29612,8 +29878,22 @@ RESULTADOS:
          el precio de cada una (ver computeCandyMixDistribution). -->
     <div id="candy-mix-modal" class="modal">
         <div class="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <h3 class="text-xl font-bold mb-1 text-pink-600"><i class="fas fa-candy-cane"></i> Surtido de Caramelos por Monto</h3>
+            <div class="flex justify-between items-start gap-2 mb-1">
+                <h3 class="text-xl font-bold text-pink-600"><i class="fas fa-candy-cane"></i> Surtido de Caramelos por Monto</h3>
+                <button onclick="toggleCandyMixConfigPanel()" class="text-gray-400 hover:text-pink-600 text-lg" title="Marcar qué productos son caramelos">
+                    <i class="fas fa-cog"></i>
+                </button>
+            </div>
             <p class="text-sm text-gray-500 mb-4">Poné cuánta plata quiere gastar el cliente y elegí las variedades -- reparte entre todas y te dice cuántos caramelos de cada una.</p>
+
+            <div id="candy-mix-config-panel" class="hidden bg-gray-50 rounded-xl p-3 border mb-4">
+                <p class="text-xs font-bold text-gray-600 uppercase mb-2">Caramelos marcados</p>
+                <div id="candy-mix-config-list" class="space-y-1 max-h-40 overflow-y-auto mb-3"></div>
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Marcar otro producto como caramelo</label>
+                <input type="text" id="candy-mix-config-search" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Buscar por nombre..." oninput="filterCandyMixConfigSearch()">
+                <div id="candy-mix-config-search-results" class="space-y-1 mt-2 max-h-40 overflow-y-auto"></div>
+                <p class="text-[11px] text-gray-400 mt-2">"Editar" abre el producto completo (igual que desde Inventario) -- para los que vende por peso, ahí se pone el peso de 10 caramelos.</p>
+            </div>
 
             <label class="block text-sm font-medium text-gray-700 mb-1">Monto total</label>
             <input type="number" id="candy-mix-target" class="w-full border-2 border-pink-200 rounded-xl px-4 py-3 text-xl font-bold mb-4" placeholder="$0" min="0" step="1" oninput="renderCandyMixList()">
@@ -30127,6 +30407,18 @@ RESULTADOS:
             <div class="flex gap-2">
                 <button id="app-confirm-cancel-btn" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
                 <button id="app-confirm-ok-btn" class="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-red-700">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reemplazo de prompt() nativo (ver showPromptModal) -->
+    <div id="app-prompt-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('app-prompt-ok-btn').click();}else if(event.key==='Escape'){document.getElementById('app-prompt-cancel-btn').click();}">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4">
+            <p id="app-prompt-message" class="text-gray-800 font-medium mb-3 whitespace-pre-line"></p>
+            <input type="text" id="app-prompt-input" class="w-full border-2 border-gray-300 rounded-xl px-4 py-3 mb-6 text-lg">
+            <div class="flex gap-2">
+                <button id="app-prompt-cancel-btn" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                <button id="app-prompt-ok-btn" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700">Aceptar</button>
             </div>
         </div>
     </div>

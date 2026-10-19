@@ -6288,9 +6288,14 @@
         // variedades, hasta que no entre ni uno más -- así el total gastado
         // siempre llega lo más cerca posible del monto pedido, nunca se "pierde"
         // plata del reparto por culpa del redondeo.
-        let candyMixProducts = [];
+        let candyMixProducts = []; // orden = prioridad: el primero elegido es el que más unidades recibe
+        let candyMixManualQty = new Map(); // productId -> cantidad fijada a mano con los +/- (pisa el reparto automático para ESA variedad)
 
-        function computeCandyMixDistribution(targetTotal, products) {
+        // Reparto automático PURO (sin overrides manuales) -- se usa como base,
+        // tanto para todas las variedades cuando no se tocó ningún +/- a mano,
+        // como para repartir lo que queda de presupuesto entre las variedades que
+        // NO se ajustaron a mano (ver computeCandyMixDistribution).
+        function computeEvenCandyShare(targetTotal, products) {
             const n = products.length;
             if (n === 0 || !targetTotal || targetTotal <= 0) {
                 return products.map(p => ({ product: p, qty: 0, subtotal: 0 }));
@@ -6322,13 +6327,40 @@
             return results;
         }
 
+        // El reparto QUE SE MUESTRA: respeta cualquier cantidad fijada a mano (con
+        // los +/-) tal cual quedó, y reparte el resto del monto (lo que sobra
+        // después de descontar lo ya fijado a mano) de forma pareja entre las
+        // variedades que todavía no se tocaron a mano -- mismo criterio de antes
+        // (el primero elegido de ESE subgrupo se lleva el redondeo para arriba).
+        function computeCandyMixDistribution(targetTotal, products) {
+            const results = products.map(p => ({ product: p, qty: 0, subtotal: 0 }));
+            let manualSpent = 0;
+            const autoIdx = [];
+            products.forEach((p, i) => {
+                if (candyMixManualQty.has(p.id)) {
+                    const qty = candyMixManualQty.get(p.id);
+                    const price = p.salePrice || 0;
+                    results[i].qty = qty;
+                    results[i].subtotal = qty * price;
+                    manualSpent += results[i].subtotal;
+                } else {
+                    autoIdx.push(i);
+                }
+            });
+            if (autoIdx.length > 0) {
+                const remainingTarget = Math.max(0, (targetTotal || 0) - manualSpent);
+                const autoProducts = autoIdx.map(i => products[i]);
+                const autoDist = computeEvenCandyShare(remainingTarget, autoProducts);
+                autoIdx.forEach((i, k) => { results[i].qty = autoDist[k].qty; results[i].subtotal = autoDist[k].subtotal; });
+            }
+            return results;
+        }
+
         function openCandyMixModal() {
             candyMixProducts = [];
+            candyMixManualQty.clear();
             const targetInput = document.getElementById('candy-mix-target');
-            const searchInput = document.getElementById('candy-mix-search');
             if (targetInput) targetInput.value = '';
-            if (searchInput) searchInput.value = '';
-            document.getElementById('candy-mix-search-results').classList.add('hidden');
             document.getElementById('candy-mix-config-panel')?.classList.add('hidden');
             renderCandyMixList();
             document.getElementById('candy-mix-modal').classList.add('active');
@@ -6406,6 +6438,13 @@
             if (checked && product.saleByWeight && !(product.weightPerUnit > 0)) {
                 showNotification('⚠️ "' + product.name + '" marcado como caramelo, pero todavía no tiene el peso configurado -- tocá "Editar" y cargá el peso de 10 caramelos', 'warning', 6000);
             }
+            if (!checked) {
+                // Si se desmarca estando elegida en la lista de abajo, sacarla
+                // también de ahí -- ya no es un caramelo, no tiene sentido que
+                // siga contando en el reparto.
+                candyMixProducts = candyMixProducts.filter(p => p.id !== productId);
+                candyMixManualQty.delete(productId);
+            }
             // Refrescar la lista y limpiar la búsqueda (si se marcó desde ahí, ya
             // dejó de ser candidato -- no tiene sentido que siga apareciendo).
             const searchInput = document.getElementById('candy-mix-config-search');
@@ -6413,6 +6452,7 @@
             const searchResults = document.getElementById('candy-mix-config-search-results');
             if (searchResults) searchResults.innerHTML = '';
             renderCandyMixConfigList();
+            renderCandyMixList();
         }
         window.toggleCandyFlag = toggleCandyFlag;
 
@@ -6425,69 +6465,105 @@
         }
         window.editProductFromCandyMix = editProductFromCandyMix;
 
-        function filterCandyMixSearch() {
-            const search = document.getElementById('candy-mix-search')?.value.trim() || '';
-            const container = document.getElementById('candy-mix-search-results');
-            if (!container) return;
-            if (!search) { container.classList.add('hidden'); container.innerHTML = ''; return; }
-            const chosenIds = new Set(candyMixProducts.map(p => p.id));
-            // Solo entran productos marcados como caramelo (product.isCandy) -- antes
-            // entraba CUALQUIER producto normal que matcheara el texto (ej. "papas
-            // fritas" aparecía buscando "frutales"), porque el filtro solo excluía
-            // productos por peso sin marcar. El engranaje (⚙️) de este modal es donde
-            // se marca qué productos son caramelo, sean por peso o no.
-            const candidates = getActiveInventory().filter(p => p.isCandy && !chosenIds.has(p.id));
-            const results = fuzzySearchProducts(search, candidates, 8);
-            if (results.length === 0) {
-                container.innerHTML = '<p class="p-2 text-xs text-gray-400">No se encontraron productos</p>';
-                container.classList.remove('hidden');
-                return;
-            }
-            container.innerHTML = results.map(p => `
-                <div class="p-2 hover:bg-pink-50 cursor-pointer text-sm border-b last:border-b-0 flex justify-between items-center" onclick="selectCandyMixProduct('${p.id}')">
-                    <span>${escapeHtml(p.name)}</span>
-                    <span class="font-bold text-pink-600">$${formatMoney(p.salePrice || 0)}</span>
-                </div>
-            `).join('');
-            container.classList.remove('hidden');
-        }
-        window.filterCandyMixSearch = filterCandyMixSearch;
-
-        function selectCandyMixProduct(productId) {
+        // Tocar el check de una variedad la agrega/saca de la lista de elegidas
+        // (sin tener que buscarla por nombre cada vez) -- el ORDEN en que se van
+        // tocando es la prioridad: la primera elegida es la que más unidades recibe.
+        function toggleCandyMixSelection(productId, checked) {
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
-            if (!candyMixProducts.find(p => p.id === productId)) candyMixProducts.push(product);
-            document.getElementById('candy-mix-search').value = '';
-            document.getElementById('candy-mix-search-results').classList.add('hidden');
+            if (checked) {
+                if (!candyMixProducts.find(p => p.id === productId)) candyMixProducts.push(product);
+            } else {
+                candyMixProducts = candyMixProducts.filter(p => p.id !== productId);
+                candyMixManualQty.delete(productId);
+            }
             renderCandyMixList();
         }
-        window.selectCandyMixProduct = selectCandyMixProduct;
+        window.toggleCandyMixSelection = toggleCandyMixSelection;
 
-        function removeCandyMixProduct(productId) {
-            candyMixProducts = candyMixProducts.filter(p => p.id !== productId);
+        // +1/-1 a mano sobre una variedad YA elegida: para que el total gastado no
+        // se mueva solo, se le saca (o se le da) esa misma unidad a OTRA variedad.
+        // Al subir una, se le saca a la de MENOR prioridad (la última de la lista)
+        // que todavía tenga unidades -- así nunca rompe la regla de "el primero
+        // elegido se lleva más". Al bajar una, esa unidad liberada se le da a la
+        // de MAYOR prioridad (la primera de la lista). Las dos variedades tocadas
+        // quedan "fijadas" a esa cantidad exacta (no se vuelven a recalcular solas
+        // si después cambiás el monto total -- para eso, sacá el check y volvé a
+        // tildar la variedad).
+        function adjustCandyMixManualQty(productId, delta) {
+            if (candyMixProducts.length < 2) {
+                showNotification('Agregá al menos otra variedad más para poder mover unidades entre ellas', 'warning');
+                return;
+            }
+            const target = parseFloat(document.getElementById('candy-mix-target')?.value) || 0;
+            const distribution = computeCandyMixDistribution(target, candyMixProducts);
+            const idx = candyMixProducts.findIndex(p => p.id === productId);
+            if (idx === -1) return;
+            const currentQty = distribution[idx].qty;
+
+            if (delta > 0) {
+                // Buscar de atrás para adelante (menor prioridad primero) una
+                // variedad DISTINTA con unidades para sacarle 1.
+                let donorIdx = -1;
+                for (let i = candyMixProducts.length - 1; i >= 0; i--) {
+                    if (i !== idx && distribution[i].qty > 0) { donorIdx = i; break; }
+                }
+                if (donorIdx === -1) {
+                    showNotification('No hay de dónde sacar una unidad más -- las demás variedades ya están en 0', 'warning');
+                    return;
+                }
+                candyMixManualQty.set(candyMixProducts[donorIdx].id, distribution[donorIdx].qty - 1);
+                candyMixManualQty.set(productId, currentQty + 1);
+            } else {
+                if (currentQty <= 0) return;
+                // Darle la unidad liberada a la de MAYOR prioridad (la primera
+                // de la lista) que no sea esta misma.
+                let recipientIdx = (idx === 0) ? 1 : 0;
+                candyMixManualQty.set(candyMixProducts[recipientIdx].id, distribution[recipientIdx].qty + 1);
+                candyMixManualQty.set(productId, currentQty - 1);
+            }
             renderCandyMixList();
         }
-        window.removeCandyMixProduct = removeCandyMixProduct;
+        window.adjustCandyMixManualQty = adjustCandyMixManualQty;
 
         function renderCandyMixList() {
             const target = parseFloat(document.getElementById('candy-mix-target')?.value) || 0;
             const container = document.getElementById('candy-mix-list');
             const spentEl = document.getElementById('candy-mix-spent');
             if (!container) return;
-            if (candyMixProducts.length === 0) {
-                container.innerHTML = '<p class="text-xs text-gray-400 text-center py-2">Buscá y agregá las variedades que quiera el cliente</p>';
+
+            const allCandies = getActiveInventory()
+                .filter(p => p.isCandy)
+                .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+            if (allCandies.length === 0) {
+                container.innerHTML = '<p class="text-xs text-gray-400 text-center py-2">Todavía no marcaste ninguna variedad -- tocá el ⚙️ de arriba para marcar cuáles son caramelos.</p>';
                 if (spentEl) spentEl.textContent = '$0 / $' + formatMoney(target);
                 return;
             }
+
             const distribution = computeCandyMixDistribution(target, candyMixProducts);
-            container.innerHTML = distribution.map(({ product, qty, subtotal }) => `
-                <div class="flex justify-between items-center gap-2 bg-gray-50 rounded-lg p-2 border text-sm">
-                    <span class="flex-1 font-medium text-gray-800">${escapeHtml(product.name)} <span class="text-xs text-gray-400">($${formatMoney(product.salePrice || 0)} c/u)</span></span>
-                    <span class="font-bold text-pink-700 w-20 text-center">${qty} u.</span>
-                    <span class="text-xs text-gray-500 w-16 text-right">$${formatMoney(subtotal)}</span>
-                    <button type="button" onclick="removeCandyMixProduct('${product.id}')" class="text-red-500 hover:text-red-700 text-xs font-bold">✕</button>
-                </div>
-            `).join('');
+            const distById = new Map(distribution.map(d => [d.product.id, d]));
+            const selectedIds = new Set(candyMixProducts.map(p => p.id));
+
+            container.innerHTML = allCandies.map(p => {
+                const isSelected = selectedIds.has(p.id);
+                const d = distById.get(p.id);
+                return `
+                <div class="flex items-center gap-2 bg-gray-50 rounded-lg p-2 border text-sm ${isSelected ? 'border-pink-300' : ''}">
+                    <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleCandyMixSelection('${p.id}', this.checked)">
+                    <span class="flex-1 font-medium text-gray-800 truncate">${escapeHtml(p.name)} <span class="text-xs text-gray-400">($${formatMoney(p.salePrice || 0)} c/u)</span></span>
+                    ${isSelected ? `
+                        <div class="flex items-center gap-1">
+                            <button type="button" onclick="adjustCandyMixManualQty('${p.id}', -1)" class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs font-bold">−</button>
+                            <span class="font-bold text-pink-700 w-8 text-center">${d.qty}</span>
+                            <button type="button" onclick="adjustCandyMixManualQty('${p.id}', 1)" class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs font-bold">+</button>
+                        </div>
+                        <span class="text-xs text-gray-500 w-16 text-right">$${formatMoney(d.subtotal)}</span>
+                    ` : ''}
+                </div>`;
+            }).join('');
+
             const totalSpent = distribution.reduce((s, r) => s + r.subtotal, 0);
             if (spentEl) spentEl.textContent = '$' + formatMoney(totalSpent) + ' / $' + formatMoney(target);
         }
@@ -6762,7 +6838,17 @@
                 
                 if (!cartContainer || !badge) return;
                 
-                const totalItems = appState.cart.reduce((sum, item) => sum + (item.quantity || 0), 0);
+                // Para productos por peso, item.quantity es una fracción de "unidad"
+                // (gramos/gramosPorUnidad, ej. 0.0216544...) -- sumarla tal cual a las
+                // cantidades enteras de los demás productos daba un número con un
+                // montón de decimales sin sentido ("0.021653543307086614 items"). Un
+                // producto por peso cuenta como 1 ítem (ya se ve cuánto pesa en su
+                // propia fila), no como una fracción de unidad.
+                const totalItems = appState.cart.reduce((sum, item) => {
+                    const product = appState.inventory.find(p => p.id === item.productId);
+                    const isWeightItem = product && product.saleByWeight && product.weightPerUnit > 0;
+                    return sum + (isWeightItem ? 1 : (item.quantity || 0));
+                }, 0);
                 badge.textContent = totalItems;
                 badge.classList.toggle('hidden', totalItems === 0);
                 if (cartCount) cartCount.textContent = `(${totalItems} items)`;
@@ -6808,17 +6894,25 @@
                         }
                         
                         if (isWeight) {
-                            // Caramelo a granel: mostrar en unidades (caramelos), no en
-                            // gramos -- el cliente/vendedor piensa "7 caramelos", no
-                            // "32.9g", aunque por dentro el stock siga en gramos exactos.
+                            // Caramelo agregado desde el Surtido por Monto: ahí la cantidad
+                            // siempre es un número entero de caramelos (se calculó a propósito
+                            // para repartir el monto), así que tiene sentido mostrar "7
+                            // caramelos". Pero un caramelo cargado suelto por este mismo modal
+                            // de peso (gramos o precio en $) da una cantidad fraccionaria --
+                            // redondearla a entero mostraba cosas como "0 caramelos = $1234"
+                            // (confuso y falso: sí se cobró y entregó algo). En ese caso se
+                            // muestra en gramos/precio, igual que cualquier otro producto por
+                            // peso, sin inventar un conteo de piezas que no es confiable
+                            // (sobre todo si el peso de 1 caramelo no está bien configurado).
                             const isCandy = product.isCandy;
+                            const isWholeCandyCount = isCandy && item.quantity >= 1 && Math.abs(item.quantity - Math.round(item.quantity)) < 0.01;
                             return `
                             <div class="sale-item flex justify-between items-center p-3 rounded-lg border border-blue-200 bg-blue-50">
                                 <div class="flex-1">
                                     <p class="font-bold text-gray-800">${escapeHtml(item.name || 'Producto')}</p>
-                                    ${isCandy
+                                    ${isWholeCandyCount
                                         ? `<p class="text-sm text-gray-500">$${formatMoney(price)} c/u</p>
-                                           <p class="text-sm text-blue-700 font-bold">${fmtNumber(item.quantity, 0)} caramelos = $${formatMoney(subtotal)}</p>`
+                                           <p class="text-sm text-blue-700 font-bold">${Math.round(item.quantity)} caramelos = $${formatMoney(subtotal)}</p>`
                                         : `<p class="text-sm text-gray-500">$${formatMoney(price)} por ${product.weightPerUnit}g</p>
                                            <p class="text-sm text-blue-700 font-bold">${formatMoney(grams)}g = $${formatMoney(subtotal)}</p>`}
                                 </div>
@@ -7445,6 +7539,15 @@
             const markupPct = appState.activeSpecialPriceCode.markupPct;
             appState.cart.forEach(item => {
                 if (!item.productId || item.isManual) return;
+                // Los productos por peso (weightGrams != null) ya traen un precio
+                // armado a propósito para ESA venta puntual (ej: "quiero cobrar
+                // $1100", calculado en el modal de peso) -- item.price ahí es el
+                // precio POR BOLSA necesario para que item.price × item.quantity dé
+                // exactamente ese monto. Pisarlo acá con costo+margen rompía esa
+                // cuenta sin que se notara en la línea (que seguía mostrando el
+                // monto viejo hasta el próximo renderCart()), mientras el total real
+                // cobrado ya había cambiado.
+                if (item.weightGrams != null) return;
                 item.price = computeSpecialPrice(item.cost || 0, markupPct);
                 item.isSpecialPrice = true;
             });
@@ -7476,6 +7579,12 @@
             // el inventario, no quedó guardado aparte en el ítem del carrito).
             appState.cart.forEach(item => {
                 if (!item.productId || item.isManual) return;
+                // Mismo motivo que en applySpecialPriceToCart(): a un producto por
+                // peso nunca se le tocó el precio por el código especial, así que
+                // tampoco hay nada que "restaurar" acá -- hacerlo igual lo
+                // reemplazaría por el precio de venta normal del producto, perdiendo
+                // el monto puntual que se había cargado para esa línea.
+                if (item.weightGrams != null) return;
                 const product = appState.inventory.find(p => p.id === item.productId);
                 if (product) item.price = product.salePrice || 0;
                 item.isSpecialPrice = false;
@@ -8701,6 +8810,11 @@
             } else if (sale.paymentMethod === 'fiado') {
                 lines.push({ hr: true });
                 lines.push({ text: 'FIADO - ' + (sale.customerName || 'Cliente'), align: 'center', bold: true });
+            } else if (sale.paymentPending) {
+                // Solo pasa con el ticket de un pedido todavía no cobrado -- una venta
+                // real siempre llega acá ya resuelta (efectivo/tarjeta/fiado).
+                lines.push({ hr: true });
+                lines.push({ text: 'PENDIENTE DE PAGO', align: 'center', bold: true });
             } else {
                 lines.push({ hr: true });
                 lines.push({ text: 'PAGO CON TARJETA/DÉBITO', align: 'center', bold: true });
@@ -8751,6 +8865,16 @@
                 <div style="display: flex; justify-content: space-between; font-weight: bold; color: green;">
                     <span>CAMBIO</span>
                     <span>$${formatMoney((sale.change || 0))}</span>
+                </div>
+            ` : sale.paymentMethod === 'fiado' ? `
+                <hr>
+                <div style="text-align: center; font-weight: bold;">
+                    <span>FIADO - ${escapeHtml(sale.customerName || 'Cliente')}</span>
+                </div>
+            ` : sale.paymentPending ? `
+                <hr>
+                <div style="text-align: center; font-weight: bold;">
+                    <span>PENDIENTE DE PAGO</span>
                 </div>
             ` : `
                 <hr>
@@ -9160,7 +9284,10 @@
                 `;
                 }).join('');
             }
-            const totalItems = pendingPedidoItems.reduce((sum, i) => sum + (i.quantity || 0), 0);
+            // Mismo criterio que el carrito de Vender: un producto por peso cuenta
+            // como 1 ítem, no como la fracción de unidad que representa su cantidad
+            // real (si no, daba un número con un montón de decimales sin sentido).
+            const totalItems = pendingPedidoItems.reduce((sum, i) => sum + (i.weightGrams != null ? 1 : (i.quantity || 0)), 0);
             if (countEl) countEl.textContent = `(${totalItems} items)`;
 
             const subtotal = pendingPedidoItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
@@ -9769,9 +9896,9 @@
                     <div class="flex flex-wrap gap-2 mt-2">
                         <button onclick="marcarPedidoListo('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-green-50">${pedido.status === 'listo' ? '↩️ Volver a preparación' : '✅ Marcar como Listo'}</button>
                         <button onclick="${pedido.paymentStatus === 'pagado' ? `togglePedidoPagado('${pedido.id}')` : `openPedidoCobroModal('${pedido.id}')`}" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-green-50">${pedido.paymentStatus === 'pagado' ? '↩️ Marcar sin pagar' : '💰 Cobrar'}</button>
-                        ${pedido.items && pedido.items.length > 0 ? `<button onclick="cargarPedidoEnVenta('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-purple-50">${pedidoPagoResuelto(pedido) ? '🧾 Finalizar y Facturar' : '🛒 Pasar a Vender'}</button>` : ''}
+                        ${pedido.items && pedido.items.length > 0 ? `<button onclick="cargarPedidoEnVenta('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-purple-50">${pedidoPagoResuelto(pedido) ? '🧾 Finalizar y Facturar' : '🛒 Pasar al Carrito'}</button>` : ''}
                         <button onclick="printComanda(findPedido('${pedido.id}'))" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-blue-50">🖨️ Comanda</button>
-                        <button onclick="printPedidoVentaTicket(findPedido('${pedido.id}'))" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-blue-50">🖨️ Venta</button>
+                        <button onclick="printPedidoVentaTicket(findPedido('${pedido.id}'))" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-blue-50">🖨️ Ticket</button>
                         <button onclick="openPedidoModal('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-yellow-50">✏️ Editar</button>
                         <button onclick="cancelarPedido('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-red-50 text-red-600">🚫 Cancelar</button>
                         <button onclick="eliminarPedido('${pedido.id}')" class="text-xs bg-white border px-2 py-1 rounded-lg font-bold hover:bg-red-50 text-red-600" title="Eliminar definitivamente">🗑️</button>
@@ -9868,79 +9995,30 @@
             w.print();
         }
 
-        // Ticket "de venta" para un pedido -- a diferencia de la comanda (que es para
-        // cocina/mostrador, con prioridad/horario), este es para darle al cliente: dice
-        // VENTA, sin datos de preparación, y muestra si está pagado/fiado/pendiente.
-        function buildPedidoVentaLines(pedido) {
-            const lines = [];
-            if (pedido.customerName) lines.push({ text: pedido.customerName, align: 'center', bold: true });
-            const now = new Date();
-            lines.push({ text: now.toLocaleDateString('es-AR') + ' ' + now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }), align: 'center' });
-            lines.push({ hr: true });
-
-            (pedido.items || []).forEach(item => {
-                const cantidadTexto = item.weightGrams != null ? Math.round(item.weightGrams) + 'g' : item.quantity + 'x';
-                lines.push({ left: cantidadTexto + ' ' + item.name, right: '$' + formatMoney(item.price * item.quantity) });
-            });
-            if (pedido.items && pedido.items.length > 0) {
-                lines.push({ hr: true });
-                lines.push({ left: 'TOTAL', right: '$' + formatMoney(pedido.total || 0), bold: true });
-            }
-            lines.push({ hr: true });
-            const paymentLabel = pedido.paymentStatus === 'pagado'
-                ? 'PAGADO — ' + paymentMethodLabel(pedido).toUpperCase()
-                : (pedido.paymentMethod === 'fiado' ? 'FIADO (PAGA DESPUÉS)' : 'PENDIENTE DE PAGO');
-            lines.push({ text: paymentLabel, align: 'center', bold: true });
-            return lines;
-        }
-
+        // Ticket "de venta" para un pedido -- se arma un objeto "sale" sintético a
+        // partir del pedido y se imprime con printReceipt(), la MISMA función que usa
+        // una venta real, para que el ticket impreso sea idéntico (mismo encabezado
+        // KIOSCO 47, mismo formato de ítems/total/pago) y no haya dos implementaciones
+        // que se puedan desincronizar con el tiempo.
         function printPedidoVentaTicket(pedido) {
             if (!pedido) return;
-
-            if (window.kioscoDesktop && window.kioscoDesktop.isElectron) {
-                window.kioscoDesktop.print({
-                    header: 'VENTA',
-                    lines: buildPedidoVentaLines(pedido),
-                    large: true
-                }).then(res => {
-                    if (!res || !res.ok) {
-                        showNotification('❌ No se pudo imprimir el ticket: ' + ((res && res.error) || 'error desconocido'), 'error', 8000);
-                    }
-                }).catch(err => {
-                    showNotification('❌ Error al imprimir el ticket: ' + (err && err.message ? err.message : err), 'error', 8000);
-                });
-                return;
-            }
-
-            const w = window.open('', '_blank');
             const now = new Date();
-            const emitidoHtml = now.toLocaleDateString('es-AR') + ' ' + now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
-            const itemsHtml = (pedido.items || []).map(item => {
-                const cantidadTexto = item.weightGrams != null ? Math.round(item.weightGrams) + 'g' : item.quantity + 'x';
-                return `<div style="display:flex; justify-content:space-between;"><span>${cantidadTexto} ${escapeHtml(item.name)}</span><span>$${formatMoney(item.price * item.quantity)}</span></div>`;
-            }).join('');
-            const totalHtml = (pedido.items && pedido.items.length > 0)
-                ? `<hr><div style="display:flex; justify-content:space-between; font-weight:bold;"><span>TOTAL</span><span>$${formatMoney(pedido.total || 0)}</span></div>`
-                : '';
-            const paymentLabel = pedido.paymentStatus === 'pagado'
-                ? 'PAGADO — ' + paymentMethodLabel(pedido).toUpperCase()
-                : (pedido.paymentMethod === 'fiado' ? 'FIADO (PAGA DESPUÉS)' : 'PENDIENTE DE PAGO');
-            w.document.write(`
-                <html>
-                <head><title>Venta</title></head>
-                <body style="font-family: monospace; font-size: 20px; padding: 20px; max-width: 300px;">
-                    <h2 style="text-align: center; font-size: 26px;">VENTA</h2>
-                    ${pedido.customerName ? `<p style="text-align: center; font-weight: bold;">${escapeHtml(pedido.customerName)}</p>` : ''}
-                    <p style="text-align: center;">${emitidoHtml}</p>
-                    <hr>
-                    ${itemsHtml}
-                    ${totalHtml}
-                    <hr>
-                    <p style="text-align: center; font-weight: bold;">${paymentLabel}</p>
-                </body>
-                </html>
-            `);
-            w.print();
+            const sale = {
+                id: pedido.id,
+                date: now.toLocaleDateString('es-AR'),
+                time: now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+                items: pedido.items || [],
+                subtotal: pedido.total || 0,
+                discount: 0,
+                total: pedido.total || 0,
+                customerName: pedido.customerName,
+                paymentMethod: pedido.paymentMethod,
+                paymentPending: pedido.paymentStatus !== 'pagado' && pedido.paymentMethod !== 'fiado',
+                received: pedido.paymentReceived || 0,
+                change: pedido.paymentChange || 0,
+                facturas: []
+            };
+            printReceipt(sale);
         }
 
         // ---- Recordatorio sonoro: beep generado con Web Audio API (sin archivos
@@ -13594,7 +13672,10 @@
                         newProductName: null,
                         barcode: '',
                         category: '',
-                        supplier: '',
+                        // Se precarga con el proveedor elegido arriba para TODA la factura
+                        // -- si ya dijiste que es de Arcor, no hace falta volver a elegirlo
+                        // a mano en cada producto nuevo que salga de esa misma factura.
+                        supplier: scanInvoiceSupplier || '',
                         selected: false,
                         // Eco de lo que la IA leyó, SIN tocar nunca después -- sirve para
                         // comparar contra lo que el usuario termine confirmando (aprender
@@ -13819,8 +13900,15 @@
         // la línea no tenía ningún producto matcheado todavía).
         function recomputeScanItemPackaging(item, match) {
             const qty = item.aiRawQuantity != null ? item.aiRawQuantity : (item.qty || 1);
-            let packages = 1;
-            let unitsPerPackage = qty;
+            // Por defecto "qty bultos de 1 unidad" (no "1 bulto de qty unidades") --
+            // para un producto NUEVO no hay forma de saber cuántas unidades trae un
+            // bulto real (no existe todavía un "Viene en bulto de" cargado), así que
+            // lo más seguro es mostrar directo la cantidad que imprimió la factura en
+            // "Bultos" (editable tal cual) y dejar "Unid/bulto" en 1 -- si total 6
+            // unidades sueltas, da 6 de una sin que el usuario tenga que pelear con
+            // bultos×unid-por-bulto para algo que no tiene bulto real.
+            let packages = qty;
+            let unitsPerPackage = 1;
             let unitPrice = item.aiRawUnitPrice != null ? item.aiRawUnitPrice : 0;
 
             let bultos = 0, displaysQty = 0, unidadesSueltas = qty;
@@ -29898,13 +29986,8 @@ RESULTADOS:
             <label class="block text-sm font-medium text-gray-700 mb-1">Monto total</label>
             <input type="number" id="candy-mix-target" class="w-full border-2 border-pink-200 rounded-xl px-4 py-3 text-xl font-bold mb-4" placeholder="$0" min="0" step="1" oninput="renderCandyMixList()">
 
-            <label class="block text-sm font-medium text-gray-700 mb-1">Agregar variedad</label>
-            <div class="relative mb-2">
-                <input type="text" id="candy-mix-search" class="w-full border-2 border-pink-200 rounded-xl px-4 py-2 text-sm" placeholder="Buscar caramelo por nombre..." oninput="filterCandyMixSearch()" autocomplete="off">
-                <div id="candy-mix-search-results" class="absolute z-20 w-full bg-white border rounded-xl shadow-lg max-h-48 overflow-y-auto hidden"></div>
-            </div>
-
-            <div id="candy-mix-list" class="space-y-2 my-3"></div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Elegí las variedades (tocá para marcar)</label>
+            <div id="candy-mix-list" class="space-y-1.5 my-2 max-h-80 overflow-y-auto"></div>
 
             <div class="p-3 bg-pink-50 rounded-xl flex justify-between items-center mb-4">
                 <span class="text-sm text-gray-600">Gastado / Monto</span>

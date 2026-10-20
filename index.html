@@ -2341,6 +2341,88 @@
                 </div>
             </div>
 
+            <!-- Disponible para gastar o invertir hoy (liquidez) -->
+            <div id="available-to-spend-card" class="bg-white rounded-2xl p-6 shadow-lg border-2 border-gray-100">
+                <div class="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                        <p class="text-sm font-semibold uppercase text-gray-500">💡 Podés gastar o invertir hoy</p>
+                        <p class="text-4xl font-bold mt-1" id="ats-amount">$0</p>
+                        <p class="text-sm mt-1" id="ats-message"></p>
+                    </div>
+                    <div class="text-right text-xs text-gray-500" id="ats-tightest"></div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 text-sm">
+                    <div class="bg-gray-50 rounded-xl p-3">
+                        <p class="text-xs text-gray-500">Caja + Cuenta hoy</p>
+                        <p class="font-bold text-gray-800" id="ats-balance">$0</p>
+                    </div>
+                    <div class="bg-red-50 rounded-xl p-3">
+                        <p class="text-xs text-red-600">Gastos fijos próx. 30 días</p>
+                        <p class="font-bold text-red-700" id="ats-fixed">-$0</p>
+                    </div>
+                    <div class="bg-green-50 rounded-xl p-3">
+                        <p class="text-xs text-green-700">Ganancia estimada 30 días</p>
+                        <p class="font-bold text-green-700" id="ats-profit">+$0</p>
+                        <p class="text-[10px] text-green-600" id="ats-profit-daily"></p>
+                    </div>
+                    <div class="bg-yellow-50 rounded-xl p-3">
+                        <p class="text-xs text-yellow-700">Saldo mínimo a guardar</p>
+                        <p class="font-bold text-yellow-800" id="ats-minimum">-$0</p>
+                    </div>
+                </div>
+                <details class="mt-3">
+                    <summary class="text-xs text-gray-500 cursor-pointer select-none">Ver pagos que se tuvieron en cuenta y cómo se calcula</summary>
+                    <div class="mt-2 text-xs text-gray-600 space-y-2">
+                        <div id="ats-payments"></div>
+                        <p>Cálculo: se recorren los próximos 30 días sumando la ganancia estimada de cada día (solo la ganancia: el costo de lo que vendés queda para reponer) y restando cada gasto fijo el día que vence. El monto disponible es lo que sobra en el día más ajustado, por encima del saldo mínimo. No incluye la Reserva (caja fuerte), ni gastos que no estén cargados como fijos.</p>
+                        <p>El saldo mínimo y los gastos fijos se configuran en <strong>Proyección</strong>. Los pagos a proveedores se anotan acá abajo.</p>
+                    </div>
+                </details>
+            </div>
+
+            <!-- Pagos a proveedores (pedidos con fecha de pago) -->
+            <div class="bg-white rounded-2xl p-6 shadow-lg">
+                <h3 class="text-lg font-bold flex items-center gap-2 text-gray-800">
+                    <i class="fas fa-truck text-orange-500"></i> Pagos a proveedores
+                </h3>
+                <p class="text-xs text-gray-500 mb-3">Anotá los pedidos que hiciste con la fecha en que los tenés que pagar: se descuentan en "Podés gastar o invertir hoy". La plata sale de Caja/Cuenta recién cuando cargás la mercadería (como siempre); ahí lo marcás como pagado.</p>
+                <div class="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
+                    <div class="col-span-2">
+                        <label class="block text-xs text-gray-600 mb-1">Proveedor</label>
+                        <input type="text" id="sp-supplier" list="sp-supplier-list" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Ej: Distribuidora">
+                        <datalist id="sp-supplier-list"></datalist>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Monto</label>
+                        <input type="number" id="sp-amount" min="0" step="0.01" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Fecha de pago</label>
+                        <input type="date" id="sp-date" class="w-full border rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Sale de</label>
+                        <select id="sp-source" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
+                            <option value="cash">💵 Caja</option>
+                            <option value="bank">🏦 Cuenta</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button onclick="addScheduledPayment()" class="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg font-bold text-sm">
+                            <i class="fas fa-plus"></i> Anotar
+                        </button>
+                    </div>
+                    <div class="col-span-2 md:col-span-6">
+                        <input type="text" id="sp-note" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nota (opcional): qué pediste, seña, saldo…" onkeydown="if(event.key==='Enter'){event.preventDefault();addScheduledPayment();}">
+                    </div>
+                </div>
+                <div id="sp-list" class="mt-4 space-y-2"></div>
+                <details class="mt-3" id="sp-paid-wrap">
+                    <summary class="text-xs text-gray-500 cursor-pointer select-none">Pagados recientes</summary>
+                    <div id="sp-paid-list" class="mt-2 space-y-1"></div>
+                </details>
+            </div>
+
             <!-- Botón Arqueo de Caja -->
             <div class="bg-white rounded-2xl p-4 shadow-lg flex items-center justify-between">
                 <div class="flex items-center gap-3">
@@ -4478,6 +4560,7 @@
             invoiceSupplierCorrections: [],
             // Flujo de caja
             recurringExpenses: [],
+            scheduledPayments: [],
             cashFlowSettings: {
                 projectionDays: 30,
                 estimatedDailyIncome: null,
@@ -6017,9 +6100,12 @@
             
             document.getElementById('weight-sale-product-name').textContent = product.name;
             document.getElementById('weight-sale-price-per-gram').textContent = '$' + formatMoney(pricePerGram);
-            document.getElementById('weight-sale-stock-grams').textContent = formatMoney(stockGrams) + 'g (' + formatMoney(stockUnits) + ' unidades)';
+            const isCandyProduct = !!product.isCandy;
+            document.getElementById('weight-sale-stock-grams').textContent = formatMoney(stockGrams) + 'g (' + (isCandyProduct ? '≈ ' + Math.floor(stockUnits + 1e-9) + ' caramelos' : formatMoney(stockUnits) + ' unidades') + ')';
+            const unitsBtn = document.getElementById('weight-mode-units');
+            if (unitsBtn) unitsBtn.classList.toggle('hidden', !isCandyProduct);
             
-            setWeightMode('grams');
+            setWeightMode(isCandyProduct ? 'units' : 'grams');
             document.getElementById('weight-sale-input').value = '';
             document.getElementById('weight-sale-result').textContent = '$0';
             document.getElementById('weight-sale-detail').textContent = '';
@@ -6041,7 +6127,21 @@
             const input = document.getElementById('weight-sale-input');
             const resultLabel = document.getElementById('weight-sale-result-label');
             
-            if (mode === 'grams') {
+            const btnUnits = document.getElementById('weight-mode-units');
+            const onCls = 'flex-1 py-2 rounded-lg text-sm font-bold bg-white shadow text-blue-700 transition';
+            const offCls = 'flex-1 py-2 rounded-lg text-sm font-bold text-gray-500 hover:text-gray-700 transition';
+            if (btnUnits) {
+                const hidden = btnUnits.classList.contains('hidden');
+                btnUnits.className = (mode === 'units' ? onCls : offCls) + (hidden ? ' hidden' : '');
+            }
+            input.step = mode === 'units' ? '1' : '0.01';
+            if (mode === 'units') {
+                btnGrams.className = offCls;
+                btnPrice.className = offCls;
+                label.textContent = 'Cantidad de caramelos';
+                input.placeholder = '0';
+                resultLabel.textContent = 'Total a cobrar';
+            } else if (mode === 'grams') {
                 btnGrams.className = 'flex-1 py-2 rounded-lg text-sm font-bold bg-white shadow text-blue-700 transition';
                 btnPrice.className = 'flex-1 py-2 rounded-lg text-sm font-bold text-gray-500 hover:text-gray-700 transition';
                 label.textContent = 'Gramos a vender';
@@ -6072,7 +6172,14 @@
             let grams = 0;
             let price = 0;
             
-            if (currentWeightMode === 'grams') {
+            if (currentWeightMode === 'units') {
+                // Caramelos: cada uno es exactamente 1 unidad de stock (su peso estimado)
+                quantity = Math.floor(input);
+                grams = quantity * weightPerUnit;
+                price = quantity * salePrice;
+                document.getElementById('weight-sale-result').textContent = '$' + formatMoney(price);
+                document.getElementById('weight-sale-detail').textContent = quantity > 0 ? `${quantity} × $${formatMoney(salePrice)} · descuenta ≈ ${formatMoney(grams)}g del stock` : '';
+            } else if (currentWeightMode === 'grams') {
                 grams = input;
                 quantity = grams / weightPerUnit;
                 price = grams * pricePerGram;
@@ -6096,6 +6203,7 @@
         
         function addWeightToCart() {
             if (!currentWeightProduct) return;
+            const productName = currentWeightProduct.name; // closeWeightSaleModal() lo pone en null
 
             const input = parseFloat(document.getElementById('weight-sale-input').value) || 0;
             const weightPerUnit = currentWeightProduct.weightPerUnit || 1;
@@ -6104,7 +6212,11 @@
 
             let quantity, grams, price;
 
-            if (currentWeightMode === 'grams') {
+            if (currentWeightMode === 'units') {
+                quantity = Math.floor(input); // caramelos enteros: 1 caramelo = 1 unidad de stock
+                grams = quantity * weightPerUnit;
+                price = quantity * salePrice;
+            } else if (currentWeightMode === 'grams') {
                 grams = input;
                 quantity = grams / weightPerUnit;
                 price = grams * (salePrice / weightPerUnit);
@@ -6143,7 +6255,7 @@
                 }
                 closeWeightSaleModal();
                 renderPedidoItemsList();
-                showNotification(`${currentWeightProduct.name} ${formatMoney(grams)}g agregado al pedido`, 'success');
+                showNotification(`${productName} ${formatMoney(grams)}g agregado al pedido`, 'success');
                 return;
             }
 
@@ -6165,7 +6277,7 @@
             closeWeightSaleModal();
             renderCart();
             bumpMercadoPagoPollSpeed();
-            showNotification(`${currentWeightProduct.name} ${formatMoney(grams)}g agregado`, 'success');
+            showNotification(`${productName} ${formatMoney(grams)}g agregado`, 'success');
         }
 
         // ==================== AGREGADOS / TOPPINGS AL VENDER ====================
@@ -15127,7 +15239,7 @@
                 const totalCost = isWeight ? (unitCost * units) : unitCost;
                 const costPerGram = isWeight && product.weightPerUnit ? (unitCost / product.weightPerUnit) : 0;
                 return `
-                <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border batch-row" data-batch-index="${index}" data-orig-qty="${batch.stock}" ${isWeight ? `data-sale-by-weight="true" data-weight-per-unit="${product.weightPerUnit}"` : ''}>
+                <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border batch-row" data-batch-index="${index}" data-orig-qty="${batch.stock}" ${isWeight ? `data-sale-by-weight="true" data-weight-per-unit="${product.weightPerUnit}" data-orig-grams="${grams}" data-orig-cost="${totalCost.toFixed(2)}"` : ''}>
                     <div class="flex-1">
                         <label class="text-xs text-gray-500">${isWeight ? 'Cantidad (g)' : 'Cantidad'}</label>
                         <input type="number" class="edit-batch-qty w-full border rounded px-2 py-1 text-sm" value="${grams}" min="0" step="${isWeight ? '1' : '1'}">
@@ -15449,32 +15561,58 @@
                 const isWeight = (document.getElementById('edit-prod-sale-by-weight')?.checked || false) && weightPerUnit > 0;
                 
                 batchRows.forEach(row => {
-                    let qty = parseInt(row.querySelector('.edit-batch-qty').value) || 0;
+                    const qtyRaw = row.querySelector('.edit-batch-qty').value;
+                    // Por peso se aceptan gramos con decimales; por unidad, enteros como siempre
+                    let qty = isWeight ? (parseFloat(qtyRaw) || 0) : (parseInt(qtyRaw) || 0);
                     const expiry = row.querySelector('.edit-batch-expiry').value || '';
                     const costInput = row.querySelector('.edit-batch-cost');
-                    const batchCost = costInput ? (parseFloat(costInput.value.replace(',', '.')) || 0) : 0;
+                    const costRaw = costInput ? costInput.value : '';
+                    const batchCost = costInput ? (parseFloat(costRaw.replace(',', '.')) || 0) : 0;
                     const batchIndex = row.dataset.batchIndex;
                     const sourceSelect = row.querySelector('.edit-batch-source');
                     const domSource = sourceSelect ? sourceSelect.value : 'cash';
                     const invoiceTypeSelect = row.querySelector('.edit-batch-invoice-type');
                     const domInvoiceType = invoiceTypeSelect ? invoiceTypeSelect.value : (document.getElementById('edit-prod-invoice-type').value || 'white');
-                    
+
+                    // Lote existente de un producto por peso: la pantalla muestra gramos
+                    // redondeados y costo total con 2 decimales. Si el usuario NO tocó esos
+                    // campos, se usan los valores exactos guardados (si no, cada vez que se
+                    // abría y guardaba el producto el stock se corría hasta medio gramo por
+                    // lote y quedaba un movimiento de stock falso).
+                    const origStock = parseFloat(row.dataset.origQty);
+                    const oldWpu = parseFloat(row.dataset.weightPerUnit) || 0;
+                    const origBatch = batchIndex !== undefined ? (product.batches[parseInt(batchIndex)] || null) : null;
+                    const gramsUntouched = isWeight && origBatch && row.dataset.origGrams !== undefined && qtyRaw === row.dataset.origGrams && oldWpu > 0 && !isNaN(origStock);
+                    const costUntouched = isWeight && origBatch && row.dataset.origCost !== undefined && costRaw === row.dataset.origCost;
+
                     // Si es producto por peso, convertir gramos a bolsas
                     if (isWeight && qty > 0) {
-                        qty = qty / weightPerUnit;
+                        if (gramsUntouched) {
+                            // Mismos gramos reales; si cambió el peso por unidad (ej: peso de 10
+                            // caramelos), se recalcula cuántas unidades son esos gramos.
+                            qty = oldWpu === weightPerUnit ? origStock : (origStock * oldWpu) / weightPerUnit;
+                        } else {
+                            qty = qty / weightPerUnit;
+                        }
                     }
-                    
+
                     // Para productos por peso, el costo ingresado es el costo TOTAL de la compra
                     // y se debe convertir a costo por unidad (bolsa)
                     let unitBatchCost = batchCost;
                     if (isWeight && batchCost > 0 && qty > 0) {
-                        unitBatchCost = batchCost / qty;
+                        if (costUntouched) {
+                            // Mismo costo total exacto del lote, repartido en las unidades actuales
+                            const exactTotal = (origBatch.cost || product.cost || 0) * origStock;
+                            unitBatchCost = (gramsUntouched && oldWpu === weightPerUnit) ? (origBatch.cost || product.cost || 0) : exactTotal / qty;
+                        } else {
+                            unitBatchCost = batchCost / qty;
+                        }
                     }
                     
                     if (batchIndex !== undefined) {
                         const idx = parseInt(batchIndex);
                         const orig = product.batches[idx] || {};
-                        const origQty = parseInt(row.dataset.origQty) || orig.stock || 0;
+                        const origQty = parseFloat(row.dataset.origQty) || orig.stock || 0;
                         
                         // Si cantidad es 0, tratar como lote eliminado
                         if (qty <= 0) return;
@@ -16833,7 +16971,10 @@
             const bankEl = document.getElementById('cashflow-bank');
             if (cashEl) cashEl.textContent = '$' + formatMoney(appState.cash);
             if (bankEl) bankEl.textContent = '$' + formatMoney(appState.bank);
-            
+
+            try { renderAvailableToSpend(); } catch (e) { console.error('Disponible para gastar:', e); }
+            try { renderScheduledPayments(); } catch (e) { console.error('Pagos a proveedores:', e); }
+
             renderReserve();
             renderShiftCountsList();
             renderFinanceMonthSummary();
@@ -17231,6 +17372,287 @@
             };
         }
         
+        // ==================== DISPONIBLE PARA GASTAR / INVERTIR HOY ====================
+        // Cuánta plata (Caja + Cuenta) se puede usar hoy sin quedar por debajo del saldo
+        // mínimo en ningún día de los próximos `days` días, contando:
+        //  - los gastos fijos (recurrentes) el día que vencen
+        //  - la GANANCIA estimada de cada día futuro (no la venta entera: el costo de la
+        //    mercadería vendida hace falta para reponerla)
+        // La ganancia diaria sale del promedio de los últimos 30 días (profit de cada venta
+        // menos comisiones de débito/QR), o del "Ingreso diario estimado" de Proyección si
+        // está cargado a mano (multiplicado por el margen real).
+        function calculateAvailableToSpend(days = 30) {
+            const settings = appState.cashFlowSettings || {};
+            const minimum = Math.max(0, parseFloat(settings.lowBalanceThreshold) || 0);
+            const balance = (parseFloat(appState.cash) || 0) + (parseFloat(appState.bank) || 0);
+
+            // Ganancia diaria estimada
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const todayStr = formatDateISO(today);
+            const from = new Date(today);
+            from.setDate(from.getDate() - 30);
+            const fromStr = formatDateISO(from);
+            let revenue30 = 0, profit30 = 0;
+            for (const s of (appState.sales || [])) {
+                const rd = saleRevenueDate(s);
+                if (!rd || rd < fromStr || rd >= todayStr) continue; // últimos 30 días completos (sin hoy)
+                const fees = (parseFloat(s.debitFee) || 0) + (parseFloat(s.qrFee) || 0) + (parseFloat(s.mercadoCreditoFee) || 0);
+                revenue30 += parseFloat(s.total) || 0;
+                profit30 += (parseFloat(s.profit) || 0) - fees;
+            }
+            let dailyProfit;
+            let profitSource;
+            if (settings.estimatedDailyIncome !== null && settings.estimatedDailyIncome !== undefined && parseFloat(settings.estimatedDailyIncome) > 0) {
+                const margin = revenue30 > 0 ? profit30 / revenue30 : (calculateBreakEven().avgMargin / 100);
+                dailyProfit = parseFloat(settings.estimatedDailyIncome) * margin;
+                profitSource = 'manual';
+            } else {
+                dailyProfit = profit30 / 30;
+                profitSource = 'historial';
+            }
+            dailyProfit = Math.max(0, dailyProfit); // una ganancia negativa no se proyecta como ingreso
+
+            // Gastos fijos de los próximos `days` días (hoy incluido)
+            const lastDate = new Date(today);
+            lastDate.setDate(lastDate.getDate() + days - 1);
+            const lastStr = formatDateISO(lastDate);
+            // Si un gasto fijo vence hoy y ya se cargó un gasto parecido en los últimos 3 días,
+            // se toma como pagado (ya está descontado del saldo).
+            const recentFrom = new Date(today);
+            recentFrom.setDate(recentFrom.getDate() - 3);
+            const recentFromStr = formatDateISO(recentFrom);
+            const recentExpenses = (appState.expenses || []).filter(e => e.date >= recentFromStr && e.date <= todayStr);
+            const yaPagado = (occ) => {
+                if (occ.date !== todayStr) return false;
+                const name = normalizeText(occ.name || '');
+                if (!name) return false;
+                return recentExpenses.some(e => {
+                    const concept = normalizeText(e.concept || '');
+                    return concept && (concept.includes(name) || name.includes(concept));
+                });
+            };
+            const payments = generateProjectedExpenses(todayStr, days)
+                .filter(o => o.date >= todayStr && o.date <= lastStr)
+                .map(o => ({ ...o, paid: yaPagado(o), kind: 'fijo' }));
+
+            // Pagos a proveedores anotados (pendientes). Los vencidos cuentan para hoy.
+            for (const sp of getPendingScheduledPayments()) {
+                const effectiveDate = sp.date < todayStr ? todayStr : sp.date;
+                if (effectiveDate > lastStr) continue;
+                payments.push({
+                    date: effectiveDate,
+                    originalDate: sp.date,
+                    overdue: sp.date < todayStr,
+                    name: (sp.supplier || 'Proveedor') + (sp.note ? ' (' + sp.note + ')' : ''),
+                    amount: parseFloat(sp.amount) || 0,
+                    source: sp.source || 'cash',
+                    id: sp.id,
+                    paid: false,
+                    kind: 'proveedor'
+                });
+            }
+            payments.sort((a, b) => a.date.localeCompare(b.date));
+
+            const byDate = {};
+            payments.forEach(p => {
+                if (p.paid) return;
+                byDate[p.date] = (byDate[p.date] || 0) + (parseFloat(p.amount) || 0);
+            });
+
+            // Recorrer día por día buscando el momento más ajustado
+            let level = balance;
+            let minLevel = Infinity;
+            let minDate = todayStr;
+            const levelByDate = {}; // saldo estimado al final de cada día (después de sus pagos)
+            for (let i = 0; i < days; i++) {
+                const d = new Date(today);
+                d.setDate(d.getDate() + i);
+                const ds = formatDateISO(d);
+                if (i > 0) level += dailyProfit; // la ganancia de hoy ya va entrando en el saldo
+                level -= (byDate[ds] || 0);
+                levelByDate[ds] = Math.round(level * 100) / 100;
+                if (level < minLevel) { minLevel = level; minDate = ds; }
+            }
+
+            const fixedTotal = payments.filter(p => !p.paid).reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+            return {
+                available: Math.round((minLevel - minimum) * 100) / 100,
+                balance, minimum, fixedTotal,
+                dailyProfit: Math.round(dailyProfit * 100) / 100,
+                profitTotal: Math.round(dailyProfit * (days - 1) * 100) / 100,
+                profitSource,
+                tightestDate: minDate,
+                tightestLevel: Math.round(minLevel * 100) / 100,
+                payments, days, levelByDate, lastDate: lastStr
+            };
+        }
+
+        // ==================== PAGOS A PROVEEDORES ====================
+        // appState.scheduledPayments: [{ id, supplier, amount, date, source, note, status, timestamp, paidAt }]
+        // status: 'pending' | 'paid' | 'deleted'. No se borran del array (quedan 'deleted') para que
+        // una sincronización con una copia vieja no los haga reaparecer. "Pagado" NO mueve plata:
+        // la plata sale al cargar la mercadería (Agregar stock / compra / factura), como siempre.
+        function getPendingScheduledPayments() {
+            return (appState.scheduledPayments || []).filter(sp => sp && sp.status === 'pending');
+        }
+
+        function addScheduledPayment() {
+            const supplier = (document.getElementById('sp-supplier').value || '').trim();
+            const amount = parseFloat(document.getElementById('sp-amount').value);
+            const date = document.getElementById('sp-date').value;
+            const source = document.getElementById('sp-source').value === 'bank' ? 'bank' : 'cash';
+            const note = (document.getElementById('sp-note').value || '').trim();
+            if (!supplier) { showNotification('Poné el proveedor', 'error'); document.getElementById('sp-supplier').focus(); return; }
+            if (!(amount > 0)) { showNotification('Poné un monto válido', 'error'); document.getElementById('sp-amount').focus(); return; }
+            if (!date) { showNotification('Elegí la fecha de pago', 'error'); document.getElementById('sp-date').focus(); return; }
+            if (!Array.isArray(appState.scheduledPayments)) appState.scheduledPayments = [];
+            appState.scheduledPayments.push({
+                id: 'SPAY-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                supplier, amount: Math.round(amount * 100) / 100, date, source, note,
+                status: 'pending',
+                timestamp: Date.now()
+            });
+            saveToLocalStorage();
+            document.getElementById('sp-amount').value = '';
+            document.getElementById('sp-note').value = '';
+            renderScheduledPayments();
+            try { renderAvailableToSpend(); } catch (e) {}
+            showNotification('📦 Pago a ' + supplier + ' anotado para el ' + date.split('-').reverse().join('/'), 'success');
+        }
+
+        function setScheduledPaymentStatus(id, status) {
+            const sp = (appState.scheduledPayments || []).find(x => x.id === id);
+            if (!sp) return;
+            sp.status = status;
+            sp.timestamp = Date.now(); // para que la fusión entre dispositivos se quede con este cambio
+            if (status === 'paid') sp.paidAt = new Date().toISOString();
+            else delete sp.paidAt;
+            saveToLocalStorage();
+            renderScheduledPayments();
+            try { renderAvailableToSpend(); } catch (e) {}
+        }
+
+        function markScheduledPaymentPaid(id) {
+            setScheduledPaymentStatus(id, 'paid');
+            showNotification('✅ Marcado como pagado. Recordá que la plata se descuenta al cargar la mercadería (Agregar stock / factura).', 'success', 6000);
+        }
+
+        async function deleteScheduledPayment(id) {
+            if (!(await showConfirmModal('¿Borrar este pago anotado?'))) return;
+            setScheduledPaymentStatus(id, 'deleted');
+        }
+
+        function renderScheduledPayments() {
+            const listEl = document.getElementById('sp-list');
+            if (!listEl) return;
+            const todayStr = formatDateISO(new Date());
+            const dateInput = document.getElementById('sp-date');
+            if (dateInput && !dateInput.value) dateInput.value = todayStr;
+
+            const dl = document.getElementById('sp-supplier-list');
+            if (dl) dl.innerHTML = (appState.suppliers || []).map(s => '<option value="' + escapeHtml(s.name || '') + '"></option>').join('');
+
+            let projection = null;
+            try { projection = calculateAvailableToSpend(30); } catch (e) { projection = null; }
+            const fmtDate = (ds) => { const [y, m, d] = ds.split('-'); return d + '/' + m; };
+
+            const pending = getPendingScheduledPayments().slice().sort((a, b) => a.date.localeCompare(b.date));
+            if (pending.length === 0) {
+                listEl.innerHTML = '<p class="text-center text-gray-400 text-sm py-3">No hay pagos a proveedores anotados</p>';
+            } else {
+                const total = pending.reduce((sum, sp) => sum + (parseFloat(sp.amount) || 0), 0);
+                listEl.innerHTML = pending.map(sp => {
+                    const overdue = sp.date < todayStr;
+                    const isToday = sp.date === todayStr;
+                    const effDate = overdue ? todayStr : sp.date;
+                    const after = projection && projection.levelByDate[effDate] !== undefined ? projection.levelByDate[effDate] : null;
+                    const badge = overdue ? '<span class="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">VENCIDO</span>'
+                        : (isToday ? '<span class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">HOY</span>' : '');
+                    const afterTxt = after === null
+                        ? '<span class="text-gray-400">Más de 30 días: no entra en el cálculo</span>'
+                        : '<span class="' + (after < (projection.minimum || 0) ? 'text-red-600 font-bold' : 'text-gray-500') + '">Ese día te quedarían $' + formatMoney(after) + '</span>';
+                    return '<div class="flex items-center justify-between gap-2 p-3 rounded-xl border ' + (overdue ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50') + '">' +
+                        '<div class="min-w-0">' +
+                            '<p class="font-bold text-gray-800 text-sm">' + fmtDate(sp.date) + ' · ' + escapeHtml(sp.supplier || 'Proveedor') + ' ' + badge + '</p>' +
+                            (sp.note ? '<p class="text-xs text-gray-500 truncate">' + escapeHtml(sp.note) + '</p>' : '') +
+                            '<p class="text-xs">' + (sp.source === 'bank' ? '🏦 Cuenta' : '💵 Caja') + ' · ' + afterTxt + '</p>' +
+                        '</div>' +
+                        '<div class="flex items-center gap-2 shrink-0">' +
+                            '<span class="font-bold text-red-600">-$' + formatMoney(sp.amount) + '</span>' +
+                            '<button onclick="markScheduledPaymentPaid(\'' + sp.id + '\')" class="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-lg text-xs font-bold" title="Ya lo pagué"><i class="fas fa-check"></i> Pagado</button>' +
+                            '<button onclick="deleteScheduledPayment(\'' + sp.id + '\')" class="text-gray-400 hover:text-red-600 px-1" title="Borrar"><i class="fas fa-trash"></i></button>' +
+                        '</div>' +
+                    '</div>';
+                }).join('') +
+                '<p class="text-right text-sm text-gray-600">Total a pagar: <strong class="text-red-600">$' + formatMoney(total) + '</strong></p>';
+            }
+
+            const paidEl = document.getElementById('sp-paid-list');
+            if (paidEl) {
+                const paid = (appState.scheduledPayments || []).filter(sp => sp && sp.status === 'paid')
+                    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 10);
+                paidEl.innerHTML = paid.length === 0
+                    ? '<p class="text-xs text-gray-400">Todavía no hay pagos marcados como pagados</p>'
+                    : paid.map(sp => '<div class="flex justify-between items-center text-xs text-gray-500">' +
+                        '<span>' + fmtDate(sp.date) + ' · ' + escapeHtml(sp.supplier || '') + ' · $' + formatMoney(sp.amount) + '</span>' +
+                        '<button onclick="setScheduledPaymentStatus(\'' + sp.id + '\', \'pending\')" class="text-blue-600 hover:underline">deshacer</button>' +
+                    '</div>').join('');
+            }
+        }
+
+        function renderAvailableToSpend() {
+            const card = document.getElementById('available-to-spend-card');
+            if (!card) return;
+            const r = calculateAvailableToSpend(30);
+            const fmtDate = (ds) => { const [y, m, d] = ds.split('-'); return d + '/' + m; };
+            const todayStr = formatDateISO(new Date());
+
+            const amountEl = document.getElementById('ats-amount');
+            const msgEl = document.getElementById('ats-message');
+            const tightEl = document.getElementById('ats-tightest');
+            if (r.available > 0) {
+                amountEl.textContent = '$' + formatMoney(r.available);
+                amountEl.className = 'text-4xl font-bold mt-1 text-green-600';
+                msgEl.className = 'text-sm mt-1 text-gray-600';
+                msgEl.textContent = 'Sin quedar por debajo de tu saldo mínimo en los próximos 30 días, cubriendo los gastos fijos que vienen.';
+                card.className = 'bg-white rounded-2xl p-6 shadow-lg border-2 border-green-200';
+            } else {
+                amountEl.textContent = '$0';
+                amountEl.className = 'text-4xl font-bold mt-1 text-red-600';
+                msgEl.className = 'text-sm mt-1 text-red-600 font-semibold';
+                msgEl.textContent = 'Hoy no conviene sacar plata: para cubrir lo que viene te faltan $' + formatMoney(-r.available) + ' (contando la ganancia estimada).';
+                card.className = 'bg-white rounded-2xl p-6 shadow-lg border-2 border-red-200';
+            }
+
+            // Día más ajustado (solo si no es hoy, o si hoy vence algo)
+            const pagosEseDia = r.payments.filter(p => !p.paid && p.date === r.tightestDate);
+            if (r.tightestDate !== todayStr || pagosEseDia.length > 0) {
+                tightEl.innerHTML = '<p class="font-bold text-gray-700">Día más ajustado: ' + (r.tightestDate === todayStr ? 'hoy' : fmtDate(r.tightestDate)) + '</p>' +
+                    (pagosEseDia.length ? '<p>' + pagosEseDia.map(p => escapeHtml(p.name) + ' $' + formatMoney(p.amount)).join(' · ') + '</p>' : '') +
+                    '<p>Te quedarían $' + formatMoney(r.tightestLevel) + '</p>';
+            } else {
+                tightEl.innerHTML = '';
+            }
+
+            document.getElementById('ats-balance').textContent = '$' + formatMoney(r.balance);
+            document.getElementById('ats-fixed').textContent = '-$' + formatMoney(r.fixedTotal);
+            document.getElementById('ats-profit').textContent = '+$' + formatMoney(r.profitTotal);
+            document.getElementById('ats-profit-daily').textContent = '$' + formatMoney(r.dailyProfit) + '/día' + (r.profitSource === 'manual' ? ' (ingreso estimado a mano)' : ' (prom. últimos 30 días)');
+            document.getElementById('ats-minimum').textContent = '-$' + formatMoney(r.minimum);
+
+            const payEl = document.getElementById('ats-payments');
+            if (r.payments.length === 0) {
+                payEl.innerHTML = '<p class="text-gray-400">No hay gastos fijos cargados para los próximos 30 días.' + (r.minimum === 0 ? ' Tampoco hay saldo mínimo configurado.' : '') + '</p>';
+            } else {
+                payEl.innerHTML = '<ul class="space-y-1">' + r.payments.map(p =>
+                    '<li class="flex justify-between ' + (p.paid ? 'line-through text-gray-400' : '') + '">' +
+                        '<span>' + fmtDate(p.date) + ' · ' + (p.kind === 'proveedor' ? '📦 ' : '') + escapeHtml(p.name) + (p.paid ? ' (ya pagado hoy)' : '') + (p.overdue ? ' <strong class="text-red-600">(vencido del ' + fmtDate(p.originalDate) + ')</strong>' : '') + '</span>' +
+                        '<span class="font-bold">$' + formatMoney(p.amount) + '</span>' +
+                    '</li>').join('') + '</ul>';
+            }
+        }
+
         function setCashFlowProjectionDays(days) {
             if (!appState.cashFlowSettings) appState.cashFlowSettings = {};
             appState.cashFlowSettings.projectionDays = days;
@@ -24716,11 +25138,105 @@ Total de productos a comprar: ${shoppingList.length}
             downloadFile(csv, 'facturacion_' + formatDateISO(new Date()) + '.csv', 'text/csv');
         }
 
+        // ==================== PORCENTAJES EN LA NUBE ====================
+        // Comisión de débito, comisión de QR y margen por defecto viven además en su propio
+        // documento kioscos/percentSettings, que CUALQUIER dispositivo (principal o
+        // secundario) puede actualizar. Gana siempre el cambio más reciente
+        // (appState.percentSettingsUpdatedAt), así no se pierden al actualizar o reinstalar
+        // la app, ni al abrirla desde otro dispositivo o navegador.
+        const PERCENT_SETTINGS_DOC = 'percentSettings';
+        let percentSettingsListener = null;
+
+        function markPercentSettingsChanged() {
+            appState.percentSettingsUpdatedAt = Date.now();
+            saveToLocalStorage();
+            pushPercentSettingsToCloud();
+        }
+
+        async function pushPercentSettingsToCloud() {
+            if (!window.db) return;
+            try {
+                const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                await setDoc(doc(window.db, 'kioscos', PERCENT_SETTINGS_DOC), {
+                    debitFee: parseFloat(appState.debitFee) || 0,
+                    qrFee: parseFloat(appState.qrFee) || 0,
+                    defaultMargin: parseFloat(appState.defaultMargin) || 30,
+                    updatedAt: parseInt(appState.percentSettingsUpdatedAt) || Date.now(),
+                    deviceId: localStorage.getItem('kioscopro-device-id') || generateDeviceId()
+                });
+            } catch (e) {
+                console.error('No se pudieron guardar los porcentajes en la nube:', e);
+            }
+        }
+
+        // Aplica los porcentajes de la nube si son más nuevos que los locales. Devuelve true si cambió algo.
+        function applyRemotePercentSettings(remote) {
+            if (!remote) return false;
+            const remoteAt = parseInt(remote.updatedAt) || 0;
+            if (remoteAt <= (parseInt(appState.percentSettingsUpdatedAt) || 0)) return false;
+            const debit = parseFloat(remote.debitFee);
+            if (!isNaN(debit) && debit >= 0 && debit <= 99) appState.debitFee = debit;
+            const qr = parseFloat(remote.qrFee);
+            if (!isNaN(qr) && qr >= 0 && qr <= 99) appState.qrFee = qr;
+            const margin = parseFloat(remote.defaultMargin);
+            if (!isNaN(margin) && margin >= 1 && margin <= 99) appState.defaultMargin = margin;
+            appState.percentSettingsUpdatedAt = remoteAt;
+            saveToLocalStorage(false);
+            // Refrescar los campos de Configuración (salvo el que se está editando)
+            const setIfIdle = (id, val) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = val; };
+            setIfIdle('settings-debit-fee', appState.debitFee || 0);
+            setIfIdle('settings-qr-fee', appState.qrFee || 0);
+            setIfIdle('settings-margin', appState.defaultMargin);
+            try { updateCartTotals(); } catch (e) {}
+            console.log('📥 Porcentajes actualizados desde la nube');
+            return true;
+        }
+
+        // ¿Tomar los porcentajes que vienen en kioscos/main al fusionar? Si este dispositivo ya
+        // usa el documento propio de porcentajes, solo si los de main son más nuevos.
+        function shouldTakePercentFromMain(data) {
+            const localAt = parseInt(appState.percentSettingsUpdatedAt) || 0;
+            if (localAt === 0) return true; // comportamiento de siempre
+            return (parseInt(data && data.percentSettingsUpdatedAt) || 0) > localAt;
+        }
+        function syncPercentStampFromMain(data) {
+            const remoteAt = parseInt(data && data.percentSettingsUpdatedAt) || 0;
+            if (remoteAt > (parseInt(appState.percentSettingsUpdatedAt) || 0)) appState.percentSettingsUpdatedAt = remoteAt;
+        }
+
+        async function startPercentSettingsListener() {
+            if (!window.db || percentSettingsListener) return;
+            try {
+                const { doc, onSnapshot } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+                percentSettingsListener = onSnapshot(doc(window.db, 'kioscos', PERCENT_SETTINGS_DOC), (snap) => {
+                    if (snap.exists()) {
+                        const remote = snap.data();
+                        if (!applyRemotePercentSettings(remote)) {
+                            // Lo local es más nuevo (ej: se cambió sin internet): subirlo
+                            if ((parseInt(appState.percentSettingsUpdatedAt) || 0) > (parseInt(remote.updatedAt) || 0)) {
+                                pushPercentSettingsToCloud();
+                            }
+                        }
+                    } else if (isMasterDevice() || (parseFloat(appState.qrFee) || 0) > 0 || (parseFloat(appState.debitFee) || 0) > 0) {
+                        // Primera vez: todavía no hay porcentajes en la nube. Los sube el principal,
+                        // o cualquier dispositivo que tenga alguna comisión cargada.
+                        if (!appState.percentSettingsUpdatedAt) {
+                            appState.percentSettingsUpdatedAt = Date.now();
+                            saveToLocalStorage(false);
+                        }
+                        pushPercentSettingsToCloud();
+                    }
+                }, (err) => console.error('Error escuchando porcentajes:', err));
+            } catch (e) {
+                console.error('No se pudo iniciar la escucha de porcentajes:', e);
+            }
+        }
+
         function saveDebitFeeFromSettings() {
             const fee = parseFloat(document.getElementById('settings-debit-fee').value);
             if (fee >= 0 && fee <= 99) {
                 appState.debitFee = fee;
-                saveToLocalStorage();
+                markPercentSettingsChanged();
                 updateCartTotals(); // por si hay un cobro con débito en curso
                 showNotification(`Comisión de débito actualizada a ${fee}%`, 'success');
             } else {
@@ -24732,7 +25248,7 @@ Total de productos a comprar: ${shoppingList.length}
             const fee = parseFloat(document.getElementById('settings-qr-fee').value);
             if (fee >= 0 && fee <= 99) {
                 appState.qrFee = fee;
-                saveToLocalStorage();
+                markPercentSettingsChanged();
                 showNotification(`Comisión QR actualizada a ${fee}%`, 'success');
             } else {
                 showNotification('La comisión debe estar entre 0% y 99%', 'error');
@@ -24770,7 +25286,7 @@ Total de productos a comprar: ${shoppingList.length}
             const margin = parseFloat(document.getElementById('settings-margin').value);
             if (margin >= 1 && margin <= 99) {
                 appState.defaultMargin = margin;
-                saveToLocalStorage();
+                markPercentSettingsChanged();
                 showNotification(`Margen actualizado a ${margin}%`, 'success');
             } else {
                 showNotification('El margen debe estar entre 1% y 99%', 'error');
@@ -25816,6 +26332,7 @@ RESULTADOS:
             appState.pedidos = Array.isArray(appState.pedidos) ? appState.pedidos : [];
             appState.expiryHistory = Array.isArray(appState.expiryHistory) ? appState.expiryHistory : [];
             appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
+            appState.scheduledPayments = Array.isArray(appState.scheduledPayments) ? appState.scheduledPayments : [];
             appState.suppliers = Array.isArray(appState.suppliers) ? appState.suppliers : [];
             appState.businessHours = Array.isArray(appState.businessHours) && appState.businessHours.length === 7
                 ? appState.businessHours
@@ -27808,7 +28325,8 @@ RESULTADOS:
                 main_fixedAssets: 'fixedAssets',
                 main_invoiceNameMappings: 'invoiceNameMappings',
                 main_invoiceSupplierCorrections: 'invoiceSupplierCorrections',
-                main_specialPriceCodes: 'specialPriceCodes'
+                main_specialPriceCodes: 'specialPriceCodes',
+                main_scheduledPayments: 'scheduledPayments'
             };
         }
 
@@ -27824,6 +28342,7 @@ RESULTADOS:
                 mercadoCreditoFee: parseFloat(appState.mercadoCreditoFee) || 5,
                 qrFee: parseFloat(appState.qrFee) || 0,
                 debitFee: parseFloat(appState.debitFee) || 0,
+                percentSettingsUpdatedAt: parseInt(appState.percentSettingsUpdatedAt) || 0,
                 comprasAppPassword: appState.comprasAppPassword || '',
                 financesPassword: appState.financesPassword || '',
                 stockTargetDays: parseInt(appState.stockTargetDays) || 7,
@@ -28104,7 +28623,7 @@ RESULTADOS:
         function normalizeFirebaseData(downloaded) {
             const normalized = {};
             const main = downloaded && (downloaded.main || downloaded);
-            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','qrFee','debitFee','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
+            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','qrFee','debitFee','percentSettingsUpdatedAt','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
             for (const f of baseFields) {
                 if (main && main[f] !== undefined) normalized[f] = main[f];
             }
@@ -28971,11 +29490,12 @@ RESULTADOS:
                     } else {
                         console.log('🛡️ Modo secundario: saldos locales más recientes, se conservan');
                     }
-                    if (data.defaultMargin !== undefined) appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
+                    if (data.defaultMargin !== undefined && shouldTakePercentFromMain(data)) appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
                     if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
                     if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
-                    if (data.qrFee !== undefined) appState.qrFee = parseFloat(data.qrFee) || 0;
-                    if (data.debitFee !== undefined) appState.debitFee = parseFloat(data.debitFee) || 0;
+                    if (data.qrFee !== undefined && shouldTakePercentFromMain(data)) appState.qrFee = parseFloat(data.qrFee) || 0;
+                    if (data.debitFee !== undefined && shouldTakePercentFromMain(data)) appState.debitFee = parseFloat(data.debitFee) || 0;
+                    syncPercentStampFromMain(data);
                     if (data.comprasAppPassword !== undefined) appState.comprasAppPassword = data.comprasAppPassword || '';
                     if (data.financesPassword !== undefined) appState.financesPassword = data.financesPassword || '';
                     if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
@@ -29033,6 +29553,7 @@ RESULTADOS:
                 appState.specialPriceCodes = smartMergeArrays(appState.specialPriceCodes || [], data.specialPriceCodes || []);
                 appState.fixedAssets = smartMergeArrays(appState.fixedAssets || [], data.fixedAssets || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
+                appState.scheduledPayments = smartMergeArrays(appState.scheduledPayments || [], data.scheduledPayments || []);
                 appState.billedDays = smartMergeArrays(appState.billedDays || [], data.billedDays || []);
                 appState.guestLogs = smartMergeArrays(appState.guestLogs || [], data.guestLogs || []);
                 // Tomar deletedProductIds y deletedInvestmentIds de Firebase (la PC es la fuente de verdad), pero si Firebase está vacío no borrar locales
@@ -29125,16 +29646,18 @@ RESULTADOS:
                 appState.specialPriceCodes = smartMergeArrays(appState.specialPriceCodes || [], data.specialPriceCodes || []);
                 appState.fixedAssets = smartMergeArrays(appState.fixedAssets || [], data.fixedAssets || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
+                appState.scheduledPayments = smartMergeArrays(appState.scheduledPayments || [], data.scheduledPayments || []);
                 appState.billedDays = smartMergeArrays(appState.billedDays || [], data.billedDays || []);
                 appState.guestLogs = smartMergeArrays(appState.guestLogs || [], data.guestLogs || []);
                 
                 // Para valores simples, usar Firebase solo si es más reciente o no hay datos locales
                 if (isRestore || firebaseTime > localTime || !hasLocalData) {
-                    if (data.defaultMargin !== undefined) appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
+                    if (data.defaultMargin !== undefined && shouldTakePercentFromMain(data)) appState.defaultMargin = parseFloat(data.defaultMargin) || 30;
                     if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
                     if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
-                    if (data.qrFee !== undefined) appState.qrFee = parseFloat(data.qrFee) || 0;
-                    if (data.debitFee !== undefined) appState.debitFee = parseFloat(data.debitFee) || 0;
+                    if (data.qrFee !== undefined && shouldTakePercentFromMain(data)) appState.qrFee = parseFloat(data.qrFee) || 0;
+                    if (data.debitFee !== undefined && shouldTakePercentFromMain(data)) appState.debitFee = parseFloat(data.debitFee) || 0;
+                    syncPercentStampFromMain(data);
                     if (data.comprasAppPassword !== undefined) appState.comprasAppPassword = data.comprasAppPassword || '';
                     if (data.financesPassword !== undefined) appState.financesPassword = data.financesPassword || '';
                     if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
@@ -29990,6 +30513,7 @@ RESULTADOS:
                     appState.deletedInvestmentIds = Array.isArray(appState.deletedInvestmentIds) ? appState.deletedInvestmentIds : [];
                     appState.losses = Array.isArray(appState.losses) ? appState.losses : [];
                     appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
+                    appState.scheduledPayments = Array.isArray(appState.scheduledPayments) ? appState.scheduledPayments : [];
                     if (!appState.cashFlowSettings || typeof appState.cashFlowSettings !== 'object') {
                         appState.cashFlowSettings = { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 };
                     } else {
@@ -30123,6 +30647,7 @@ RESULTADOS:
             // Iniciar listener de Firebase después de cargar datos locales
             setTimeout(() => {
                 startFirebaseListener();
+                startPercentSettingsListener();
                 startPurchaseReviewListener();
                 startMercadoPagoPaymentListener();
                 startOnlineOrdersListener();
@@ -30334,6 +30859,7 @@ RESULTADOS:
                 <div class="flex gap-2 bg-gray-100 rounded-xl p-1">
                     <button type="button" id="weight-mode-grams" onclick="setWeightMode('grams')" class="flex-1 py-2 rounded-lg text-sm font-bold bg-white shadow text-blue-700 transition">Gramos</button>
                     <button type="button" id="weight-mode-price" onclick="setWeightMode('price')" class="flex-1 py-2 rounded-lg text-sm font-bold text-gray-500 hover:text-gray-700 transition">Precio ($)</button>
+                    <button type="button" id="weight-mode-units" onclick="setWeightMode('units')" class="hidden flex-1 py-2 rounded-lg text-sm font-bold text-gray-500 hover:text-gray-700 transition">🍬 Caramelos</button>
                 </div>
                 
                 <div>

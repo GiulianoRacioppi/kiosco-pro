@@ -1385,9 +1385,9 @@
                                 Carrito <span class="text-sm font-normal text-gray-500" id="cart-count">(0 items)</span>
                             </h3>
                             <div class="flex gap-2">
-                                <button onclick="openReturnModal()" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg font-bold text-xs">
-                                    <i class="fas fa-undo"></i> Devolución
-                                </button>
+                                <!-- Botón "Devolución" sacado a pedido (no se usaba). El modal y la lógica
+                                     de appState.returns quedan: las devoluciones viejas siguen contando
+                                     en arqueo / anulación de ventas. -->
                                 <button onclick="clearCart()" class="text-red-500 hover:text-red-700 text-sm">
                                     <i class="fas fa-trash"></i> Vaciar
                                 </button>
@@ -1494,7 +1494,16 @@
                                 </div>
                                 <div>
                                     <p class="font-bold text-gray-800">Débito</p>
-                                    <p class="text-sm text-gray-500">Transferencia/Tarjeta</p>
+                                    <p class="text-sm text-gray-500">Tarjeta de débito, con comisión</p>
+                                </div>
+                            </button>
+                            <button onclick="setPaymentMethod('transfer')" id="btn-transfer" class="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-teal-400 text-left flex items-center gap-3 transition">
+                                <div class="w-10 h-10 bg-teal-500 rounded-full flex items-center justify-center text-white">
+                                    <i class="fas fa-exchange-alt"></i>
+                                </div>
+                                <div>
+                                    <p class="font-bold text-gray-800">Transferencia</p>
+                                    <p class="text-sm text-gray-500">CBU / CVU / alias, va a la cuenta</p>
                                 </div>
                             </button>
                             <button onclick="setPaymentMethod('qr')" id="btn-qr" class="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-purple-400 text-left flex items-center gap-3 transition">
@@ -1508,12 +1517,19 @@
                             </button>
                         </div>
 
-                        <div id="mercado-credito-check" class="hidden bg-blue-50 rounded-xl p-3 border border-blue-200">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" id="check-mercado-credito" class="w-5 h-5" onchange="updateCartTotals()">
-                                <span class="text-sm font-bold text-blue-800">Es MercadoCrédito</span>
-                            </label>
-                            <p class="text-xs text-blue-600 mt-1" id="mercado-fee-text">Comisión: 0%</p>
+                        <div id="debit-fee-info" class="hidden bg-blue-50 rounded-xl p-3 border border-blue-200">
+                            <div class="flex justify-between text-sm">
+                                <span class="text-blue-700">Total cobrado:</span>
+                                <span class="font-bold text-blue-800" id="debit-total">$0</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-blue-700">Comisión débito (<span id="debit-fee-pct">0%</span>):</span>
+                                <span class="font-bold text-red-600" id="debit-fee">-$0</span>
+                            </div>
+                            <div class="flex justify-between text-sm border-t border-blue-200 pt-1 mt-1">
+                                <span class="text-blue-700 font-bold">Neto a la cuenta:</span>
+                                <span class="font-bold text-green-700" id="debit-neto">$0</span>
+                            </div>
                         </div>
 
                         <div id="qr-fee-info" class="hidden bg-purple-50 rounded-xl p-3 border border-purple-200">
@@ -1543,20 +1559,6 @@
                             </div>
                         </div>
 
-                        <div id="mercado-credito-summary" class="hidden bg-blue-50 rounded-xl p-3 border border-blue-200 mb-3">
-                            <div class="flex justify-between text-sm">
-                                <span class="text-blue-700">Total cobrado:</span>
-                                <span class="font-bold text-blue-800" id="mc-total">$0</span>
-                            </div>
-                            <div class="flex justify-between text-sm">
-                                <span class="text-blue-700">Comisión MC (<span id="mc-fee-pct">5%</span>):</span>
-                                <span class="font-bold text-red-600" id="mc-fee">-$0</span>
-                            </div>
-                            <div class="flex justify-between text-sm border-t border-blue-200 pt-1 mt-1">
-                                <span class="text-blue-700 font-bold">Neto a recibir:</span>
-                                <span class="font-bold text-green-700" id="mc-neto">$0</span>
-                            </div>
-                        </div>
 
                         <button onclick="completeSale()" id="btn-complete" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg mt-4 transition disabled:opacity-50" disabled>
                             <i class="fas fa-check-circle"></i> Finalizar Venta
@@ -3030,9 +3032,9 @@
                         <p class="text-xs text-gray-400 mt-1">Ventas sin facturar</p>
                     </div>
                     <div class="bg-orange-50 rounded-xl p-4 border border-orange-200 text-center">
-                        <p class="text-orange-600 text-xs font-bold uppercase">💳 Ventas en Débito</p>
+                        <p class="text-orange-600 text-xs font-bold uppercase">💳 Ventas en Débito y Transferencia</p>
                         <p class="text-2xl font-bold text-orange-700" id="billing-sold-debit">$0</p>
-                        <p class="text-xs text-gray-500 mt-1">Total acumulado en débito</p>
+                        <p class="text-xs text-gray-500 mt-1">Total acumulado en débito y transferencia</p>
                     </div>
                 </div>
                 
@@ -3323,9 +3325,9 @@
                             </select>
                             <label class="block text-sm font-medium text-gray-700 mb-1 mt-2">…en ventas pagadas con</label>
                             <select id="arca-auto-pay" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
-                                <option value="both">Cualquier medio (efectivo y débito)</option>
+                                <option value="both">Cualquier medio (efectivo, débito, transferencia y QR)</option>
                                 <option value="cash">Solo efectivo</option>
-                                <option value="debit">Solo débito</option>
+                                <option value="debit">Solo débito y transferencia</option>
                             </select>
                             <label class="block text-sm font-medium text-gray-700 mb-1 mt-2">…con demora de</label>
                             <select id="arca-auto-delay" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
@@ -3404,21 +3406,21 @@
                     </div>
                 </div>
 
-                <!-- MercadoCrédito -->
+                <!-- Pago con Débito (tarjeta) -->
                 <div class="bg-white rounded-2xl p-6 shadow-lg">
                     <h3 class="text-xl font-bold mb-6 flex items-center gap-2 text-blue-600">
-                        <i class="fas fa-credit-card"></i> MercadoCrédito
+                        <i class="fas fa-credit-card"></i> Pago con Débito
                     </h3>
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Comisión por venta (%)</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Comisión de la tarjeta por venta (%)</label>
                             <div class="relative">
-                                <input type="number" id="settings-mercado-fee" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center" value="5" min="0" max="99" step="0.1" onkeydown="if(event.key==='Enter'){event.preventDefault();saveMercadoFeeFromSettings','saveStockDaysFromSettings();}">
+                                <input type="number" id="settings-debit-fee" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center" value="0" min="0" max="99" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();saveDebitFeeFromSettings();}">
                                 <span class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">%</span>
                             </div>
-                            <p class="text-xs text-gray-500 mt-2">Cuando marques una venta como MercadoCrédito, se descontará este % del total.</p>
+                            <p class="text-xs text-gray-500 mt-2">Al cobrar con Débito, este % se descuenta antes de acreditar el resto a la Cuenta. Transferencia no tiene comisión. Cambiarlo no modifica ventas ya hechas.</p>
                         </div>
-                        <button onclick="saveMercadoFeeFromSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg">
+                        <button onclick="saveDebitFeeFromSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg">
                             <i class="fas fa-save"></i> Guardar Comisión
                         </button>
                     </div>
@@ -4485,6 +4487,7 @@
             mercadoCreditoFee: 5,
             // Configuración pago con QR (comisión %, se descuenta antes de acreditar a la cuenta)
             qrFee: 0,
+            debitFee: 0,
             // Contraseña para entrar a la app aparte de Compra Mayorista (celular). Vacío = sin contraseña.
             comprasAppPassword: 'admin123',
             // Contraseña para entrar al panel de Finanzas. Vacío = sin contraseña.
@@ -5371,7 +5374,7 @@
                             <p class="font-bold text-gray-800">Venta #${sale.id.slice(-4)}</p>
                             ${sale.fromPedido ? `<p class="text-xs font-bold text-orange-600">📋 Pedido — Comanda #${sale.comandaNumber || '?'}${sale.pedidoCustomerName ? ' — ' + escapeHtml(sale.pedidoCustomerName) : ''}</p>` : ''}
                             ${sale.specialPriceCodeName ? `<p class="text-xs font-bold text-amber-600">🏷️ Precio especial: ${escapeHtml(sale.specialPriceCodeName)}</p>` : ''}
-                            <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵 Efectivo' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.paymentMethod === 'qr' ? '📱 QR' : '💳 Débito'))}</p>
+                            <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵 Efectivo' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.paymentMethod === 'qr' ? '📱 QR' : (sale.paymentMethod === 'transfer' ? '🏦 Transferencia' : '💳 Débito')))}</p>
                         </div>
                         <div class="text-right">
                             <p class="font-bold text-lg text-green-600">$${formatMoney(sale.total)}</p>
@@ -7661,22 +7664,14 @@
             appState.cartFinalTotal = finalTotal;
             appState.activePromoInfo = { discount: finalDiscount, label: finalLabel, promoId: promoId };
             
-            // Mostrar resumen de MercadoCrédito si aplica
-            const mcSummary = document.getElementById('mercado-credito-summary');
-            const isMC = document.getElementById('check-mercado-credito')?.checked || false;
-            if (mcSummary) {
-                if (appState.paymentMethod === 'debit' && isMC) {
-                    const feePct = appState.mercadoCreditoFee || 5;
-                    const feeAmount = finalTotal * (feePct / 100);
-                    const neto = finalTotal - feeAmount;
-                    document.getElementById('mc-total').textContent = `$${formatMoney(finalTotal)}`;
-                    document.getElementById('mc-fee-pct').textContent = `${feePct}%`;
-                    document.getElementById('mc-fee').textContent = `-$${formatMoney(feeAmount)}`;
-                    document.getElementById('mc-neto').textContent = `$${formatMoney(neto)}`;
-                    mcSummary.classList.remove('hidden');
-                } else {
-                    mcSummary.classList.add('hidden');
-                }
+            // Resumen de comisión de débito (tarjeta): se descuenta siempre en este método
+            if (appState.paymentMethod === 'debit') {
+                const debitFeePct = appState.debitFee || 0;
+                const debitFeeAmount = finalTotal * (debitFeePct / 100);
+                document.getElementById('debit-total').textContent = `$${formatMoney(finalTotal)}`;
+                document.getElementById('debit-fee-pct').textContent = `${debitFeePct}%`;
+                document.getElementById('debit-fee').textContent = `-$${formatMoney(debitFeeAmount)}`;
+                document.getElementById('debit-neto').textContent = `$${formatMoney(finalTotal - debitFeeAmount)}`;
             }
 
             // Resumen de comisión QR (siempre se aplica en este método, no tiene checkbox)
@@ -7796,7 +7791,56 @@
             if (s.paymentMethod === 'fiado') return s.fiadoPaid ? 'Fiado (pagado)' : 'Fiado';
             if (s.paymentMethod === 'qr') return 'QR';
             if (s.paymentMethod === 'mercadopago') return 'Mercado Pago';
+            if (s.paymentMethod === 'transfer') return 'Transferencia';
             return 'Débito';
+        }
+
+        // Débito (tarjeta) y Transferencia: los dos entran a la Cuenta, no a la caja física.
+        // (Las ventas viejas marcadas "Débito" incluyen transferencias de antes de separarlos.)
+        function isDebitOrTransfer(method) {
+            return method === 'debit' || method === 'transfer';
+        }
+
+        // Neto que entró a la Cuenta por una venta cobrada con débito / transferencia / QR:
+        // el total menos las comisiones grabadas EN la venta al cobrarla (débito, QR y
+        // MercadoCrédito de ventas viejas). Cambiar los % después no toca ventas hechas.
+        function saleBankNet(s) {
+            return (parseFloat(s.total) || 0) - (parseFloat(s.mercadoCreditoFee) || 0) - (parseFloat(s.qrFee) || 0) - (parseFloat(s.debitFee) || 0);
+        }
+
+        // Neto que entró a la Cuenta al cobrar un fiado con débito o transferencia
+        function fiadoBankNet(s) {
+            return (parseFloat(s.total) || 0) - (parseFloat(s.fiadoPaidFee) || 0);
+        }
+
+        // De dónde salió la plata de una devolución: 'cash', 'bank' o null (no se movió plata).
+        // Las devoluciones nuevas lo graban en refundTarget al hacerse. Para las viejas se
+        // deduce de lo que hacía la app en ese momento: efectivo -> caja, débito/transf. -> cuenta,
+        // QR -> nada (la app vieja no se lo descontaba a la cuenta), fiado -> según cómo se
+        // había cobrado, solo si ya estaba cobrado al hacer la devolución.
+        function returnRefundTarget(ret) {
+            if (!ret) return null;
+            if (ret.refundTarget !== undefined) return ret.refundTarget;
+            if (ret.paymentMethod === 'cash') return 'cash';
+            if (isDebitOrTransfer(ret.paymentMethod)) return 'bank';
+            if (ret.paymentMethod === 'fiado') {
+                const s = (appState.sales || []).find(x => x.id === ret.originalSaleId);
+                if (!s || !s.fiadoPaid) return null;
+                const paidBefore = (s.fiadoPaidDate || '') < (ret.date || '') ||
+                    ((s.fiadoPaidDate || '') === (ret.date || '') && (s.timestamp || 0) <= (ret.timestamp || 0));
+                if (!paidBefore) return null;
+                if (s.fiadoPaidMethod === 'cash') return 'cash';
+                if (isDebitOrTransfer(s.fiadoPaidMethod)) return 'bank';
+            }
+            return null;
+        }
+
+        // Etiqueta de con qué se cobró un fiado ("debit" en fiados viejos = "Cuenta" en general)
+        function fiadoPaidMethodLabel(s) {
+            if (s.fiadoPaidMethod === 'cash') return '💵 Efectivo';
+            if (s.fiadoPaidMethod === 'transfer') return '🏦 Transferencia';
+            if (s.fiadoPaidMethod === 'debit') return s.fiadoPaidFeePct !== undefined ? '💳 Débito' : '🏦 Cuenta';
+            return '-';
         }
 
         function setPaymentMethod(method) {
@@ -7810,6 +7854,10 @@
                 ? 'w-full p-4 rounded-xl border-2 border-blue-500 bg-blue-50 text-left flex items-center gap-3 transition'
                 : 'w-full p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 text-left flex items-center gap-3 transition';
 
+            document.getElementById('btn-transfer').className = method === 'transfer'
+                ? 'w-full p-4 rounded-xl border-2 border-teal-500 bg-teal-50 text-left flex items-center gap-3 transition'
+                : 'w-full p-4 rounded-xl border-2 border-gray-200 hover:border-teal-400 text-left flex items-center gap-3 transition';
+
             document.getElementById('btn-qr').className = method === 'qr'
                 ? 'w-full p-4 rounded-xl border-2 border-purple-500 bg-purple-50 text-left flex items-center gap-3 transition'
                 : 'w-full p-4 rounded-xl border-2 border-gray-200 hover:border-purple-400 text-left flex items-center gap-3 transition';
@@ -7820,14 +7868,8 @@
 
             // Fiado no pide vuelto ni comisiones: todos los paneles de abajo quedan ocultos
             document.getElementById('cash-details').classList.toggle('hidden', method !== 'cash');
-            document.getElementById('mercado-credito-check').classList.toggle('hidden', method !== 'debit');
+            document.getElementById('debit-fee-info').classList.toggle('hidden', method !== 'debit');
             document.getElementById('qr-fee-info').classList.toggle('hidden', method !== 'qr');
-
-            // Actualizar texto de comisión
-            const feeEl = document.getElementById('mercado-fee-text');
-            if (feeEl) {
-                feeEl.textContent = `Comisión: ${appState.mercadoCreditoFee || 5}%`;
-            }
 
             if (method === 'cash') {
                 calculateChange();
@@ -7973,11 +8015,19 @@
                 sale.profitBasis = 'collection';
             } catch (e) { console.error('Recalculo de ganancia del fiado:', e); }
 
-            // La plata entra recién ahora a caja o cuenta
+            // La plata entra recién ahora a caja o cuenta. Con débito se descuenta la
+            // comisión vigente al momento del cobro (queda grabada en el fiado).
+            if (method === 'debit') {
+                sale.fiadoPaidFeePct = appState.debitFee || 0;
+                sale.fiadoPaidFee = sale.total * (sale.fiadoPaidFeePct / 100);
+            } else {
+                delete sale.fiadoPaidFee;
+                delete sale.fiadoPaidFeePct;
+            }
             if (method === 'cash') {
                 appState.cash += sale.total;
-            } else if (method === 'debit') {
-                appState.bank += sale.total;
+            } else if (isDebitOrTransfer(method)) {
+                appState.bank += fiadoBankNet(sale);
             }
 
             // Auto-facturación ARCA recién ahora que se cobró (no al hacer la venta fiada):
@@ -8071,7 +8121,7 @@
                 <div class="flex justify-between items-center p-3 rounded-lg border bg-green-50 border-green-200 cursor-pointer" onclick="showSaleDetail('${s.id}')">
                     <div>
                         <p class="font-bold text-gray-800">${escapeHtml(s.customerName || 'Cliente')}</p>
-                        <p class="text-xs text-gray-500">Fiado del ${s.date} • Pagado el ${s.fiadoPaidDate || '-'} (${s.fiadoPaidMethod === 'cash' ? '💵 Efectivo' : '🏦 Cuenta'})</p>
+                        <p class="text-xs text-gray-500">Fiado del ${s.date} • Pagado el ${s.fiadoPaidDate || '-'} (${fiadoPaidMethodLabel(s)})</p>
                     </div>
                     <p class="font-bold text-green-600">+$${formatMoney(s.total)}</p>
                 </div>`).join('');
@@ -8475,12 +8525,14 @@
                 change = received - finalTotal;
             }
 
-            const isMercadoCredito = appState.paymentMethod === 'debit' && document.getElementById('check-mercado-credito')?.checked;
-            const mercadoFeePct = isMercadoCredito ? (appState.mercadoCreditoFee || 5) : 0;
-            const mercadoFeeAmount = isMercadoCredito ? (finalTotal * (mercadoFeePct / 100)) : 0;
+            // Débito (tarjeta) y QR van a la cuenta, cada uno con su propia comisión
+            // (configurables en Configuración). Transferencia va a la cuenta sin comisión.
+            // El monto de la comisión queda grabado en la venta: cambiar el % después no
+            // toca ventas ya hechas.
+            const isDebit = appState.paymentMethod === 'debit';
+            const debitFeePct = isDebit ? (appState.debitFee || 0) : 0;
+            const debitFeeAmount = isDebit ? (finalTotal * (debitFeePct / 100)) : 0;
 
-            // QR: va a la cuenta igual que débito, pero con su propia comisión (configurable
-            // en Configuración) independiente de la de MercadoCrédito.
             const isQr = appState.paymentMethod === 'qr';
             const qrFeePct = isQr ? (appState.qrFee || 0) : 0;
             const qrFeeAmount = isQr ? (finalTotal * (qrFeePct / 100)) : 0;
@@ -8501,9 +8553,8 @@
                 paymentMethod: appState.paymentMethod,
                 received: received,
                 change: change,
-                isMercadoCredito: isMercadoCredito,
-                mercadoCreditoFee: mercadoFeeAmount,
-                mercadoCreditoFeePct: mercadoFeePct,
+                debitFee: debitFeeAmount,
+                debitFeePct: debitFeePct,
                 qrFee: qrFeeAmount,
                 qrFeePct: qrFeePct,
                 user: appState.currentUser ? appState.currentUser.name : null,
@@ -8566,8 +8617,9 @@
             if (appState.paymentMethod === 'cash') {
                 appState.cash += finalTotal;
             } else if (appState.paymentMethod === 'debit') {
-                const neto = isMercadoCredito ? (finalTotal - mercadoFeeAmount) : finalTotal;
-                appState.bank += neto;
+                appState.bank += (finalTotal - debitFeeAmount);
+            } else if (appState.paymentMethod === 'transfer') {
+                appState.bank += finalTotal;
             } else if (appState.paymentMethod === 'qr') {
                 appState.bank += (finalTotal - qrFeeAmount);
             }
@@ -8580,7 +8632,7 @@
             }
             appState.invoiceTracking.soldWhite += sale.invoiceBreakdown.white;
             appState.invoiceTracking.soldBlack += sale.invoiceBreakdown.black;
-            if (appState.paymentMethod === 'debit' || appState.paymentMethod === 'qr') {
+            if (isDebitOrTransfer(appState.paymentMethod) || appState.paymentMethod === 'qr') {
                 appState.invoiceTracking.soldDebit += finalTotal;
             }
             
@@ -9072,10 +9124,11 @@
             const styles = {
                 cash: 'border-green-500 bg-green-50 text-green-700',
                 debit: 'border-blue-500 bg-blue-50 text-blue-700',
+                transfer: 'border-teal-500 bg-teal-50 text-teal-700',
                 qr: 'border-purple-500 bg-purple-50 text-purple-700',
                 fiado: 'border-amber-500 bg-amber-50 text-amber-700'
             };
-            ['cash', 'debit', 'qr', 'fiado'].forEach(m => {
+            ['cash', 'debit', 'transfer', 'qr', 'fiado'].forEach(m => {
                 const btn = document.getElementById('pedido-inline-btn-' + m);
                 if (btn) btn.className = base + (m === method ? styles[m] : 'border-gray-200 text-gray-600 hover:border-gray-400');
             });
@@ -9115,7 +9168,7 @@
                     document.getElementById('pedido-remind-minutes').value = pedido.reminderMinutesBefore != null ? pedido.reminderMinutesBefore : 10;
                     document.getElementById('pedido-notes').value = pedido.notes || '';
                     pendingPedidoItems = JSON.parse(JSON.stringify(pedido.items || []));
-                    pedidoInlinePaymentMethod = ['cash', 'debit', 'qr', 'fiado'].includes(pedido.paymentMethod) ? pedido.paymentMethod : 'cash';
+                    pedidoInlinePaymentMethod = ['cash', 'debit', 'transfer', 'qr', 'fiado'].includes(pedido.paymentMethod) ? pedido.paymentMethod : 'cash';
                     if (pedido.paymentReceived) document.getElementById('pedido-inline-received').value = pedido.paymentReceived;
                     setPedidoPaymentStatus(pedido.paymentStatus || 'pendiente');
                 }
@@ -9482,7 +9535,7 @@
         }
 
         // Misma idea que setPaymentMethod() del carrito de Vender, pero para este modal:
-        // Fiado (paga después, no calcula vuelto), Efectivo (vuelto) o Débito (transferencia/tarjeta).
+        // Fiado (paga después, no calcula vuelto), Efectivo (vuelto), Débito (tarjeta), Transferencia o QR.
         function setPedidoCobroMethod(method) {
             cobroPedidoMethod = method;
             const cashDetails = document.getElementById('pedido-cobro-cash-details');
@@ -9497,10 +9550,11 @@
             const styles = {
                 cash: 'border-green-500 bg-green-50 text-green-700',
                 debit: 'border-blue-500 bg-blue-50 text-blue-700',
+                transfer: 'border-teal-500 bg-teal-50 text-teal-700',
                 qr: 'border-purple-500 bg-purple-50 text-purple-700',
                 fiado: 'border-amber-500 bg-amber-50 text-amber-700'
             };
-            ['cash', 'debit', 'qr', 'fiado'].forEach(m => {
+            ['cash', 'debit', 'transfer', 'qr', 'fiado'].forEach(m => {
                 const btn = document.getElementById('pedido-cobro-btn-' + m);
                 if (btn) btn.className = base + (m === method ? styles[m] : 'border-gray-200 text-gray-600 hover:border-gray-400');
             });
@@ -9518,7 +9572,7 @@
         }
 
         async function confirmPedidoCobro() {
-            const pedido = findPedido(cobroPedidoId);
+            let pedido = findPedido(cobroPedidoId);
             if (!pedido) return;
 
             // Fiado = paga después: no se marca como pagado, solo se anota el medio elegido.
@@ -9547,6 +9601,8 @@
                     if (!(await showConfirmModal('El monto recibido es menor al total. ¿Marcar como pagado igual?'))) return;
                 }
             }
+            // Volver a buscarlo: durante la confirmación una sincronización pudo reemplazar la lista
+            pedido = findPedido(cobroPedidoId) || pedido;
             pedido.paymentStatus = 'pagado';
             pedido.paymentMethod = cobroPedidoMethod;
             if (cobroPedidoMethod === 'cash' && received > 0) {
@@ -9634,11 +9690,36 @@
             return true;
         }
 
+        // Venta ya registrada para este pedido (si existe). Evita facturar dos veces la misma comanda.
+        function findSaleForPedido(pedidoId) {
+            return (appState.sales || []).find(s => s.pedidoId === pedidoId && !s.anulada) || null;
+        }
+
+        // Marca el pedido como entregado buscándolo de nuevo en appState.pedidos: mientras se
+        // esperaba una confirmación, una sincronización pudo reemplazar la lista por copias
+        // nuevas, y marcar el objeto viejo dejaba el pedido "vivo" en la lista (y se volvía a
+        // facturar después). Se marca también el objeto recibido por las dudas.
+        function marcarPedidoEntregado(pedidoId, pedidoObj) {
+            const live = findPedido(pedidoId);
+            if (live) live.status = 'entregado';
+            if (pedidoObj && pedidoObj !== live) pedidoObj.status = 'entregado';
+        }
+
         async function cargarPedidoEnVenta(id) {
             const pedido = (appState.pedidos || []).find(p => p.id === id);
             if (!pedido) return;
             if (!pedido.items || pedido.items.length === 0) {
                 showNotification('Este pedido no tiene productos cargados', 'warning');
+                return;
+            }
+
+            // Ya se facturó (ej: quedó visible por error): no generar otra venta igual
+            const ventaPrevia = findSaleForPedido(pedido.id);
+            if (ventaPrevia) {
+                marcarPedidoEntregado(pedido.id, pedido);
+                saveToLocalStorage();
+                renderPedidos();
+                showNotification('⚠️ Esta comanda ya se facturó (venta de las ' + (ventaPrevia.time || '?') + ' del ' + ventaPrevia.date + '). No se volvió a facturar.', 'warning', 8000);
                 return;
             }
 
@@ -9656,6 +9737,16 @@
                 ? '¿Facturar este pedido? El pago ya está resuelto (cobrado o anotado como fiado): se va a registrar la venta directamente, sin pedir el pago de nuevo.'
                 : '¿Pasar este pedido al carrito de venta? Se va a marcar como entregado.';
             if (!(await showConfirmModal(confirmMsg))) return;
+
+            // Mientras estaba abierta la confirmación pudo facturarse por otro lado (doble clic,
+            // otra ventana): volver a chequear antes de seguir.
+            if (findSaleForPedido(pedido.id)) {
+                marcarPedidoEntregado(pedido.id, pedido);
+                saveToLocalStorage();
+                renderPedidos();
+                showNotification('⚠️ Esta comanda ya se facturó. No se volvió a facturar.', 'warning', 8000);
+                return;
+            }
 
             const pedidoCartItems = pedido.items.map(item => {
                 const product = appState.inventory.find(p => p.id === item.productId);
@@ -9715,7 +9806,7 @@
 
                     // "mercadopago" (pedido online ya cobrado) se trata como "qr" para la
                     // plata: en los dos casos entra a la cuenta, no a la caja física.
-                    const method = (pedido.paymentMethod === 'debit' || pedido.paymentMethod === 'qr' || pedido.paymentMethod === 'fiado')
+                    const method = (isDebitOrTransfer(pedido.paymentMethod) || pedido.paymentMethod === 'qr' || pedido.paymentMethod === 'fiado')
                         ? pedido.paymentMethod
                         : (pedido.paymentMethod === 'mercadopago' ? 'qr' : 'cash');
                     setPaymentMethod(method);
@@ -9751,7 +9842,7 @@
                 // (monto inválido, apertura de caja pendiente, etc.), el pedido queda
                 // como estaba para poder reintentarlo.
                 if (appState.sales.length > salesCountBefore) {
-                    pedido.status = 'entregado';
+                    marcarPedidoEntregado(pedido.id, pedido);
                     saveToLocalStorage();
                 } else {
                     // No llegó a venderse -- completeSale() nunca llegó al setTimeout
@@ -9767,7 +9858,7 @@
                 // ir a Vender para que el cajero elija el método a mano (por eso el
                 // carrito real SÍ se reemplaza, con el aviso de más arriba). El stock ya
                 // se cubrió arriba si hacía falta, así que acá no debería volver a fallar.
-                pedido.status = 'entregado';
+                marcarPedidoEntregado(pedido.id, pedido);
                 saveToLocalStorage();
                 appState.cart = pedidoCartItems;
                 updateCartTotals();
@@ -10553,7 +10644,7 @@
             rules = rules || arcaRules();
             if (rules.stock === 'off') return [];
             if (rules.pay === 'cash' && sale.paymentMethod !== 'cash') return [];
-            if (rules.pay === 'debit' && sale.paymentMethod !== 'debit') return [];
+            if (rules.pay === 'debit' && !isDebitOrTransfer(sale.paymentMethod)) return []; // 'debit' = débito o transferencia
             const isFacturableItem = (i) => {
                 const item = sale.items[i];
                 return !!(item && item.productId && !item.isManual);
@@ -12941,8 +13032,10 @@
                 refId: refId || null,
                 note: note || null
             });
-            // Tope para que no crezca sin límite (últimos ~5000 movimientos entre todos los productos)
-            if (appState.stockLedger.length > 5000) {
+            // Tope para que no crezca sin límite (últimos ~5000 movimientos entre todos los productos).
+            // Se recorta de a 500 (al pasar 5500) y no de a 1: recortar el más viejo en CADA
+            // movimiento corría todo el array y obligaba a re-subir todos sus chunks a Firebase.
+            if (appState.stockLedger.length > 5500) {
                 appState.stockLedger = appState.stockLedger.slice(-5000);
             }
         }
@@ -15345,8 +15438,15 @@
                 // Procesar lotes del DOM
                 const batchRows = document.querySelectorAll('#edit-prod-batches .batch-row');
                 const newBatches = [];
-                const isWeight = product.saleByWeight && product.weightPerUnit > 0;
-                const weightPerUnit = product.weightPerUnit || 1;
+                // OJO: usar el peso-por-unidad recién tipeado en el formulario (DOM), no
+                // product.weightPerUnit -- ese todavía tiene el valor VIEJO acá (se
+                // actualiza más abajo). Si no, al cambiar "peso de 10 caramelos" (que
+                // reescribe este mismo campo) el input de "Cantidad (g)" -- que ya
+                // muestra los gramos con el peso NUEVO -- se dividía por el peso VIEJO
+                // al guardar, y el stock en lotes quedaba mal reinterpretado sin que el
+                // usuario haya tocado la cantidad.
+                const weightPerUnit = parseFloat(document.getElementById('edit-prod-weight-per-unit')?.value) || product.weightPerUnit || 1;
+                const isWeight = (document.getElementById('edit-prod-sale-by-weight')?.checked || false) && weightPerUnit > 0;
                 
                 batchRows.forEach(row => {
                     let qty = parseInt(row.querySelector('.edit-batch-qty').value) || 0;
@@ -15856,7 +15956,7 @@
                         <p class="font-bold text-gray-800">${invoiceBadge}Venta #${sale.id.slice(-4)}</p>
                         ${sale.fromPedido ? `<p class="text-xs font-bold text-orange-600">📋 Pedido — Comanda #${sale.comandaNumber || '?'}${sale.pedidoCustomerName ? ' — ' + escapeHtml(sale.pedidoCustomerName) : ''}</p>` : ''}
                         ${sale.specialPriceCodeName ? `<p class="text-xs font-bold text-amber-600">🏷️ Precio especial: ${escapeHtml(sale.specialPriceCodeName)}</p>` : ''}
-                        <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.paymentMethod === 'qr' ? '📱 QR' : (sale.isMercadoCredito ? '💳 MercadoCrédito' : '💳 Débito')))}</p>
+                        <p class="text-sm text-gray-500">${sale.time} • ${sale.items.length} items • ${sale.paymentMethod === 'cash' ? '💵' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.paymentMethod === 'qr' ? '📱 QR' : (sale.paymentMethod === 'transfer' ? '🏦' : (sale.isMercadoCredito ? '💳 MercadoCrédito' : '💳 Débito'))))}</p>
                     </div>
                     <div class="text-right mr-4">
                         <p class="font-bold text-green-600">+$${formatMoney(sale.total)}</p>
@@ -15978,17 +16078,15 @@
 
             if (sale.paymentMethod === 'cash') {
                 appState.cash -= sale.total;
-            } else if (sale.paymentMethod === 'debit') {
-                const neto = sale.isMercadoCredito ? (sale.total - (sale.mercadoCreditoFee || 0)) : sale.total;
-                appState.bank -= neto;
-            } else if (sale.paymentMethod === 'qr') {
-                appState.bank -= (sale.total - (sale.qrFee || 0));
+            } else if (isDebitOrTransfer(sale.paymentMethod) || sale.paymentMethod === 'qr') {
+                // Sale de la cuenta lo que entró: total menos las comisiones grabadas en la venta
+                appState.bank -= saleBankNet(sale);
             } else if (sale.paymentMethod === 'fiado' && sale.fiadoPaid) {
                 // Fiado ya cobrado: devolver la plata según cómo se cobró (fiado sin cobrar no movió plata)
                 if (sale.fiadoPaidMethod === 'cash') {
                     appState.cash -= sale.total;
-                } else if (sale.fiadoPaidMethod === 'debit') {
-                    appState.bank -= sale.total;
+                } else if (isDebitOrTransfer(sale.fiadoPaidMethod)) {
+                    appState.bank -= fiadoBankNet(sale);
                 }
             }
 
@@ -15996,9 +16094,10 @@
             if (appState.returns && appState.returns.length > 0) {
                 const saleReturns = appState.returns.filter(r => r.originalSaleId === sale.id);
                 saleReturns.forEach(ret => {
-                    if (ret.paymentMethod === 'cash') {
+                    const target = returnRefundTarget(ret);
+                    if (target === 'cash') {
                         appState.cash += ret.amount;
-                    } else if (ret.paymentMethod === 'debit') {
+                    } else if (target === 'bank') {
                         appState.bank += ret.amount;
                     }
                 });
@@ -16019,8 +16118,8 @@
             if (appState.invoiceTracking && sale.invoiceBreakdown) {
                 appState.invoiceTracking.soldWhite -= (sale.invoiceBreakdown.white || 0);
                 appState.invoiceTracking.soldBlack -= (sale.invoiceBreakdown.black || 0);
-                if (sale.paymentMethod === 'debit') {
-                    appState.invoiceTracking.soldDebit -= sale.total;
+                if (isDebitOrTransfer(sale.paymentMethod) || sale.paymentMethod === 'qr') {
+                    appState.invoiceTracking.soldDebit -= sale.total; // mismo criterio que al sumarla en completeSale
                 }
             }
 
@@ -16285,17 +16384,15 @@
 
             if (sale.paymentMethod === 'cash') {
                 appState.cash -= sale.total;
-            } else if (sale.paymentMethod === 'debit') {
-                const neto = sale.isMercadoCredito ? (sale.total - (sale.mercadoCreditoFee || 0)) : sale.total;
-                appState.bank -= neto;
-            } else if (sale.paymentMethod === 'qr') {
-                appState.bank -= (sale.total - (sale.qrFee || 0));
+            } else if (isDebitOrTransfer(sale.paymentMethod) || sale.paymentMethod === 'qr') {
+                // Sale de la cuenta lo que entró: total menos las comisiones grabadas en la venta
+                appState.bank -= saleBankNet(sale);
             } else if (sale.paymentMethod === 'fiado' && sale.fiadoPaid) {
                 // Fiado ya cobrado: devolver la plata según cómo se cobró (fiado sin cobrar no movió plata)
                 if (sale.fiadoPaidMethod === 'cash') {
                     appState.cash -= sale.total;
-                } else if (sale.fiadoPaidMethod === 'debit') {
-                    appState.bank -= sale.total;
+                } else if (isDebitOrTransfer(sale.fiadoPaidMethod)) {
+                    appState.bank -= fiadoBankNet(sale);
                 }
             }
 
@@ -16303,9 +16400,10 @@
             if (appState.returns && appState.returns.length > 0) {
                 const saleReturns = appState.returns.filter(r => r.originalSaleId === sale.id);
                 saleReturns.forEach(ret => {
-                    if (ret.paymentMethod === 'cash') {
+                    const target = returnRefundTarget(ret);
+                    if (target === 'cash') {
                         appState.cash += ret.amount;
-                    } else if (ret.paymentMethod === 'debit') {
+                    } else if (target === 'bank') {
                         appState.bank += ret.amount;
                     }
                 });
@@ -16450,9 +16548,19 @@
                         <span>$${formatMoney((sale.total - (sale.qrFee || 0)))}</span>
                     </div>
                     ` : ''}
+                    ${sale.paymentMethod === 'debit' && sale.debitFee ? `
+                    <div class="flex justify-between text-sm text-blue-600 font-bold">
+                        <span>Comisión débito (${sale.debitFeePct || 0}%):</span>
+                        <span>-$${formatMoney((sale.debitFee || 0))}</span>
+                    </div>
+                    <div class="flex justify-between text-sm text-green-700 font-bold">
+                        <span>Neto a la cuenta:</span>
+                        <span>$${formatMoney((sale.total - (sale.debitFee || 0)))}</span>
+                    </div>
+                    ` : ''}
                     <div class="flex justify-between text-sm text-gray-500">
                         <span>Método:</span>
-                        <span>${sale.paymentMethod === 'cash' ? 'Efectivo' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.paymentMethod === 'qr' ? '📱 QR' : (sale.isMercadoCredito ? '💳 Débito (MercadoCrédito)' : '💳 Débito')))}</span>
+                        <span>${sale.paymentMethod === 'cash' ? 'Efectivo' : (sale.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(sale) : (sale.paymentMethod === 'qr' ? '📱 QR' : (sale.paymentMethod === 'transfer' ? '🏦 Transferencia' : (sale.isMercadoCredito ? '💳 Débito (MercadoCrédito)' : '💳 Débito'))))}</span>
                     </div>
                     ${sale.paymentMethod === 'fiado' ? `
                     <div class="flex justify-between text-sm ${sale.fiadoPaid ? 'text-green-600' : 'text-amber-600'} font-bold">
@@ -16461,7 +16569,7 @@
                     </div>
                     <div class="flex justify-between text-sm text-gray-500">
                         <span>Estado del fiado:</span>
-                        <span>${sale.fiadoPaid ? 'Pagado el ' + (sale.fiadoPaidDate || '-') + ' (' + (sale.fiadoPaidMethod === 'cash' ? 'Efectivo' : 'Cuenta') + ')' : 'Pendiente de cobro'}</span>
+                        <span>${sale.fiadoPaid ? 'Pagado el ' + (sale.fiadoPaidDate || '-') + ' (' + fiadoPaidMethodLabel(sale) + (sale.fiadoPaidFee ? ', comisión -$' + formatMoney(sale.fiadoPaidFee) : '') + ')' : 'Pendiente de cobro'}</span>
                     </div>
                     ` : ''}
                     ${sale.user ? `
@@ -16705,7 +16813,7 @@
                         '<tbody class="divide-y divide-gray-200">' +
                         todaySales.slice().reverse().map(s => {
                             const bd = s.invoiceBreakdown || { white: 0, black: 0 };
-                            const payIcon = s.paymentMethod === 'cash' ? '💵 Efectivo' : s.paymentMethod === 'debit' ? '💳 Débito' : s.paymentMethod === 'qr' ? '📱 QR' : s.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(s) : '💳 Otro';
+                            const payIcon = s.paymentMethod === 'cash' ? '💵 Efectivo' : s.paymentMethod === 'debit' ? '💳 Débito' : s.paymentMethod === 'transfer' ? '🏦 Transferencia' : s.paymentMethod === 'qr' ? '📱 QR' : s.paymentMethod === 'fiado' ? '🤝 ' + paymentMethodLabel(s) : '💳 Otro';
                             return '<tr class="hover:bg-gray-50">' +
                                 '<td class="px-3 py-2 text-gray-600">' + s.time + '</td>' +
                                 '<td class="px-3 py-2 text-right font-bold">$' + formatMoney(s.total) + '</td>' +
@@ -17490,7 +17598,7 @@
             
             // Obtener devoluciones en efectivo hoy
             const todayCashReturns = (appState.returns || [])
-                .filter(r => r.date === today && r.paymentMethod === 'cash')
+                .filter(r => r.date === today && returnRefundTarget(r) === 'cash')
                 .map(r => ({
                     type: 'expense',
                     concept: `Devolución: ${r.reason || 'Sin motivo'}`,
@@ -17537,25 +17645,29 @@
         function renderBankMovements() {
             const today = formatDateISO(appState.activeDate);
             
-            // Obtener ventas con débito o QR de hoy (ambas van a la cuenta)
+            // Obtener ventas con débito, transferencia o QR de hoy (todas van a la cuenta)
             const todayBankSales = appState.sales
-                .filter(s => s.date === today && (s.paymentMethod === 'debit' || s.paymentMethod === 'qr'))
-                .map(s => ({
-                    type: 'income',
-                    concept: `Venta #${s.id.slice(-4)}${s.isMercadoCredito ? ' (MC)' : ''}${s.paymentMethod === 'qr' ? ' (QR)' : ''}`,
-                    amount: s.isMercadoCredito ? (s.total - (s.mercadoCreditoFee || 0)) : (s.paymentMethod === 'qr' ? (s.total - (s.qrFee || 0)) : s.total),
-                    time: s.time,
-                    isMercadoCredito: s.isMercadoCredito,
-                    fee: s.paymentMethod === 'qr' ? (s.qrFee || 0) : (s.mercadoCreditoFee || 0)
-                }));
+                .filter(s => s.date === today && (isDebitOrTransfer(s.paymentMethod) || s.paymentMethod === 'qr'))
+                .map(s => {
+                    const fee = (s.mercadoCreditoFee || 0) + (s.qrFee || 0) + (s.debitFee || 0);
+                    return {
+                        type: 'income',
+                        concept: `Venta #${s.id.slice(-4)}${s.isMercadoCredito ? ' (MC)' : ''}${s.paymentMethod === 'qr' ? ' (QR)' : ''}${s.paymentMethod === 'transfer' ? ' (Transf.)' : ''}${s.paymentMethod === 'debit' && s.debitFee ? ' (Débito)' : ''}`,
+                        amount: saleBankNet(s),
+                        time: s.time,
+                        isMercadoCredito: s.isMercadoCredito,
+                        hasFee: fee > 0,
+                        fee: fee
+                    };
+                });
             
             // Cobros de fiados a cuenta de hoy (cuentan el día del cobro)
             const todayBankFiados = appState.sales
-                .filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid && s.fiadoPaidDate === today && s.fiadoPaidMethod === 'debit')
+                .filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid && s.fiadoPaidDate === today && isDebitOrTransfer(s.fiadoPaidMethod))
                 .map(s => ({
                     type: 'income',
                     concept: `Cobro fiado – ${s.customerName || 'Cliente'}`,
-                    amount: s.total,
+                    amount: fiadoBankNet(s),
                     time: s.time,
                     label: '🤝 FIADO'
                 }));
@@ -17603,9 +17715,9 @@
                     label: '↔️ MOVIMIENTO'
                 }));
             
-            // Obtener devoluciones en débito hoy
+            // Obtener devoluciones que salieron de la cuenta hoy (débito, transferencia, QR, fiado cobrado a cuenta)
             const todayBankReturns = (appState.returns || [])
-                .filter(r => r.date === today && r.paymentMethod === 'debit')
+                .filter(r => r.date === today && returnRefundTarget(r) === 'bank')
                 .map(r => ({
                     type: 'expense',
                     concept: `Devolución: ${r.reason || 'Sin motivo'}`,
@@ -17640,7 +17752,7 @@
                             <span class="font-bold ${textClass}">
                                 ${m.type === 'income' ? '+' : '-'}$${formatMoney(m.amount)}
                             </span>
-                            ${m.isMercadoCredito ? `<p class="text-[10px] text-red-500">-$${formatMoney(m.fee)} comisión</p>` : ''}
+                            ${m.hasFee ? `<p class="text-[10px] text-red-500">-$${formatMoney(m.fee)} comisión</p>` : ''}
                         </div>
                         ${m.capitalAdjId ? `<button onclick="deleteCapitalAdjustment('${m.capitalAdjId}')" class="text-gray-400 hover:text-red-600 px-1" title="Borrar este movimiento de capital">✕</button>` : ''}
                     </div>
@@ -19016,7 +19128,7 @@
             // Excluir gastos-artefacto de faltantes de cierre (son consecuencia del arqueo, no gastos reales del día)
             const cashExpenses = appState.expenses.filter(e => e.date === today && e.source === 'cash' && !(e.id && e.id.startsWith('EXP-SHORTAGE-'))).reduce((sum, e) => sum + e.amount, 0);
             const cashInvestments = appState.investments.filter(i => i.date === today && i.source === 'cash').reduce((sum, i) => sum + i.amount, 0);
-            const cashReturns = appState.returns ? appState.returns.filter(r => r.date === today && r.paymentMethod === 'cash').reduce((sum, r) => sum + r.amount, 0) : 0;
+            const cashReturns = appState.returns ? appState.returns.filter(r => r.date === today && returnRefundTarget(r) === 'cash').reduce((sum, r) => sum + r.amount, 0) : 0;
             const toBank = appState.cashMovements ? appState.cashMovements.filter(m => m.date === today && m.type === 'to_bank').reduce((sum, m) => sum + m.amount, 0) : 0;
             const toCash = appState.cashMovements ? appState.cashMovements.filter(m => m.date === today && m.type === 'to_cash').reduce((sum, m) => sum + m.amount, 0) : 0;
 
@@ -19028,7 +19140,7 @@
             
             // Cobros de fiados del día (entran el día del cobro, no el día del fiado)
             const cashFiados = appState.sales.filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid && s.fiadoPaidDate === today && s.fiadoPaidMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
-            const bankFiados = appState.sales.filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid && s.fiadoPaidDate === today && s.fiadoPaidMethod === 'debit').reduce((sum, s) => sum + s.total, 0);
+            const bankFiados = appState.sales.filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid && s.fiadoPaidDate === today && isDebitOrTransfer(s.fiadoPaidMethod)).reduce((sum, s) => sum + fiadoBankNet(s), 0);
 
             // Capital agregado (préstamos, aportes propios) con el botón "Agregar" de
             // Caja/Cuenta -- los retiros YA se cuentan solos porque se guardan como Gasto
@@ -19051,10 +19163,10 @@
             const bankAssetSales = (appState.fixedAssets || []).filter(a => a.sold && a.soldDate === today && a.soldSource === 'bank').reduce((sum, a) => sum + (a.soldAmount || 0), 0);
 
             // Transacciones de cuenta (banco/débito)
-            const bankSales = appState.sales.filter(s => s.date === today && (s.paymentMethod === 'debit' || s.paymentMethod === 'qr')).reduce((sum, s) => sum + (s.total - (s.mercadoCreditoFee || 0) - (s.qrFee || 0)), 0);
+            const bankSales = appState.sales.filter(s => s.date === today && (isDebitOrTransfer(s.paymentMethod) || s.paymentMethod === 'qr')).reduce((sum, s) => sum + saleBankNet(s), 0);
             const bankExpenses = appState.expenses.filter(e => e.date === today && e.source === 'bank').reduce((sum, e) => sum + e.amount, 0);
             const bankInvestments = appState.investments.filter(i => i.date === today && i.source === 'bank').reduce((sum, i) => sum + i.amount, 0);
-            const bankReturns = appState.returns ? appState.returns.filter(r => r.date === today && r.paymentMethod === 'debit').reduce((sum, r) => sum + r.amount, 0) : 0;
+            const bankReturns = appState.returns ? appState.returns.filter(r => r.date === today && returnRefundTarget(r) === 'bank').reduce((sum, r) => sum + r.amount, 0) : 0;
 
             const expectedCash = openingCash + cashSales + cashFiados + cashCapitalAdded + cashAssetSales - cashExpenses - cashInvestments - cashReturns - cashAssetPayments + toCash - toBank - resDeposits + resWithdraws;
             const expectedBank = openingBank + bankSales + bankFiados + bankCapitalAdded + bankAssetSales - bankExpenses - bankInvestments - bankReturns - bankAssetPayments - toCash + toBank;
@@ -19131,7 +19243,7 @@
                 const todayCashExpenses = appState.expenses.filter(e => e.date === today && e.source === 'cash' && !(e.id && e.id.startsWith('EXP-SHORTAGE-'))).reduce((sum, e) => sum + e.amount, 0);
                 const todayCashInvestments = appState.investments.filter(i => i.date === today && i.source === 'cash').reduce((sum, i) => sum + i.amount, 0);
                 
-                const todayBankSales = appState.sales.filter(s => s.date === today && (s.paymentMethod === 'debit' || s.paymentMethod === 'qr')).reduce((sum, s) => sum + (s.total - (s.mercadoCreditoFee || 0) - (s.qrFee || 0)), 0);
+                const todayBankSales = appState.sales.filter(s => s.date === today && (isDebitOrTransfer(s.paymentMethod) || s.paymentMethod === 'qr')).reduce((sum, s) => sum + saleBankNet(s), 0);
                 const todayBankExpenses = appState.expenses.filter(e => e.date === today && e.source === 'bank').reduce((sum, e) => sum + e.amount, 0);
                 const todayBankInvestments = appState.investments.filter(i => i.date === today && i.source === 'bank').reduce((sum, i) => sum + i.amount, 0);
                 
@@ -21640,19 +21752,19 @@
                 return;
             }
             
-            // Devolver dinero: si fue efectivo, restar de caja. Si fue débito, restar de cuenta.
+            // Devolver dinero desde donde entró: efectivo -> caja; débito, transferencia o QR -> cuenta;
+            // fiado ya cobrado -> según cómo se cobró (fiado sin cobrar no movió plata).
+            let refundTarget = null;
             if (currentReturnSale.paymentMethod === 'cash') {
-                appState.cash -= amount;
-            } else if (currentReturnSale.paymentMethod === 'debit') {
-                appState.bank -= amount;
+                refundTarget = 'cash';
+            } else if (isDebitOrTransfer(currentReturnSale.paymentMethod) || currentReturnSale.paymentMethod === 'qr') {
+                refundTarget = 'bank';
             } else if (currentReturnSale.paymentMethod === 'fiado' && currentReturnSale.fiadoPaid) {
-                // Fiado ya cobrado: restar de donde entró la plata (fiado sin cobrar no movió plata)
-                if (currentReturnSale.fiadoPaidMethod === 'cash') {
-                    appState.cash -= amount;
-                } else if (currentReturnSale.fiadoPaidMethod === 'debit') {
-                    appState.bank -= amount;
-                }
+                if (currentReturnSale.fiadoPaidMethod === 'cash') refundTarget = 'cash';
+                else if (isDebitOrTransfer(currentReturnSale.fiadoPaidMethod)) refundTarget = 'bank';
             }
+            if (refundTarget === 'cash') appState.cash -= amount;
+            else if (refundTarget === 'bank') appState.bank -= amount;
             
             if (!appState.returns) appState.returns = [];
             appState.returns.push({
@@ -21663,6 +21775,7 @@
                 amount: amount,
                 reason: reason,
                 paymentMethod: currentReturnSale.paymentMethod,
+                refundTarget: refundTarget,
                 timestamp: Date.now()
             });
             
@@ -24119,7 +24232,7 @@ Total de productos a comprar: ${shoppingList.length}
             document.getElementById('settings-bank').value = appState.bank;
             document.getElementById('settings-reserve').value = appState.reserve || 0;
             document.getElementById('settings-initial-capital').value = appState.initialCapital || 0;
-            document.getElementById('settings-mercado-fee').value = appState.mercadoCreditoFee || 5;
+            document.getElementById('settings-debit-fee').value = appState.debitFee || 0;
             document.getElementById('settings-qr-fee').value = appState.qrFee || 0;
             document.getElementById('settings-stock-days').value = appState.stockTargetDays || 7;
             const fontScaleEl = document.getElementById('settings-font-scale');
@@ -24362,7 +24475,7 @@ Total de productos a comprar: ${shoppingList.length}
                     const bd = sale.invoiceBreakdown || { white: 0, black: 0 };
                     soldWhite += bd.white;
                     soldBlack += bd.black;
-                    if (sale.paymentMethod === 'debit') {
+                    if (isDebitOrTransfer(sale.paymentMethod)) {
                         soldDebit += sale.total;
                     }
                     filteredSales.push(sale);
@@ -24547,7 +24660,7 @@ Total de productos a comprar: ${shoppingList.length}
             } else {
                 tableBody.innerHTML = recentSales.map(s => {
                     const bd = s.invoiceBreakdown || { white: 0, black: 0 };
-                    const paymentIcon = s.paymentMethod === 'cash' ? 'Efectivo' : s.paymentMethod === 'debit' ? 'Debito' : 'Otro';
+                    const paymentIcon = s.paymentMethod === 'cash' ? 'Efectivo' : s.paymentMethod === 'debit' ? 'Debito' : s.paymentMethod === 'transfer' ? 'Transferencia' : s.paymentMethod === 'qr' ? 'QR' : s.paymentMethod === 'fiado' ? 'Fiado' : 'Otro';
                     return '<tr class="border-b border-gray-100 hover:bg-gray-50">' +
                         '<td class="py-2 px-3 text-gray-600">' + s.date + ' ' + s.time + '</td>' +
                         '<td class="py-2 px-3 text-right font-bold">$' + formatMoney(s.total) + '</td>' +
@@ -24603,12 +24716,13 @@ Total de productos a comprar: ${shoppingList.length}
             downloadFile(csv, 'facturacion_' + formatDateISO(new Date()) + '.csv', 'text/csv');
         }
 
-        function saveMercadoFeeFromSettings() {
-            const fee = parseFloat(document.getElementById('settings-mercado-fee').value);
+        function saveDebitFeeFromSettings() {
+            const fee = parseFloat(document.getElementById('settings-debit-fee').value);
             if (fee >= 0 && fee <= 99) {
-                appState.mercadoCreditoFee = fee;
+                appState.debitFee = fee;
                 saveToLocalStorage();
-                showNotification(`Comisión MercadoCrédito actualizada a ${fee}%`, 'success');
+                updateCartTotals(); // por si hay un cobro con débito en curso
+                showNotification(`Comisión de débito actualizada a ${fee}%`, 'success');
             } else {
                 showNotification('La comisión debe estar entre 0% y 99%', 'error');
             }
@@ -24748,6 +24862,7 @@ Total de productos a comprar: ${shoppingList.length}
                             defaultMargin: 30,
                             mercadoCreditoFee: 5,
                             qrFee: 0,
+                            debitFee: 0,
                             comprasAppPassword: 'admin123',
                             financesPassword: 'GiulianoR4',
                             stockTargetDays: 7,
@@ -24873,6 +24988,7 @@ Total de productos a comprar: ${shoppingList.length}
             localStorage.removeItem('kioscopro-initialized');
             
             // 4. Actualizar lastSyncTime local para que no recupere datos viejos
+            resetFirebaseUploadState();
             lastSyncTime = Date.now();
             localStorage.setItem('kioscopro-last-sync', lastSyncTime);
             
@@ -25719,6 +25835,7 @@ RESULTADOS:
             appState.initialCapital = parseFloat(appState.initialCapital) || 0;
             appState.mercadoCreditoFee = parseFloat(appState.mercadoCreditoFee) || 5;
             appState.qrFee = parseFloat(appState.qrFee) || 0;
+            appState.debitFee = parseFloat(appState.debitFee) || 0;
             appState.stockTargetDays = parseInt(appState.stockTargetDays) || 7;
             appState.cashFlowSettings.projectionDays = parseInt(appState.cashFlowSettings.projectionDays) || 30;
             appState.cashFlowSettings.estimatedDailyIncome = appState.cashFlowSettings.estimatedDailyIncome === null ? null : (parseFloat(appState.cashFlowSettings.estimatedDailyIncome) || null);
@@ -25739,7 +25856,7 @@ RESULTADOS:
                 syncToFirebase(true, {
                     restoredFromBackup: true,
                     restoredAt: new Date().toISOString()
-                });
+                }, { full: true });
             } else {
                 showNotification('📴 Backup restaurado localmente (sin conexión a internet)', 'info');
             }
@@ -27706,6 +27823,7 @@ RESULTADOS:
                 defaultMargin: parseFloat(appState.defaultMargin) || 30,
                 mercadoCreditoFee: parseFloat(appState.mercadoCreditoFee) || 5,
                 qrFee: parseFloat(appState.qrFee) || 0,
+                debitFee: parseFloat(appState.debitFee) || 0,
                 comprasAppPassword: appState.comprasAppPassword || '',
                 financesPassword: appState.financesPassword || '',
                 stockTargetDays: parseInt(appState.stockTargetDays) || 7,
@@ -27731,20 +27849,65 @@ RESULTADOS:
             };
         }
 
-        // Divide un array en chunks que no superen ~maxBytes cada uno (para límite 1 MB de Firestore)
-        function chunkArrayBySize(arr, maxBytes = 400000) {
+        // ==================== SYNC INCREMENTAL (solo lo que cambió) ====================
+        // Cada documento de datos de kioscos/* (chunks, docs vacíos, shoppingListSnapshot)
+        // tiene una "huella" (hash) de su contenido. main.docHashes guarda la huella de
+        // TODOS los documentos vigentes. Como main y los documentos que cambiaron se
+        // escriben en el mismo writeBatch (atómico), main.docHashes siempre describe lo
+        // que realmente hay en la nube.
+        // - Subida (principal): solo se escriben los documentos cuya huella difiere de
+        //   lo que se sabe que hay en la nube (firebaseUploadedHashes) + main.
+        // - Bajada (secundarios): solo se bajan los documentos cuya huella no coincide
+        //   con la copia que ya se bajó antes (firebaseDownloadCache).
+        // Si main no trae docHashes (lo escribió una versión vieja de la app) todo
+        // vuelve al comportamiento anterior: se sube y se baja todo.
+        let firebaseUploadedHashes = null;       // Map nombreDoc -> huella que hay en la nube. null = no se sabe -> subir todo
+        let firebaseConfirmedMain = null;        // { lastSync, deviceId } del main que está en la nube y que lo local ya incluye
+        let firebaseLastSentMainLastSync = null; // lastSync del último main que mandó este dispositivo (para ignorar su propio eco)
+        let firebaseUploadGen = 0;               // se incrementa en cada intento de subida
+        let firebaseSyncInFlight = false;        // hay una subida esperando respuesta de Firestore
+        const firebaseDownloadCache = new Map(); // solo secundarios: nombreDoc -> { hash, json }
+
+        // Huella de 64 bits (cyrb53 extendido) + largo del texto. Solo se usa para
+        // detectar cambios; un falso "igual" exige que coincidan largo y 64 bits.
+        function hashFirebaseDocJson(str) {
+            let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+            for (let i = 0; i < str.length; i++) {
+                const ch = str.charCodeAt(i);
+                h1 = Math.imul(h1 ^ ch, 2654435761);
+                h2 = Math.imul(h2 ^ ch, 1597334677);
+            }
+            h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+            h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+            h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+            h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+            return str.length.toString(36) + '-' + (h2 >>> 0).toString(36) + '-' + (h1 >>> 0).toString(36);
+        }
+
+        // Olvida lo que se sabe de la nube: la próxima subida va a ser completa.
+        function resetFirebaseUploadState() {
+            firebaseUploadedHashes = null;
+            firebaseConfirmedMain = null;
+        }
+
+        // Divide un array en chunks que no superen ~maxBytes cada uno (para límite 1 MB de Firestore).
+        // Devuelve cada chunk como lista de items ya convertidos a JSON (así no se
+        // serializa todo dos veces: una para medir y otra para subir).
+        function chunkArrayJsonBySize(arr, maxBytes = 400000) {
             if (!Array.isArray(arr) || arr.length === 0) return [];
             const chunks = [];
             let current = [];
             let currentSize = 2; // '[]'
             for (const item of arr) {
-                const itemSize = JSON.stringify(item).length + 1; // + coma aproximada
+                let json = JSON.stringify(item);
+                if (json === undefined) json = 'null'; // igual que JSON.stringify dentro de un array
+                const itemSize = json.length + 1; // + coma aproximada
                 if (current.length > 0 && currentSize + itemSize > maxBytes) {
                     chunks.push(current);
-                    current = [item];
+                    current = [json];
                     currentSize = 2 + itemSize;
                 } else {
-                    current.push(item);
+                    current.push(json);
                     currentSize += itemSize;
                 }
             }
@@ -27752,45 +27915,108 @@ RESULTADOS:
             return chunks;
         }
 
-        // Construye el payload completo para sincronizar con Firebase (documentos separados y con chunks)
-        function buildFirebaseSyncPayload(extraBaseFields = {}) {
-            const payload = {};
+        // Arma todo lo que se sincroniza con Firebase:
+        //   main -> documento base (objeto)
+        //   docs -> Map nombreDoc -> { json, hash } con el contenido exacto de cada documento de datos
+        function buildFirebaseSyncDocs(extraBaseFields = {}) {
+            const docs = new Map();
             const chunkCounts = {};
             const map = getFirebaseSyncDocMap();
             for (const [docName, field] of Object.entries(map)) {
                 const arr = appState[field];
-                const chunks = chunkArrayBySize(Array.isArray(arr) ? arr : [], 400000);
+                const chunks = chunkArrayJsonBySize(Array.isArray(arr) ? arr : [], 400000);
                 chunkCounts[docName] = chunks.length;
                 if (chunks.length === 0) {
-                    payload[docName] = { data: [] };
+                    const json = '{"data":[]}';
+                    docs.set(docName, { json, hash: hashFirebaseDocJson(json) });
                 } else {
-                    chunks.forEach((chunk, i) => {
-                        payload[docName + '_chunk_' + i] = { data: chunk };
+                    chunks.forEach((items, i) => {
+                        const json = '{"data":[' + items.join(',') + ']}';
+                        docs.set(docName + '_chunk_' + i, { json, hash: hashFirebaseDocJson(json) });
                     });
                 }
             }
-            payload.main = buildFirebaseBaseDoc(extraBaseFields);
-            payload.main.chunkCounts = chunkCounts;
+            const main = buildFirebaseBaseDoc(extraBaseFields);
+            main.chunkCounts = chunkCounts;
 
             // Snapshot liviano de la Lista de Compras, para que la app de Compra Mayorista
             // del celular pueda mostrar los sugeridos sin descargar todo el historial de ventas.
+            // La huella se calcula sin updatedAt, para no re-subirlo si los sugeridos no cambiaron.
             try {
-                payload.shoppingListSnapshot = { data: buildShoppingListSnapshot(), updatedAt: new Date().toISOString() };
+                const snapshotData = buildShoppingListSnapshot();
+                const json = JSON.stringify({ data: snapshotData, updatedAt: new Date().toISOString() });
+                docs.set('shoppingListSnapshot', { json, hash: hashFirebaseDocJson('snapshot:' + JSON.stringify(snapshotData)) });
             } catch (e) {
                 console.warn('No se pudo generar el snapshot de lista de compras:', e);
             }
 
-            return payload;
+            return { main, docs };
         }
 
-        // Descarga todos los documentos de Firestore (base + chunks o docs antiguos) y devuelve un objeto plano
-        async function downloadAllFirebaseData() {
+        // ¿Dos objetos docHashes describen exactamente los mismos documentos?
+        function sameFirebaseDocHashes(a, b) {
+            if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+            const keysA = Object.keys(a);
+            if (keysA.length !== Object.keys(b).length) return false;
+            return keysA.every(k => a[k] === b[k]);
+        }
+
+        // La bajada no trajo nada nuevo: la nube tiene exactamente el main que este
+        // dispositivo (principal) subió o ya incorporó. No hace falta fusionar.
+        function isFirebaseDownloadUnchanged(downloaded) {
+            return !!(downloaded && downloaded.__meta && downloaded.__meta.unchangedSinceOwnSync);
+        }
+
+        // Después de fusionar una bajada: anotar qué hay en la nube, para que la próxima
+        // subida mande solo las diferencias. Solo si la lectura fue "limpia": sin
+        // escrituras propias pendientes y sin ninguna subida empezada en el medio.
+        function adoptRemoteFirebaseState(downloaded) {
+            const meta = downloaded && downloaded.__meta;
+            const main = downloaded && downloaded.main;
+            if (!meta || !main || meta.unchangedSinceOwnSync) return;
+            if (meta.hasPendingWrites || firebaseSyncInFlight || meta.uploadGen !== firebaseUploadGen) return;
+            if (main.docHashes && typeof main.docHashes === 'object') {
+                firebaseUploadedHashes = new Map(Object.entries(main.docHashes));
+                firebaseConfirmedMain = { lastSync: main.lastSync, deviceId: main.deviceId };
+            } else {
+                resetFirebaseUploadState(); // main de una versión vieja: no se sabe qué hay -> subir todo
+            }
+        }
+
+        // Descarga todos los documentos de Firestore (base + chunks o docs antiguos) y devuelve un objeto plano.
+        // options.full = true: no usar atajos (bajar y devolver todo sí o sí).
+        async function downloadAllFirebaseData(options = {}) {
             if (!window.db) return {};
             const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
 
+            const uploadGenAtStart = firebaseUploadGen;
             const mainSnap = await getDoc(doc(window.db, 'kioscos', 'main'));
             const downloaded = { main: mainSnap.exists() ? mainSnap.data() : null };
+            // Metadatos internos, no enumerables (no aparecen en Object.values/keys ni en JSON)
+            const meta = {
+                hasPendingWrites: !!(mainSnap.metadata && mainSnap.metadata.hasPendingWrites),
+                uploadGen: uploadGenAtStart,
+                unchangedSinceOwnSync: false
+            };
+            Object.defineProperty(downloaded, '__meta', { value: meta, enumerable: false });
             if (!downloaded.main) return downloaded;
+
+            const master = isMasterDevice();
+
+            // Atajo del principal: si la nube tiene exactamente el último main que este
+            // dispositivo subió (o ya fusionó), no hay nada nuevo que bajar.
+            if (!options.full && master && firebaseConfirmedMain && !meta.hasPendingWrites &&
+                downloaded.main.lastSync === firebaseConfirmedMain.lastSync &&
+                downloaded.main.deviceId === firebaseConfirmedMain.deviceId) {
+                meta.unchangedSinceOwnSync = true;
+                return downloaded;
+            }
+
+            // Caché de documentos ya bajados: solo en secundarios (en el principal no
+            // vale la pena tener una copia extra de toda la base en memoria).
+            const remoteHashes = (downloaded.main.docHashes && typeof downloaded.main.docHashes === 'object') ? downloaded.main.docHashes : null;
+            const useCache = !master && !!remoteHashes;
+            if (!useCache) firebaseDownloadCache.clear();
 
             const map = getFirebaseSyncDocMap();
             const chunkCounts = downloaded.main.chunkCounts || {};
@@ -27813,10 +28039,24 @@ RESULTADOS:
             }
 
             if (docsToFetch.length > 0) {
-                const snapshots = await Promise.all(docsToFetch.map(name => getDoc(doc(window.db, 'kioscos', name))));
-                docsToFetch.forEach((name, i) => {
-                    downloaded[name] = snapshots[i].exists() ? snapshots[i].data() : null;
-                });
+                // Los que ya se tienen con la misma huella salen del caché (copia nueva
+                // en cada uso, para que nadie pueda modificar el original guardado).
+                const toFetch = [];
+                for (const name of docsToFetch) {
+                    const cached = useCache ? firebaseDownloadCache.get(name) : null;
+                    if (cached && remoteHashes[name] && cached.hash === remoteHashes[name]) {
+                        downloaded[name] = JSON.parse(cached.json);
+                    } else {
+                        toFetch.push(name);
+                    }
+                }
+
+                if (toFetch.length > 0) {
+                    const snapshots = await Promise.all(toFetch.map(name => getDoc(doc(window.db, 'kioscos', name))));
+                    toFetch.forEach((name, i) => {
+                        downloaded[name] = snapshots[i].exists() ? snapshots[i].data() : null;
+                    });
+                }
 
                 // VALIDACIÓN: si usamos chunks, ninguno puede faltar o estar corrupto.
                 // Si falta alguno, es mejor fallar que aplicar datos incompletos.
@@ -27827,7 +28067,30 @@ RESULTADOS:
                             const chunkName = docName + '_chunk_' + i;
                             const chunkDoc = downloaded[chunkName];
                             if (!chunkDoc || !Array.isArray(chunkDoc.data)) {
+                                // La nube no tiene lo que se creía: la próxima subida del principal va completa
+                                if (master) resetFirebaseUploadState();
                                 throw new Error('Chunk faltante o corrupto: ' + chunkName);
+                            }
+                        }
+                    }
+                }
+
+                if (useCache) {
+                    // Sacar del caché documentos que ya no existen
+                    const vigentes = new Set(docsToFetch);
+                    for (const name of Array.from(firebaseDownloadCache.keys())) {
+                        if (!vigentes.has(name)) firebaseDownloadCache.delete(name);
+                    }
+                    // Guardar lo recién bajado, solo si main no cambió mientras se bajaba
+                    // (si cambió, el contenido podría no corresponder a esas huellas).
+                    if (toFetch.length > 0) {
+                        const againSnap = await getDoc(doc(window.db, 'kioscos', 'main'));
+                        const againHashes = againSnap.exists() ? againSnap.data().docHashes : null;
+                        if (sameFirebaseDocHashes(remoteHashes, againHashes)) {
+                            for (const name of toFetch) {
+                                const hash = remoteHashes[name];
+                                const data = downloaded[name];
+                                if (hash && data) firebaseDownloadCache.set(name, { hash, json: JSON.stringify(data) });
                             }
                         }
                     }
@@ -27841,7 +28104,7 @@ RESULTADOS:
         function normalizeFirebaseData(downloaded) {
             const normalized = {};
             const main = downloaded && (downloaded.main || downloaded);
-            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','qrFee','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
+            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','qrFee','debitFee','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
             for (const f of baseFields) {
                 if (main && main[f] !== undefined) normalized[f] = main[f];
             }
@@ -27878,100 +28141,213 @@ RESULTADOS:
 
 
         // Función para guardar en Firebase (con debounce)
+        // Devuelve una promesa que se resuelve con true/false cuando termina la subida
+        // que incluye este pedido (los que no la esperan, simplemente la ignoran).
+        // options.full = true: subir TODOS los documentos aunque no hayan cambiado.
         let syncTimeout = null;
-        function syncToFirebase(immediate = false, extraBaseFields = {}) {
+        let firebaseSyncPendingExtra = null;  // extraBaseFields acumulados para la próxima subida
+        let firebaseSyncPendingFull = false;  // la próxima subida tiene que ser completa
+        let firebaseSyncRerunPending = false; // llegó un pedido mientras había una subida en curso
+        let firebaseSyncWaiters = [];         // quienes esperan el resultado de la próxima subida
+        function syncToFirebase(immediate = false, extraBaseFields = {}, options = {}) {
             if (!window.db) {
                 console.log('Firebase no disponible, usando solo localStorage');
-                return;
+                return Promise.resolve(false);
             }
-            
+
             // Modo secundario: solo lee datos del principal. No sube nada para evitar
             // que dispositivos con datos viejos (ej: celu) pisen los datos de la PC.
             if (!isMasterDevice()) {
                 console.log('📱 Modo secundario: no se suben datos a Firebase. Esperando datos del principal...');
                 updateSyncStatus('synced');
-                return;
+                return Promise.resolve(false);
             }
-            
+
+            if (extraBaseFields && Object.keys(extraBaseFields).length > 0) {
+                firebaseSyncPendingExtra = { ...(firebaseSyncPendingExtra || {}), ...extraBaseFields };
+            }
+            if (options && options.full) firebaseSyncPendingFull = true;
+            const result = new Promise(resolve => firebaseSyncWaiters.push(resolve));
+
             // Debounce: esperar 1 segundo después del último cambio (o inmediato si se pide)
             clearTimeout(syncTimeout);
             const delay = immediate ? 0 : 1000;
-            syncTimeout = setTimeout(async () => {
-                try {
-                    // ========== PROTECCIÓN: no sincronizar estado vacío recién inicializado ==========
-                    const hasLocalData = !!localStorage.getItem('kioscopro-data');
-                    const stateLooksEmpty = (
-                        (!Array.isArray(appState.inventory) || appState.inventory.length === 0) &&
-                        (!Array.isArray(appState.sales) || appState.sales.length === 0) &&
-                        (!Array.isArray(appState.expenses) || appState.expenses.length === 0) &&
-                        parseFloat(appState.cash || 0) === 0 &&
-                        parseFloat(appState.bank || 0) === 0
-                    );
-                    if (stateLooksEmpty && !hasLocalData) {
-                        console.warn('⛔ syncToFirebase bloqueado: estado vacío sin datos locales previos. Se evita sobrescribir datos en la nube.');
-                        updateSyncStatus('offline');
-                        return;
-                    }
+            syncTimeout = setTimeout(() => {
+                syncTimeout = null;
+                runFirebaseUpload();
+            }, delay);
+            return result;
+        }
 
-                    // ===== PROTECCIÓN ENTRE PESTAÑAS: si otra pestaña del mismo navegador guardó
-                    // algo más nuevo que lo que tiene esta pestaña, NO subir (subiríamos datos
-                    // viejos y pisaríamos los de la otra). Se avisa y el usuario recarga. =====
-                    const diskStamp = parseInt(localStorage.getItem('kioscopro-write-stamp')) || 0;
-                    const diskTab = localStorage.getItem('kioscopro-write-tab') || '';
-                    if (diskStamp > kioscoLastWriteStamp && diskTab && diskTab !== KIOSCO_TAB_ID) {
-                        console.warn('⛔ syncToFirebase cancelado: otra pestaña tiene datos más nuevos. Recargá esta pestaña.');
-                        kioscoStaleReloadPending = true;
-                        showStaleTabBanner();
-                        updateSyncStatus('synced');
-                        return;
-                    }
+        // Una sola subida a la vez. Si se pide otra mientras hay una en curso (ej: sin
+        // internet, Firestore no confirma hasta que vuelve la conexión) se junta todo en
+        // UNA subida posterior con el estado más nuevo, en vez de encolar copias enteras
+        // de la base en memoria por cada venta.
+        async function runFirebaseUpload() {
+            if (firebaseSyncInFlight) {
+                firebaseSyncRerunPending = true;
+                return;
+            }
+            firebaseSyncInFlight = true;
+            firebaseUploadGen++;
+            const waiters = firebaseSyncWaiters;
+            firebaseSyncWaiters = [];
+            const extraBaseFields = firebaseSyncPendingExtra || {};
+            firebaseSyncPendingExtra = null;
+            const forceFull = firebaseSyncPendingFull;
+            firebaseSyncPendingFull = false;
+            let ok = false;
+            let failed = false;
 
-                    const { doc, setDoc, writeBatch } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
-                    
-                    // Asegurar que cash/bank sean números válidos antes de enviar
-                    appState.cash = parseFloat(appState.cash) || 0;
-                    appState.bank = parseFloat(appState.bank) || 0;
-                    if (!appState.balancesUpdatedAt) appState.balancesUpdatedAt = 0;
-                    
-                    // Preparar datos para Firebase: un documento por array grande + documento base
-                    const payload = buildFirebaseSyncPayload(extraBaseFields);
-                    
-                    // Sanitizar para Firebase (quitar undefined, funciones, referencias circulares)
-                    const cleanPayload = JSON.parse(JSON.stringify(payload));
-                    const docNames = Object.keys(cleanPayload);
-                    
-                    // Marcar tiempo propio antes de subir para que el listener ignore su propio cambio
-                    lastSyncTime = Date.now();
-                    
+            try {
+                // Pudo dejar de ser principal entre el pedido y ahora
+                if (!window.db || !isMasterDevice()) return;
+
+                // ========== PROTECCIÓN: no sincronizar estado vacío recién inicializado ==========
+                const hasLocalData = !!localStorage.getItem('kioscopro-data');
+                const stateLooksEmpty = (
+                    (!Array.isArray(appState.inventory) || appState.inventory.length === 0) &&
+                    (!Array.isArray(appState.sales) || appState.sales.length === 0) &&
+                    (!Array.isArray(appState.expenses) || appState.expenses.length === 0) &&
+                    parseFloat(appState.cash || 0) === 0 &&
+                    parseFloat(appState.bank || 0) === 0
+                );
+                if (stateLooksEmpty && !hasLocalData) {
+                    console.warn('⛔ syncToFirebase bloqueado: estado vacío sin datos locales previos. Se evita sobrescribir datos en la nube.');
+                    updateSyncStatus('offline');
+                    return;
+                }
+
+                // ===== PROTECCIÓN ENTRE PESTAÑAS: si otra pestaña del mismo navegador guardó
+                // algo más nuevo que lo que tiene esta pestaña, NO subir (subiríamos datos
+                // viejos y pisaríamos los de la otra). Se avisa y el usuario recarga. =====
+                const diskStamp = parseInt(localStorage.getItem('kioscopro-write-stamp')) || 0;
+                const diskTab = localStorage.getItem('kioscopro-write-tab') || '';
+                if (diskStamp > kioscoLastWriteStamp && diskTab && diskTab !== KIOSCO_TAB_ID) {
+                    console.warn('⛔ syncToFirebase cancelado: otra pestaña tiene datos más nuevos. Recargá esta pestaña.');
+                    kioscoStaleReloadPending = true;
+                    showStaleTabBanner();
+                    updateSyncStatus('synced');
+                    return;
+                }
+
+                const { doc, setDoc, writeBatch, runTransaction } = await import("https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js");
+
+                // Asegurar que cash/bank sean números válidos antes de enviar
+                appState.cash = parseFloat(appState.cash) || 0;
+                appState.bank = parseFloat(appState.bank) || 0;
+                if (!appState.balancesUpdatedAt) appState.balancesUpdatedAt = 0;
+
+                // Preparar datos para Firebase: un documento por array grande + documento base
+                const { main, docs } = buildFirebaseSyncDocs(extraBaseFields);
+
+                // Dos listas posibles: todos los documentos, o solo los que cambiaron
+                // respecto de lo que se sabe que hay en la nube.
+                const known = forceFull ? null : firebaseUploadedHashes;
+                const confirmed = firebaseConfirmedMain;
+                const docHashes = {};
+                const allDocs = [];
+                const changedDocs = [];
+                for (const [name, d] of docs) {
+                    docHashes[name] = d.hash;
+                    allDocs.push([name, d.json]);
+                    if (!known || known.get(name) !== d.hash) changedDocs.push([name, d.json]);
+                }
+                main.docHashes = docHashes;
+
+                // Sanitizar para Firebase (quitar undefined, funciones, referencias circulares).
+                // Los documentos de datos ya están en JSON: se re-parsean solo los que se escriben.
+                const mainJson = JSON.stringify(main);
+                const cleanMain = JSON.parse(mainJson);
+                const mainRef = doc(window.db, 'kioscos', 'main');
+
+                // Marcar tiempo propio antes de subir para que el listener ignore su propio cambio
+                lastSyncTime = Date.now();
+                firebaseLastSentMainLastSync = cleanMain.lastSync;
+
+                let toWrite = null;
+                if (known && confirmed && changedDocs.length + 1 <= 500) {
+                    // Subida de SOLO los cambios, dentro de una transacción: se confirma que
+                    // la nube sigue teniendo el main que este dispositivo conoce. Si otro
+                    // dispositivo (o una versión vieja de la app) escribió en el medio, se
+                    // suben todos los documentos. Si el main cambia mientras tanto, Firestore
+                    // reintenta la transacción sola.
+                    try {
+                        toWrite = await runTransaction(window.db, async (tx) => {
+                            const snap = await tx.get(mainRef);
+                            const cur = snap.exists() ? snap.data() : null;
+                            const cloudIsKnown = !!cur && cur.lastSync === confirmed.lastSync && cur.deviceId === confirmed.deviceId;
+                            const list = cloudIsKnown ? changedDocs : allDocs;
+                            if (list.length + 1 > 500) throw new Error('Demasiados documentos para una transacción');
+                            for (const [name, json] of list) {
+                                tx.set(doc(window.db, 'kioscos', name), JSON.parse(json));
+                            }
+                            tx.set(mainRef, cleanMain);
+                            return list;
+                        });
+                    } catch (txErr) {
+                        // Sin conexión (las transacciones no esperan a que vuelva) u otro problema:
+                        // la transacción no escribió nada. Se sigue con una subida completa normal,
+                        // que Firestore guarda y manda sola cuando vuelve internet.
+                        console.warn('Subida incremental no confirmada, se sube todo:', txErr && txErr.message);
+                        toWrite = null;
+                    }
+                }
+
+                if (!toWrite) {
+                    toWrite = allDocs;
                     // Usar writeBatch para que todos los documentos (main + chunks) se escriban atómicamente.
-                    // Así ningún dispositivo lee un main con chunkCounts que aún no existan.
-                    if (docNames.length <= 500) {
+                    // Así ningún dispositivo lee un main con chunkCounts/docHashes que aún no existan.
+                    if (toWrite.length + 1 <= 500) {
                         const batch = writeBatch(window.db);
-                        for (const docName of docNames) {
-                            batch.set(doc(window.db, 'kioscos', docName), cleanPayload[docName]);
+                        for (const [name, json] of toWrite) {
+                            batch.set(doc(window.db, 'kioscos', name), JSON.parse(json));
                         }
+                        batch.set(mainRef, cleanMain);
                         await batch.commit();
                     } else {
-                        // Fallback por si supera el límite de 500 ops/batch (improbable)
-                        const mainData = cleanPayload.main;
-                        const otherEntries = Object.entries(cleanPayload).filter(([name]) => name !== 'main');
-                        if (otherEntries.length > 0) {
-                            await Promise.all(otherEntries.map(([name, data]) => setDoc(doc(window.db, 'kioscos', name), data)));
-                        }
-                        await setDoc(doc(window.db, 'kioscos', 'main'), mainData);
+                        // Fallback por si supera el límite de 500 ops/batch (improbable): primero los datos, main al final
+                        await Promise.all(toWrite.map(([name, json]) => setDoc(doc(window.db, 'kioscos', name), JSON.parse(json))));
+                        await setDoc(mainRef, cleanMain);
                     }
-                    
-                    localStorage.setItem('kioscopro-last-sync', lastSyncTime);
-                    updateSyncStatus('synced');
-                    
-                    const totalSize = JSON.stringify(cleanPayload).length;
-                    showNotification('☁️ Sincronizado con Firebase (~' + Math.round(totalSize / 1024) + ' KB)', 'success');
-                    console.log('✅ Sincronizado con Firebase - docs:', docNames.length, 'tamaño:', Math.round(totalSize / 1024) + 'KB');
-                } catch (err) {
-                    console.error('Error sincronizando:', err);
-                    updateSyncStatus('error');
                 }
-            }, delay);
+
+                // Confirmado por Firestore: ahora la nube tiene exactamente esto
+                firebaseUploadedHashes = new Map(Object.entries(docHashes));
+                firebaseConfirmedMain = { lastSync: cleanMain.lastSync, deviceId: cleanMain.deviceId };
+
+                localStorage.setItem('kioscopro-last-sync', lastSyncTime);
+                updateSyncStatus('synced');
+
+                const totalSize = toWrite.reduce((sum, [, json]) => sum + json.length, 0) + mainJson.length;
+                showNotification('☁️ Sincronizado con Firebase (~' + Math.round(totalSize / 1024) + ' KB)', 'success');
+                console.log('✅ Sincronizado con Firebase - docs escritos:', toWrite.length + 1, 'de', docs.size + 1, (toWrite === allDocs ? '(completo)' : '(solo cambios)'), 'tamaño:', Math.round(totalSize / 1024) + 'KB');
+                ok = true;
+            } catch (err) {
+                failed = true;
+                console.error('Error sincronizando:', err);
+                // No se sabe qué llegó a la nube: la próxima subida va completa,
+                // y los campos extra (ej: restoredFromBackup) no se pierden.
+                resetFirebaseUploadState();
+                if (Object.keys(extraBaseFields).length > 0) {
+                    firebaseSyncPendingExtra = { ...extraBaseFields, ...(firebaseSyncPendingExtra || {}) };
+                }
+                updateSyncStatus('error');
+            } finally {
+                firebaseSyncInFlight = false;
+                if (!ok && !failed) {
+                    // No se llegó a subir (protección o dejó de ser principal): conservar lo pedido para la próxima
+                    if (forceFull) firebaseSyncPendingFull = true;
+                    if (Object.keys(extraBaseFields).length > 0) {
+                        firebaseSyncPendingExtra = { ...extraBaseFields, ...(firebaseSyncPendingExtra || {}) };
+                    }
+                }
+                waiters.forEach(resolve => resolve(ok));
+                if (firebaseSyncRerunPending) {
+                    firebaseSyncRerunPending = false;
+                    runFirebaseUpload();
+                }
+            }
         }
 
         
@@ -27997,15 +28373,45 @@ RESULTADOS:
                             // Evitar loop: no actualizar si el cambio vino de este dispositivo hace menos de 2 segundos
                             // EXCEPCIÓN: si es un borrado intencional (clearedAt), SIEMPRE procesarlo
                             const isRecentOwnChange = baseData.deviceId === deviceId && Date.now() - lastSyncTime < 2000;
+                            // Eco de la última subida de este mismo dispositivo (aunque Firestore tarde en avisar)
+                            const isOwnEcho = baseData.deviceId === deviceId && !!firebaseLastSentMainLastSync && baseData.lastSync === firebaseLastSentMainLastSync;
                             const isClearAction = !!baseData.clearedAt;
-                            if (isRecentOwnChange && !isClearAction) {
+                            if ((isRecentOwnChange || isOwnEcho) && !isClearAction) {
                                 return;
                             }
-                            
-                            // Descargar todos los documentos y fusionar con estado local
+
+                            // Principal + main escrito por ESTE mismo dispositivo (ej: el aviso inicial
+                            // al abrir la app): son sus propios datos de antes, no hay nada de otro
+                            // dispositivo para fusionar (fusionarlos podría revivir algo borrado justo
+                            // antes de cerrar). Solo se anota qué hay en la nube, si no se sabía.
+                            if (isMasterDevice() && baseData.deviceId === deviceId && !isClearAction) {
+                                if (firebaseUploadedHashes === null) {
+                                    const own = { main: baseData };
+                                    Object.defineProperty(own, '__meta', {
+                                        value: {
+                                            hasPendingWrites: !!(docSnapshot.metadata && docSnapshot.metadata.hasPendingWrites),
+                                            uploadGen: firebaseUploadGen,
+                                            unchangedSinceOwnSync: false
+                                        },
+                                        enumerable: false
+                                    });
+                                    adoptRemoteFirebaseState(own);
+                                }
+                                updateSyncStatus('synced');
+                                return;
+                            }
+
+                            // Descargar los documentos y fusionar con estado local.
+                            // OJO: se pasa lo descargado TAL CUAL -- mergeFirebaseData ya normaliza
+                            // por su cuenta (normalizar dos veces dejaba todas las listas vacías).
                             const downloaded = await downloadAllFirebaseData();
-                            const data = normalizeFirebaseData(downloaded);
-                            mergeFirebaseData(data);
+                            if (!downloaded.main) return;
+                            if (isFirebaseDownloadUnchanged(downloaded)) {
+                                updateSyncStatus('synced');
+                                return;
+                            }
+                            mergeFirebaseData(downloaded);
+                            adoptRemoteFirebaseState(downloaded);
                             updateSyncStatus('synced');
                             console.log('📥 Datos recibidos de Firebase');
                         } catch (err) {
@@ -28274,14 +28680,8 @@ RESULTADOS:
                     const total = parseFloat(sale.total) || 0;
                     if (sale.paymentMethod === 'cash') {
                         cash += total;
-                    } else if (sale.paymentMethod === 'debit') {
-                        if (sale.isMercadoCredito && sale.mercadoCreditoFee) {
-                            bank += total - (parseFloat(sale.mercadoCreditoFee) || 0);
-                        } else {
-                            bank += total;
-                        }
-                    } else if (sale.paymentMethod === 'qr') {
-                        bank += total - (parseFloat(sale.qrFee) || 0);
+                    } else if (isDebitOrTransfer(sale.paymentMethod) || sale.paymentMethod === 'qr') {
+                        bank += saleBankNet(sale);
                     }
                 }
                 
@@ -28302,8 +28702,9 @@ RESULTADOS:
                 // Devoluciones
                 for (const ret of (appState.returns || [])) {
                     const amount = parseFloat(ret.amount) || 0;
-                    if (ret.paymentMethod === 'cash') cash -= amount;
-                    else if (ret.paymentMethod === 'debit') bank -= amount;
+                    const target = returnRefundTarget(ret);
+                    if (target === 'cash') cash -= amount;
+                    else if (target === 'bank') bank -= amount;
                 }
                 
                 // Movimientos entre caja y cuenta
@@ -28574,6 +28975,7 @@ RESULTADOS:
                     if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
                     if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
                     if (data.qrFee !== undefined) appState.qrFee = parseFloat(data.qrFee) || 0;
+                    if (data.debitFee !== undefined) appState.debitFee = parseFloat(data.debitFee) || 0;
                     if (data.comprasAppPassword !== undefined) appState.comprasAppPassword = data.comprasAppPassword || '';
                     if (data.financesPassword !== undefined) appState.financesPassword = data.financesPassword || '';
                     if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
@@ -28732,6 +29134,7 @@ RESULTADOS:
                     if (data.initialCapital !== undefined) appState.initialCapital = parseFloat(data.initialCapital) || 0;
                     if (data.mercadoCreditoFee !== undefined) appState.mercadoCreditoFee = parseFloat(data.mercadoCreditoFee) || 0;
                     if (data.qrFee !== undefined) appState.qrFee = parseFloat(data.qrFee) || 0;
+                    if (data.debitFee !== undefined) appState.debitFee = parseFloat(data.debitFee) || 0;
                     if (data.comprasAppPassword !== undefined) appState.comprasAppPassword = data.comprasAppPassword || '';
                     if (data.financesPassword !== undefined) appState.financesPassword = data.financesPassword || '';
                     if (data.stockTargetDays !== undefined) appState.stockTargetDays = parseInt(data.stockTargetDays) || 7;
@@ -28872,12 +29275,19 @@ RESULTADOS:
             // 2. Recibir datos de Firebase (forzar recarga)
             try {
                 const downloaded = await downloadAllFirebaseData();
+                if (isFirebaseDownloadUnchanged(downloaded)) {
+                    // Principal: la nube tiene justo lo que este dispositivo subió, no hay nada que fusionar
+                    updateSyncStatus('synced');
+                    console.log('📥 Firebase sin cambios desde la última subida de este dispositivo');
+                    return;
+                }
                 const hasAnyData = Object.values(downloaded).some(d => d !== null);
-                
+
                 if (hasAnyData) {
                     // Resetear flag para que muestre notificación
                     isInitialSync = false;
                     mergeFirebaseData(downloaded);
+                    adoptRemoteFirebaseState(downloaded);
                     updateSyncStatus('synced');
                     showNotification('🔄 Datos actualizados', 'success');
                     console.log('📥 Datos recargados manualmente desde Firebase');
@@ -28901,7 +29311,9 @@ RESULTADOS:
             }
             updateSyncStatus('syncing');
             try {
-                await syncToFirebase(true);
+                // Subida completa: todos los documentos, aunque no hayan cambiado
+                const ok = await syncToFirebase(true, {}, { full: true });
+                if (!ok) throw new Error('La subida no se completó');
                 showNotification('☁️ Datos locales subidos a Firebase', 'success');
                 console.log('📤 pushAllToFirebase completado');
             } catch (err) {
@@ -28914,6 +29326,9 @@ RESULTADOS:
 
         function toggleMasterDevice(isMaster) {
             localStorage.setItem('kioscopro-is-master', isMaster ? '1' : '0');
+            // Cambió el rol: lo que se sabía de la nube ya no aplica
+            resetFirebaseUploadState();
+            firebaseDownloadCache.clear();
             showNotification(isMaster ? '💻 Este dispositivo ahora es el PRINCIPAL' : '📱 Este dispositivo ahora es SECUNDARIO', 'success');
         }
         
@@ -28948,13 +29363,14 @@ RESULTADOS:
             }
             updateSyncStatus('syncing');
             try {
-                const downloaded = await downloadAllFirebaseData();
+                const downloaded = await downloadAllFirebaseData({ full: true });
                 const hasAnyData = Object.values(downloaded).some(d => d !== null);
-                
+
                 if (hasAnyData) {
                     // Forzar merge completo como si fuera la primera vez
                     isInitialSync = true;
                     mergeFirebaseData(downloaded);
+                    adoptRemoteFirebaseState(downloaded);
                     updateSyncStatus('synced');
                     showNotification('☁️ Datos descargados desde la nube', 'success');
                 } else {
@@ -29788,7 +30204,7 @@ RESULTADOS:
                 <div class="bg-blue-50 rounded-lg p-3 space-y-2 text-sm">
                     <p class="font-bold text-gray-700 mb-1">🏦 Cuenta (banco)</p>
                     <div class="flex justify-between"><span>Apertura:</span><span class="font-bold" id="cc-opening-bank">$0</span></div>
-                    <div class="flex justify-between"><span>Ventas débito:</span><span class="font-bold text-green-600" id="cc-sales-bank">$0</span></div>
+                    <div class="flex justify-between"><span>Ventas a cuenta (débito/transf./QR):</span><span class="font-bold text-green-600" id="cc-sales-bank">$0</span></div>
                     <div class="flex justify-between"><span>Cobros fiados:</span><span class="font-bold text-green-600" id="cc-fiados-bank">$0</span></div>
                     <div class="flex justify-between"><span>Gastos débito:</span><span class="font-bold text-red-600" id="cc-expenses-bank">$0</span></div>
                     <div class="flex justify-between"><span>Compras débito:</span><span class="font-bold text-orange-600" id="cc-investments-bank">$0</span></div>
@@ -29888,10 +30304,12 @@ RESULTADOS:
                     <p class="text-2xl font-bold text-green-700 mt-1" id="fiado-pay-amount">$0</p>
                 </div>
                 <p class="text-sm text-gray-600">¿Dónde entra la plata?</p>
-                <div class="flex gap-2">
-                    <button onclick="confirmFiadoPayment('cash')" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700"><i class="fas fa-money-bill-wave"></i> Efectivo</button>
-                    <button onclick="confirmFiadoPayment('debit')" class="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-blue-700"><i class="fas fa-credit-card"></i> Cuenta</button>
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="confirmFiadoPayment('cash')" class="bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700 text-sm"><i class="fas fa-money-bill-wave"></i> Efectivo</button>
+                    <button onclick="confirmFiadoPayment('debit')" class="bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-blue-700 text-sm"><i class="fas fa-credit-card"></i> Débito</button>
+                    <button onclick="confirmFiadoPayment('transfer')" class="bg-teal-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-teal-700 text-sm"><i class="fas fa-exchange-alt"></i> Transf.</button>
                 </div>
+                <p class="text-xs text-gray-500 text-center">Débito descuenta la comisión configurada; transferencia entra completa a la cuenta.</p>
                 <button onclick="closeFiadoPayModal()" class="w-full bg-gray-200 text-gray-700 py-2 rounded-xl font-bold hover:bg-gray-300">Cancelar</button>
             </div>
         </div>
@@ -30360,6 +30778,9 @@ RESULTADOS:
                             <button type="button" onclick="setPedidoInlinePaymentMethod('debit')" id="pedido-inline-btn-debit" class="py-2 rounded-lg border-2 text-xs font-bold flex items-center justify-center gap-1">
                                 <i class="fas fa-credit-card"></i> Débito
                             </button>
+                            <button type="button" onclick="setPedidoInlinePaymentMethod('transfer')" id="pedido-inline-btn-transfer" class="py-2 rounded-lg border-2 text-xs font-bold flex items-center justify-center gap-1">
+                                <i class="fas fa-exchange-alt"></i> Transferencia
+                            </button>
                             <button type="button" onclick="setPedidoInlinePaymentMethod('qr')" id="pedido-inline-btn-qr" class="py-2 rounded-lg border-2 text-xs font-bold flex items-center justify-center gap-1">
                                 <i class="fas fa-qrcode"></i> QR
                             </button>
@@ -30435,6 +30856,9 @@ RESULTADOS:
                 </button>
                 <button type="button" onclick="setPedidoCobroMethod('debit')" id="pedido-cobro-btn-debit" class="py-3 rounded-lg border-2 text-sm font-bold flex items-center justify-center gap-2 transition">
                     <i class="fas fa-credit-card"></i> Débito
+                </button>
+                <button type="button" onclick="setPedidoCobroMethod('transfer')" id="pedido-cobro-btn-transfer" class="py-3 rounded-lg border-2 text-sm font-bold flex items-center justify-center gap-2 transition">
+                    <i class="fas fa-exchange-alt"></i> Transferencia
                 </button>
                 <button type="button" onclick="setPedidoCobroMethod('qr')" id="pedido-cobro-btn-qr" class="py-3 rounded-lg border-2 text-sm font-bold flex items-center justify-center gap-2 transition">
                     <i class="fas fa-qrcode"></i> QR

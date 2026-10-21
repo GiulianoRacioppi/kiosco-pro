@@ -1117,6 +1117,11 @@
             <p class="px-3 pt-3 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Reportes</p>
 
             <!-- REPORTES: Solo admin -->
+            <!-- EMPLEADOS: Solo admin -->
+            <button onclick="showSection('employees')" id="nav-employees" class="nav-btn sidebar-admin-only w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="employees">
+                <i class="fas fa-user-clock w-4 text-xs"></i> Empleados
+            </button>
+
             <button onclick="showSection('reports')" id="nav-reports" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="reports">
                 <i class="fas fa-chart-pie w-4 text-xs"></i> Reportes
             </button>
@@ -1126,6 +1131,11 @@
             <!-- CONFIGURACIÓN: Solo admin -->
             <button onclick="showSection('settings')" id="nav-settings" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="settings">
                 <i class="fas fa-cog w-4 text-xs"></i> Configuración
+            </button>
+
+            <!-- FICHAR (empleado vinculado al usuario logueado) -->
+            <button onclick="toggleMyClock()" id="my-clock-btn" class="hidden w-full text-left px-3 py-2 rounded-xl transition flex items-center gap-2 text-sm mt-4 font-bold">
+                <i class="fas fa-user-clock w-4 text-xs"></i> <span id="my-clock-label">Fichar entrada</span>
             </button>
 
             <!-- CERRAR SESIÓN -->
@@ -2341,88 +2351,6 @@
                 </div>
             </div>
 
-            <!-- Disponible para gastar o invertir hoy (liquidez) -->
-            <div id="available-to-spend-card" class="bg-white rounded-2xl p-6 shadow-lg border-2 border-gray-100">
-                <div class="flex items-start justify-between gap-3 flex-wrap">
-                    <div>
-                        <p class="text-sm font-semibold uppercase text-gray-500">💡 Podés gastar o invertir hoy</p>
-                        <p class="text-4xl font-bold mt-1" id="ats-amount">$0</p>
-                        <p class="text-sm mt-1" id="ats-message"></p>
-                    </div>
-                    <div class="text-right text-xs text-gray-500" id="ats-tightest"></div>
-                </div>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 text-sm">
-                    <div class="bg-gray-50 rounded-xl p-3">
-                        <p class="text-xs text-gray-500">Caja + Cuenta hoy</p>
-                        <p class="font-bold text-gray-800" id="ats-balance">$0</p>
-                    </div>
-                    <div class="bg-red-50 rounded-xl p-3">
-                        <p class="text-xs text-red-600">Gastos fijos próx. 30 días</p>
-                        <p class="font-bold text-red-700" id="ats-fixed">-$0</p>
-                    </div>
-                    <div class="bg-green-50 rounded-xl p-3">
-                        <p class="text-xs text-green-700">Ganancia estimada 30 días</p>
-                        <p class="font-bold text-green-700" id="ats-profit">+$0</p>
-                        <p class="text-[10px] text-green-600" id="ats-profit-daily"></p>
-                    </div>
-                    <div class="bg-yellow-50 rounded-xl p-3">
-                        <p class="text-xs text-yellow-700">Saldo mínimo a guardar</p>
-                        <p class="font-bold text-yellow-800" id="ats-minimum">-$0</p>
-                    </div>
-                </div>
-                <details class="mt-3">
-                    <summary class="text-xs text-gray-500 cursor-pointer select-none">Ver pagos que se tuvieron en cuenta y cómo se calcula</summary>
-                    <div class="mt-2 text-xs text-gray-600 space-y-2">
-                        <div id="ats-payments"></div>
-                        <p>Cálculo: se recorren los próximos 30 días sumando la ganancia estimada de cada día (solo la ganancia: el costo de lo que vendés queda para reponer) y restando cada gasto fijo el día que vence. El monto disponible es lo que sobra en el día más ajustado, por encima del saldo mínimo. No incluye la Reserva (caja fuerte), ni gastos que no estén cargados como fijos.</p>
-                        <p>El saldo mínimo y los gastos fijos se configuran en <strong>Proyección</strong>. Los pagos a proveedores se anotan acá abajo.</p>
-                    </div>
-                </details>
-            </div>
-
-            <!-- Pagos a proveedores (pedidos con fecha de pago) -->
-            <div class="bg-white rounded-2xl p-6 shadow-lg">
-                <h3 class="text-lg font-bold flex items-center gap-2 text-gray-800">
-                    <i class="fas fa-truck text-orange-500"></i> Pagos a proveedores
-                </h3>
-                <p class="text-xs text-gray-500 mb-3">Anotá los pedidos que hiciste con la fecha en que los tenés que pagar: se descuentan en "Podés gastar o invertir hoy". La plata sale de Caja/Cuenta recién cuando cargás la mercadería (como siempre); ahí lo marcás como pagado.</p>
-                <div class="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
-                    <div class="col-span-2">
-                        <label class="block text-xs text-gray-600 mb-1">Proveedor</label>
-                        <input type="text" id="sp-supplier" list="sp-supplier-list" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Ej: Distribuidora">
-                        <datalist id="sp-supplier-list"></datalist>
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-600 mb-1">Monto</label>
-                        <input type="number" id="sp-amount" min="0" step="0.01" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0">
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-600 mb-1">Fecha de pago</label>
-                        <input type="date" id="sp-date" class="w-full border rounded-lg px-3 py-2 text-sm">
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-600 mb-1">Sale de</label>
-                        <select id="sp-source" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
-                            <option value="cash">💵 Caja</option>
-                            <option value="bank">🏦 Cuenta</option>
-                        </select>
-                    </div>
-                    <div>
-                        <button onclick="addScheduledPayment()" class="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg font-bold text-sm">
-                            <i class="fas fa-plus"></i> Anotar
-                        </button>
-                    </div>
-                    <div class="col-span-2 md:col-span-6">
-                        <input type="text" id="sp-note" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nota (opcional): qué pediste, seña, saldo…" onkeydown="if(event.key==='Enter'){event.preventDefault();addScheduledPayment();}">
-                    </div>
-                </div>
-                <div id="sp-list" class="mt-4 space-y-2"></div>
-                <details class="mt-3" id="sp-paid-wrap">
-                    <summary class="text-xs text-gray-500 cursor-pointer select-none">Pagados recientes</summary>
-                    <div id="sp-paid-list" class="mt-2 space-y-1"></div>
-                </details>
-            </div>
-
             <!-- Botón Arqueo de Caja -->
             <div class="bg-white rounded-2xl p-4 shadow-lg flex items-center justify-between">
                 <div class="flex items-center gap-3">
@@ -2866,6 +2794,88 @@
                 </button>
             </div>
 
+            <!-- Disponible para gastar o invertir hoy (liquidez) -->
+            <div id="available-to-spend-card" class="bg-white rounded-2xl p-6 shadow-lg border-2 border-gray-100">
+                <div class="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                        <p class="text-sm font-semibold uppercase text-gray-500">💡 Podés gastar o invertir hoy</p>
+                        <p class="text-4xl font-bold mt-1" id="ats-amount">$0</p>
+                        <p class="text-sm mt-1" id="ats-message"></p>
+                    </div>
+                    <div class="text-right text-xs text-gray-500" id="ats-tightest"></div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 text-sm">
+                    <div class="bg-gray-50 rounded-xl p-3">
+                        <p class="text-xs text-gray-500">Caja + Cuenta hoy</p>
+                        <p class="font-bold text-gray-800" id="ats-balance">$0</p>
+                    </div>
+                    <div class="bg-red-50 rounded-xl p-3">
+                        <p class="text-xs text-red-600">Gastos fijos próx. 30 días</p>
+                        <p class="font-bold text-red-700" id="ats-fixed">-$0</p>
+                    </div>
+                    <div class="bg-green-50 rounded-xl p-3">
+                        <p class="text-xs text-green-700">Ganancia estimada 30 días</p>
+                        <p class="font-bold text-green-700" id="ats-profit">+$0</p>
+                        <p class="text-[10px] text-green-600" id="ats-profit-daily"></p>
+                    </div>
+                    <div class="bg-yellow-50 rounded-xl p-3">
+                        <p class="text-xs text-yellow-700">Saldo mínimo a guardar</p>
+                        <p class="font-bold text-yellow-800" id="ats-minimum">-$0</p>
+                    </div>
+                </div>
+                <details class="mt-3">
+                    <summary class="text-xs text-gray-500 cursor-pointer select-none">Ver pagos que se tuvieron en cuenta y cómo se calcula</summary>
+                    <div class="mt-2 text-xs text-gray-600 space-y-2">
+                        <div id="ats-payments"></div>
+                        <p>Cálculo: se recorren los próximos 30 días sumando la ganancia estimada de cada día (solo la ganancia: el costo de lo que vendés queda para reponer) y restando cada gasto fijo el día que vence. El monto disponible es lo que sobra en el día más ajustado, por encima del saldo mínimo. No incluye la Reserva (caja fuerte), ni gastos que no estén cargados como fijos.</p>
+                        <p>El saldo mínimo se configura más abajo en esta misma sección, los gastos fijos con el botón <strong>Gastos Fijos</strong>, y los pagos a proveedores en la tarjeta de abajo.</p>
+                    </div>
+                </details>
+            </div>
+
+            <!-- Pagos a proveedores (pedidos con fecha de pago) -->
+            <div class="bg-white rounded-2xl p-6 shadow-lg">
+                <h3 class="text-lg font-bold flex items-center gap-2 text-gray-800">
+                    <i class="fas fa-truck text-orange-500"></i> Pagos a proveedores
+                </h3>
+                <p class="text-xs text-gray-500 mb-3">Anotá los pedidos que hiciste con la fecha en que los tenés que pagar: se descuentan en "Podés gastar o invertir hoy". La plata sale de Caja/Cuenta recién cuando cargás la mercadería (como siempre); ahí lo marcás como pagado.</p>
+                <div class="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
+                    <div class="col-span-2">
+                        <label class="block text-xs text-gray-600 mb-1">Proveedor</label>
+                        <input type="text" id="sp-supplier" list="sp-supplier-list" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Ej: Distribuidora">
+                        <datalist id="sp-supplier-list"></datalist>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Monto</label>
+                        <input type="number" id="sp-amount" min="0" step="0.01" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Fecha de pago</label>
+                        <input type="date" id="sp-date" class="w-full border rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Sale de</label>
+                        <select id="sp-source" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
+                            <option value="cash">💵 Caja</option>
+                            <option value="bank">🏦 Cuenta</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button onclick="addScheduledPayment()" class="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg font-bold text-sm">
+                            <i class="fas fa-plus"></i> Anotar
+                        </button>
+                    </div>
+                    <div class="col-span-2 md:col-span-6">
+                        <input type="text" id="sp-note" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nota (opcional): qué pediste, seña, saldo…" onkeydown="if(event.key==='Enter'){event.preventDefault();addScheduledPayment();}">
+                    </div>
+                </div>
+                <div id="sp-list" class="mt-4 space-y-2"></div>
+                <details class="mt-3" id="sp-paid-wrap">
+                    <summary class="text-xs text-gray-500 cursor-pointer select-none">Pagados recientes</summary>
+                    <div id="sp-paid-list" class="mt-2 space-y-1"></div>
+                </details>
+            </div>
+
             <!-- KPIs -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div class="bg-white rounded-2xl p-5 shadow border border-gray-100">
@@ -2973,6 +2983,64 @@
         </div>
 
         <!-- Reports -->
+        <!-- ==================== EMPLEADOS ==================== -->
+        <div id="employees" class="section hidden space-y-6 fade-in">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2"><i class="fas fa-user-clock text-indigo-600"></i> Empleados</h2>
+                <p class="text-sm text-gray-500">Horarios, fichajes de entrada/salida y cuánto pagarle a cada uno por quincena. El sueldo de cada quincena se carga en <strong>Flujo de Caja → Gastos Fijos</strong> (frecuencia "Quincena", vinculado al empleado).</p>
+            </div>
+
+            <!-- Lista + alta -->
+            <div class="bg-white rounded-2xl p-6 shadow-lg">
+                <h3 class="text-lg font-bold text-gray-800 mb-3">Equipo</h3>
+                <div id="emp-list" class="space-y-2"></div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-4 items-end">
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Nombre</label>
+                        <input type="text" id="emp-new-name" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Ej: Juan" onkeydown="if(event.key==='Enter'){event.preventDefault();addEmployee();}">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Usuario de la app (para que fiche solo)</label>
+                        <select id="emp-new-user" class="w-full border rounded-lg px-3 py-2 text-sm bg-white"></select>
+                    </div>
+                    <button onclick="addEmployee()" class="bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold text-sm"><i class="fas fa-plus"></i> Agregar empleado</button>
+                </div>
+            </div>
+
+            <!-- Quincena -->
+            <div class="bg-white rounded-2xl p-6 shadow-lg">
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                    <h3 class="text-lg font-bold text-gray-800">Quincena</h3>
+                    <div class="flex items-center gap-2">
+                        <select id="emp-period-employee" class="border rounded-lg px-3 py-2 text-sm bg-white" onchange="renderEmployeePeriod()"></select>
+                        <button onclick="shiftEmployeePeriod(-1)" class="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200" title="Quincena anterior"><i class="fas fa-chevron-left"></i></button>
+                        <span id="emp-period-label" class="text-sm font-bold text-gray-700 min-w-[150px] text-center"></span>
+                        <button onclick="shiftEmployeePeriod(1)" class="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200" title="Quincena siguiente"><i class="fas fa-chevron-right"></i></button>
+                    </div>
+                </div>
+                <div id="emp-period-summary"></div>
+                <div id="emp-period-days" class="mt-4 overflow-x-auto"></div>
+            </div>
+
+            <!-- Reglas -->
+            <div class="bg-white rounded-2xl p-6 shadow-lg">
+                <h3 class="text-lg font-bold text-gray-800 mb-3">Reglas de descuento y pago</h3>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end text-sm">
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Tolerancia llegada tarde / salida antes (min)</label>
+                        <input type="number" id="emp-set-tolerance" min="0" step="1" class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Se descuenta de a bloques de (min)</label>
+                        <input type="number" id="emp-set-block" min="1" step="1" class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                    <label class="flex items-center gap-2"><input type="checkbox" id="emp-set-saturday" class="w-4 h-4"> Sábado cuenta como día hábil para el pago</label>
+                    <button onclick="savePayrollSettings()" class="bg-gray-800 hover:bg-gray-900 text-white py-2 rounded-lg font-bold">Guardar reglas</button>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">Ej. tolerancia 5 y bloques de 30: llegar 4 min tarde no descuenta; 6 a 30 min descuenta 30; 31 a 60 descuenta 60. Faltar descuenta las horas de ese día. Las horas de más quedan para que las apruebes. Se paga el 4.º día hábil después del 15 y del último día del mes.</p>
+            </div>
+        </div>
+
         <div id="reports" class="section hidden space-y-6 fade-in">
             <div class="bg-white rounded-2xl p-6 shadow-lg">
                 <h3 class="text-xl font-bold mb-6 flex items-center gap-2">
@@ -4561,6 +4629,10 @@
             // Flujo de caja
             recurringExpenses: [],
             scheduledPayments: [],
+            employees: [],
+            timeClock: [],
+            attendanceDays: [],
+            payrollPayments: [],
             cashFlowSettings: {
                 projectionDays: 30,
                 estimatedDailyIncome: null,
@@ -5008,7 +5080,7 @@
             }
             
             // Protección: colaboradores no pueden ver ciertas secciones
-            const adminOnlySections = ['sales-calendar', 'cashflow', 'analysis', 'cashflow-projection', 'reports', 'billing', 'settings', 'promotions', 'clientes', 'fixed-assets'];
+            const adminOnlySections = ['sales-calendar', 'cashflow', 'analysis', 'cashflow-projection', 'reports', 'billing', 'settings', 'promotions', 'clientes', 'fixed-assets', 'employees'];
             if (adminOnlySections.includes(sectionId) && !isAdmin()) {
                 showNotification('Acceso restringido solo para administradores', 'error');
                 sectionId = 'sell';
@@ -5090,6 +5162,7 @@
                 'discount-tickets': 'Tickets de Descuento',
                 'clientes': 'Clientes',
                 'fixed-assets': 'Equipamiento',
+                'employees': 'Empleados',
                 'settings': 'Configuración'
             };
             document.getElementById('page-title').textContent = titles[sectionId] || 'KioscoPro';
@@ -5141,6 +5214,9 @@
             }
             if (sectionId === 'fixed-assets') {
                 renderFixedAssets();
+            }
+            if (sectionId === 'employees') {
+                renderEmployeesSection();
             }
             if (sectionId === 'predictions') {
                 showSection('inventory');
@@ -7458,6 +7534,7 @@
             clearSpecialPriceCode(false);
             window.comboNotified = false;
             pendingPedidoSaleInfo = null;
+            approvedStockShortfalls.clear();
             renderCart();
             showNotification('Carrito vaciado', 'info');
         }
@@ -8243,8 +8320,9 @@
         // ========== CONTROL DE STOCK ROBUSTO EN VENTAS ==========
         
         // 1. Validar stock suficiente ANTES de descontar
-        function validateStockForSale(cart) {
+        function validateStockForSale(cart, allowShortfall) {
             const errors = [];
+            const allowed = (id) => !!(allowShortfall && allowShortfall.has(id));
             for (const item of cart) {
                 // Ítems manuales no requieren stock
                 if (!item.productId || item.isManual) continue;
@@ -8254,7 +8332,8 @@
                     continue;
                 }
                 const availableStock = getProductStock(product);
-                if (item.quantity > availableStock) {
+                const compShortAllowed = product.isComposite && Array.isArray(product.components) && product.components.some(c => allowed(c.productId));
+                if (item.quantity > availableStock && !allowed(product.id) && !compShortAllowed) {
                     errors.push(`${product.name}: pedido ${item.quantity}, disponible ${availableStock}`);
                 }
                 // Validar componentes de productos compuestos
@@ -8267,7 +8346,7 @@
                         }
                         const compNeeded = item.quantity * (comp.quantity || 1);
                         const compAvailable = getProductStock(compProduct);
-                        if (compNeeded > compAvailable) {
+                        if (compNeeded > compAvailable && !allowed(compProduct.id)) {
                             errors.push(`${product.name} (compuesto): ${compProduct.name} necesita ${compNeeded}, disponible ${compAvailable}`);
                         }
                     }
@@ -8549,7 +8628,16 @@
             }
 
             // ========== FASE 1: VALIDAR STOCK PREVIO ==========
-            const stockErrors = validateStockForSale(appState.cart);
+            // Faltantes que todavía no se aprobaron (ej: se recargó la app después de
+            // agregar al carrito): se pregunta acá. Aprobar NO carga stock todavía.
+            const unapprovedShortfalls = computeCartShortfalls(appState.cart).filter(s => !approvedStockShortfalls.has(s.product.id));
+            if (unapprovedShortfalls.length > 0) {
+                const lines = unapprovedShortfalls.map(s => '• ' + s.product.name + ': faltan ' + formatMoney(s.shortfall)).join('\n');
+                const okShort = await showConfirmModal('⚠️ No hay stock cargado suficiente de:\n' + lines + '\n\n¿Vender igual? Se agrega como Stock Gratis al completar la venta (queda el recordatorio en Reponer).');
+                if (!okShort) { saleInProgress = false; return; }
+                unapprovedShortfalls.forEach(s => approvedStockShortfalls.add(s.product.id));
+            }
+            const stockErrors = validateStockForSale(appState.cart, approvedStockShortfalls);
             if (stockErrors.length > 0) {
                 showNotification('❌ Stock insuficiente:\n' + stockErrors.join('\n'), 'error');
                 console.error('Stock validation failed:', stockErrors);
@@ -8588,6 +8676,28 @@
                 }
             }
             
+            // El efectivo se valida ANTES de cargar Stock Gratis (si la venta se frena acá,
+            // no tiene que quedar nada agregado). Se repite abajo igual que siempre.
+            if (appState.paymentMethod === 'cash') {
+                const recvPre = parseFloat(document.getElementById('cash-received').value) || 0;
+                const totalPre = appState.cartFinalTotal || (subtotal - (appState.cartDiscount || 0));
+                if (recvPre <= 0) {
+                    showNotification('Ingresá el monto recibido en efectivo', 'error');
+                    document.getElementById('cash-received').focus();
+                    saleInProgress = false;
+                    return;
+                }
+                if (recvPre < totalPre) {
+                    showNotification(`Monto insuficiente. Recibido: $${formatMoney(recvPre)}, Falta: $${formatMoney((totalPre - recvPre))}`, 'error');
+                    saleInProgress = false;
+                    return;
+                }
+            }
+
+            // Recién ahora (la venta ya no se frena) se carga como Stock Gratis lo que
+            // falte de lo que se aprobó vender sin stock.
+            const undoFreeStock = coverApprovedShortfallsForSale(appState.cart);
+
             // Calcular costo FIFO para cada ítem ANTES de descontar stock
             for (const item of appState.cart) {
                 const product = appState.inventory.find(p => p.id === item.productId);
@@ -8707,8 +8817,9 @@
             // ========== FASE 3: VERIFICAR QUE EL STOCK REALMENTE CAMBIÓ ==========
             const verifyErrors = verifyStockDeduction(stockSnapshot);
             if (verifyErrors.length > 0) {
-                // ROLLBACK: algo falló, restaurar stock
+                // ROLLBACK: algo falló, restaurar stock (y sacar el Stock Gratis recién cargado)
                 rollbackStockFromSnapshot(stockSnapshot);
+                undoFreeStock();
                 showNotification('❌ Error al descontar stock. Venta cancelada:\n' + verifyErrors.join('\n'), 'error');
                 console.error('Stock deduction verification failed:', verifyErrors);
                 saleInProgress = false;
@@ -8737,6 +8848,7 @@
             }
 
             appState.sales.push(sale);
+            approvedStockShortfalls.clear(); // las aprobaciones de vender sin stock valen para esta venta
 
             // Tracking de facturación blanco/negro
             if (!appState.invoiceTracking) {
@@ -9794,11 +9906,8 @@
                 `⚠️ No hay stock cargado suficiente para facturar esta comanda:\n${lines}\n\n¿Cubrir automáticamente como Stock Gratis y facturar igual? Queda un recordatorio en Reponer para confirmarlo después contra la compra real.`
             );
             if (!ok) return false;
-            for (const s of shortages) {
-                const unitCost = s.product.isComposite ? calculateCompositeCost(s.product) : (s.product.cost || 0);
-                applyFoundStock(s.product, s.shortfall, Math.round(unitCost * s.shortfall * 100) / 100, 'auto-sale', 'Ajuste automático: comanda facturada sin stock suficiente cargado');
-            }
-            saveToLocalStorage();
+            // Se carga recién al completar la venta (si se completa): ver coverApprovedShortfallsForSale
+            for (const s of shortages) approvedStockShortfalls.add(s.product.id);
             return true;
         }
 
@@ -11975,6 +12084,13 @@
             if (pendingNewProductScanRawName) {
                 learnInvoiceNameMapping(pendingNewProductScanRawName, product.id, product.name, scanInvoiceSupplier);
                 pendingNewProductScanRawName = null;
+                if (pendingNewProductScanPackaging) {
+                    const liveProduct = appState.inventory.find(p => p.id === product.id) || product;
+                    if (pendingNewProductScanPackaging.bulkPackSize) liveProduct.bulkPackSize = pendingNewProductScanPackaging.bulkPackSize;
+                    if (pendingNewProductScanPackaging.unitsPerDisplay) liveProduct.unitsPerDisplay = pendingNewProductScanPackaging.unitsPerDisplay;
+                    pendingNewProductScanPackaging = null;
+                    saveToLocalStorage();
+                }
             }
             returnToScanInvoiceIfPending();
 
@@ -13573,6 +13689,7 @@
         // con un uso normal y manual de esos mismos modales en cualquier otro momento.
         let scanInvoiceReturnPending = false;
         let pendingNewProductScanRawName = null;
+        let pendingNewProductScanPackaging = null; // unid. por bulto / por display cargadas en la tarjeta "Producto nuevo"
 
         // Recuerda la última elección de Facturado/Sin-factura y Caja/Cuenta
         // dentro de esta sesión de factura -- la mayoría de las líneas de una
@@ -14021,7 +14138,8 @@
                         ? Math.round(totalUnidades * (item.unitPrice || 0) * 100) / 100
                         : (item.enteredTotalPrice != null ? item.enteredTotalPrice : 0);
                 } else {
-                    const totalUnidades = Math.round((item.packages || 0) * (item.unitsPerPackage || 0) * 100) / 100;
+                    ensureScanNewPackaging(item);
+                    const totalUnidades = getScanNewTotalUnits(item);
                     lineTotal = totalUnidades > 0
                         ? Math.round(totalUnidades * (item.unitPrice || 0) * 100) / 100
                         : (item.enteredTotalPrice != null ? item.enteredTotalPrice : 0);
@@ -14153,6 +14271,7 @@
             item.qty = Math.round(packages * unitsPerPackage * 100) / 100;
             item.packages = packages;
             item.unitsPerPackage = unitsPerPackage;
+            item.newPackagingV2 = false; // la tarjeta "Producto nuevo" vuelve a armar bultos/displays/sueltas desde acá
             item.bultos = bultos;
             item.displaysQty = displaysQty;
             item.unidadesSueltas = unidadesSueltas;
@@ -14465,10 +14584,11 @@
                 categoryOptions = categoryOptions.replace(`value="${item.category}"`, `value="${item.category}" selected`);
             }
             const isWeightMode = !!item.saleByWeight;
+            if (!isWeightMode) ensureScanNewPackaging(item); // bultos/displays/sueltas (como la lista)
             const effectiveUnitCost = getScanItemEffectiveUnitCost(item);
             const totalUnidades = isWeightMode
                 ? (((item.weightPerUnit || 0) > 0) ? Math.round(((item.totalGrams || 0) / item.weightPerUnit) * 100) / 100 : 0)
-                : Math.round((item.packages || 0) * (item.unitsPerPackage || 0) * 100) / 100;
+                : getScanNewTotalUnits(item);
             const totalPrice = isWeightMode ? (item.totalCost || 0) : (totalUnidades > 0
                 ? Math.round(totalUnidades * (item.unitPrice || 0) * 100) / 100
                 : (item.enteredTotalPrice != null ? item.enteredTotalPrice : 0));
@@ -14538,17 +14658,32 @@
                 <div class="flex gap-1.5 items-end mt-1">
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Bultos</label>
-                        <input type="number" min="0" step="0.01" value="${item.packages}" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanItemQuietSyncPackaging('${item.localId}', 'packages', this.value)" onchange="updateScanItemPackages('${item.localId}', this.value)">
+                        <input type="number" min="0" step="0.01" value="${item.bultos || ''}" placeholder="0" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanNewQtyQuietSync('${item.localId}', 'bultos', this.value)" onchange="updateScanNewQtyField('${item.localId}', 'bultos', this.value)">
                     </div>
                     <div class="flex-1">
-                        <label class="block text-[10px] text-gray-400 uppercase">Unid/bulto</label>
-                        <input type="number" min="0" step="0.01" value="${item.unitsPerPackage}" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanItemQuietSyncPackaging('${item.localId}', 'unitsPerPackage', this.value)" onchange="updateScanItemUnitsPerPackage('${item.localId}', this.value)">
+                        <label class="block text-[10px] text-gray-400 uppercase">Displays</label>
+                        <input type="number" min="0" step="0.01" value="${item.displaysQty || ''}" placeholder="0" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanNewQtyQuietSync('${item.localId}', 'displaysQty', this.value)" onchange="updateScanNewQtyField('${item.localId}', 'displaysQty', this.value)">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-[10px] text-gray-400 uppercase">Unidades sueltas</label>
+                        <input type="number" min="0" step="0.01" value="${item.unidadesSueltas || ''}" placeholder="0" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanNewQtyQuietSync('${item.localId}', 'unidadesSueltas', this.value)" onchange="updateScanNewQtyField('${item.localId}', 'unidadesSueltas', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Total unid.</label>
-                        <input type="number" value="${totalUnidades}" readonly class="w-full border rounded-lg px-2 py-1 text-center bg-gray-50 text-gray-500">
+                        <input type="number" id="scannew-totalunid-${item.localId}" value="${totalUnidades}" readonly class="w-full border rounded-lg px-2 py-1 text-center bg-gray-50 text-gray-500">
                     </div>
                 </div>
+                <div class="flex gap-1.5 items-end mt-1">
+                    <div class="flex-1">
+                        <label class="block text-[10px] text-gray-400 uppercase">Unidades por bulto</label>
+                        <input type="number" min="0" step="1" value="${item.newUnitsPerBulto || ''}" placeholder="ej: 12" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanNewQtyQuietSync('${item.localId}', 'newUnitsPerBulto', this.value)" onchange="updateScanNewQtyField('${item.localId}', 'newUnitsPerBulto', this.value)">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-[10px] text-gray-400 uppercase">Unidades por display</label>
+                        <input type="number" min="0" step="1" value="${item.newUnitsPerDisplay || ''}" placeholder="ej: 6" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanNewQtyQuietSync('${item.localId}', 'newUnitsPerDisplay', this.value)" onchange="updateScanNewQtyField('${item.localId}', 'newUnitsPerDisplay', this.value)">
+                    </div>
+                </div>
+                ${((item.bultos > 0 && !(item.newUnitsPerBulto > 0)) || (item.displaysQty > 0 && !(item.newUnitsPerDisplay > 0))) ? '<p class="text-[10px] text-orange-500 px-0.5">Completá cuántas unidades trae un ' + (item.bultos > 0 && !(item.newUnitsPerBulto > 0) ? 'bulto' : 'display') + ' para que sume al total.</p>' : '<p class="text-[10px] text-gray-400 px-0.5">Unidades por bulto/display quedan guardadas en el producto (para la próxima factura y la lista de compras).</p>'}
                 <div class="flex gap-1.5 items-end mt-1">
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Precio unit.</label>
@@ -15125,6 +15260,52 @@
         // (Compra)" de Inventario -- ahí el usuario completa código de barras,
         // categoría, proveedor y precio de venta antes de confirmar. Cuando lo
         // confirme (confirmPurchase), ahí se termina de aprender el nombre.
+        // Tarjeta "Producto nuevo" de Escanear Factura: misma lógica de 3 niveles que
+        // la lista ("En stock"): bultos × unid/bulto + displays × unid/display + sueltas.
+        // Como el producto todavía no existe, los factores se cargan acá mismo
+        // (newUnitsPerBulto / newUnitsPerDisplay) y se guardan en el producto al darlo de alta.
+        function getScanNewTotalUnits(item) {
+            const fromBultos = (item.bultos || 0) * (item.newUnitsPerBulto || 0);
+            const fromDisplays = (item.displaysQty || 0) * (item.newUnitsPerDisplay || 0);
+            return Math.round((fromBultos + fromDisplays + (item.unidadesSueltas || 0)) * 100) / 100;
+        }
+
+        // Líneas que venían del formato viejo (Bultos × Unid/bulto): se pasan una sola vez
+        function ensureScanNewPackaging(item) {
+            if (item.newPackagingV2) return;
+            item.newPackagingV2 = true;
+            if ((item.unitsPerPackage || 0) > 1) {
+                item.bultos = item.packages || 0;
+                item.newUnitsPerBulto = item.unitsPerPackage;
+                item.displaysQty = 0;
+                item.unidadesSueltas = 0;
+            } else {
+                item.bultos = 0;
+                item.displaysQty = 0;
+                item.unidadesSueltas = Math.round(((item.packages || 0) * (item.unitsPerPackage || 1)) * 100) / 100;
+            }
+            item.qty = getScanNewTotalUnits(item);
+        }
+
+        function scanNewQtyQuietSync(localId, field, value) {
+            const item = scanInvoiceItems.find(i => i.localId === localId);
+            if (!item) return;
+            ensureScanNewPackaging(item);
+            ensureScanItemAnchorTotal(item); // el precio total queda fijo; se ajusta el unitario
+            item[field] = Math.max(0, parseFloat(value) || 0);
+            item.qty = getScanNewTotalUnits(item);
+            reapplyScanItemEnteredTotal(item);
+            const totalEl = document.getElementById('scannew-totalunid-' + localId);
+            if (totalEl) totalEl.value = item.qty;
+        }
+        window.scanNewQtyQuietSync = scanNewQtyQuietSync;
+
+        function updateScanNewQtyField(localId, field, value) {
+            scanNewQtyQuietSync(localId, field, value);
+            renderScanInvoiceItems();
+        }
+        window.updateScanNewQtyField = updateScanNewQtyField;
+
         function confirmScanItemAsNewProduct(localId) {
             const item = scanInvoiceItems.find(i => i.localId === localId);
             if (!item) return;
@@ -15171,6 +15352,10 @@
             document.getElementById('inv-price').value = price;
 
             pendingNewProductScanRawName = item.rawName;
+            pendingNewProductScanPackaging = isWeightMode ? null : {
+                bulkPackSize: item.newUnitsPerBulto > 0 ? item.newUnitsPerBulto : null,
+                unitsPerDisplay: item.newUnitsPerDisplay > 0 ? item.newUnitsPerDisplay : null
+            };
             scanInvoiceReturnPending = true;
             scanInvoiceItems = scanInvoiceItems.filter(i => i.localId !== localId);
             closeScanInvoiceModal();
@@ -16972,8 +17157,6 @@
             if (cashEl) cashEl.textContent = '$' + formatMoney(appState.cash);
             if (bankEl) bankEl.textContent = '$' + formatMoney(appState.bank);
 
-            try { renderAvailableToSpend(); } catch (e) { console.error('Disponible para gastar:', e); }
-            try { renderScheduledPayments(); } catch (e) { console.error('Pagos a proveedores:', e); }
 
             renderReserve();
             renderShiftCountsList();
@@ -17033,6 +17216,9 @@
         function renderCashFlowProjection() {
             const section = document.getElementById('cashflow-projection');
             if (!section || section.classList.contains('hidden')) return;
+
+            try { renderAvailableToSpend(); } catch (e) { console.error('Disponible para gastar:', e); }
+            try { renderScheduledPayments(); } catch (e) { console.error('Pagos a proveedores:', e); }
             
             const settings = appState.cashFlowSettings || { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 };
             const days = settings.projectionDays || 30;
@@ -17162,6 +17348,7 @@
                     case 'daily': monthlyTotal += amount * 30.44; break;
                     case 'weekly': monthlyTotal += amount * 4.345; break;
                     case 'biweekly': monthlyTotal += amount * 2.172; break;
+                    case 'quincena': monthlyTotal += amount * 2; break;
                     case 'monthly': monthlyTotal += amount; break;
                     case 'yearly': monthlyTotal += amount / 12; break;
                     default: monthlyTotal += amount;
@@ -17185,6 +17372,11 @@
             end.setDate(end.getDate() + days);
             
             recs.forEach(rec => {
+                if (rec.frequency === 'quincena') {
+                    // Sueldo/gasto por quincena: se paga el 4.º día hábil después del 15 y del fin de mes
+                    occurrences.push(...generateQuincenaOccurrences(rec, startDateStr, formatDateISO(end)));
+                    return;
+                }
                 const amount = parseFloat(rec.amount) || 0;
                 const source = rec.source || 'cash';
                 const startLimit = rec.startDate ? parseDateLocal(rec.startDate) : null;
@@ -17707,12 +17899,13 @@
                 listEl.innerHTML = '<p class="text-center text-gray-400 py-4 text-sm">Sin gastos fijos registrados</p>';
                 return;
             }
-            const freqLabels = { daily: 'Diario', weekly: 'Semanal', biweekly: 'Quincenal', monthly: 'Mensual', yearly: 'Anual' };
+            const freqLabels = { daily: 'Diario', weekly: 'Semanal', biweekly: 'Cada 14 días', quincena: 'Quincena', monthly: 'Mensual', yearly: 'Anual' };
+            const empName = (id) => { const e = (appState.employees || []).find(x => x.id === id); return e ? e.name : '?'; };
             listEl.innerHTML = recs.sort((a, b) => a.name.localeCompare(b.name)).map(r => `
                 <div class="flex justify-between items-center p-3 rounded-lg border ${r.active === false ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-white border-gray-200'}">
                     <div>
                         <p class="font-bold text-sm ${r.active === false ? 'text-gray-500 line-through' : 'text-gray-800'}">${escapeHtml(r.name)}</p>
-                        <p class="text-xs text-gray-500">$${formatMoney(r.amount)} • ${freqLabels[r.frequency] || 'Mensual'} • vence ${r.dueDay || 1} • ${r.source === 'bank' ? '🏦 Cuenta' : '💵 Caja'}</p>
+                        <p class="text-xs text-gray-500">$${formatMoney(r.amount)} • ${freqLabels[r.frequency] || 'Mensual'} • ${r.frequency === 'quincena' ? 'se paga el 4.º día hábil' + (r.employeeId ? ' • 👤 ' + escapeHtml(empName(r.employeeId)) + ' (con descuentos por horario)' : '') : 'vence ' + (r.dueDay || 1)} • ${r.source === 'bank' ? '🏦 Cuenta' : '💵 Caja'}</p>
                     </div>
                     <div class="flex gap-1">
                         <button onclick="editRecurringExpense('${r.id}')" class="text-blue-500 hover:text-blue-700 p-2 hover:bg-blue-50 rounded" title="Editar"><i class="fas fa-edit"></i></button>
@@ -17727,6 +17920,19 @@
             const helpEl = document.getElementById('rec-expense-due-day-help');
             const dueInput = document.getElementById('rec-expense-due-day');
             if (!helpEl || !dueInput) return;
+            const empRow = document.getElementById('rec-expense-employee-row');
+            if (empRow) empRow.classList.toggle('hidden', freq !== 'quincena');
+            const empSel = document.getElementById('rec-expense-employee');
+            if (empSel && freq === 'quincena') {
+                const prev = empSel.value;
+                empSel.innerHTML = '<option value="">— No es un sueldo —</option>' + getActiveEmployees().map(e => '<option value="' + e.id + '">' + escapeHtml(e.name) + '</option>').join('');
+                empSel.value = prev && getActiveEmployees().some(e => e.id === prev) ? prev : '';
+            }
+            dueInput.disabled = freq === 'quincena';
+            if (freq === 'quincena') {
+                helpEl.textContent = 'Se paga solo: 4.º día hábil después del 15 y del fin de mes';
+                return;
+            }
             if (freq === 'monthly') {
                 helpEl.textContent = 'Día del mes (1-31)';
                 dueInput.max = 31;
@@ -17754,6 +17960,8 @@
             document.getElementById('rec-expense-end-date').value = '';
             document.getElementById('rec-expense-active').checked = true;
             document.getElementById('rec-expense-form-title').textContent = 'Nuevo gasto fijo';
+            const recEmpSel = document.getElementById('rec-expense-employee');
+            if (recEmpSel) recEmpSel.value = '';
             onRecExpenseFrequencyChange();
         }
         
@@ -17795,6 +18003,7 @@
                 startDate,
                 endDate: endDate || null,
                 active,
+                employeeId: frequency === 'quincena' ? (document.getElementById('rec-expense-employee')?.value || null) : null,
                 timestamp: Date.now()
             };
             
@@ -17827,6 +18036,8 @@
             document.getElementById('rec-expense-active').checked = r.active !== false;
             document.getElementById('rec-expense-form-title').textContent = 'Editar gasto fijo';
             onRecExpenseFrequencyChange();
+            const recEmpSelEdit = document.getElementById('rec-expense-employee');
+            if (recEmpSelEdit) recEmpSelEdit.value = r.employeeId || '';
         }
         
         async function deleteRecurringExpense(id) {
@@ -17839,6 +18050,598 @@
             showNotification('Gasto fijo eliminado', 'success');
         }
         
+        // ==================== EMPLEADOS: HORARIOS, FICHAJES Y SUELDO POR QUINCENA ====================
+        // Datos (todos sincronizados con la nube, se fusionan por id + timestamp; nada se borra
+        // del array, se marca status:'deleted' para que una copia vieja no lo reviva):
+        //  appState.employees:       [{ id, name, userId, active, status, scheduleVersions:[{ from, days:{0..6:[{start,end}]} }], timestamp }]
+        //  appState.timeClock:       [{ id, employeeId, date, inAt(ms), outAt(ms|null), source, status, timestamp }]
+        //  appState.attendanceDays:  [{ id:'empId|fecha', employeeId, date, justified, approvedExtraMin, timestamp }]
+        //  appState.payrollPayments: [{ id, employeeId, recId, periodKey, amount, date, source, expenseId, status, timestamp }]
+        //  appState.payrollSettings: { toleranceMin, blockMin, saturdayBusiness }
+        // Sueldo: un Gasto Fijo con frequency 'quincena' y employeeId = lo que cobra por quincena
+        // completa. Valor del minuto = sueldo / minutos de horario de esa quincena.
+        const EMP_DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+        function getPayrollSettings() {
+            const s = appState.payrollSettings || {};
+            return {
+                toleranceMin: Math.max(0, parseInt(s.toleranceMin ?? 5) || 0),
+                blockMin: Math.max(1, parseInt(s.blockMin ?? 30) || 30),
+                saturdayBusiness: s.saturdayBusiness !== false
+            };
+        }
+
+        function getActiveEmployees() {
+            return (appState.employees || []).filter(e => e && e.status !== 'deleted');
+        }
+
+        function empDateAdd(dateStr, days) {
+            const d = parseDateLocal(dateStr);
+            d.setDate(d.getDate() + days);
+            return formatDateISO(d);
+        }
+
+        // Quincena que contiene la fecha: 1–15 o 16–fin de mes
+        function getQuincena(dateStr) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            const mm = String(m).padStart(2, '0');
+            if (d <= 15) return { key: `${y}-${mm}-1`, start: `${y}-${mm}-01`, end: `${y}-${mm}-15`, label: `1 al 15/${mm}/${y}` };
+            const last = new Date(y, m, 0).getDate();
+            return { key: `${y}-${mm}-2`, start: `${y}-${mm}-16`, end: `${y}-${mm}-${String(last).padStart(2, '0')}`, label: `16 al ${last}/${mm}/${y}` };
+        }
+        function shiftQuincena(q, delta) {
+            return getQuincena(delta > 0 ? empDateAdd(q.end, 1) : empDateAdd(q.start, -1));
+        }
+
+        // Día de pago: el 4.º día hábil después del fin de la quincena (domingo nunca es hábil;
+        // el sábado según la configuración). Los feriados no se tienen en cuenta.
+        function getQuincenaPayDate(q) {
+            const { saturdayBusiness } = getPayrollSettings();
+            let d = q.end, count = 0;
+            while (count < 4) {
+                d = empDateAdd(d, 1);
+                const wd = parseDateLocal(d).getDay();
+                if (wd === 0 || (wd === 6 && !saturdayBusiness)) continue;
+                count++;
+            }
+            return d;
+        }
+
+        // Horario vigente en una fecha (el último cambio con "desde" <= fecha)
+        function getEmployeeScheduleForDate(emp, dateStr) {
+            const versions = (emp.scheduleVersions || []).filter(v => v && v.from && v.from <= dateStr)
+                .sort((a, b) => a.from.localeCompare(b.from));
+            return versions.length ? versions[versions.length - 1].days || {} : null;
+        }
+
+        function empTimeToMs(dateStr, hhmm) {
+            const [h, mi] = String(hhmm || '00:00').split(':').map(Number);
+            const d = parseDateLocal(dateStr);
+            d.setHours(h || 0, mi || 0, 0, 0);
+            return d.getTime();
+        }
+
+        // Turnos de un día en ms (si la salida es <= entrada, termina al día siguiente)
+        function getEmployeeShiftsForDate(emp, dateStr) {
+            const sched = getEmployeeScheduleForDate(emp, dateStr);
+            if (!sched) return [];
+            const wd = parseDateLocal(dateStr).getDay();
+            return (sched[wd] || []).filter(t => t && t.start && t.end).map(t => {
+                const startMs = empTimeToMs(dateStr, t.start);
+                let endMs = empTimeToMs(dateStr, t.end);
+                if (endMs <= startMs) endMs += 24 * 3600 * 1000;
+                return { start: t.start, end: t.end, startMs, endMs };
+            });
+        }
+
+        function getEmployeeClockEntries(empId) {
+            return (appState.timeClock || []).filter(c => c && c.employeeId === empId && c.status !== 'deleted');
+        }
+
+        function getAttendanceDay(empId, dateStr) {
+            return (appState.attendanceDays || []).find(a => a && a.id === empId + '|' + dateStr) || null;
+        }
+
+        function empOverlap(a1, a2, b1, b2) {
+            return Math.max(0, Math.min(a2, b2) - Math.max(a1, b1));
+        }
+
+        // Cálculo de un día. Días futuros (y turnos de hoy que todavía no terminaron) se toman
+        // como cumplidos. Un fichaje sin salida de un día pasado se toma hasta el fin de su
+        // turno (y se marca para que lo corrijas).
+        function computeEmployeeDay(emp, dateStr, nowMs) {
+            const { toleranceMin, blockMin } = getPayrollSettings();
+            const shifts = getEmployeeShiftsForDate(emp, dateStr);
+            const todayStr = formatDateISO(new Date(nowMs));
+            const isPastDay = dateStr < todayStr;
+            const adj = getAttendanceDay(emp.id, dateStr);
+            const justified = !!(adj && adj.justified);
+            const allEntries = getEmployeeClockEntries(emp.id);
+            const dayEntries = allEntries.filter(c => c.date === dateStr).sort((a, b) => a.inAt - b.inAt);
+            const lastShiftEnd = shifts.length ? Math.max(...shifts.map(s => s.endMs)) : null;
+            let missingOut = false;
+            const effOut = (c) => {
+                if (c.outAt) return c.outAt;
+                if (c.date < todayStr) { missingOut = true; return Math.max(c.inAt, lastShiftEnd || c.inAt); }
+                return Math.max(c.inAt, nowMs);
+            };
+            // Para cubrir turnos se usan fichajes de este día y del anterior (turno que pasa la medianoche)
+            const prevDay = empDateAdd(dateStr, -1);
+            const coverEntries = allEntries.filter(c => c.date === dateStr || c.date === prevDay)
+                .map(c => ({ inAt: c.inAt, outAt: c.date === dateStr ? effOut(c) : (c.outAt || c.inAt) }));
+
+            let scheduledMin = 0, coveredMin = 0, missingMin = 0, deductedMin = 0, pendingMin = 0;
+            const shiftDetails = shifts.map(sh => {
+                const len = Math.round((sh.endMs - sh.startMs) / 60000);
+                scheduledMin += len;
+                if (sh.endMs > nowMs) {
+                    // Turno futuro o en curso: se asume cumplido por ahora
+                    pendingMin += len;
+                    return { ...sh, len, covered: null, missing: 0, deducted: 0, pending: true };
+                }
+                let covered = 0;
+                for (const e of coverEntries) covered += empOverlap(sh.startMs, sh.endMs, e.inAt, e.outAt);
+                covered = Math.min(len, Math.round(covered / 60000));
+                const missing = len - covered;
+                let deducted = 0;
+                if (!justified && missing > toleranceMin) deducted = Math.min(len, Math.ceil(missing / blockMin) * blockMin);
+                coveredMin += covered; missingMin += missing; deductedMin += deducted;
+                return { ...sh, len, covered, missing, deducted, pending: false };
+            });
+
+            // Horas trabajadas del día y horas de más (fuera de horario)
+            let workedMin = 0, insideMin = 0;
+            for (const c of dayEntries) {
+                const out = effOut(c);
+                workedMin += Math.round((out - c.inAt) / 60000);
+                for (const sh of shifts) insideMin += Math.round(empOverlap(sh.startMs, sh.endMs, c.inAt, out) / 60000);
+            }
+            const extraMin = Math.max(0, workedMin - insideMin);
+            const approvedExtraMin = Math.max(0, parseInt(adj && adj.approvedExtraMin) || 0);
+            return {
+                date: dateStr, shifts: shiftDetails, entries: dayEntries, scheduledMin, coveredMin, missingMin,
+                deductedMin, pendingMin, workedMin, extraMin, approvedExtraMin, justified, missingOut, isPastDay
+            };
+        }
+
+        // Gasto fijo de sueldo vinculado al empleado (el activo más reciente)
+        function getEmployeeSalaryRec(empId) {
+            const recs = (appState.recurringExpenses || []).filter(r => r && r.employeeId === empId && r.frequency === 'quincena' && r.active !== false);
+            return recs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0] || null;
+        }
+
+        function getPayrollPayment(empId, periodKey) {
+            return (appState.payrollPayments || []).find(p => p && p.employeeId === empId && p.periodKey === periodKey && p.status !== 'deleted') || null;
+        }
+
+        // Cuánto hay que pagarle a un empleado por una quincena
+        function computeEmployeeQuincena(emp, q, nowMs, salaryOverride) {
+            const rec = getEmployeeSalaryRec(emp.id);
+            const salary = salaryOverride !== undefined ? salaryOverride : (rec ? (parseFloat(rec.amount) || 0) : 0);
+            const days = [];
+            for (let d = q.start; d <= q.end; d = empDateAdd(d, 1)) days.push(computeEmployeeDay(emp, d, nowMs));
+            const scheduledMin = days.reduce((s, x) => s + x.scheduledMin, 0);
+            const deductedMin = days.reduce((s, x) => s + x.deductedMin, 0);
+            const approvedExtraMin = days.reduce((s, x) => s + x.approvedExtraMin, 0);
+            const pendingExtraMin = days.reduce((s, x) => s + Math.max(0, x.extraMin - x.approvedExtraMin), 0);
+            const perMin = scheduledMin > 0 ? salary / scheduledMin : 0;
+            const deductionAmount = Math.round(deductedMin * perMin * 100) / 100;
+            const extraAmount = Math.round(approvedExtraMin * perMin * 100) / 100;
+            const amount = Math.max(0, Math.round((salary - deductionAmount + extraAmount) * 100) / 100);
+            return {
+                q, rec, salary, days, scheduledMin, deductedMin, approvedExtraMin, pendingExtraMin,
+                perHour: Math.round(perMin * 60 * 100) / 100, deductionAmount, extraAmount, amount,
+                payDate: getQuincenaPayDate(q), payment: getPayrollPayment(emp.id, q.key),
+                missingOutDays: days.filter(d => d.missingOut).map(d => d.date)
+            };
+        }
+
+        // Ocurrencias de un gasto fijo 'quincena' (sueldo) entre dos fechas, por fecha de pago
+        function generateQuincenaOccurrences(rec, startStr, endStr) {
+            const out = [];
+            const emp = rec.employeeId ? getActiveEmployees().find(e => e.id === rec.employeeId) : null;
+            const nowMs = Date.now();
+            let q = getQuincena(empDateAdd(startStr, -40)); // la quincena anterior todavía puede pagarse en el rango
+            for (let guard = 0; guard < 60; guard++) {
+                const pay = getQuincenaPayDate(q);
+                if (pay > endStr) break;
+                const inLimits = (!rec.startDate || q.end >= rec.startDate) && (!rec.endDate || q.start <= rec.endDate);
+                if (pay >= startStr && inLimits && !(emp ? getPayrollPayment(emp.id, q.key) : getPayrollPayment(rec.id, q.key))) {
+                    const amount = emp ? computeEmployeeQuincena(emp, q, nowMs, parseFloat(rec.amount) || 0).amount : (parseFloat(rec.amount) || 0);
+                    out.push({ date: pay, name: rec.name + ' (' + q.label + ')', amount, source: rec.source || 'cash', id: rec.id, category: rec.category || '', periodKey: q.key });
+                }
+                q = shiftQuincena(q, 1);
+            }
+            return out;
+        }
+
+        function fmtMinutes(min) {
+            const m = Math.round(min || 0);
+            const h = Math.floor(m / 60), r = m % 60;
+            return h > 0 ? (r ? `${h}h ${r}m` : `${h}h`) : `${r}m`;
+        }
+
+        // ---------- Acciones ----------
+        let empPeriodQuincena = null; // quincena que se está mirando en la sección
+
+        function touchEmp(obj) { obj.timestamp = Date.now(); return obj; }
+
+        function addEmployee() {
+            const name = (document.getElementById('emp-new-name').value || '').trim();
+            const userId = document.getElementById('emp-new-user').value || null;
+            if (!name) { showNotification('Poné el nombre del empleado', 'error'); return; }
+            if (userId && getActiveEmployees().some(e => e.userId === userId)) { showNotification('Ese usuario ya está vinculado a otro empleado', 'error'); return; }
+            if (!Array.isArray(appState.employees)) appState.employees = [];
+            const emp = touchEmp({ id: 'EMP-' + Date.now(), name, userId, active: true, status: 'active', scheduleVersions: [] });
+            appState.employees.push(emp);
+            saveToLocalStorage();
+            document.getElementById('emp-new-name').value = '';
+            renderEmployeesSection();
+            showNotification('👤 ' + name + ' agregado. Ahora cargale el horario.', 'success');
+            openEmployeeSchedule(emp.id);
+        }
+
+        async function deleteEmployee(id) {
+            const emp = getActiveEmployees().find(e => e.id === id);
+            if (!emp) return;
+            if (!(await showConfirmModal('¿Borrar a ' + emp.name + '? Sus fichajes quedan guardados pero deja de aparecer.'))) return;
+            const live = (appState.employees || []).find(e => e.id === id);
+            if (live) touchEmp(Object.assign(live, { status: 'deleted' }));
+            saveToLocalStorage();
+            renderEmployeesSection();
+        }
+
+        function toggleEmployeeActive(id) {
+            const emp = (appState.employees || []).find(e => e.id === id);
+            if (!emp) return;
+            touchEmp(Object.assign(emp, { active: emp.active === false }));
+            saveToLocalStorage();
+            renderEmployeesSection();
+        }
+
+        function setEmployeeUser(id, userId) {
+            const emp = (appState.employees || []).find(e => e.id === id);
+            if (!emp) return;
+            if (userId && getActiveEmployees().some(e => e.id !== id && e.userId === userId)) { showNotification('Ese usuario ya está vinculado a otro empleado', 'error'); renderEmployeesSection(); return; }
+            touchEmp(Object.assign(emp, { userId: userId || null }));
+            saveToLocalStorage();
+            refreshMyClockButton();
+        }
+
+        // Fichaje: si tiene una entrada abierta, la cierra; si no, abre una nueva (ahora)
+        function clockToggleEmployee(empId) {
+            const emp = getActiveEmployees().find(e => e.id === empId);
+            if (!emp) return;
+            if (!Array.isArray(appState.timeClock)) appState.timeClock = [];
+            const open = getEmployeeClockEntries(empId).filter(c => !c.outAt).sort((a, b) => b.inAt - a.inAt)[0];
+            const now = Date.now();
+            if (open) {
+                const live = appState.timeClock.find(c => c.id === open.id);
+                touchEmp(Object.assign(live, { outAt: now }));
+                showNotification('👋 Salida de ' + emp.name + ' a las ' + new Date(now).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }), 'success');
+            } else {
+                appState.timeClock.push(touchEmp({ id: 'CLK-' + now + '-' + Math.random().toString(36).slice(2, 6), employeeId: empId, date: formatDateISO(new Date(now)), inAt: now, outAt: null, source: 'fichaje', status: 'active', by: appState.currentUser ? appState.currentUser.name : null }));
+                showNotification('🕒 Entrada de ' + emp.name + ' a las ' + new Date(now).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }), 'success');
+            }
+            saveToLocalStorage();
+            refreshMyClockButton();
+            if (currentSection === 'employees') renderEmployeesSection();
+        }
+
+        function getMyEmployee() {
+            const u = appState.currentUser;
+            if (!u || !u.id) return null;
+            return getActiveEmployees().find(e => e.userId === u.id && e.active !== false) || null;
+        }
+
+        function toggleMyClock() {
+            const emp = getMyEmployee();
+            if (emp) clockToggleEmployee(emp.id);
+        }
+
+        function refreshMyClockButton() {
+            const btn = document.getElementById('my-clock-btn');
+            if (!btn) return;
+            const emp = getMyEmployee();
+            if (!emp) { btn.classList.add('hidden'); return; }
+            const open = getEmployeeClockEntries(emp.id).find(c => !c.outAt);
+            const label = document.getElementById('my-clock-label');
+            btn.classList.remove('hidden');
+            if (open) {
+                btn.className = 'w-full text-left px-3 py-2 rounded-xl transition flex items-center gap-2 text-sm mt-4 font-bold bg-orange-100 text-orange-700 hover:bg-orange-200';
+                if (label) label.textContent = 'Fichar salida (entró ' + new Date(open.inAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ')';
+            } else {
+                btn.className = 'w-full text-left px-3 py-2 rounded-xl transition flex items-center gap-2 text-sm mt-4 font-bold bg-green-100 text-green-700 hover:bg-green-200';
+                if (label) label.textContent = 'Fichar entrada';
+            }
+        }
+
+        // ---------- Horario ----------
+        function openEmployeeSchedule(empId) {
+            const emp = getActiveEmployees().find(e => e.id === empId);
+            if (!emp) return;
+            const todayStr = formatDateISO(new Date());
+            const current = getEmployeeScheduleForDate(emp, '9999-12-31') || {};
+            document.getElementById('emp-schedule-id').value = empId;
+            document.getElementById('emp-schedule-name').textContent = emp.name;
+            // Primer horario: rige desde el principio de la quincena actual (para que esta quincena ya cuente)
+            document.getElementById('emp-schedule-from').value = (emp.scheduleVersions || []).length ? todayStr : getQuincena(todayStr).start;
+            const order = [1, 2, 3, 4, 5, 6, 0];
+            document.getElementById('emp-schedule-rows').innerHTML = order.map(wd => {
+                const t = current[wd] || [];
+                const t1 = t[0] || {}, t2 = t[1] || {};
+                return '<div class="grid grid-cols-12 gap-2 items-center text-sm">' +
+                    '<label class="col-span-3 flex items-center gap-2 font-bold text-gray-700"><input type="checkbox" class="w-4 h-4 emp-sch-on" data-wd="' + wd + '"' + (t.length ? ' checked' : '') + '> ' + EMP_DAY_NAMES[wd] + '</label>' +
+                    '<input type="time" class="col-span-2 border rounded px-2 py-1 emp-sch-s1" data-wd="' + wd + '" value="' + (t1.start || '') + '">' +
+                    '<input type="time" class="col-span-2 border rounded px-2 py-1 emp-sch-e1" data-wd="' + wd + '" value="' + (t1.end || '') + '">' +
+                    '<span class="col-span-1 text-center text-xs text-gray-400">y</span>' +
+                    '<input type="time" class="col-span-2 border rounded px-2 py-1 emp-sch-s2" data-wd="' + wd + '" value="' + (t2.start || '') + '" title="2.º turno (opcional)">' +
+                    '<input type="time" class="col-span-2 border rounded px-2 py-1 emp-sch-e2" data-wd="' + wd + '" value="' + (t2.end || '') + '" title="2.º turno (opcional)">' +
+                '</div>';
+            }).join('') + '<p class="text-[11px] text-gray-400">Columnas: entrada y salida · 2.º turno opcional (turno cortado).</p>';
+            document.getElementById('emp-schedule-modal').classList.add('active');
+        }
+
+        function closeEmployeeSchedule() {
+            document.getElementById('emp-schedule-modal').classList.remove('active');
+        }
+
+        function saveEmployeeSchedule() {
+            const empId = document.getElementById('emp-schedule-id').value;
+            const emp = (appState.employees || []).find(e => e.id === empId);
+            if (!emp) return;
+            const from = document.getElementById('emp-schedule-from').value;
+            if (!from) { showNotification('Elegí desde cuándo rige el horario', 'error'); return; }
+            const days = {};
+            for (const wd of [0, 1, 2, 3, 4, 5, 6]) {
+                const on = document.querySelector('.emp-sch-on[data-wd="' + wd + '"]');
+                if (!on || !on.checked) continue;
+                const v = (cls) => (document.querySelector('.' + cls + '[data-wd="' + wd + '"]') || {}).value || '';
+                const tr = [];
+                if (v('emp-sch-s1') && v('emp-sch-e1')) tr.push({ start: v('emp-sch-s1'), end: v('emp-sch-e1') });
+                if (v('emp-sch-s2') && v('emp-sch-e2')) tr.push({ start: v('emp-sch-s2'), end: v('emp-sch-e2') });
+                if (tr.length === 0) { showNotification('Falta el horario del ' + EMP_DAY_NAMES[wd], 'error'); return; }
+                days[wd] = tr;
+            }
+            const versions = (emp.scheduleVersions || []).filter(v => v.from !== from);
+            versions.push({ from, days });
+            versions.sort((a, b) => a.from.localeCompare(b.from));
+            touchEmp(Object.assign(emp, { scheduleVersions: versions }));
+            saveToLocalStorage();
+            closeEmployeeSchedule();
+            renderEmployeesSection();
+            showNotification('🗓️ Horario de ' + emp.name + ' guardado (desde ' + from.split('-').reverse().join('/') + ')', 'success');
+        }
+
+        function describeSchedule(emp) {
+            const sched = getEmployeeScheduleForDate(emp, formatDateISO(new Date()));
+            if (!sched) return 'Sin horario cargado';
+            const parts = [1, 2, 3, 4, 5, 6, 0].filter(wd => (sched[wd] || []).length).map(wd =>
+                EMP_DAY_NAMES[wd].slice(0, 3) + ' ' + sched[wd].map(t => t.start + '–' + t.end).join(' y '));
+            return parts.length ? parts.join(' · ') : 'No trabaja ningún día';
+        }
+
+        // ---------- Fichaje manual (alta / corrección) ----------
+        function openClockModal(empId, entryId, dateStr) {
+            const emp = getActiveEmployees().find(e => e.id === empId);
+            if (!emp) return;
+            const entry = entryId ? (appState.timeClock || []).find(c => c.id === entryId) : null;
+            const hm = (ms) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+            document.getElementById('emp-clock-id').value = entry ? entry.id : '';
+            document.getElementById('emp-clock-employee').value = empId;
+            document.getElementById('emp-clock-title').textContent = (entry ? 'Corregir fichaje de ' : 'Cargar fichaje de ') + emp.name;
+            document.getElementById('emp-clock-date').value = entry ? entry.date : (dateStr || formatDateISO(new Date()));
+            document.getElementById('emp-clock-in').value = entry ? hm(entry.inAt) : '';
+            document.getElementById('emp-clock-out').value = entry && entry.outAt ? hm(entry.outAt) : '';
+            document.getElementById('emp-clock-modal').classList.add('active');
+        }
+
+        function closeClockModal() {
+            document.getElementById('emp-clock-modal').classList.remove('active');
+        }
+
+        function saveClockModal() {
+            const id = document.getElementById('emp-clock-id').value;
+            const empId = document.getElementById('emp-clock-employee').value;
+            const date = document.getElementById('emp-clock-date').value;
+            const tin = document.getElementById('emp-clock-in').value;
+            const tout = document.getElementById('emp-clock-out').value;
+            if (!date || !tin) { showNotification('Poné el día y la hora de entrada', 'error'); return; }
+            const inAt = empTimeToMs(date, tin);
+            let outAt = tout ? empTimeToMs(date, tout) : null;
+            if (outAt !== null && outAt <= inAt) outAt += 24 * 3600 * 1000;
+            if (!Array.isArray(appState.timeClock)) appState.timeClock = [];
+            if (id) {
+                const live = appState.timeClock.find(c => c.id === id);
+                if (live) touchEmp(Object.assign(live, { date, inAt, outAt, source: 'manual' }));
+            } else {
+                appState.timeClock.push(touchEmp({ id: 'CLK-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), employeeId: empId, date, inAt, outAt, source: 'manual', status: 'active', by: appState.currentUser ? appState.currentUser.name : null }));
+            }
+            saveToLocalStorage();
+            closeClockModal();
+            refreshMyClockButton();
+            renderEmployeesSection();
+        }
+
+        async function deleteClockEntry(id) {
+            if (!(await showConfirmModal('¿Borrar este fichaje?'))) return;
+            const live = (appState.timeClock || []).find(c => c.id === id);
+            if (live) touchEmp(Object.assign(live, { status: 'deleted' }));
+            saveToLocalStorage();
+            refreshMyClockButton();
+            renderEmployeesSection();
+        }
+
+        // ---------- Ajustes por día: justificar / aprobar horas extra ----------
+        function upsertAttendanceDay(empId, dateStr, changes) {
+            if (!Array.isArray(appState.attendanceDays)) appState.attendanceDays = [];
+            const id = empId + '|' + dateStr;
+            let a = appState.attendanceDays.find(x => x.id === id);
+            if (!a) { a = { id, employeeId: empId, date: dateStr, justified: false, approvedExtraMin: 0 }; appState.attendanceDays.push(a); }
+            touchEmp(Object.assign(a, changes));
+            saveToLocalStorage();
+            renderEmployeePeriod();
+            try { renderAvailableToSpend(); } catch (e) {}
+        }
+        function toggleAttendanceJustified(empId, dateStr, checked) { upsertAttendanceDay(empId, dateStr, { justified: !!checked }); }
+        function setApprovedExtra(empId, dateStr, minutes) {
+            upsertAttendanceDay(empId, dateStr, { approvedExtraMin: Math.max(0, Math.round(parseFloat(minutes) || 0)) });
+        }
+
+        // ---------- Pago de la quincena ----------
+        async function registerPayrollPayment(empId, periodKey) {
+            const emp = getActiveEmployees().find(e => e.id === empId);
+            if (!emp || !empPeriodQuincena || empPeriodQuincena.key !== periodKey) return;
+            const calc = computeEmployeeQuincena(emp, empPeriodQuincena, Date.now());
+            if (calc.payment) { showNotification('Esta quincena ya figura como pagada', 'warning'); return; }
+            const source = (calc.rec && calc.rec.source) === 'bank' ? 'bank' : 'cash';
+            const raw = await showPromptModal('Monto a pagarle a ' + emp.name + ' por la quincena ' + empPeriodQuincena.label + ' (sale de ' + (source === 'bank' ? 'Cuenta' : 'Caja') + '):', String(calc.amount));
+            if (raw === null || raw === undefined) return;
+            const amount = Math.round((parseFloat(String(raw).replace(',', '.')) || 0) * 100) / 100;
+            if (!(amount > 0)) { showNotification('Monto inválido', 'error'); return; }
+            if (source === 'cash' && amount > (parseFloat(appState.cash) || 0)) { showNotification('No hay suficiente en Caja', 'error'); return; }
+            if (source === 'bank' && amount > (parseFloat(appState.bank) || 0)) { showNotification('No hay suficiente en Cuenta', 'error'); return; }
+            const now = Date.now();
+            const today = formatDateISO(new Date(now));
+            const expenseId = 'WITHDRAW-' + now;
+            if (source === 'cash') appState.cash -= amount; else appState.bank -= amount;
+            appState.expenses.push({
+                id: expenseId, date: today, concept: 'Sueldo ' + emp.name + ' (' + empPeriodQuincena.label + ')', amount, source,
+                type: 'withdrawal', withdrawalType: 'salary', user: appState.currentUser ? appState.currentUser.name : null, timestamp: now
+            });
+            if (!Array.isArray(appState.payrollPayments)) appState.payrollPayments = [];
+            appState.payrollPayments.push(touchEmp({ id: 'PAY-' + now, employeeId: empId, recId: calc.rec ? calc.rec.id : null, periodKey, amount, date: today, source, expenseId, status: 'active' }));
+            saveToLocalStorage();
+            renderEmployeePeriod();
+            showNotification('💸 Pago de $' + formatMoney(amount) + ' a ' + emp.name + ' registrado (gasto "Pago de sueldos")', 'success');
+        }
+
+        // ---------- Pantalla ----------
+        function savePayrollSettings() {
+            const tol = parseInt(document.getElementById('emp-set-tolerance').value);
+            const block = parseInt(document.getElementById('emp-set-block').value);
+            if (isNaN(tol) || tol < 0) { showNotification('Tolerancia inválida', 'error'); return; }
+            if (isNaN(block) || block < 1) { showNotification('Bloque inválido', 'error'); return; }
+            appState.payrollSettings = { toleranceMin: tol, blockMin: block, saturdayBusiness: !!document.getElementById('emp-set-saturday').checked, updatedAt: Date.now() };
+            saveToLocalStorage();
+            renderEmployeesSection();
+            showNotification('Reglas guardadas', 'success');
+        }
+
+        function shiftEmployeePeriod(delta) {
+            empPeriodQuincena = shiftQuincena(empPeriodQuincena || getQuincena(formatDateISO(new Date())), delta);
+            renderEmployeePeriod();
+        }
+
+        function renderEmployeesSection() {
+            const listEl = document.getElementById('emp-list');
+            if (!listEl) return;
+            const settings = getPayrollSettings();
+            document.getElementById('emp-set-tolerance').value = settings.toleranceMin;
+            document.getElementById('emp-set-block').value = settings.blockMin;
+            document.getElementById('emp-set-saturday').checked = settings.saturdayBusiness;
+
+            const users = (appState.users || []).filter(u => u.active !== false);
+            const userOptions = (selected) => '<option value="">— Sin usuario (fichás vos) —</option>' +
+                users.map(u => '<option value="' + escapeHtml(u.id) + '"' + (u.id === selected ? ' selected' : '') + '>' + escapeHtml(u.name) + '</option>').join('');
+            document.getElementById('emp-new-user').innerHTML = userOptions(null);
+
+            const emps = getActiveEmployees();
+            const nowMs = Date.now();
+            const todayStr = formatDateISO(new Date(nowMs));
+            const hm = (ms) => new Date(ms).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+            listEl.innerHTML = emps.length === 0 ? '<p class="text-center text-gray-400 text-sm py-3">Todavía no cargaste empleados</p>' : emps.map(emp => {
+                const open = getEmployeeClockEntries(emp.id).find(c => !c.outAt);
+                const today = computeEmployeeDay(emp, todayStr, nowMs);
+                const status = open ? '<span class="text-green-700 font-bold">🟢 Trabajando desde ' + hm(open.inAt) + '</span>'
+                    : (today.entries.length ? '<span class="text-gray-600">Hoy: ' + today.entries.map(c => hm(c.inAt) + '–' + (c.outAt ? hm(c.outAt) : '…')).join(', ') + '</span>'
+                    : (today.scheduledMin ? '<span class="text-orange-600">Hoy no fichó todavía</span>' : '<span class="text-gray-400">Hoy no trabaja</span>'));
+                const rec = getEmployeeSalaryRec(emp.id);
+                return '<div class="p-3 rounded-xl border ' + (emp.active === false ? 'opacity-50 ' : '') + 'border-gray-200 bg-gray-50">' +
+                    '<div class="flex flex-wrap items-center justify-between gap-2">' +
+                        '<div class="min-w-0">' +
+                            '<p class="font-bold text-gray-800">' + escapeHtml(emp.name) + (emp.active === false ? ' <span class="text-xs text-gray-500">(inactivo)</span>' : '') + '</p>' +
+                            '<p class="text-xs text-gray-500">' + escapeHtml(describeSchedule(emp)) + '</p>' +
+                            '<p class="text-xs">' + status + ' · ' + (rec ? 'Sueldo: $' + formatMoney(rec.amount) + ' por quincena' : '<span class="text-red-600">Sin sueldo vinculado (Flujo de Caja → Gastos Fijos)</span>') + '</p>' +
+                        '</div>' +
+                        '<div class="flex flex-wrap items-center gap-2">' +
+                            '<button onclick="clockToggleEmployee(\'' + emp.id + '\')" class="px-3 py-1.5 rounded-lg text-xs font-bold ' + (open ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-600 hover:bg-green-700') + ' text-white">' + (open ? 'Fichar salida' : 'Fichar entrada') + '</button>' +
+                            '<button onclick="openEmployeeSchedule(\'' + emp.id + '\')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-700 hover:bg-indigo-200">Horario</button>' +
+                            '<select onchange="setEmployeeUser(\'' + emp.id + '\', this.value)" class="border rounded-lg px-2 py-1 text-xs bg-white" title="Usuario de la app vinculado">' + userOptions(emp.userId) + '</select>' +
+                            '<button onclick="toggleEmployeeActive(\'' + emp.id + '\')" class="text-gray-500 hover:text-gray-700 p-1" title="' + (emp.active === false ? 'Activar' : 'Desactivar') + '"><i class="fas ' + (emp.active === false ? 'fa-toggle-off' : 'fa-toggle-on') + '"></i></button>' +
+                            '<button onclick="deleteEmployee(\'' + emp.id + '\')" class="text-red-500 hover:text-red-700 p-1" title="Borrar"><i class="fas fa-trash"></i></button>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+
+            const sel = document.getElementById('emp-period-employee');
+            const prev = sel.value;
+            sel.innerHTML = emps.map(e => '<option value="' + e.id + '">' + escapeHtml(e.name) + '</option>').join('');
+            if (prev && emps.some(e => e.id === prev)) sel.value = prev;
+            if (!empPeriodQuincena) empPeriodQuincena = getQuincena(todayStr);
+            renderEmployeePeriod();
+            refreshMyClockButton();
+        }
+
+        function renderEmployeePeriod() {
+            const sumEl = document.getElementById('emp-period-summary');
+            const daysEl = document.getElementById('emp-period-days');
+            if (!sumEl || !daysEl) return;
+            if (!empPeriodQuincena) empPeriodQuincena = getQuincena(formatDateISO(new Date()));
+            document.getElementById('emp-period-label').textContent = empPeriodQuincena.label;
+            const empId = document.getElementById('emp-period-employee').value;
+            const emp = getActiveEmployees().find(e => e.id === empId);
+            if (!emp) { sumEl.innerHTML = '<p class="text-gray-400 text-sm">Agregá un empleado para ver su quincena</p>'; daysEl.innerHTML = ''; return; }
+            const nowMs = Date.now();
+            const c = computeEmployeeQuincena(emp, empPeriodQuincena, nowMs);
+            const fmtD = (ds) => { const [y, m, d] = ds.split('-'); return d + '/' + m; };
+            const hm = (ms) => new Date(ms).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+            sumEl.innerHTML = !c.rec
+                ? '<p class="text-sm text-red-600">Para calcular el pago, cargá el sueldo en <strong>Flujo de Caja → Gastos Fijos</strong>: frecuencia "Quincena" y elegí a ' + escapeHtml(emp.name) + '.</p>'
+                : '<div class="grid grid-cols-2 md:grid-cols-6 gap-2 text-sm">' +
+                    '<div class="bg-gray-50 rounded-xl p-3"><p class="text-xs text-gray-500">Sueldo quincena</p><p class="font-bold">$' + formatMoney(c.salary) + '</p></div>' +
+                    '<div class="bg-gray-50 rounded-xl p-3"><p class="text-xs text-gray-500">Horas de horario</p><p class="font-bold">' + fmtMinutes(c.scheduledMin) + '</p><p class="text-[10px] text-gray-500">$' + formatMoney(c.perHour) + ' la hora</p></div>' +
+                    '<div class="bg-red-50 rounded-xl p-3"><p class="text-xs text-red-600">Descuentos</p><p class="font-bold text-red-700">-$' + formatMoney(c.deductionAmount) + '</p><p class="text-[10px] text-red-600">' + fmtMinutes(c.deductedMin) + '</p></div>' +
+                    '<div class="bg-green-50 rounded-xl p-3"><p class="text-xs text-green-700">Extras aprobadas</p><p class="font-bold text-green-700">+$' + formatMoney(c.extraAmount) + '</p><p class="text-[10px] text-green-700">' + fmtMinutes(c.approvedExtraMin) + (c.pendingExtraMin ? ' · ' + fmtMinutes(c.pendingExtraMin) + ' sin aprobar' : '') + '</p></div>' +
+                    '<div class="bg-indigo-50 rounded-xl p-3"><p class="text-xs text-indigo-700">A pagar</p><p class="font-bold text-indigo-800 text-lg">$' + formatMoney(c.amount) + '</p><p class="text-[10px] text-indigo-700">el ' + fmtD(c.payDate) + ' (4.º día hábil)</p></div>' +
+                    '<div class="rounded-xl p-3 flex items-center justify-center">' + (c.payment
+                        ? '<p class="text-xs text-green-700 font-bold text-center">✅ Pagado $' + formatMoney(c.payment.amount) + '<br>el ' + fmtD(c.payment.date) + '</p>'
+                        : '<button onclick="registerPayrollPayment(\'' + emp.id + '\', \'' + c.q.key + '\')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold text-xs">Registrar pago</button>') + '</div>' +
+                  '</div>' +
+                  (c.missingOutDays.length ? '<p class="text-xs text-orange-600 mt-2">⚠️ Fichajes sin salida: ' + c.missingOutDays.map(fmtD).join(', ') + ' — se tomaron hasta el fin del turno; corregilos abajo.</p>' : '') +
+                  '<p class="text-[11px] text-gray-400 mt-2">Los días que todavía no pasaron se cuentan como cumplidos. El monto se actualiza solo con cada fichaje.</p>';
+
+            daysEl.innerHTML = '<table class="w-full text-xs"><thead class="bg-gray-50 text-gray-500"><tr>' +
+                '<th class="px-2 py-2 text-left">Día</th><th class="px-2 py-2 text-left">Horario</th><th class="px-2 py-2 text-left">Fichajes</th>' +
+                '<th class="px-2 py-2 text-right">Trabajó</th><th class="px-2 py-2 text-right">Faltó / tarde</th><th class="px-2 py-2 text-right">Descuento</th>' +
+                '<th class="px-2 py-2 text-right">Extra (aprobar min)</th><th class="px-2 py-2 text-center">Justificado</th></tr></thead><tbody class="divide-y">' +
+                c.days.map(d => {
+                    const wd = EMP_DAY_NAMES[parseDateLocal(d.date).getDay()].slice(0, 3);
+                    const isFuture = d.shifts.length > 0 && d.shifts.every(s => s.pending) && !d.entries.length;
+                    const horario = d.shifts.length ? d.shifts.map(s => s.start + '–' + s.end).join(' y ') : '<span class="text-gray-300">—</span>';
+                    const fich = d.entries.map(e => '<span class="inline-flex items-center gap-1 mr-1">' + hm(e.inAt) + '–' + (e.outAt ? hm(e.outAt) : '<span class="text-orange-600">sin salida</span>') +
+                        ' <button onclick="openClockModal(\'' + emp.id + '\', \'' + e.id + '\')" class="text-blue-500" title="Corregir"><i class="fas fa-pen"></i></button>' +
+                        '<button onclick="deleteClockEntry(\'' + e.id + '\')" class="text-red-400" title="Borrar"><i class="fas fa-times"></i></button></span>').join('') +
+                        '<button onclick="openClockModal(\'' + emp.id + '\', null, \'' + d.date + '\')" class="text-indigo-600 hover:underline" title="Cargar fichaje">+ cargar</button>';
+                    const extraCell = d.extraMin > 0 || d.approvedExtraMin > 0
+                        ? fmtMinutes(d.extraMin) + ' <input type="number" min="0" step="1" value="' + d.approvedExtraMin + '" class="w-14 border rounded px-1 py-0.5 text-right" title="Minutos aprobados" onchange="setApprovedExtra(\'' + emp.id + '\', \'' + d.date + '\', this.value)">'
+                        : '<span class="text-gray-300">—</span>';
+                    const rowCls = d.deductedMin > 0 ? 'bg-red-50' : (isFuture ? 'text-gray-400' : '');
+                    return '<tr class="' + rowCls + '">' +
+                        '<td class="px-2 py-1.5 font-bold">' + wd + ' ' + fmtD(d.date) + '</td>' +
+                        '<td class="px-2 py-1.5">' + horario + '</td>' +
+                        '<td class="px-2 py-1.5">' + fich + '</td>' +
+                        '<td class="px-2 py-1.5 text-right">' + (d.workedMin ? fmtMinutes(d.workedMin) : '') + '</td>' +
+                        '<td class="px-2 py-1.5 text-right">' + (d.missingMin ? fmtMinutes(d.missingMin) : '') + '</td>' +
+                        '<td class="px-2 py-1.5 text-right ' + (d.deductedMin ? 'text-red-700 font-bold' : '') + '">' + (d.deductedMin ? '-' + fmtMinutes(d.deductedMin) : '') + '</td>' +
+                        '<td class="px-2 py-1.5 text-right">' + extraCell + '</td>' +
+                        '<td class="px-2 py-1.5 text-center">' + (d.shifts.length ? '<input type="checkbox" ' + (d.justified ? 'checked' : '') + ' onchange="toggleAttendanceJustified(\'' + emp.id + '\', \'' + d.date + '\', this.checked)" title="No descontar este día">' : '') + '</td>' +
+                    '</tr>';
+                }).join('') + '</tbody></table>';
+        }
+
         let cashDiffPeriod = 'month';
         
         function setCashDiffPeriod(period) {
@@ -21272,11 +22075,10 @@
                     `⚠️ "${product.name}" no tiene stock suficiente de estos ingredientes:\n${lines}\n\n¿Vender igual? Se van a agregar como Stock Gratis para completar la venta, y va a quedar un recordatorio en Reponer para confirmarlos contra la compra real después.`
                 );
                 if (!ok) return false;
-                for (const s of shortages) {
-                    const unitCost = s.product.isComposite ? calculateCompositeCost(s.product) : (s.product.cost || 0);
-                    applyFoundStock(s.product, s.shortfall, Math.round(unitCost * s.shortfall * 100) / 100, 'auto-sale', 'Ajuste automático: ingrediente de "' + product.name + '" vendido sin stock suficiente cargado');
-                }
-                saveToLocalStorage();
+                // No se carga nada todavía: el Stock Gratis se agrega recién al cobrar,
+                // solo si la venta se hace (ver coverApprovedShortfallsForSale).
+                approvedStockShortfalls.add(product.id);
+                for (const s of shortages) approvedStockShortfalls.add(s.product.id);
                 return true;
             }
 
@@ -21286,10 +22088,67 @@
             );
             if (!ok) return false;
 
-            const unitCost = product.cost || 0;
-            applyFoundStock(product, shortfall, Math.round(unitCost * shortfall * 100) / 100, 'auto-sale', 'Ajuste automático: venta sin stock suficiente cargado');
-            saveToLocalStorage();
+            // No se carga nada todavía: el Stock Gratis se agrega recién al cobrar, solo
+            // si la venta se hace (si se saca del carrito o se cancela, no queda nada).
+            approvedStockShortfalls.add(product.id);
             return true;
+        }
+
+        // Productos para los que se aceptó "vender igual" sin stock cargado. El Stock
+        // Gratis correspondiente se agrega recién al completar la venta.
+        const approvedStockShortfalls = new Set();
+
+        // Faltantes reales del carrito, sumando todas sus líneas (y los ingredientes de
+        // los productos compuestos): [{ product, shortfall, parentIds }]
+        function computeCartShortfalls(cart) {
+            const need = new Map();
+            const parents = new Map();
+            const add = (id, qty, parentId) => {
+                need.set(id, (need.get(id) || 0) + qty);
+                if (parentId) { if (!parents.has(id)) parents.set(id, new Set()); parents.get(id).add(parentId); }
+            };
+            for (const item of cart || []) {
+                if (!item.productId || item.isManual) continue;
+                const product = appState.inventory.find(p => p.id === item.productId);
+                if (!product) continue;
+                if (product.isComposite && Array.isArray(product.components) && product.components.length > 0) {
+                    for (const comp of product.components) add(comp.productId, item.quantity * (comp.quantity || 1), product.id);
+                } else {
+                    add(product.id, item.quantity || 0, null);
+                }
+            }
+            const result = [];
+            for (const [id, qty] of need) {
+                const product = appState.inventory.find(p => p.id === id);
+                if (!product) continue;
+                const shortfall = Math.round((qty - getProductStock(product)) * 1e6) / 1e6;
+                if (shortfall > 1e-9) result.push({ product, shortfall, parentIds: Array.from(parents.get(id) || []) });
+            }
+            return result;
+        }
+
+        // Al cobrar (cuando la venta ya no se puede frenar): carga como Stock Gratis lo que
+        // falte de los productos aprobados. Devuelve una función para deshacerlo si la
+        // venta igual falla después.
+        function coverApprovedShortfallsForSale(cart) {
+            const shortfalls = computeCartShortfalls(cart).filter(s => approvedStockShortfalls.has(s.product.id));
+            if (shortfalls.length === 0) return () => {};
+            const backups = shortfalls.map(s => ({ product: s.product, batches: JSON.parse(JSON.stringify(s.product.batches || null)), stock: s.product.stock }));
+            const foundLen = (appState.foundStock || []).length;
+            const ledgerLen = (appState.stockLedger || []).length;
+            for (const s of shortfalls) {
+                const unitCost = s.product.isComposite ? calculateCompositeCost(s.product) : (s.product.cost || 0);
+                const parentNames = s.parentIds.map(pid => (appState.inventory.find(p => p.id === pid) || {}).name).filter(Boolean);
+                const note = parentNames.length
+                    ? 'Ajuste automático: ingrediente de "' + parentNames.join('", "') + '" vendido sin stock suficiente cargado'
+                    : 'Ajuste automático: venta sin stock suficiente cargado';
+                applyFoundStock(s.product, s.shortfall, Math.round(unitCost * s.shortfall * 100) / 100, 'auto-sale', note);
+            }
+            return () => {
+                for (const b of backups) { b.product.batches = b.batches; b.product.stock = b.stock; }
+                if (Array.isArray(appState.foundStock)) appState.foundStock.splice(foundLen);
+                if (Array.isArray(appState.stockLedger)) appState.stockLedger.splice(ledgerLen);
+            };
         }
 
         // ==================== RECORDATORIOS DE AJUSTES AUTOMÁTICOS ====================
@@ -21434,7 +22293,66 @@
             document.getElementById('reconcile-fs-qty-hint').textContent =
                 `Ya se cubrieron y vendieron ${coveredQty} con el/los ajuste(s) automático(s). Si compraste más en esa entrega, poné el total acá (ej: compraste 4 → poné 4, y se agregan solo las que falten).`;
             document.getElementById('reconcile-fs-cost').value = unitCost.toFixed(2);
+            // Igual que "Agregar stock": IVA, precio nuevo, margen, vencimiento y saldos
+            reconcileFsVatApplied = false;
+            const vatCb = document.getElementById('reconcile-fs-vat');
+            if (vatCb) vatCb.checked = false;
+            document.getElementById('reconcile-fs-new-price').value = '';
+            document.getElementById('reconcile-fs-margin').value = '';
+            document.getElementById('reconcile-fs-expiry').value = '';
+            const prod = appState.inventory.find(p => p.id === productId);
+            document.getElementById('reconcile-fs-current-price').textContent = '$' + formatMoney(prod ? (prod.salePrice || 0) : 0);
+            document.getElementById('reconcile-fs-cash-available').textContent = formatMoney(appState.cash || 0);
+            document.getElementById('reconcile-fs-bank-available').textContent = formatMoney(appState.bank || 0);
+            updateReconcileFsTotals();
             document.getElementById('reconcile-found-stock-modal').classList.add('active');
+        }
+
+        let reconcileFsVatApplied = false;
+
+        function toggleReconcileFsVat() {
+            const checkbox = document.getElementById('reconcile-fs-vat');
+            const costInput = document.getElementById('reconcile-fs-cost');
+            if (!checkbox || !costInput) return;
+            const current = parseFloat(String(costInput.value).replace(',', '.')) || 0;
+            if (checkbox.checked && !reconcileFsVatApplied) { costInput.value = (current * 1.21).toFixed(2); reconcileFsVatApplied = true; }
+            else if (!checkbox.checked && reconcileFsVatApplied) { costInput.value = (current / 1.21).toFixed(2); reconcileFsVatApplied = false; }
+            updateReconcileFsTotals();
+        }
+
+        function onReconcileFsCostInput() {
+            // Si se tipea el costo a mano, ya es el costo final (como en Agregar stock)
+            reconcileFsVatApplied = false;
+            const cb = document.getElementById('reconcile-fs-vat');
+            if (cb) cb.checked = false;
+            updateReconcileFsTotals();
+        }
+
+        function updateReconcileFsTotals() {
+            const qty = parseInt(document.getElementById('reconcile-fs-total-qty').value) || 0;
+            const cost = parseFloat(String(document.getElementById('reconcile-fs-cost').value).replace(',', '.')) || 0;
+            document.getElementById('reconcile-fs-total-cost').textContent = '$' + formatMoney(Math.round(qty * cost * 100) / 100);
+            const prod = appState.inventory.find(p => p.id === reconcileFsProductId);
+            const priceInput = document.getElementById('reconcile-fs-new-price');
+            const marginInput = document.getElementById('reconcile-fs-margin');
+            const resultEl = document.getElementById('reconcile-fs-margin-result');
+            const price = parseFloat(priceInput.value) || (prod ? prod.salePrice || 0 : 0);
+            if (cost > 0 && price > 0) {
+                if (document.activeElement !== marginInput) marginInput.value = (((price - cost) / cost) * 100).toFixed(1);
+                resultEl.textContent = 'Ganancia: $' + formatMoney(price - cost) + ' por unidad';
+            } else {
+                resultEl.textContent = '';
+            }
+        }
+
+        function calculateReconcileFsPriceFromMargin() {
+            const raw = document.getElementById('reconcile-fs-margin').value.trim();
+            const cost = parseFloat(String(document.getElementById('reconcile-fs-cost').value).replace(',', '.')) || 0;
+            if (raw === '' || !(cost > 0)) { updateReconcileFsTotals(); return; }
+            const margin = parseFloat(raw);
+            if (isNaN(margin)) return;
+            document.getElementById('reconcile-fs-new-price').value = (Math.round(cost * (1 + margin / 100) * 100) / 100).toFixed(2);
+            updateReconcileFsTotals();
         }
 
         function closeReconcileFoundStockModal() {
@@ -21507,12 +22425,17 @@
             });
 
             const remainingQty = totalQty - coveredQty;
+            const vatApplied = !!document.getElementById('reconcile-fs-vat')?.checked;
+            const expiry = document.getElementById('reconcile-fs-expiry')?.value || null;
+            const newPrice = parseFloat(document.getElementById('reconcile-fs-new-price')?.value);
             if (remainingQty > 0) {
-                applyPurchaseLine({ product, qty: remainingQty, cost: realCost, expiry: null, source: reconcileFsPaymentSource, invoiceType: reconcileFsInvoiceType, conceptPrefix: 'Compra real (reconciliada)' });
+                applyPurchaseLine({ product, qty: remainingQty, cost: realCost, expiry, source: reconcileFsPaymentSource, invoiceType: reconcileFsInvoiceType, conceptPrefix: 'Compra real (reconciliada)', vatApplied });
             } else {
                 // No hay unidades extra: solo se corrige el costo de referencia del producto.
                 product.cost = realCost;
             }
+            product.vatApplied = vatApplied;
+            if (newPrice > 0 && newPrice !== product.salePrice) product.salePrice = newPrice;
 
             // La parte ya cubierta por el/los ajuste(s) automático(s) (coveredQty) no pasa
             // por applyPurchaseLine porque ese stock ya se sumó (y vendió) antes -- pero la
@@ -21533,7 +22456,7 @@
                     type: 'purchase',
                     productId: product.id,
                     batchId: null,
-                    vatApplied: null,
+                    vatApplied: vatApplied,
                     timestamp: Date.now()
                 });
             }
@@ -26162,6 +27085,7 @@ RESULTADOS:
         }
 
         function updateSidebar() {
+            try { refreshMyClockButton(); } catch (e) {}
             try {
                 // Asegurar que los valores sean números
                 const cash = parseFloat(appState.cash) || 0;
@@ -26333,6 +27257,7 @@ RESULTADOS:
             appState.expiryHistory = Array.isArray(appState.expiryHistory) ? appState.expiryHistory : [];
             appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
             appState.scheduledPayments = Array.isArray(appState.scheduledPayments) ? appState.scheduledPayments : [];
+            for (const k of ['employees', 'timeClock', 'attendanceDays', 'payrollPayments']) appState[k] = Array.isArray(appState[k]) ? appState[k] : [];
             appState.suppliers = Array.isArray(appState.suppliers) ? appState.suppliers : [];
             appState.businessHours = Array.isArray(appState.businessHours) && appState.businessHours.length === 7
                 ? appState.businessHours
@@ -28326,7 +29251,11 @@ RESULTADOS:
                 main_invoiceNameMappings: 'invoiceNameMappings',
                 main_invoiceSupplierCorrections: 'invoiceSupplierCorrections',
                 main_specialPriceCodes: 'specialPriceCodes',
-                main_scheduledPayments: 'scheduledPayments'
+                main_scheduledPayments: 'scheduledPayments',
+                main_employees: 'employees',
+                main_timeClock: 'timeClock',
+                main_attendanceDays: 'attendanceDays',
+                main_payrollPayments: 'payrollPayments'
             };
         }
 
@@ -28343,6 +29272,7 @@ RESULTADOS:
                 qrFee: parseFloat(appState.qrFee) || 0,
                 debitFee: parseFloat(appState.debitFee) || 0,
                 percentSettingsUpdatedAt: parseInt(appState.percentSettingsUpdatedAt) || 0,
+                payrollSettings: appState.payrollSettings || null,
                 comprasAppPassword: appState.comprasAppPassword || '',
                 financesPassword: appState.financesPassword || '',
                 stockTargetDays: parseInt(appState.stockTargetDays) || 7,
@@ -28623,7 +29553,7 @@ RESULTADOS:
         function normalizeFirebaseData(downloaded) {
             const normalized = {};
             const main = downloaded && (downloaded.main || downloaded);
-            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','qrFee','debitFee','percentSettingsUpdatedAt','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
+            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','qrFee','debitFee','percentSettingsUpdatedAt','payrollSettings','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
             for (const f of baseFields) {
                 if (main && main[f] !== undefined) normalized[f] = main[f];
             }
@@ -29554,6 +30484,11 @@ RESULTADOS:
                 appState.fixedAssets = smartMergeArrays(appState.fixedAssets || [], data.fixedAssets || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
                 appState.scheduledPayments = smartMergeArrays(appState.scheduledPayments || [], data.scheduledPayments || []);
+                appState.employees = smartMergeArrays(appState.employees || [], data.employees || []);
+                appState.timeClock = smartMergeArrays(appState.timeClock || [], data.timeClock || []);
+                appState.attendanceDays = smartMergeArrays(appState.attendanceDays || [], data.attendanceDays || []);
+                appState.payrollPayments = smartMergeArrays(appState.payrollPayments || [], data.payrollPayments || []);
+                if (data.payrollSettings && typeof data.payrollSettings === 'object' && (parseInt(data.payrollSettings.updatedAt) || 0) > (parseInt((appState.payrollSettings || {}).updatedAt) || 0)) appState.payrollSettings = { ...data.payrollSettings };
                 appState.billedDays = smartMergeArrays(appState.billedDays || [], data.billedDays || []);
                 appState.guestLogs = smartMergeArrays(appState.guestLogs || [], data.guestLogs || []);
                 // Tomar deletedProductIds y deletedInvestmentIds de Firebase (la PC es la fuente de verdad), pero si Firebase está vacío no borrar locales
@@ -29647,6 +30582,11 @@ RESULTADOS:
                 appState.fixedAssets = smartMergeArrays(appState.fixedAssets || [], data.fixedAssets || []);
                 appState.recurringExpenses = smartMergeArrays(appState.recurringExpenses || [], data.recurringExpenses || []);
                 appState.scheduledPayments = smartMergeArrays(appState.scheduledPayments || [], data.scheduledPayments || []);
+                appState.employees = smartMergeArrays(appState.employees || [], data.employees || []);
+                appState.timeClock = smartMergeArrays(appState.timeClock || [], data.timeClock || []);
+                appState.attendanceDays = smartMergeArrays(appState.attendanceDays || [], data.attendanceDays || []);
+                appState.payrollPayments = smartMergeArrays(appState.payrollPayments || [], data.payrollPayments || []);
+                if (data.payrollSettings && typeof data.payrollSettings === 'object' && (parseInt(data.payrollSettings.updatedAt) || 0) > (parseInt((appState.payrollSettings || {}).updatedAt) || 0)) appState.payrollSettings = { ...data.payrollSettings };
                 appState.billedDays = smartMergeArrays(appState.billedDays || [], data.billedDays || []);
                 appState.guestLogs = smartMergeArrays(appState.guestLogs || [], data.guestLogs || []);
                 
@@ -30514,6 +31454,7 @@ RESULTADOS:
                     appState.losses = Array.isArray(appState.losses) ? appState.losses : [];
                     appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
                     appState.scheduledPayments = Array.isArray(appState.scheduledPayments) ? appState.scheduledPayments : [];
+                    for (const k of ['employees', 'timeClock', 'attendanceDays', 'payrollPayments']) appState[k] = Array.isArray(appState[k]) ? appState[k] : [];
                     if (!appState.cashFlowSettings || typeof appState.cashFlowSettings !== 'object') {
                         appState.cashFlowSettings = { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 };
                     } else {
@@ -30978,7 +31919,8 @@ RESULTADOS:
                         <select id="rec-expense-frequency" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm" onchange="onRecExpenseFrequencyChange()">
                             <option value="daily">Diario</option>
                             <option value="weekly">Semanal</option>
-                            <option value="biweekly">Quincenal</option>
+                            <option value="biweekly">Cada 14 días</option>
+                            <option value="quincena">Quincena (1–15 y 16–fin, se paga el 4.º día hábil)</option>
                             <option value="monthly" selected>Mensual</option>
                             <option value="yearly">Anual</option>
                         </select>
@@ -30994,6 +31936,11 @@ RESULTADOS:
                             <option value="cash">💵 Caja</option>
                             <option value="bank">🏦 Cuenta</option>
                         </select>
+                    </div>
+                    <div class="md:col-span-2 hidden" id="rec-expense-employee-row">
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Sueldo de empleado (opcional)</label>
+                        <select id="rec-expense-employee" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"></select>
+                        <p class="text-[10px] text-gray-400 mt-1">Si elegís un empleado, el monto es lo que cobra por quincena completa: la app descuenta llegadas tarde/faltas y suma las horas extra que apruebes, según sus fichajes.</p>
                     </div>
                     <div class="md:col-span-2">
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Categoría</label>
@@ -31016,6 +31963,54 @@ RESULTADOS:
                     <button onclick="resetRecurringExpenseForm()" class="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-bold text-sm">Limpiar</button>
                     <button onclick="saveRecurringExpense()" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold text-sm shadow hover:bg-blue-700">Guardar</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== HORARIO DE EMPLEADO ==================== -->
+    <div id="emp-schedule-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 class="text-xl font-bold mb-1 text-indigo-700"><i class="fas fa-calendar-week"></i> Horario de <span id="emp-schedule-name"></span></h3>
+            <p class="text-xs text-gray-500 mb-4">Tildá los días que trabaja y su horario. Si hace turno cortado, completá el 2.º turno. Los cambios rigen desde la fecha que elijas (las quincenas anteriores usan el horario viejo).</p>
+            <input type="hidden" id="emp-schedule-id">
+            <div id="emp-schedule-rows" class="space-y-2"></div>
+            <div class="mt-4 flex items-center gap-2 text-sm">
+                <label class="text-gray-600">Vigente desde</label>
+                <input type="date" id="emp-schedule-from" class="border rounded-lg px-3 py-2">
+            </div>
+            <div class="flex gap-2 mt-4">
+                <button onclick="closeEmployeeSchedule()" class="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-bold">Cancelar</button>
+                <button onclick="saveEmployeeSchedule()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold">Guardar horario</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== FICHAJE MANUAL ==================== -->
+    <div id="emp-clock-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-4 text-indigo-700"><i class="fas fa-clock"></i> <span id="emp-clock-title">Fichaje</span></h3>
+            <input type="hidden" id="emp-clock-id">
+            <input type="hidden" id="emp-clock-employee">
+            <div class="space-y-3 text-sm">
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">Día</label>
+                    <input type="date" id="emp-clock-date" class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Entrada</label>
+                        <input type="time" id="emp-clock-in" class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Salida (vacío = sigue trabajando)</label>
+                        <input type="time" id="emp-clock-out" class="w-full border rounded-lg px-3 py-2">
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500">Si la salida es menor que la entrada, se toma como del día siguiente (turno que pasa la medianoche).</p>
+            </div>
+            <div class="flex gap-2 mt-4">
+                <button onclick="closeClockModal()" class="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-bold">Cancelar</button>
+                <button onclick="saveClockModal()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold">Guardar</button>
             </div>
         </div>
     </div>
@@ -31544,33 +32539,63 @@ RESULTADOS:
 
     <!-- ==================== RECONCILIAR AJUSTE AUTOMÁTICO ==================== -->
     <div id="reconcile-found-stock-modal" class="modal">
-        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <h3 class="text-xl font-bold mb-2 text-amber-600"><i class="fas fa-check-double"></i> Confirmar compra real</h3>
-            <p id="reconcile-fs-summary" class="text-sm text-gray-600 mb-4"></p>
+            <div id="reconcile-fs-summary" class="mb-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-600"></div>
             <div class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Cantidad total que compraste en esa entrega (contando la que ya se vendió)</label>
-                    <input type="number" id="reconcile-fs-total-qty" class="w-full border-2 border-amber-200 rounded-xl px-4 py-3 text-xl font-bold text-center" min="1" step="1">
+                    <input type="number" id="reconcile-fs-total-qty" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" min="1" step="1" oninput="updateReconcileFsTotals()">
                     <p id="reconcile-fs-qty-hint" class="text-xs text-gray-500 mt-1"></p>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Costo unitario real</label>
-                    <input type="number" id="reconcile-fs-cost" class="w-full border-2 border-amber-200 rounded-xl px-4 py-3 text-xl font-bold text-center" min="0" step="0.01">
-                    <p class="text-xs text-gray-500 mt-1">Corrige el costo con el que se calculó la ganancia de lo que ya se vendió.</p>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Costo unitario ($)</label>
+                    <input type="number" id="reconcile-fs-cost" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-lg font-bold text-center" min="0" step="0.01" oninput="onReconcileFsCostInput()">
+                    <label class="flex items-center gap-2 mt-1 cursor-pointer">
+                        <input type="checkbox" id="reconcile-fs-vat" onchange="toggleReconcileFsVat()">
+                        <span class="text-xs text-gray-600">💰 + IVA 21%</span>
+                    </label>
+                    <p class="text-xs text-gray-500 mt-1">Corrige también el costo con el que se calculó la ganancia de lo que ya se vendió.</p>
+                </div>
+                <div class="p-3 bg-blue-50 rounded-lg">
+                    <p class="text-sm text-gray-600">Costo total:</p>
+                    <p class="text-2xl font-bold text-blue-800" id="reconcile-fs-total-cost">$0</p>
+                </div>
+                <div class="p-4 bg-orange-50 border-2 border-orange-200 rounded-xl">
+                    <label class="block text-sm font-bold text-orange-800 mb-2"><i class="fas fa-tag mr-1"></i> Nuevo Precio de Venta (Opcional)</label>
+                    <div class="flex items-center gap-2">
+                        <span class="text-orange-600 font-bold">$</span>
+                        <input type="number" id="reconcile-fs-new-price" class="flex-1 border-2 border-orange-300 rounded-lg px-3 py-2 font-bold text-lg" placeholder="Precio actual" step="0.01" oninput="updateReconcileFsTotals()">
+                    </div>
+                    <div class="mt-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Margen de ganancia (%)</label>
+                        <input type="number" id="reconcile-fs-margin" class="w-full border-2 border-orange-200 rounded-lg px-3 py-2 font-bold text-center" step="0.1" placeholder="30" oninput="calculateReconcileFsPriceFromMargin()">
+                        <p id="reconcile-fs-margin-result" class="text-xs text-orange-600 mt-1"></p>
+                    </div>
+                    <p class="text-xs text-orange-600 mt-1"><i class="fas fa-info-circle"></i> Dejá vacío para mantener el precio actual.</p>
+                    <div class="mt-2 flex justify-between text-sm">
+                        <span class="text-gray-600">Precio actual:</span>
+                        <span class="font-bold text-orange-700" id="reconcile-fs-current-price">$0</span>
+                    </div>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Tipo de compra</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Tipo de compra:</label>
                     <div class="flex gap-2">
                         <button type="button" onclick="setReconcileFsInvoiceType('white')" id="btn-reconcile-fs-white" class="flex-1 py-2 rounded-lg border-2 border-blue-500 bg-blue-50 text-blue-700 text-sm font-medium"><i class="fas fa-file-invoice"></i> Facturado</button>
                         <button type="button" onclick="setReconcileFsInvoiceType('black')" id="btn-reconcile-fs-black" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-500 text-sm font-medium"><i class="fas fa-eye-slash"></i> Sin factura</button>
                     </div>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Pagar con</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Pagar con:</label>
                     <div class="flex gap-2">
-                        <button type="button" onclick="setReconcileFsPayment('cash')" id="btn-reconcile-fs-cash" class="flex-1 py-2 rounded-lg border-2 border-green-500 bg-green-50 text-green-700 text-sm font-medium">💵 Caja</button>
-                        <button type="button" onclick="setReconcileFsPayment('bank')" id="btn-reconcile-fs-bank" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-500 text-sm font-medium">🏦 Cuenta</button>
+                        <button type="button" onclick="setReconcileFsPayment('cash')" id="btn-reconcile-fs-cash" class="flex-1 py-2 rounded-lg border-2 border-green-500 bg-green-50 text-green-700 text-sm font-medium">💵 Caja ($<span id="reconcile-fs-cash-available">0</span>)</button>
+                        <button type="button" onclick="setReconcileFsPayment('bank')" id="btn-reconcile-fs-bank" class="flex-1 py-2 rounded-lg border-2 border-gray-200 text-gray-500 text-sm font-medium">🏦 Cuenta ($<span id="reconcile-fs-bank-available">0</span>)</button>
                     </div>
+                </div>
+                <div class="p-4 bg-yellow-50 border-2 border-yellow-300 rounded-xl">
+                    <label class="block text-sm font-bold text-yellow-800 mb-2"><i class="fas fa-calendar-alt mr-1"></i> Fecha de Vencimiento</label>
+                    <input type="date" id="reconcile-fs-expiry" class="w-full border-2 border-yellow-300 rounded-lg px-3 py-2 font-bold text-lg">
+                    <p class="text-xs text-yellow-600 mt-1"><i class="fas fa-info-circle"></i> Se aplica a las unidades que entran al stock (las que no se vendieron todavía).</p>
                 </div>
                 <div class="flex gap-2">
                     <button onclick="closeReconcileFoundStockModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>

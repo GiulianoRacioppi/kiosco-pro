@@ -16345,6 +16345,9 @@
                     <div class="text-right mr-3">
                         <p class="font-bold text-blue-600">-$${formatMoney(inv.amount)}</p>
                     </div>
+                    <button onclick="changeInvestmentDate('${inv.id}', '${dateStr}')" class="text-indigo-500 hover:text-indigo-700 p-2 hover:bg-indigo-100 rounded-lg mr-1" title="Cambiar fecha de la compra">
+                        <i class="fas fa-calendar-alt"></i>
+                    </button>
                     <button onclick="editInvestment('${inv.id}', '${dateStr}')" class="text-blue-500 hover:text-blue-700 p-2 hover:bg-blue-100 rounded-lg mr-1" title="Editar inversión">
                         <i class="fas fa-edit"></i>
                     </button>
@@ -16506,6 +16509,41 @@
             }
             
             showNotification('Gasto eliminado correctamente', 'success');
+        }
+
+        // Mueve una compra/inversión a otro día (ej: se anotó en un día que no era). No toca
+        // la plata (Caja/Cuenta ya se movió al cargarla); solo la fecha, y la del lote de
+        // mercadería que generó, para que el orden FIFO de costos quede bien.
+        async function changeInvestmentDate(investmentId, dateStr) {
+            const investment = (appState.investments || []).find(i => i.id === investmentId);
+            if (!investment) return;
+            const raw = await showPromptModal('Nueva fecha de la compra (AAAA-MM-DD):\n' + investment.concept, investment.date);
+            if (raw === null || raw === undefined) return;
+            const newDate = String(raw).trim();
+            const valid = /^\d{4}-\d{2}-\d{2}$/.test(newDate) && formatDateISO(parseDateLocal(newDate)) === newDate;
+            if (!valid) { showNotification('Fecha inválida. Usá el formato AAAA-MM-DD (ej: 2026-10-20)', 'error'); return; }
+            if (newDate === investment.date) return;
+            if (newDate > formatDateISO(new Date())) {
+                if (!(await showConfirmModal('La fecha ' + newDate + ' es futura. ¿Mover la compra igual?'))) return;
+            }
+            const oldDate = investment.date;
+            investment.date = newDate;
+            investment.timestamp = Date.now(); // para que la sincronización se quede con este cambio
+
+            // Lote de mercadería asociado (si lo hay): misma fecha de ingreso
+            if (investment.productId && investment.batchId) {
+                const product = appState.inventory.find(p => p.id === investment.productId);
+                const batch = product && Array.isArray(product.batches) ? product.batches.find(b => b.id === investment.batchId) : null;
+                if (batch) {
+                    batch.dateAdded = newDate;
+                    batch.updatedAt = new Date().toISOString();
+                }
+            }
+
+            saveToLocalStorage();
+            renderAll();
+            if (dateStr && typeof showDayDetail === 'function') showDayDetail(dateStr);
+            showNotification('📅 Compra movida del ' + oldDate.split('-').reverse().join('/') + ' al ' + newDate.split('-').reverse().join('/'), 'success');
         }
 
         async function editInvestment(investmentId, dateStr) {

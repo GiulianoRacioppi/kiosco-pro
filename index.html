@@ -7739,7 +7739,18 @@
                 // cuenta sin que se notara en la línea (que seguía mostrando el
                 // monto viejo hasta el próximo renderCart()), mientras el total real
                 // cobrado ya había cambiado.
-                if (item.weightGrams != null) return;
+                if (item.weightGrams != null) {
+                    // Por peso (fiambre, caramelos sueltos, etc.): la LÍNEA completa a
+                    // costo + %, redondeada a $100 como el resto. Se guarda como precio
+                    // por unidad = total / cantidad, así precio × cantidad da justo ese total.
+                    const qty = item.quantity || 0;
+                    if (!(qty > 0)) return;
+                    const pct = markupPct != null ? markupPct : 10;
+                    const lineTotal = roundTo100Up((item.cost || 0) * qty * (1 + pct / 100));
+                    item.price = lineTotal / qty;
+                    item.isSpecialPrice = true;
+                    return;
+                }
                 item.price = computeSpecialPrice(item.cost || 0, markupPct);
                 item.isSpecialPrice = true;
             });
@@ -7776,7 +7787,9 @@
                 // tampoco hay nada que "restaurar" acá -- hacerlo igual lo
                 // reemplazaría por el precio de venta normal del producto, perdiendo
                 // el monto puntual que se había cargado para esa línea.
-                if (item.weightGrams != null) return;
+                // (los productos por peso también: su precio en el carrito es el precio
+                // normal por unidad, y la cantidad es la que se cargó en el modal de peso)
+                if (item.weightGrams != null && !item.isSpecialPrice) return;
                 const product = appState.inventory.find(p => p.id === item.productId);
                 if (product) item.price = product.salePrice || 0;
                 item.isSpecialPrice = false;
@@ -11100,7 +11113,9 @@
         }
 
         function roundTo100Up(price) {
-            return Math.ceil(price / 100) * 100;
+            // Primero a centavos: si no, 1100.0000000000002 (de 1000 × 1.1) subía a 1200
+            const cents = Math.round((price || 0) * 100) / 100;
+            return Math.ceil(cents / 100) * 100;
         }
 
         function toggleRoundPriceCheckbox() {

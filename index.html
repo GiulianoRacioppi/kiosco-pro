@@ -1256,6 +1256,9 @@
             <button onclick="showSection('inventory')" id="btn-top-inventory" class="bg-blue-500 hover:bg-blue-600 text-white px-3 sm:px-6 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap">
                 <i class="fas fa-shopping-cart"></i> <span class="hidden sm:inline">Compra Stock</span><span class="sm:hidden">Stock</span>
             </button>
+            <button onclick="openDniClockModal()" id="btn-top-clock" class="bg-indigo-500 hover:bg-indigo-600 text-white px-3 sm:px-6 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap">
+                <i class="fas fa-user-clock"></i> Fichar
+            </button>
             <button onclick="openExpenseModal()" id="btn-top-expense" class="bg-red-500 hover:bg-red-600 text-white px-3 sm:px-6 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap">
                 <i class="fas fa-minus"></i> Gasto
             </button>
@@ -3363,7 +3366,12 @@
                         <i class="fas fa-users-cog"></i> Usuarios
                     </h3>
                     <div class="space-y-4">
+                        <div class="settings-pw-locked hidden bg-gray-50 border rounded-xl p-3 text-sm text-gray-600 flex flex-wrap items-center justify-between gap-2">
+                            <span>🔒 Para ver o cambiar usuarios y contraseñas hace falta la contraseña de Finanzas.</span>
+                            <button onclick="unlockPasswordSettings()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs">Desbloquear</button>
+                        </div>
                         <div id="users-list" class="space-y-2 max-h-48 overflow-y-auto"></div>
+                        <div id="users-edit-area" class="space-y-4">
                         <input type="hidden" id="user-edit-id" value="">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
@@ -3385,6 +3393,7 @@
                             <button onclick="saveUser()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg">
                                 <i class="fas fa-save"></i> <span id="user-save-label">Agregar Usuario</span>
                             </button>
+                        </div>
                         </div>
                     </div>
                 </div>
@@ -3716,6 +3725,11 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-2">Marcá esto solo en la PC. El celular quedará como secundario y bajará productos/stock/saldos desde la PC.</p>
                         </div>
+                        <div class="settings-pw-locked hidden bg-gray-50 border rounded-xl p-3 text-sm text-gray-600 flex flex-wrap items-center justify-between gap-2">
+                            <span>🔒 Contraseñas de Compras y de Finanzas: hace falta la contraseña de Finanzas para verlas o cambiarlas.</span>
+                            <button onclick="unlockPasswordSettings()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs">Desbloquear</button>
+                        </div>
+                        <div id="settings-passwords-area" class="space-y-4">
                         <div class="bg-gray-50 rounded-xl p-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2">🔒 Contraseña de la app de Compras (celular)</label>
                             <div class="flex gap-2">
@@ -3730,7 +3744,8 @@
                                 <input type="text" id="settings-finances-password" class="flex-1 border rounded-lg px-3 py-2" placeholder="Dejar vacío = sin contraseña">
                                 <button onclick="saveFinancesPassword()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm">Guardar</button>
                             </div>
-                            <p class="text-xs text-gray-500 mt-2">La pide antes de entrar a Finanzas, aparte de ser administrador. Se pide una vez por sesión.</p>
+                            <p class="text-xs text-gray-500 mt-2">La pide antes de entrar a Finanzas y a Empleados, y para ver o cambiar usuarios y contraseñas. Se vuelve a pedir cada vez que volvés a Vender.</p>
+                        </div>
                         </div>
                         <button onclick="forceSync()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg">
                             <i class="fas fa-sync"></i> Sincronizar Ahora
@@ -5039,7 +5054,13 @@
         // recargar la página) -- ver el chequeo de contraseña en showSection().
         let financesUnlockedThisSession = false;
 
-        function openFinancesPasswordModal() {
+        // Qué hacer después de poner bien la contraseña (entrar a Finanzas, a Empleados, o
+        // desbloquear usuarios/contraseñas en Configuración)
+        let financesUnlockCallback = null;
+        function openFinancesPasswordModal(onUnlock, title) {
+            financesUnlockCallback = typeof onUnlock === 'function' ? onUnlock : null;
+            const titleEl = document.getElementById('finances-password-title');
+            if (titleEl) titleEl.textContent = '🔒 ' + (title || 'Finanzas');
             const modal = document.getElementById('finances-password-modal');
             const input = document.getElementById('finances-password-input');
             if (input) input.value = '';
@@ -5059,8 +5080,10 @@
             const entered = input ? input.value : '';
             if (entered === (appState.financesPassword || '')) {
                 financesUnlockedThisSession = true;
+                const cb = financesUnlockCallback;
+                financesUnlockCallback = null;
                 closeFinancesPasswordModal();
-                showSection('cashflow');
+                if (cb) cb(); else showSection('cashflow');
             } else {
                 showNotification('Contraseña incorrecta', 'error');
             }
@@ -5091,9 +5114,17 @@
             // OJO: acá NO se puede usar prompt() -- Electron (la app de escritorio) no
             // lo soporta, se queda "sin hacer nada" como si no hubiera pasado nada al
             // tocar Finanzas. Por eso un modal propio en vez de un diálogo nativo.
-            if (sectionId === 'cashflow' && !financesUnlockedThisSession && (appState.financesPassword || '')) {
-                openFinancesPasswordModal();
+            // Empleados (sueldos y fichajes) usa la misma contraseña que Finanzas: tus
+            // empleados venden desde tu misma sesión de administrador.
+            if ((sectionId === 'cashflow' || sectionId === 'employees') && !financesUnlockedThisSession && (appState.financesPassword || '')) {
+                const target = sectionId;
+                openFinancesPasswordModal(() => showSection(target), target === 'employees' ? 'Empleados' : 'Finanzas');
                 return;
+            }
+            // Al volver a Vender (donde trabajan los empleados) se vuelve a bloquear todo
+            if (sectionId === 'sell' && financesUnlockedThisSession) {
+                financesUnlockedThisSession = false;
+                try { applyPasswordSettingsLock(); } catch (e) {}
             }
 
             // Modal de agregar stock abierto: al cambiar de sección se minimiza
@@ -18169,6 +18200,77 @@
             return d;
         }
 
+        // Versión de horario vigente en una fecha (con su modo: fijo u horas por día)
+        function getEmployeeScheduleVersion(emp, dateStr) {
+            const versions = (emp.scheduleVersions || []).filter(v => v && v.from && v.from <= dateStr)
+                .sort((a, b) => a.from.localeCompare(b.from));
+            return versions.length ? versions[versions.length - 1] : null;
+        }
+
+        // Modo "horas por día": entrada y salida se acomodan a bloques (ej. de 30 min) con
+        // tolerancia. Entrada: si pasó del bloque más que la tolerancia, cuenta desde el
+        // siguiente (7:59 → 8:00, 8:04 → 8:00, 8:10 → 8:30). Salida: si le faltaba hasta la
+        // tolerancia para el bloque siguiente, cuenta hasta ese (16:57 → 17:00); si no,
+        // hasta el anterior (16:40 → 16:30).
+        function empLocalMinute(ms) {
+            const d = new Date(ms);
+            return { dayStart: new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(), min: d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60 };
+        }
+        function roundClockIn(ms) {
+            const { toleranceMin, blockMin } = getPayrollSettings();
+            const { dayStart, min } = empLocalMinute(ms);
+            const base = Math.floor(min / blockMin) * blockMin;
+            const r = min - base;
+            return dayStart + (r <= toleranceMin + 1e-9 ? base : base + blockMin) * 60000;
+        }
+        function roundClockOut(ms) {
+            const { toleranceMin, blockMin } = getPayrollSettings();
+            const { dayStart, min } = empLocalMinute(ms);
+            const base = Math.floor(min / blockMin) * blockMin;
+            const r = min - base;
+            return dayStart + (r > 0 && blockMin - r <= toleranceMin + 1e-9 ? base + blockMin : base) * 60000;
+        }
+
+        function computeEmployeeFlexDay(emp, dateStr, nowMs, version) {
+            const sched = version.days || {};
+            const wd = parseDateLocal(dateStr).getDay();
+            const expectedMin = Math.round((sched[wd] || []).reduce((sum, t) => sum + (parseFloat(t.hours) || 0), 0) * 60);
+            const todayStr = formatDateISO(new Date(nowMs));
+            const isPastDay = dateStr < todayStr;
+            const adj = getAttendanceDay(emp.id, dateStr);
+            const justified = !!(adj && adj.justified);
+            const dayEntries = getEmployeeClockEntries(emp.id).filter(c => c.date === dateStr).sort((a, b) => a.inAt - b.inAt);
+            let counted = 0, missingOut = false;
+            const countedEntries = dayEntries.map(c => {
+                const cin = roundClockIn(c.inAt);
+                let m;
+                if (!c.outAt && isPastDay) {
+                    // Sin salida en un día pasado: se toma como que cumplió lo que le faltaba (y se avisa)
+                    missingOut = true;
+                    m = Math.max(0, expectedMin - counted);
+                } else {
+                    const cout = roundClockOut(c.outAt || nowMs);
+                    m = Math.max(0, Math.round((cout - cin) / 60000));
+                }
+                counted += m;
+                return { ...c, countedIn: cin, countedMin: m };
+            });
+            let missingMin = 0, deductedMin = 0, pendingMin = 0;
+            if (isPastDay) {
+                missingMin = Math.max(0, expectedMin - counted);
+                deductedMin = justified ? 0 : missingMin;
+            } else {
+                pendingMin = expectedMin; // hoy y días futuros: se asumen cumplidos hasta que terminen
+            }
+            const extraMin = Math.max(0, counted - expectedMin);
+            const approvedExtraMin = Math.max(0, parseInt(adj && adj.approvedExtraMin) || 0);
+            return {
+                date: dateStr, flexible: true, shifts: [], entries: dayEntries, countedEntries,
+                scheduledMin: expectedMin, coveredMin: Math.min(counted, expectedMin), missingMin, deductedMin, pendingMin,
+                workedMin: counted, extraMin, approvedExtraMin, justified, missingOut, isPastDay
+            };
+        }
+
         // Horario vigente en una fecha (el último cambio con "desde" <= fecha)
         function getEmployeeScheduleForDate(emp, dateStr) {
             const versions = (emp.scheduleVersions || []).filter(v => v && v.from && v.from <= dateStr)
@@ -18212,6 +18314,8 @@
         // como cumplidos. Un fichaje sin salida de un día pasado se toma hasta el fin de su
         // turno (y se marca para que lo corrijas).
         function computeEmployeeDay(emp, dateStr, nowMs) {
+            const version = getEmployeeScheduleVersion(emp, dateStr);
+            if (version && version.mode === 'hours') return computeEmployeeFlexDay(emp, dateStr, nowMs, version);
             const { toleranceMin, blockMin } = getPayrollSettings();
             const shifts = getEmployeeShiftsForDate(emp, dateStr);
             const todayStr = formatDateISO(new Date(nowMs));
@@ -18380,6 +18484,65 @@
             showNotification(rate ? '⏱️ ' + emp.name + ': $' + formatMoney(rate) + ' la hora' : 'Precio por hora de ' + emp.name + ' borrado', 'success');
         }
 
+        function normalizeDni(v) { return String(v || '').replace(/\D/g, ''); }
+
+        function setEmployeeDni(id, value) {
+            const emp = (appState.employees || []).find(e => e.id === id);
+            if (!emp) return;
+            const dni = normalizeDni(value);
+            if (dni && getActiveEmployees().some(e => e.id !== id && normalizeDni(e.dni) === dni)) {
+                showNotification('Ese DNI ya lo tiene otro empleado', 'error');
+                renderEmployeesSection();
+                return;
+            }
+            touchEmp(Object.assign(emp, { dni: dni || null }));
+            saveToLocalStorage();
+            showNotification(dni ? '🪪 DNI de ' + emp.name + ' guardado' : 'DNI de ' + emp.name + ' borrado', 'success');
+        }
+
+        let dniClockResultTimer = null;
+        function openDniClockModal() {
+            const input = document.getElementById('dni-clock-input');
+            if (input) input.value = '';
+            const res = document.getElementById('dni-clock-result');
+            if (res) res.classList.add('hidden');
+            document.getElementById('dni-clock-modal').classList.add('active');
+            setTimeout(() => input && input.focus(), 50);
+        }
+        function closeDniClockModal() {
+            document.getElementById('dni-clock-modal').classList.remove('active');
+        }
+        function showDniClockResult(ok, text) {
+            const res = document.getElementById('dni-clock-result');
+            if (!res) return;
+            res.className = 'rounded-xl p-3 mb-3 text-center font-bold ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700');
+            res.textContent = text;
+            clearTimeout(dniClockResultTimer);
+            dniClockResultTimer = setTimeout(() => res.classList.add('hidden'), 8000);
+        }
+        async function submitDniClock() {
+            const input = document.getElementById('dni-clock-input');
+            const dni = normalizeDni(input ? input.value : '');
+            if (!dni) { showDniClockResult(false, 'Escribí tu DNI'); return; }
+            const emp = getActiveEmployees().find(e => e.active !== false && normalizeDni(e.dni) === dni);
+            if (input) input.value = '';
+            if (!emp) { showDniClockResult(false, 'No hay ningún empleado con ese DNI'); if (input) input.focus(); return; }
+            const open = getEmployeeClockEntries(emp.id).filter(c => !c.outAt).sort((a, b) => b.inAt - a.inAt)[0];
+            // Evita marcar la salida por error justo después de la entrada (doble toque)
+            if (open && Date.now() - open.inAt < 2 * 60 * 1000) {
+                if (!(await showConfirmModal(emp.name + ', recién fichaste la entrada. ¿Querés marcar la SALIDA?'))) { if (input) input.focus(); return; }
+            }
+            clockToggleEmployee(emp.id);
+            const hm = (ms) => new Date(ms).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+            if (open) {
+                const mins = Math.round((Date.now() - open.inAt) / 60000);
+                showDniClockResult(true, '👋 Chau ' + emp.name + ': salida ' + hm(Date.now()) + ' (estuviste ' + fmtMinutes(mins) + ')');
+            } else {
+                showDniClockResult(true, '🕒 Hola ' + emp.name + ': entrada ' + hm(Date.now()));
+            }
+            if (input) input.focus();
+        }
+
         function setEmployeePaySource(id, source) {
             const emp = (appState.employees || []).find(e => e.id === id);
             if (!emp) return;
@@ -18452,22 +18615,42 @@
             const current = getEmployeeScheduleForDate(emp, '9999-12-31') || {};
             document.getElementById('emp-schedule-id').value = empId;
             document.getElementById('emp-schedule-name').textContent = emp.name;
-            // Primer horario: rige desde el principio de la quincena actual (para que esta quincena ya cuente)
-            document.getElementById('emp-schedule-from').value = (emp.scheduleVersions || []).length ? todayStr : getQuincena(todayStr).start;
+            // Rige desde hoy: los días anteriores (sin fichajes en la app) no tienen que contar como faltas
+            document.getElementById('emp-schedule-from').value = todayStr;
+            const currentVersion = getEmployeeScheduleVersion(emp, '9999-12-31');
+            const mode = currentVersion && currentVersion.mode === 'hours' ? 'hours' : 'fixed';
             const order = [1, 2, 3, 4, 5, 6, 0];
             document.getElementById('emp-schedule-rows').innerHTML = order.map(wd => {
                 const t = current[wd] || [];
                 const t1 = t[0] || {}, t2 = t[1] || {};
+                const hours = t.reduce((sum, x) => sum + (parseFloat(x.hours) || 0), 0);
                 return '<div class="grid grid-cols-12 gap-2 items-center text-sm">' +
                     '<label class="col-span-3 flex items-center gap-2 font-bold text-gray-700"><input type="checkbox" class="w-4 h-4 emp-sch-on" data-wd="' + wd + '"' + (t.length ? ' checked' : '') + '> ' + EMP_DAY_NAMES[wd] + '</label>' +
-                    '<input type="time" class="col-span-2 border rounded px-2 py-1 emp-sch-s1" data-wd="' + wd + '" value="' + (t1.start || '') + '">' +
-                    '<input type="time" class="col-span-2 border rounded px-2 py-1 emp-sch-e1" data-wd="' + wd + '" value="' + (t1.end || '') + '">' +
-                    '<span class="col-span-1 text-center text-xs text-gray-400">y</span>' +
-                    '<input type="time" class="col-span-2 border rounded px-2 py-1 emp-sch-s2" data-wd="' + wd + '" value="' + (t2.start || '') + '" title="2.º turno (opcional)">' +
-                    '<input type="time" class="col-span-2 border rounded px-2 py-1 emp-sch-e2" data-wd="' + wd + '" value="' + (t2.end || '') + '" title="2.º turno (opcional)">' +
+                    '<input type="time" class="col-span-2 border rounded px-2 py-1 emp-sch-s1 emp-sch-fixed" data-wd="' + wd + '" value="' + (t1.start || '') + '">' +
+                    '<input type="time" class="col-span-2 border rounded px-2 py-1 emp-sch-e1 emp-sch-fixed" data-wd="' + wd + '" value="' + (t1.end || '') + '">' +
+                    '<span class="col-span-1 text-center text-xs text-gray-400 emp-sch-fixed">y</span>' +
+                    '<input type="time" class="col-span-2 border rounded px-2 py-1 emp-sch-s2 emp-sch-fixed" data-wd="' + wd + '" value="' + (t2.start || '') + '" title="2.º turno (opcional)">' +
+                    '<input type="time" class="col-span-2 border rounded px-2 py-1 emp-sch-e2 emp-sch-fixed" data-wd="' + wd + '" value="' + (t2.end || '') + '" title="2.º turno (opcional)">' +
+                    '<div class="col-span-9 flex items-center gap-2 emp-sch-hours-wrap"><input type="number" min="0.5" max="24" step="0.5" class="w-24 border rounded px-2 py-1 emp-sch-hours" data-wd="' + wd + '" value="' + (hours || '') + '" placeholder="9"><span class="text-gray-500">horas</span></div>' +
                 '</div>';
-            }).join('') + '<p class="text-[11px] text-gray-400">Columnas: entrada y salida · 2.º turno opcional (turno cortado).</p>';
+            }).join('') + '<p class="text-[11px] text-gray-400 emp-sch-fixed">Columnas: entrada y salida · 2.º turno opcional (turno cortado).</p>';
+            setEmployeeScheduleMode(mode);
             document.getElementById('emp-schedule-modal').classList.add('active');
+        }
+
+        function setEmployeeScheduleMode(mode) {
+            const m = mode === 'hours' ? 'hours' : 'fixed';
+            document.getElementById('emp-schedule-mode').value = m;
+            const on = 'flex-1 py-2 rounded-lg font-bold bg-white shadow text-indigo-700';
+            const off = 'flex-1 py-2 rounded-lg font-bold text-gray-500 hover:text-gray-700';
+            document.getElementById('emp-sch-mode-fixed').className = m === 'fixed' ? on : off;
+            document.getElementById('emp-sch-mode-hours').className = m === 'hours' ? on : off;
+            document.querySelectorAll('.emp-sch-fixed').forEach(el => el.classList.toggle('hidden', m !== 'fixed'));
+            document.querySelectorAll('.emp-sch-hours-wrap').forEach(el => el.classList.toggle('hidden', m !== 'hours'));
+            const { toleranceMin, blockMin } = getPayrollSettings();
+            document.getElementById('emp-sch-mode-help').textContent = m === 'hours'
+                ? 'Entra a la hora que sea y se le cuentan las horas trabajadas. La entrada y la salida se acomodan de a ' + blockMin + ' min (con ' + toleranceMin + ' min de tolerancia): entra 7:59 → cuenta desde 8:00; entra 8:10 → desde 8:30; sale 16:57 → hasta 17:00. Si hace menos horas, se descuenta; si hace más, quedan para aprobar.'
+                : 'Tiene que entrar y salir a esa hora. Llegar tarde o irse antes se descuenta.';
         }
 
         function closeEmployeeSchedule() {
@@ -18481,18 +18664,28 @@
             const from = document.getElementById('emp-schedule-from').value;
             if (!from) { showNotification('Elegí desde cuándo rige el horario', 'error'); return; }
             const days = {};
+            const mode = document.getElementById('emp-schedule-mode').value === 'hours' ? 'hours' : 'fixed';
             for (const wd of [0, 1, 2, 3, 4, 5, 6]) {
                 const on = document.querySelector('.emp-sch-on[data-wd="' + wd + '"]');
                 if (!on || !on.checked) continue;
                 const v = (cls) => (document.querySelector('.' + cls + '[data-wd="' + wd + '"]') || {}).value || '';
+                if (mode === 'hours') {
+                    const h = parseFloat(String(v('emp-sch-hours')).replace(',', '.'));
+                    if (!(h > 0 && h <= 24)) { showNotification('Poné las horas del ' + EMP_DAY_NAMES[wd], 'error'); return; }
+                    days[wd] = [{ hours: h }];
+                    continue;
+                }
                 const tr = [];
                 if (v('emp-sch-s1') && v('emp-sch-e1')) tr.push({ start: v('emp-sch-s1'), end: v('emp-sch-e1') });
                 if (v('emp-sch-s2') && v('emp-sch-e2')) tr.push({ start: v('emp-sch-s2'), end: v('emp-sch-e2') });
                 if (tr.length === 0) { showNotification('Falta el horario del ' + EMP_DAY_NAMES[wd], 'error'); return; }
                 days[wd] = tr;
             }
-            const versions = (emp.scheduleVersions || []).filter(v => v.from !== from);
-            versions.push({ from, days });
+            // Si nunca fichó antes de esta fecha, los horarios anteriores no sirven para nada (no hay
+            // fichajes contra qué compararlos) y solo generarían faltas falsas: se descartan.
+            const hasEarlierClock = getEmployeeClockEntries(emp.id).some(c => c.date < from);
+            const versions = (emp.scheduleVersions || []).filter(v => v.from !== from && (hasEarlierClock || v.from > from));
+            versions.push(mode === 'hours' ? { from, days, mode } : { from, days });
             versions.sort((a, b) => a.from.localeCompare(b.from));
             touchEmp(Object.assign(emp, { scheduleVersions: versions }));
             saveToLocalStorage();
@@ -18505,7 +18698,7 @@
             const sched = getEmployeeScheduleForDate(emp, formatDateISO(new Date()));
             if (!sched) return 'Sin horario cargado';
             const parts = [1, 2, 3, 4, 5, 6, 0].filter(wd => (sched[wd] || []).length).map(wd =>
-                EMP_DAY_NAMES[wd].slice(0, 3) + ' ' + sched[wd].map(t => t.start + '–' + t.end).join(' y '));
+                EMP_DAY_NAMES[wd].slice(0, 3) + ' ' + sched[wd].map(t => t.hours ? t.hours + ' h' : t.start + '–' + t.end).join(' y '));
             return parts.length ? parts.join(' · ') : 'No trabaja ningún día';
         }
 
@@ -18521,6 +18714,8 @@
             document.getElementById('emp-clock-date').value = entry ? entry.date : (dateStr || formatDateISO(new Date()));
             document.getElementById('emp-clock-in').value = entry ? hm(entry.inAt) : '';
             document.getElementById('emp-clock-out').value = entry && entry.outAt ? hm(entry.outAt) : '';
+            const delBtn = document.getElementById('emp-clock-delete');
+            if (delBtn) delBtn.classList.toggle('hidden', !entry);
             document.getElementById('emp-clock-modal').classList.add('active');
         }
 
@@ -18549,6 +18744,13 @@
             closeClockModal();
             refreshMyClockButton();
             renderEmployeesSection();
+        }
+
+        async function deleteClockFromModal() {
+            const id = document.getElementById('emp-clock-id').value;
+            if (!id) return;
+            closeClockModal();
+            await deleteClockEntry(id);
         }
 
         async function deleteClockEntry(id) {
@@ -18656,7 +18858,15 @@
                             '<p class="font-bold text-gray-800">' + escapeHtml(emp.name) + (emp.active === false ? ' <span class="text-xs text-gray-500">(inactivo)</span>' : '') + '</p>' +
                             '<p class="text-xs text-gray-500">' + escapeHtml(describeSchedule(emp)) + '</p>' +
                             '<p class="text-xs">' + status + ' · ' + payInfo + '</p>' +
+                            (getEmployeeClockEntries(emp.id).filter(c => c.date === todayStr).length
+                                ? '<p class="text-xs mt-1 flex flex-wrap gap-1 items-center"><span class="text-gray-500">Fichajes de hoy:</span>' +
+                                    getEmployeeClockEntries(emp.id).filter(c => c.date === todayStr).sort((a, b) => a.inAt - b.inAt).map(c =>
+                                        '<button onclick="openClockModal(\'' + emp.id + '\', \'' + c.id + '\')" class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 hover:bg-blue-100" title="Editar">' + hm(c.inAt) + '–' + (c.outAt ? hm(c.outAt) : '…') + ' ✏️</button>').join('') +
+                                  '</p>'
+                                : '') +
                             '<div class="flex flex-wrap items-center gap-2 mt-1.5 text-xs">' +
+                                '<label class="text-gray-600" for="emp-dni-' + emp.id + '">DNI</label>' +
+                                '<input id="emp-dni-' + emp.id + '" type="text" inputmode="numeric" value="' + escapeHtml(emp.dni || '') + '" placeholder="para fichar" class="w-28 border rounded-lg px-2 py-1" onchange="setEmployeeDni(\'' + emp.id + '\', this.value)">' +
                                 '<label class="text-gray-600" for="emp-rate-' + emp.id + '">Precio por hora $</label>' +
                                 '<input id="emp-rate-' + emp.id + '" type="number" min="0" step="0.01" value="' + (rate || '') + '" placeholder="0" class="w-24 border rounded-lg px-2 py-1 text-right" onchange="setEmployeeHourlyRate(\'' + emp.id + '\', this.value)">' +
                                 ('<select onchange="setEmployeePaySource(\'' + emp.id + '\', this.value)" class="border rounded-lg px-2 py-1 bg-white" title="De dónde se le paga"><option value="cash"' + (emp.paySource !== 'bank' ? ' selected' : '') + '>💵 Se paga de Caja</option><option value="bank"' + (emp.paySource === 'bank' ? ' selected' : '') + '>🏦 Se paga de Cuenta</option></select>') +
@@ -18665,6 +18875,7 @@
                         '<div class="flex flex-wrap items-center gap-2">' +
                             '<button onclick="clockToggleEmployee(\'' + emp.id + '\')" class="px-3 py-1.5 rounded-lg text-xs font-bold ' + (open ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-600 hover:bg-green-700') + ' text-white">' + (open ? 'Fichar salida' : 'Fichar entrada') + '</button>' +
                             '<button onclick="openEmployeeSchedule(\'' + emp.id + '\')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-700 hover:bg-indigo-200">Horario</button>' +
+                            '<button onclick="openClockModal(\'' + emp.id + '\', null)" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200" title="Cargar un fichaje a mano (ej. se olvidó de fichar)">+ Fichaje a mano</button>' +
                             '<select onchange="setEmployeeUser(\'' + emp.id + '\', this.value)" class="border rounded-lg px-2 py-1 text-xs bg-white" title="Usuario de la app vinculado">' + userOptions(emp.userId) + '</select>' +
                             '<button onclick="toggleEmployeeActive(\'' + emp.id + '\')" class="text-gray-500 hover:text-gray-700 p-1" title="' + (emp.active === false ? 'Activar' : 'Desactivar') + '"><i class="fas ' + (emp.active === false ? 'fa-toggle-off' : 'fa-toggle-on') + '"></i></button>' +
                             '<button onclick="deleteEmployee(\'' + emp.id + '\')" class="text-red-500 hover:text-red-700 p-1" title="Borrar"><i class="fas fa-trash"></i></button>' +
@@ -18717,12 +18928,15 @@
                 '<th class="px-2 py-2 text-right">Extra (aprobar min)</th><th class="px-2 py-2 text-center">Justificado</th></tr></thead><tbody class="divide-y">' +
                 c.days.map(d => {
                     const wd = EMP_DAY_NAMES[parseDateLocal(d.date).getDay()].slice(0, 3);
-                    const isFuture = d.shifts.length > 0 && d.shifts.every(s => s.pending) && !d.entries.length;
-                    const horario = d.shifts.length ? d.shifts.map(s => s.start + '–' + s.end).join(' y ') : '<span class="text-gray-300">—</span>';
-                    const fich = d.entries.map(e => '<span class="inline-flex items-center gap-1 mr-1">' + hm(e.inAt) + '–' + (e.outAt ? hm(e.outAt) : '<span class="text-orange-600">sin salida</span>') +
-                        ' <button onclick="openClockModal(\'' + emp.id + '\', \'' + e.id + '\')" class="text-blue-500" title="Corregir"><i class="fas fa-pen"></i></button>' +
-                        '<button onclick="deleteClockEntry(\'' + e.id + '\')" class="text-red-400" title="Borrar"><i class="fas fa-times"></i></button></span>').join('') +
-                        '<button onclick="openClockModal(\'' + emp.id + '\', null, \'' + d.date + '\')" class="text-indigo-600 hover:underline" title="Cargar fichaje">+ cargar</button>';
+                    const isFuture = d.flexible ? (d.pendingMin > 0 && !d.entries.length) : (d.shifts.length > 0 && d.shifts.every(s => s.pending) && !d.entries.length);
+                    const horario = d.flexible
+                        ? (d.scheduledMin ? fmtMinutes(d.scheduledMin) + ' <span class="text-gray-400">(horas)</span>' : '<span class="text-gray-300">—</span>')
+                        : (d.shifts.length ? d.shifts.map(s => s.start + '–' + s.end).join(' y ') : '<span class="text-gray-300">—</span>');
+                    const countedOf = (e) => { const ce = d.flexible && (d.countedEntries || []).find(x => x.id === e.id); return ce ? ' <span class="text-gray-400" title="Lo que se cuenta">(cuenta ' + fmtMinutes(ce.countedMin) + ')</span>' : ''; };
+                    const fich = d.entries.map(e => '<span class="inline-flex items-center gap-1 mr-1">' + hm(e.inAt) + '–' + (e.outAt ? hm(e.outAt) : '<span class="text-orange-600">sin salida</span>') + countedOf(e) +
+                        ' <button onclick="openClockModal(\'' + emp.id + '\', \'' + e.id + '\')" class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 font-bold" title="Editar este fichaje">✏️ Editar</button>' +
+                        '<button onclick="deleteClockEntry(\'' + e.id + '\')" class="px-1.5 py-0.5 rounded bg-red-50 text-red-600 hover:bg-red-100" title="Borrar este fichaje"><i class="fas fa-trash"></i></button></span>').join('') +
+                        '<button onclick="openClockModal(\'' + emp.id + '\', null, \'' + d.date + '\')" class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold" title="Cargar un fichaje a mano">+ Cargar</button>';
                     const extraCell = d.extraMin > 0 || d.approvedExtraMin > 0
                         ? fmtMinutes(d.extraMin) + ' <input type="number" min="0" step="1" value="' + d.approvedExtraMin + '" class="w-14 border rounded px-1 py-0.5 text-right" title="Minutos aprobados" onchange="setApprovedExtra(\'' + emp.id + '\', \'' + d.date + '\', this.value)">'
                         : '<span class="text-gray-300">—</span>';
@@ -18735,7 +18949,7 @@
                         '<td class="px-2 py-1.5 text-right">' + (d.missingMin ? fmtMinutes(d.missingMin) : '') + '</td>' +
                         '<td class="px-2 py-1.5 text-right ' + (d.deductedMin ? 'text-red-700 font-bold' : '') + '">' + (d.deductedMin ? '-' + fmtMinutes(d.deductedMin) : '') + '</td>' +
                         '<td class="px-2 py-1.5 text-right">' + extraCell + '</td>' +
-                        '<td class="px-2 py-1.5 text-center">' + (d.shifts.length ? '<input type="checkbox" ' + (d.justified ? 'checked' : '') + ' onchange="toggleAttendanceJustified(\'' + emp.id + '\', \'' + d.date + '\', this.checked)" title="No descontar este día">' : '') + '</td>' +
+                        '<td class="px-2 py-1.5 text-center">' + (d.scheduledMin > 0 ? '<input type="checkbox" ' + (d.justified ? 'checked' : '') + ' onchange="toggleAttendanceJustified(\'' + emp.id + '\', \'' + d.date + '\', this.checked)" title="No descontar este día">' : '') + '</td>' +
                     '</tr>';
                 }).join('') + '</tbody></table>';
         }
@@ -21090,6 +21304,7 @@
         }
 
         function saveUser() {
+            if (isPasswordSettingsLocked()) { unlockPasswordSettings(); return; }
             const id = document.getElementById('user-edit-id').value;
             const name = document.getElementById('user-name-input').value.trim();
             const password = document.getElementById('user-password-input').value.trim();
@@ -21126,6 +21341,7 @@
         }
 
         function editUser(id) {
+            if (isPasswordSettingsLocked()) { unlockPasswordSettings(); return; }
             const user = appState.users.find(u => u.id === id);
             if (!user) return;
             document.getElementById('user-edit-id').value = user.id;
@@ -21146,6 +21362,7 @@
         }
 
         async function deleteUser(id) {
+            if (isPasswordSettingsLocked()) { unlockPasswordSettings(); return; }
             const user = appState.users.find(u => u.id === id);
             if (!user) return;
             if (user.role === 'admin' && appState.users.filter(u => u.role === 'admin' && u.active !== false).length <= 1) {
@@ -21161,6 +21378,7 @@
         }
 
         function toggleUserActive(id) {
+            if (isPasswordSettingsLocked()) { unlockPasswordSettings(); return; }
             const user = appState.users.find(u => u.id === id);
             if (!user) return;
             if (user.role === 'admin' && user.active !== false && appState.users.filter(u => u.role === 'admin' && u.active !== false).length <= 1) {
@@ -25670,6 +25888,7 @@ Total de productos a comprar: ${shoppingList.length}
         }
 
         function renderSettings() {
+            setTimeout(() => { try { applyPasswordSettingsLock(); } catch (e) {} }, 0);
             document.getElementById('settings-margin').value = appState.defaultMargin;
             document.getElementById('settings-cash').value = appState.cash;
             document.getElementById('settings-bank').value = appState.bank;
@@ -30901,13 +31120,38 @@ RESULTADOS:
         // documento base (kioscos/main) -- no es seguridad real (las reglas de Firestore
         // siguen abiertas), solo evita que alguien que encuentre la URL cargue cosas ahí.
         function saveComprasAppPassword() {
+            if (isPasswordSettingsLocked()) { unlockPasswordSettings(); return; }
             const input = document.getElementById('settings-compras-app-password');
             appState.comprasAppPassword = input ? input.value.trim() : '';
             saveToLocalStorage();
             showNotification(appState.comprasAppPassword ? '🔒 Contraseña guardada' : 'Contraseña quitada: la app de compras queda sin pedirla', 'success');
         }
 
+        function isPasswordSettingsLocked() {
+            return !!(appState.financesPassword || '') && !financesUnlockedThisSession;
+        }
+
+        // Muestra u oculta usuarios/contraseñas en Configuración según el bloqueo
+        function applyPasswordSettingsLock() {
+            const locked = isPasswordSettingsLocked();
+            document.querySelectorAll('.settings-pw-locked').forEach(el => el.classList.toggle('hidden', !locked));
+            ['users-edit-area', 'settings-passwords-area', 'users-list'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.toggle('hidden', locked);
+            });
+            if (locked) {
+                // que no queden contraseñas escritas en los campos ocultos
+                ['user-password-input', 'settings-finances-password', 'settings-compras-app-password'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            }
+        }
+
+        function unlockPasswordSettings() {
+            if (!(appState.financesPassword || '')) { applyPasswordSettingsLock(); return; }
+            openFinancesPasswordModal(() => { if (typeof renderSettings === 'function') renderSettings(); applyPasswordSettingsLock(); }, 'Usuarios y contraseñas');
+        }
+
         function saveFinancesPassword() {
+            if (isPasswordSettingsLocked()) { unlockPasswordSettings(); return; }
             const input = document.getElementById('settings-finances-password');
             appState.financesPassword = input ? input.value.trim() : '';
             // Si se cambia la contraseña, que la vuelva a pedir -- si no, alguien que
@@ -32066,6 +32310,12 @@ RESULTADOS:
             <h3 class="text-xl font-bold mb-1 text-indigo-700"><i class="fas fa-calendar-week"></i> Horario de <span id="emp-schedule-name"></span></h3>
             <p class="text-xs text-gray-500 mb-4">Tildá los días que trabaja y su horario. Si hace turno cortado, completá el 2.º turno. Los cambios rigen desde la fecha que elijas (las quincenas anteriores usan el horario viejo).</p>
             <input type="hidden" id="emp-schedule-id">
+            <input type="hidden" id="emp-schedule-mode" value="fixed">
+            <div class="flex gap-2 mb-3 bg-gray-100 rounded-xl p-1 text-sm">
+                <button type="button" id="emp-sch-mode-fixed" onclick="setEmployeeScheduleMode('fixed')" class="flex-1 py-2 rounded-lg font-bold">🕗 Horario fijo</button>
+                <button type="button" id="emp-sch-mode-hours" onclick="setEmployeeScheduleMode('hours')" class="flex-1 py-2 rounded-lg font-bold">⏱️ Horas por día</button>
+            </div>
+            <p id="emp-sch-mode-help" class="text-xs text-gray-500 mb-3"></p>
             <div id="emp-schedule-rows" class="space-y-2"></div>
             <div class="mt-4 flex items-center gap-2 text-sm">
                 <label class="text-gray-600">Vigente desde</label>
@@ -32103,6 +32353,7 @@ RESULTADOS:
             </div>
             <div class="flex gap-2 mt-4">
                 <button onclick="closeClockModal()" class="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-bold">Cancelar</button>
+                <button onclick="deleteClockFromModal()" id="emp-clock-delete" class="hidden bg-red-50 text-red-600 hover:bg-red-100 px-3 py-2 rounded-lg font-bold" title="Borrar este fichaje"><i class="fas fa-trash"></i></button>
                 <button onclick="saveClockModal()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold">Guardar</button>
             </div>
         </div>
@@ -32510,10 +32761,24 @@ RESULTADOS:
          ventana principal (bug conocido de Electron en modo kiosko/sin bordes): la app queda
          "trabada" porque en realidad está esperando un click en un dialogo que no se ve. Este
          modal propio siempre se dibuja arriba de todo, dentro de la misma ventana. -->
+    <!-- ==================== FICHAR CON DNI ==================== -->
+    <div id="dni-clock-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();submitDniClock();}else if(event.key==='Escape'){closeDniClockModal();}">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4">
+            <h3 class="text-xl font-bold mb-1 text-indigo-700"><i class="fas fa-user-clock"></i> Fichar entrada / salida</h3>
+            <p class="text-sm text-gray-500 mb-4">Escribí tu DNI y tocá Fichar. Si estabas trabajando, marca la salida; si no, la entrada.</p>
+            <input type="text" inputmode="numeric" id="dni-clock-input" class="w-full border-2 border-indigo-200 rounded-xl px-4 py-3 text-2xl font-bold text-center tracking-widest mb-3" placeholder="DNI" autocomplete="off">
+            <div id="dni-clock-result" class="hidden rounded-xl p-3 mb-3 text-center font-bold"></div>
+            <div class="flex gap-2">
+                <button onclick="closeDniClockModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cerrar</button>
+                <button onclick="submitDniClock()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg">Fichar</button>
+            </div>
+        </div>
+    </div>
+
     <div id="finances-password-modal" class="modal" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmFinancesPassword();}else if(event.key==='Escape'){closeFinancesPasswordModal();}">
         <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4">
-            <h3 class="text-lg font-bold mb-1 text-gray-800">🔒 Finanzas</h3>
-            <p class="text-sm text-gray-500 mb-4">Ingresá la contraseña para entrar.</p>
+            <h3 class="text-lg font-bold mb-1 text-gray-800" id="finances-password-title">🔒 Finanzas</h3>
+            <p class="text-sm text-gray-500 mb-4">Ingresá la contraseña de Finanzas para entrar.</p>
             <input type="password" id="finances-password-input" class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 mb-4" placeholder="Contraseña" autocomplete="off">
             <div class="flex gap-2">
                 <button onclick="closeFinancesPasswordModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>

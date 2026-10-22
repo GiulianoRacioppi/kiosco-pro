@@ -2987,7 +2987,7 @@
         <div id="employees" class="section hidden space-y-6 fade-in">
             <div>
                 <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2"><i class="fas fa-user-clock text-indigo-600"></i> Empleados</h2>
-                <p class="text-sm text-gray-500">Horarios, fichajes de entrada/salida y cuánto pagarle a cada uno por quincena. El sueldo de cada quincena se carga en <strong>Flujo de Caja → Gastos Fijos</strong> (frecuencia "Quincena", vinculado al empleado).</p>
+                <p class="text-sm text-gray-500">Horarios, fichajes de entrada/salida y cuánto pagarle a cada uno por quincena. Cada empleado cobra por hora: cargá su <strong>precio por hora</strong> en su tarjeta y la app calcula el pago con las horas de su horario, los descuentos y las extras que apruebes.</p>
             </div>
 
             <!-- Lista + alta -->
@@ -9901,6 +9901,8 @@
             }
             const shortages = Array.from(shortageMap.values());
             if (shortages.length === 0) return true;
+            // Si ya se aprobó vender sin stock estos productos (ej. al agregarlos al carrito), no volver a preguntar
+            if (shortages.every(sh => approvedStockShortfalls.has(sh.product.id))) return true;
             const lines = shortages.map(s => `• ${s.product.name}: faltan ${s.shortfall}`).join('\n');
             const ok = await showConfirmModal(
                 `⚠️ No hay stock cargado suficiente para facturar esta comanda:\n${lines}\n\n¿Cubrir automáticamente como Stock Gratis y facturar igual? Queda un recordatorio en Reponer para confirmarlo después contra la compra real.`
@@ -17409,6 +17411,13 @@
             const end = new Date(start);
             end.setDate(end.getDate() + days);
             
+            // Empleados con precio por hora y sin sueldo cargado en Gastos Fijos: su pago se
+            // proyecta igual (el monto lo calcula computeEmployeeQuincena con sus horas).
+            const virtualPayroll = (typeof getActiveEmployees === 'function' ? getActiveEmployees() : [])
+                .filter(e => e.active !== false && (parseFloat(e.hourlyRate) || 0) > 0 && !getEmployeeSalaryRec(e.id))
+                .map(e => ({ id: 'EMPPAY-' + e.id, name: 'Sueldo ' + e.name, amount: 0, frequency: 'quincena', employeeId: e.id, source: e.paySource === 'bank' ? 'bank' : 'cash', category: 'Sueldos' }));
+            virtualPayroll.forEach(v => occurrences.push(...generateQuincenaOccurrences(v, startDateStr, formatDateISO(end))));
+
             recs.forEach(rec => {
                 if (rec.frequency === 'quincena') {
                     // Sueldo/gasto por quincena: se paga el 4.º día hábil después del 15 y del fin de mes
@@ -18255,19 +18264,26 @@
         // Cuánto hay que pagarle a un empleado por una quincena
         function computeEmployeeQuincena(emp, q, nowMs, salaryOverride) {
             const rec = getEmployeeSalaryRec(emp.id);
-            const salary = salaryOverride !== undefined ? salaryOverride : (rec ? (parseFloat(rec.amount) || 0) : 0);
             const days = [];
             for (let d = q.start; d <= q.end; d = empDateAdd(d, 1)) days.push(computeEmployeeDay(emp, d, nowMs));
             const scheduledMin = days.reduce((s, x) => s + x.scheduledMin, 0);
+            // Con precio por hora: el sueldo de la quincena = horas de horario × precio por hora
+            // (manda sobre el sueldo fijo del Gasto Fijo). Si no, el sueldo fijo de siempre.
+            const hourlyRate = Math.max(0, parseFloat(emp.hourlyRate) || 0);
+            const hourly = hourlyRate > 0;
+            const salary = hourly
+                ? Math.round((scheduledMin / 60) * hourlyRate * 100) / 100
+                : (salaryOverride !== undefined ? salaryOverride : (rec ? (parseFloat(rec.amount) || 0) : 0));
+            const source = (rec && rec.source === 'bank') || (!rec && emp.paySource === 'bank') ? 'bank' : 'cash';
             const deductedMin = days.reduce((s, x) => s + x.deductedMin, 0);
             const approvedExtraMin = days.reduce((s, x) => s + x.approvedExtraMin, 0);
             const pendingExtraMin = days.reduce((s, x) => s + Math.max(0, x.extraMin - x.approvedExtraMin), 0);
-            const perMin = scheduledMin > 0 ? salary / scheduledMin : 0;
+            const perMin = hourly ? hourlyRate / 60 : (scheduledMin > 0 ? salary / scheduledMin : 0);
             const deductionAmount = Math.round(deductedMin * perMin * 100) / 100;
             const extraAmount = Math.round(approvedExtraMin * perMin * 100) / 100;
             const amount = Math.max(0, Math.round((salary - deductionAmount + extraAmount) * 100) / 100);
             return {
-                q, rec, salary, days, scheduledMin, deductedMin, approvedExtraMin, pendingExtraMin,
+                q, rec, hourly, hourlyRate, source, configured: hourly || !!rec, salary, days, scheduledMin, deductedMin, approvedExtraMin, pendingExtraMin,
                 perHour: Math.round(perMin * 60 * 100) / 100, deductionAmount, extraAmount, amount,
                 payDate: getQuincenaPayDate(q), payment: getPayrollPayment(emp.id, q.key),
                 missingOutDays: days.filter(d => d.missingOut).map(d => d.date)
@@ -18286,6 +18302,7 @@
                 const inLimits = (!rec.startDate || q.end >= rec.startDate) && (!rec.endDate || q.start <= rec.endDate);
                 if (pay >= startStr && inLimits && !(emp ? getPayrollPayment(emp.id, q.key) : getPayrollPayment(rec.id, q.key))) {
                     const amount = emp ? computeEmployeeQuincena(emp, q, nowMs, parseFloat(rec.amount) || 0).amount : (parseFloat(rec.amount) || 0);
+                    if (emp && !(amount > 0)) { q = shiftQuincena(q, 1); continue; } // sin horas en esa quincena: nada que pagar
                     out.push({ date: pay, name: rec.name + ' (' + q.label + ')', amount, source: rec.source || 'cash', id: rec.id, category: rec.category || '', periodKey: q.key });
                 }
                 q = shiftQuincena(q, 1);
@@ -18335,6 +18352,24 @@
             touchEmp(Object.assign(emp, { active: emp.active === false }));
             saveToLocalStorage();
             renderEmployeesSection();
+        }
+
+        function setEmployeeHourlyRate(id, value) {
+            const emp = (appState.employees || []).find(e => e.id === id);
+            if (!emp) return;
+            const rate = Math.max(0, Math.round((parseFloat(String(value).replace(',', '.')) || 0) * 100) / 100);
+            touchEmp(Object.assign(emp, { hourlyRate: rate || null }));
+            saveToLocalStorage();
+            renderEmployeesSection();
+            try { renderAvailableToSpend(); } catch (e) {}
+            showNotification(rate ? '⏱️ ' + emp.name + ': $' + formatMoney(rate) + ' la hora' : 'Precio por hora de ' + emp.name + ' borrado', 'success');
+        }
+
+        function setEmployeePaySource(id, source) {
+            const emp = (appState.employees || []).find(e => e.id === id);
+            if (!emp) return;
+            touchEmp(Object.assign(emp, { paySource: source === 'bank' ? 'bank' : 'cash' }));
+            saveToLocalStorage();
         }
 
         function setEmployeeUser(id, userId) {
@@ -18532,7 +18567,8 @@
             if (!emp || !empPeriodQuincena || empPeriodQuincena.key !== periodKey) return;
             const calc = computeEmployeeQuincena(emp, empPeriodQuincena, Date.now());
             if (calc.payment) { showNotification('Esta quincena ya figura como pagada', 'warning'); return; }
-            const source = (calc.rec && calc.rec.source) === 'bank' ? 'bank' : 'cash';
+            if (!calc.configured) { showNotification('Cargá primero el precio por hora o el sueldo', 'error'); return; }
+            const source = calc.source === 'bank' ? 'bank' : 'cash';
             const raw = await showPromptModal('Monto a pagarle a ' + emp.name + ' por la quincena ' + empPeriodQuincena.label + ' (sale de ' + (source === 'bank' ? 'Cuenta' : 'Caja') + '):', String(calc.amount));
             if (raw === null || raw === undefined) return;
             const amount = Math.round((parseFloat(String(raw).replace(',', '.')) || 0) * 100) / 100;
@@ -18595,12 +18631,21 @@
                     : (today.entries.length ? '<span class="text-gray-600">Hoy: ' + today.entries.map(c => hm(c.inAt) + '–' + (c.outAt ? hm(c.outAt) : '…')).join(', ') + '</span>'
                     : (today.scheduledMin ? '<span class="text-orange-600">Hoy no fichó todavía</span>' : '<span class="text-gray-400">Hoy no trabaja</span>'));
                 const rec = getEmployeeSalaryRec(emp.id);
+                const rate = parseFloat(emp.hourlyRate) || 0;
+                const payInfo = rate > 0
+                    ? 'Cobra $' + formatMoney(rate) + ' la hora'
+                    : '<span class="text-red-600">Falta cargar el precio por hora</span>';
                 return '<div class="p-3 rounded-xl border ' + (emp.active === false ? 'opacity-50 ' : '') + 'border-gray-200 bg-gray-50">' +
                     '<div class="flex flex-wrap items-center justify-between gap-2">' +
                         '<div class="min-w-0">' +
                             '<p class="font-bold text-gray-800">' + escapeHtml(emp.name) + (emp.active === false ? ' <span class="text-xs text-gray-500">(inactivo)</span>' : '') + '</p>' +
                             '<p class="text-xs text-gray-500">' + escapeHtml(describeSchedule(emp)) + '</p>' +
-                            '<p class="text-xs">' + status + ' · ' + (rec ? 'Sueldo: $' + formatMoney(rec.amount) + ' por quincena' : '<span class="text-red-600">Sin sueldo vinculado (Flujo de Caja → Gastos Fijos)</span>') + '</p>' +
+                            '<p class="text-xs">' + status + ' · ' + payInfo + '</p>' +
+                            '<div class="flex flex-wrap items-center gap-2 mt-1.5 text-xs">' +
+                                '<label class="text-gray-600" for="emp-rate-' + emp.id + '">Precio por hora $</label>' +
+                                '<input id="emp-rate-' + emp.id + '" type="number" min="0" step="0.01" value="' + (rate || '') + '" placeholder="0" class="w-24 border rounded-lg px-2 py-1 text-right" onchange="setEmployeeHourlyRate(\'' + emp.id + '\', this.value)">' +
+                                ('<select onchange="setEmployeePaySource(\'' + emp.id + '\', this.value)" class="border rounded-lg px-2 py-1 bg-white" title="De dónde se le paga"><option value="cash"' + (emp.paySource !== 'bank' ? ' selected' : '') + '>💵 Se paga de Caja</option><option value="bank"' + (emp.paySource === 'bank' ? ' selected' : '') + '>🏦 Se paga de Cuenta</option></select>') +
+                            '</div>' +
                         '</div>' +
                         '<div class="flex flex-wrap items-center gap-2">' +
                             '<button onclick="clockToggleEmployee(\'' + emp.id + '\')" class="px-3 py-1.5 rounded-lg text-xs font-bold ' + (open ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-600 hover:bg-green-700') + ' text-white">' + (open ? 'Fichar salida' : 'Fichar entrada') + '</button>' +
@@ -18636,10 +18681,10 @@
             const fmtD = (ds) => { const [y, m, d] = ds.split('-'); return d + '/' + m; };
             const hm = (ms) => new Date(ms).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
-            sumEl.innerHTML = !c.rec
-                ? '<p class="text-sm text-red-600">Para calcular el pago, cargá el sueldo en <strong>Flujo de Caja → Gastos Fijos</strong>: frecuencia "Quincena" y elegí a ' + escapeHtml(emp.name) + '.</p>'
+            sumEl.innerHTML = !c.configured
+                ? '<p class="text-sm text-red-600">Para calcular el pago, cargá el <strong>precio por hora</strong> de ' + escapeHtml(emp.name) + ' en su tarjeta (arriba).</p>'
                 : '<div class="grid grid-cols-2 md:grid-cols-6 gap-2 text-sm">' +
-                    '<div class="bg-gray-50 rounded-xl p-3"><p class="text-xs text-gray-500">Sueldo quincena</p><p class="font-bold">$' + formatMoney(c.salary) + '</p></div>' +
+                    '<div class="bg-gray-50 rounded-xl p-3"><p class="text-xs text-gray-500">Sueldo quincena</p><p class="font-bold">$' + formatMoney(c.salary) + '</p>' + (c.hourly ? '<p class="text-[10px] text-gray-500">horas × $' + formatMoney(c.hourlyRate) + '</p>' : '') + '</div>' +
                     '<div class="bg-gray-50 rounded-xl p-3"><p class="text-xs text-gray-500">Horas de horario</p><p class="font-bold">' + fmtMinutes(c.scheduledMin) + '</p><p class="text-[10px] text-gray-500">$' + formatMoney(c.perHour) + ' la hora</p></div>' +
                     '<div class="bg-red-50 rounded-xl p-3"><p class="text-xs text-red-600">Descuentos</p><p class="font-bold text-red-700">-$' + formatMoney(c.deductionAmount) + '</p><p class="text-[10px] text-red-600">' + fmtMinutes(c.deductedMin) + '</p></div>' +
                     '<div class="bg-green-50 rounded-xl p-3"><p class="text-xs text-green-700">Extras aprobadas</p><p class="font-bold text-green-700">+$' + formatMoney(c.extraAmount) + '</p><p class="text-[10px] text-green-700">' + fmtMinutes(c.approvedExtraMin) + (c.pendingExtraMin ? ' · ' + fmtMinutes(c.pendingExtraMin) + ' sin aprobar' : '') + '</p></div>' +
@@ -31974,11 +32019,6 @@ RESULTADOS:
                             <option value="cash">💵 Caja</option>
                             <option value="bank">🏦 Cuenta</option>
                         </select>
-                    </div>
-                    <div class="md:col-span-2 hidden" id="rec-expense-employee-row">
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Sueldo de empleado (opcional)</label>
-                        <select id="rec-expense-employee" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"></select>
-                        <p class="text-[10px] text-gray-400 mt-1">Si elegís un empleado, el monto es lo que cobra por quincena completa: la app descuenta llegadas tarde/faltas y suma las horas extra que apruebes, según sus fichajes.</p>
                     </div>
                     <div class="md:col-span-2">
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Categoría</label>

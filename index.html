@@ -466,6 +466,17 @@
                     <input type="number" id="add-stock-qty" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" value="1" min="1" required oninput="updateAddStockCost()" onkeypress="handleAddStockKeypress(event)">
                     <p id="add-stock-qty-hint" class="text-xs text-gray-500 mt-1"></p>
                 </div>
+                <div id="add-stock-pack-row" class="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                    <p class="text-xs font-bold text-gray-600 mb-2">📦 Como en la factura (opcional): completá y se calcula la cantidad</p>
+                    <div class="grid grid-cols-3 gap-2 text-sm">
+                        <div><label class="block text-[10px] text-gray-500 uppercase">Bultos</label><input type="number" id="as-pk-bultos" min="0" step="1" class="w-full border rounded-lg px-2 py-1 text-center" placeholder="0" oninput="onAddStockPackInput()"></div>
+                        <div><label class="block text-[10px] text-gray-500 uppercase">Displays</label><input type="number" id="as-pk-displays" min="0" step="1" class="w-full border rounded-lg px-2 py-1 text-center" placeholder="0" oninput="onAddStockPackInput()"></div>
+                        <div><label class="block text-[10px] text-gray-500 uppercase">Sueltas</label><input type="number" id="as-pk-sueltas" min="0" step="1" class="w-full border rounded-lg px-2 py-1 text-center" placeholder="0" oninput="onAddStockPackInput()"></div>
+                        <div><label class="block text-[10px] text-gray-500 uppercase">Unid. x bulto</label><input type="number" id="as-pk-upb" min="0" step="1" class="w-full border rounded-lg px-2 py-1 text-center" placeholder="ej: 12" oninput="onAddStockPackInput()"></div>
+                        <div><label class="block text-[10px] text-gray-500 uppercase">Unid. x display</label><input type="number" id="as-pk-upd" min="0" step="1" class="w-full border rounded-lg px-2 py-1 text-center" placeholder="ej: 6" oninput="onAddStockPackInput()"></div>
+                    </div>
+                    <p id="as-pk-hint" class="text-[11px] text-gray-500 mt-1"></p>
+                </div>
                 <div>
                     <label id="add-stock-cost-label" class="block text-sm font-medium text-gray-700 mb-2">Costo unitario ($)</label>
                     <input type="number" id="add-stock-unit-cost" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-lg font-bold text-center" step="0.01" oninput="onAddStockCostInput()" onkeypress="handleAddStockKeypress(event)">
@@ -476,8 +487,9 @@
                     </label>
                 </div>
                 <div class="p-3 bg-blue-50 rounded-lg">
-                    <p class="text-sm text-gray-600">Costo total:</p>
-                    <p class="text-2xl font-bold text-blue-800" id="add-stock-total-cost">$0</p>
+                    <label class="text-sm text-gray-600" for="add-stock-total-input">Costo total de la compra ($):</label>
+                    <input type="number" id="add-stock-total-input" class="w-full border-2 border-blue-200 rounded-lg px-3 py-2 text-2xl font-bold text-blue-800 bg-white" step="0.01" min="0" placeholder="0" oninput="onAddStockTotalInput()" onkeypress="handleAddStockKeypress(event)">
+                    <p class="text-xs text-gray-500 mt-1" id="add-stock-total-cost">Escribí el total y calcula el costo por unidad (o al revés)</p>
                 </div>
                 <div class="p-4 bg-orange-50 border-2 border-orange-200 rounded-xl">
                     <label class="block text-sm font-bold text-orange-800 mb-2">
@@ -1850,8 +1862,25 @@
                     </div>
                     <div>
                         <label id="inv-stock-label" class="block text-xs font-medium text-gray-600 mb-1">Stock inicial</label>
-                        <input type="number" id="inv-stock" class="w-full border rounded-lg px-3 py-2 text-sm" min="1" required onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-expiry').focus();}">
+                        <input type="number" id="inv-stock" class="w-full border rounded-lg px-3 py-2 text-sm" min="1" required oninput="updateInvPurchaseTotals()" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inv-expiry').focus();}">
                         <p id="inv-stock-hint" class="text-xs text-gray-500 mt-1"></p>
+                    </div>
+                    <div id="inv-total-cost-cell">
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Costo total de la compra ($)</label>
+                        <input type="number" id="inv-total-cost" class="w-full border rounded-lg px-3 py-2 text-sm font-bold" step="0.01" min="0" placeholder="0" oninput="onInvTotalCostInput()">
+                        <p id="inv-total-cost-hint" class="text-xs text-gray-500 mt-1">Escribí el total y calcula el costo por unidad (o al revés)</p>
+                    </div>
+                    <!-- Unidades como en Cargar factura: bultos / displays / sueltas -->
+                    <div id="inv-pack-section" class="lg:col-span-4 bg-gray-50 rounded-xl p-3 border border-gray-200">
+                        <p class="text-xs font-bold text-gray-600 mb-2">📦 Unidades como en la factura (opcional): completá y se calcula el stock</p>
+                        <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
+                            <div><label class="block text-[10px] text-gray-500 uppercase">Bultos</label><input type="number" id="inv-pk-bultos" min="0" step="1" class="w-full border rounded-lg px-2 py-1 text-center" placeholder="0" oninput="onInvPackInput()"></div>
+                            <div><label class="block text-[10px] text-gray-500 uppercase">Unid. por bulto</label><input type="number" id="inv-pk-upb" min="0" step="1" class="w-full border rounded-lg px-2 py-1 text-center" placeholder="ej: 12" oninput="onInvPackInput()"></div>
+                            <div><label class="block text-[10px] text-gray-500 uppercase">Displays</label><input type="number" id="inv-pk-displays" min="0" step="1" class="w-full border rounded-lg px-2 py-1 text-center" placeholder="0" oninput="onInvPackInput()"></div>
+                            <div><label class="block text-[10px] text-gray-500 uppercase">Unid. por display</label><input type="number" id="inv-pk-upd" min="0" step="1" class="w-full border rounded-lg px-2 py-1 text-center" placeholder="ej: 6" oninput="onInvPackInput()"></div>
+                            <div><label class="block text-[10px] text-gray-500 uppercase">Unidades sueltas</label><input type="number" id="inv-pk-sueltas" min="0" step="1" class="w-full border rounded-lg px-2 py-1 text-center" placeholder="0" oninput="onInvPackInput()"></div>
+                        </div>
+                        <p id="inv-pk-hint" class="text-[11px] text-gray-500 mt-1">Las unidades por bulto y por display quedan guardadas en el producto.</p>
                     </div>
                     <!-- Sección Venta por Peso -->
                     <div class="lg:col-span-4 bg-blue-50 rounded-xl p-4 border border-blue-200">
@@ -6095,6 +6124,7 @@
             
             if (section) section.classList.toggle('hidden', !checked);
             if (checked) updateWeightCalculations();
+            try { updateInvPurchaseTotals(); } catch (e) {}
             
             if (checked) {
                 if (costLabel) costLabel.textContent = 'Costo total de la compra ($)';
@@ -6366,7 +6396,7 @@
                 return;
             }
 
-            const existingItem = appState.cart.find(item => item.productId === currentWeightProduct.id);
+            const existingItem = appState.cart.find(item => item.productId === currentWeightProduct.id && !item.candyMix);
             if (existingItem) {
                 existingItem.quantity += quantity;
                 existingItem.weightGrams = (existingItem.weightGrams || 0) + grams;
@@ -6511,6 +6541,43 @@
         // siempre llega lo más cerca posible del monto pedido, nunca se "pierde"
         // plata del reparto por culpa del redondeo.
         let candyMixProducts = []; // orden = prioridad: el primero elegido es el que más unidades recibe
+
+        // Precio de UN caramelo: el que se carga en el Surtido (product.candyUnitPrice); si no
+        // hay, el precio de venta del producto (cuando la unidad del producto ya es 1 caramelo).
+        function getCandyUnitPrice(p) {
+            return (parseFloat(p && p.candyUnitPrice) || 0) > 0 ? parseFloat(p.candyUnitPrice) : ((p && p.salePrice) || 0);
+        }
+        // Cuántas unidades de stock descuenta UN caramelo. Sin precio por caramelo propio:
+        // 1 (la unidad del producto es el caramelo). Con precio propio: si se cargó el peso de
+        // un caramelo, ese peso; si no, lo equivalente en plata al precio normal del producto
+        // (ej: bolsa de 1000 g a $13.048 y caramelo a $100 -> 7,66 g por caramelo).
+        function getCandyStockUnitsPerCandy(p) {
+            const own = parseFloat(p && p.candyUnitPrice) || 0;
+            if (!(own > 0)) return 1;
+            const gramsEach = parseFloat(p.candyWeight) || 0;
+            if (p.saleByWeight && p.weightPerUnit > 0 && gramsEach > 0) return gramsEach / p.weightPerUnit;
+            return (p.salePrice || 0) > 0 ? own / p.salePrice : 1;
+        }
+        function setCandyUnitPrice(productId, value) {
+            const p = appState.inventory.find(x => x.id === productId);
+            if (!p) return;
+            const v = Math.round((parseFloat(String(value).replace(',', '.')) || 0) * 100) / 100;
+            p.candyUnitPrice = v > 0 ? v : null;
+            p.updatedAt = new Date().toISOString();
+            saveToLocalStorage();
+            renderCandyMixList();
+            showNotification(v > 0 ? '🍬 ' + p.name + ': $' + formatMoney(v) + ' cada caramelo' : 'Precio por caramelo de ' + p.name + ' borrado', 'success');
+        }
+        window.setCandyUnitPrice = setCandyUnitPrice;
+        function setCandyWeight(productId, value) {
+            const p = appState.inventory.find(x => x.id === productId);
+            if (!p) return;
+            const v = Math.round((parseFloat(String(value).replace(',', '.')) || 0) * 1000) / 1000;
+            p.candyWeight = v > 0 ? v : null;
+            p.updatedAt = new Date().toISOString();
+            saveToLocalStorage();
+        }
+        window.setCandyWeight = setCandyWeight;
         let candyMixManualQty = new Map(); // productId -> cantidad fijada a mano con los +/- (pisa el reparto automático para ESA variedad)
 
         // Reparto automático PURO (sin overrides manuales) -- se usa como base,
@@ -6524,7 +6591,7 @@
             }
             const share = targetTotal / n;
             const results = products.map(p => {
-                const price = p.salePrice || 0;
+                const price = getCandyUnitPrice(p);
                 const qty = price > 0 ? Math.floor(share / price) : 0;
                 return { product: p, qty, subtotal: qty * price };
             });
@@ -6536,7 +6603,7 @@
                 guard++;
                 progress = false;
                 for (const r of results) {
-                    const price = r.product.salePrice || 0;
+                    const price = getCandyUnitPrice(r.product);
                     if (price > 0 && price <= remainder + 0.004) {
                         r.qty += 1;
                         r.subtotal += price;
@@ -6561,7 +6628,7 @@
             products.forEach((p, i) => {
                 if (candyMixManualQty.has(p.id)) {
                     const qty = candyMixManualQty.get(p.id);
-                    const price = p.salePrice || 0;
+                    const price = getCandyUnitPrice(p);
                     results[i].qty = qty;
                     results[i].subtotal = qty * price;
                     manualSpent += results[i].subtotal;
@@ -6625,6 +6692,7 @@
                         <span class="text-gray-800">${escapeHtml(p.name)}</span>
                         ${p.saleByWeight ? '<span class="text-[10px] text-blue-500">⚖️ por peso</span>' : ''}
                     </label>
+                    ${p.saleByWeight ? `<label class="text-[11px] text-gray-500 flex items-center gap-1" title="Opcional: para descontar del stock el peso real de cada caramelo">g c/u <input type="number" min="0" step="0.1" value="${p.candyWeight || ''}" placeholder="?" class="w-14 border rounded px-1 py-0.5 text-right" onchange="setCandyWeight('${p.id}', this.value)"></label>` : ''}
                     <button type="button" onclick="editProductFromCandyMix('${p.id}')" class="text-xs text-indigo-600 hover:text-indigo-800 font-bold px-2 py-1">✏️ Editar</button>
                 </div>
             `).join('');
@@ -6774,7 +6842,8 @@
                 return `
                 <div class="flex items-center gap-2 bg-gray-50 rounded-lg p-2 border text-sm ${isSelected ? 'border-pink-300' : ''}">
                     <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleCandyMixSelection('${p.id}', this.checked)">
-                    <span class="flex-1 font-medium text-gray-800 truncate">${escapeHtml(p.name)} <span class="text-xs text-gray-400">($${formatMoney(p.salePrice || 0)} c/u)</span></span>
+                    <span class="flex-1 font-medium text-gray-800 truncate min-w-0">${escapeHtml(p.name)}</span>
+                    <label class="flex items-center gap-1 text-xs text-gray-500 shrink-0" title="Precio de UN caramelo">$<input type="number" min="0" step="1" value="${getCandyUnitPrice(p)}" class="w-16 border rounded px-1 py-0.5 text-right text-gray-800" onchange="setCandyUnitPrice('${p.id}', this.value)" onclick="event.stopPropagation()"> c/u</label>
                     ${isSelected ? `
                         <div class="flex items-center gap-1">
                             <button type="button" onclick="adjustCandyMixManualQty('${p.id}', -1)" class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xs font-bold">−</button>
@@ -6801,26 +6870,33 @@
 
             let anyFailed = false;
             for (const { product, qty } of distribution) {
-                const isCandyWeight = !!(product.saleByWeight && product.isCandy && product.weightPerUnit > 0);
-                const existingItem = appState.cart.find(item => item.productId === product.id);
-                const totalNeeded = (existingItem ? existingItem.quantity : 0) + qty;
+                const isCandyWeight = !!(product.saleByWeight && product.weightPerUnit > 0);
+                const candyPrice = getCandyUnitPrice(product);
+                const unitsPerCandy = getCandyStockUnitsPerCandy(product);
+                const stockUnits = qty * unitsPerCandy;
+                // Línea propia del surtido (mismo producto y mismo precio por caramelo)
+                const existingItem = appState.cart.find(item => item.productId === product.id && item.candyMix && Math.abs((item.candyUnitPrice || 0) - candyPrice) < 0.001);
+                const otherLinesQty = appState.cart.filter(item => item.productId === product.id && item !== existingItem).reduce((sum, item) => sum + (item.quantity || 0), 0);
+                const totalNeeded = otherLinesQty + (existingItem ? existingItem.quantity : 0) + stockUnits;
                 const canSell = await ensureStockForSale(product, totalNeeded);
                 if (!canSell) { anyFailed = true; continue; }
                 if (existingItem) {
-                    existingItem.quantity = totalNeeded;
-                    if (isCandyWeight) existingItem.weightGrams = (existingItem.weightGrams || 0) + (qty * product.weightPerUnit);
+                    existingItem.candyCount = (existingItem.candyCount || 0) + qty;
+                    existingItem.quantity = existingItem.candyCount * unitsPerCandy;
+                    if (isCandyWeight) existingItem.weightGrams = existingItem.quantity * product.weightPerUnit;
                 } else {
                     const newItem = {
                         productId: product.id,
                         name: product.name,
-                        price: product.salePrice,
+                        // precio por UNIDAD DE STOCK, tal que precio × cantidad = caramelos × precio por caramelo
+                        price: unitsPerCandy > 0 ? candyPrice / unitsPerCandy : candyPrice,
                         cost: product.isComposite ? calculateCompositeCost(product) : product.cost,
-                        quantity: qty
+                        quantity: stockUnits,
+                        candyMix: true,
+                        candyCount: qty,
+                        candyUnitPrice: candyPrice
                     };
-                    // Caramelo a granel: cada caramelo descuenta exactamente 1 unidad
-                    // del stock (sin redondear, sea cual sea su peso estimado) -- acá
-                    // solo se anota el peso equivalente para mostrarlo en el carrito.
-                    if (isCandyWeight) newItem.weightGrams = qty * product.weightPerUnit;
+                    if (isCandyWeight) newItem.weightGrams = stockUnits * product.weightPerUnit;
                     appState.cart.push(newItem);
                 }
             }
@@ -6862,12 +6938,13 @@
             }
 
             // Verificar si ya está en el carrito
-            const existingItem = appState.cart.find(item => item.productId === productId);
+            const existingItem = appState.cart.find(item => item.productId === productId && !item.candyMix);
+            const candyMixQty = appState.cart.filter(item => item.productId === productId && item.candyMix).reduce((sum, item) => sum + (item.quantity || 0), 0);
             const totalNeeded = (existingItem ? existingItem.quantity : 0) + qty;
 
             // Si no alcanza el stock cargado, ofrece completarlo como Stock Gratis
             // (para vender algo que existe de verdad pero no se cargó todavía).
-            const canSell = await ensureStockForSale(product, totalNeeded);
+            const canSell = await ensureStockForSale(product, totalNeeded + candyMixQty);
             if (!canSell) return;
 
             if (existingItem) {
@@ -7021,10 +7098,11 @@
                 return;
             }
 
-            const existingItem = appState.cart.find(item => item.productId === product.id);
+            const existingItem = appState.cart.find(item => item.productId === product.id && !item.candyMix);
+            const candyMixQty = appState.cart.filter(item => item.productId === product.id && item.candyMix).reduce((sum, item) => sum + (item.quantity || 0), 0);
             const totalNeeded = (existingItem ? existingItem.quantity : 0) + 1;
 
-            const canSell = await ensureStockForSale(product, totalNeeded);
+            const canSell = await ensureStockForSale(product, totalNeeded + candyMixQty);
             if (!canSell) return;
 
             if (existingItem) {
@@ -7115,6 +7193,25 @@
                             `;
                         }
                         
+                        // Línea del Surtido de Caramelos por Monto: se muestra en caramelos
+                        // y precio por caramelo (la cantidad interna está en unidades de stock).
+                        if (item.candyMix && item.candyCount > 0) {
+                            return `
+                            <div class="sale-item flex justify-between items-center p-3 rounded-lg border border-pink-200 bg-pink-50">
+                                <div class="flex-1">
+                                    <p class="font-bold text-gray-800">🍬 ${escapeHtml(item.name || 'Producto')}</p>
+                                    <p class="text-sm text-gray-500">${formatMoney(item.candyUnitPrice || 0)} cada caramelo</p>
+                                    <p class="text-sm text-pink-700 font-bold">${item.candyCount} caramelo${item.candyCount === 1 ? '' : 's'} = ${formatMoney(subtotal)}</p>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <button onclick="removeFromCart(${index})" class="text-red-500 hover:text-red-700 ml-2">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            `;
+                        }
+
                         if (isWeight) {
                             // Caramelo agregado desde el Surtido por Monto: ahí la cantidad
                             // siempre es un número entero de caramelos (se calculó a propósito
@@ -9107,13 +9204,30 @@
             return 'x' + item.quantity;
         }
 
+        // Para tickets y comandas: subtotal en plata y, si es una cantidad entera de
+        // unidades, "2 x $700". Productos por peso (caramelos, fiambre) o cantidades
+        // fraccionarias solo muestran la plata (nada de "0.000343" que no significa nada).
+        function printItemDetail(item) {
+            const q = parseFloat(item.quantity) || 0;
+            const subtotal = Math.round((parseFloat(item.price) || 0) * q * 100) / 100;
+            const whole = Math.abs(q - Math.round(q)) < 1e-6 && q >= 1;
+            // Surtido de caramelos: "10 x $100" (caramelos × precio por caramelo)
+            if (item.candyMix && item.candyCount > 0 && item.candyUnitPrice > 0) {
+                return { byAmount: false, qty: item.candyCount, qtyText: item.candyCount + ' x $' + formatMoney(item.candyUnitPrice), subtotal };
+            }
+            if (item.weightGrams != null || !whole) return { byAmount: true, qty: null, qtyText: '', subtotal };
+            return { byAmount: false, qty: Math.round(q), qtyText: Math.round(q) + ' x $' + formatMoney(item.price), subtotal };
+        }
+
         function buildElectronTicketPayload(sale) {
             const lines = [];
             lines.push({ text: (sale.date || '') + ' ' + (sale.time || ''), align: 'center' });
             lines.push({ hr: true });
 
             sale.items.forEach(item => {
-                lines.push({ left: item.name + ' ' + saleItemQtyLabel(item), right: '$' + formatMoney(item.price * item.quantity) });
+                const d = printItemDetail(item);
+                lines.push({ text: item.name || 'Producto', align: 'left', bold: true });
+                lines.push({ left: '  ' + (d.byAmount ? '' : d.qtyText), right: '$' + formatMoney(d.subtotal) });
             });
             lines.push({ hr: true });
 
@@ -9223,12 +9337,13 @@
                     <p style="text-align: center; font-size: 10px;">Kiosco 47</p>
                     <p style="text-align: center;">${sale.date} ${sale.time}</p>
                     <hr>
-                    ${sale.items.map(item => `
+                    ${sale.items.map(item => { const d = printItemDetail(item); return `
+                        <div style="margin-top: 6px; font-weight: bold;">${escapeHtml(item.name || 'Producto')}</div>
                         <div style="display: flex; justify-content: space-between;">
-                            <span>${item.name} ${saleItemQtyLabel(item)}</span>
-                            <span>$${formatMoney((item.price * item.quantity))}</span>
+                            <span style="padding-left: 8px;">${d.byAmount ? '' : d.qtyText}</span>
+                            <span>$${formatMoney(d.subtotal)}</span>
                         </div>
-                    `).join('')}
+                    `; }).join('')}
                     <hr>
                     ${sale.discount > 0 ? `
                     <div style="display: flex; justify-content: space-between; color: green;">
@@ -10271,33 +10386,39 @@
 
         // ---- Comanda: se imprime igual que un ticket de venta (directo en Electron,
         // dialogo de impresion en navegador/PWA) pero con formato de cocina/mostrador.
+        // Comanda simple: en GRANDE lo que hay que preparar (número, productos con su
+        // cantidad, total, notas); en chico el horario, el cliente y la hora de emisión.
+        // size:'large' = esa línea en doble alto y ancho (impresora térmica).
         function buildComandaLines(pedido) {
             const lines = [];
             if (pedido.comandaNumber) {
-                lines.push({ text: 'COMANDA #' + pedido.comandaNumber, align: 'center', bold: true });
+                lines.push({ text: 'COMANDA #' + pedido.comandaNumber, align: 'center', bold: true, size: 'large' });
             }
             const priorityNumber = getPedidoPriorityNumber(pedido);
             const whenText = pedido.scheduledTime
                 ? 'Para las ' + pedido.scheduledTime + (pedido.scheduledDate ? ' · ' + pedido.scheduledDate : '')
-                : 'PRIORIDAD #' + (priorityNumber || '');
-            lines.push({ text: whenText, align: 'center', bold: true });
-            if (pedido.customerName) lines.push({ text: 'Cliente: ' + pedido.customerName, align: 'center' });
+                : 'Prioridad #' + (priorityNumber || '');
             const now = new Date();
-            lines.push({ text: 'Emitido: ' + now.toLocaleDateString('es-AR') + ' ' + now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }), align: 'center' });
+            lines.push({ text: whenText + (pedido.customerName ? ' · ' + pedido.customerName : ''), align: 'center' });
+            lines.push({ text: 'Emitido ' + now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }), align: 'center' });
             lines.push({ hr: true });
 
             (pedido.items || []).forEach(item => {
-                const cantidadTexto = item.weightGrams != null ? Math.round(item.weightGrams) + 'g' : item.quantity + 'x';
-                lines.push({ left: cantidadTexto + ' ' + item.name, right: '$' + formatMoney(item.price * item.quantity) });
+                const d = printItemDetail(item);
+                if (d.byAmount) {
+                    lines.push({ text: item.name || 'Producto', align: 'left', bold: true, size: 'large' });
+                    lines.push({ text: '$' + formatMoney(d.subtotal), align: 'left', size: 'large' });
+                } else {
+                    lines.push({ text: d.qty + ' x ' + (item.name || 'Producto'), align: 'left', bold: true, size: 'large' });
+                }
             });
             if (pedido.items && pedido.items.length > 0) {
                 lines.push({ hr: true });
-                lines.push({ left: 'TOTAL', right: '$' + formatMoney(pedido.total || 0), bold: true });
+                lines.push({ text: 'TOTAL $' + formatMoney(pedido.total || 0), align: 'left', bold: true, size: 'large' });
             }
             if (pedido.notes) {
                 lines.push({ hr: true });
-                lines.push({ text: 'NOTAS:', align: 'left', bold: true });
-                lines.push({ text: pedido.notes, align: 'left' });
+                lines.push({ text: pedido.notes, align: 'left', bold: true, size: 'large' });
             }
             return lines;
         }
@@ -10307,9 +10428,11 @@
 
             if (window.kioscoDesktop && window.kioscoDesktop.isElectron) {
                 window.kioscoDesktop.print({
-                    header: 'COMANDA / PEDIDO',
                     lines: buildComandaLines(pedido),
-                    large: true
+                    // large: la impresora vieja (sin "size" por línea) imprime todo grande como antes;
+                    // la nueva (mixedSizes) respeta grande/chico línea por línea.
+                    large: true,
+                    mixedSizes: true
                 }).then(res => {
                     if (!res || !res.ok) {
                         showNotification('❌ No se pudo imprimir la comanda: ' + ((res && res.error) || 'error desconocido'), 'error', 8000);
@@ -10328,25 +10451,25 @@
             const now = new Date();
             const emitidoHtml = 'Emitido: ' + now.toLocaleDateString('es-AR') + ' ' + now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
             const itemsHtml = (pedido.items || []).map(item => {
-                const cantidadTexto = item.weightGrams != null ? Math.round(item.weightGrams) + 'g' : item.quantity + 'x';
-                return `<div style="display:flex; justify-content:space-between;"><span>${cantidadTexto} ${escapeHtml(item.name)}</span><span>$${formatMoney(item.price * item.quantity)}</span></div>`;
+                const d = printItemDetail(item);
+                return d.byAmount
+                    ? `<div style="font-size:24px; font-weight:bold; margin-top:8px;">${escapeHtml(item.name || 'Producto')}</div><div style="font-size:24px;">$${formatMoney(d.subtotal)}</div>`
+                    : `<div style="font-size:24px; font-weight:bold; margin-top:8px;">${d.qty} x ${escapeHtml(item.name || 'Producto')}</div>`;
             }).join('');
             const totalHtml = (pedido.items && pedido.items.length > 0)
-                ? `<hr><div style="display:flex; justify-content:space-between; font-weight:bold;"><span>TOTAL</span><span>$${formatMoney(pedido.total || 0)}</span></div>`
+                ? `<hr><div style="font-size:24px; font-weight:bold;">TOTAL $${formatMoney(pedido.total || 0)}</div>`
                 : '';
             w.document.write(`
                 <html>
                 <head><title>Comanda</title></head>
-                <body style="font-family: monospace; font-size: 20px; padding: 20px; max-width: 300px;">
-                    <h2 style="text-align: center; font-size: 26px;">COMANDA / PEDIDO</h2>
-                    ${pedido.comandaNumber ? `<p style="text-align: center; font-weight: bold; font-size: 24px;">COMANDA #${pedido.comandaNumber}</p>` : ''}
-                    <p style="text-align: center; font-weight: bold;">${whenHtml}</p>
-                    ${pedido.customerName ? `<p style="text-align: center;">Cliente: ${escapeHtml(pedido.customerName)}</p>` : ''}
-                    <p style="text-align: center;">${emitidoHtml}</p>
+                <body style="font-family: monospace; font-size: 13px; padding: 20px; max-width: 300px;">
+                    ${pedido.comandaNumber ? `<p style="text-align: center; font-weight: bold; font-size: 30px; margin: 0;">COMANDA #${pedido.comandaNumber}</p>` : ''}
+                    <p style="text-align: center; margin: 4px 0;">${whenHtml}${pedido.customerName ? ' · ' + escapeHtml(pedido.customerName) : ''}</p>
+                    <p style="text-align: center; margin: 0;">${emitidoHtml}</p>
                     <hr>
                     ${itemsHtml}
                     ${totalHtml}
-                    ${pedido.notes ? `<hr><p style="font-weight:bold;">NOTAS:</p><p>${escapeHtml(pedido.notes)}</p>` : ''}
+                    ${pedido.notes ? `<hr><p style="font-size:22px; font-weight:bold;">${escapeHtml(pedido.notes)}</p>` : ''}
                 </body>
                 </html>
             `);
@@ -11588,12 +11711,73 @@
             appState.lastVatEnabled = checkbox.checked;
             saveToLocalStorage();
             calculateInventoryPrice();
+            if (invCostAnchor === 'total') { invCostAnchor = 'unit'; } // el costo por unidad ya tiene (o no) el IVA: manda él
+            updateInvPurchaseTotals();
         }
 
         function onInvCostInput() {
             invVatApplied = false;
             // NO desmarca el IVA nunca
+            invCostAnchor = 'unit';
             calculateInventoryPrice();
+            updateInvPurchaseTotals();
+        }
+
+        // ---- Costo total ⇄ costo por unidad y bultos/displays/sueltas (Nuevo Producto) ----
+        // 'unit' = manda el costo por unidad (el total se calcula); 'total' = manda el total
+        // (si cambian las unidades, se recalcula el costo por unidad, como en Cargar factura).
+        let invCostAnchor = 'unit';
+        function invIsWeight() { return !!document.getElementById('inv-sale-by-weight')?.checked; }
+        function invNum(id) { return parseFloat(String(document.getElementById(id)?.value || '').replace(',', '.')) || 0; }
+
+        function onInvTotalCostInput() {
+            invCostAnchor = 'total';
+            updateInvPurchaseTotals();
+        }
+
+        function onInvPackInput() {
+            const units = invNum('inv-pk-bultos') * invNum('inv-pk-upb') + invNum('inv-pk-displays') * invNum('inv-pk-upd') + invNum('inv-pk-sueltas');
+            const anyFilled = ['inv-pk-bultos', 'inv-pk-displays', 'inv-pk-sueltas'].some(id => (document.getElementById(id)?.value || '') !== '');
+            const hint = document.getElementById('inv-pk-hint');
+            const missing = (invNum('inv-pk-bultos') > 0 && !(invNum('inv-pk-upb') > 0)) ? 'bulto' : ((invNum('inv-pk-displays') > 0 && !(invNum('inv-pk-upd') > 0)) ? 'display' : null);
+            if (hint) hint.textContent = missing ? 'Completá cuántas unidades trae un ' + missing + ' para que sume.' : (anyFilled ? 'Total: ' + units + ' unidades. Las unidades por bulto y por display quedan guardadas en el producto.' : 'Las unidades por bulto y por display quedan guardadas en el producto.');
+            if (anyFilled) {
+                const stockInput = document.getElementById('inv-stock');
+                if (stockInput) stockInput.value = units || '';
+            }
+            updateInvPurchaseTotals();
+        }
+
+        function updateInvPurchaseTotals() {
+            const weight = invIsWeight();
+            const cell = document.getElementById('inv-total-cost-cell');
+            const pack = document.getElementById('inv-pack-section');
+            if (cell) cell.classList.toggle('hidden', weight); // por peso el "Costo" ya es el total
+            if (pack) pack.classList.toggle('hidden', weight);
+            if (weight) return;
+            const units = invNum('inv-stock');
+            const costInput = document.getElementById('inv-cost');
+            const totalInput = document.getElementById('inv-total-cost');
+            const hint = document.getElementById('inv-total-cost-hint');
+            const vat = !!document.getElementById('inv-vat')?.checked;
+            if (invCostAnchor === 'total') {
+                const total = invNum('inv-total-cost');
+                if (units > 0 && total > 0) {
+                    // El total se escribe como figura en la factura; con "+ IVA" tildado se le suma el 21%
+                    const unit = (total / units) * (vat ? 1.21 : 1);
+                    costInput.value = String(Math.round(unit * 10000) / 10000);
+                    invVatApplied = vat;
+                    calculateInventoryPrice();
+                    if (hint) hint.textContent = '= $' + formatMoney(unit) + ' por unidad' + (vat ? ' (con IVA: total $' + formatMoney(total * 1.21) + ')' : '');
+                } else if (hint) {
+                    hint.textContent = units > 0 ? 'Escribí el total' : 'Completá el stock (unidades) para calcular el costo por unidad';
+                }
+            } else {
+                const unit = invNum('inv-cost');
+                const total = Math.round(unit * units * 100) / 100;
+                if (totalInput && document.activeElement !== totalInput) totalInput.value = total > 0 ? total : '';
+                if (hint) hint.textContent = total > 0 ? 'Costo de la compra: $' + formatMoney(total) : 'Escribí el total y calcula el costo por unidad (o al revés)';
+            }
         }
         function handleInvCostKeydown(event) {
     if (event.key === 'Enter') {
@@ -11734,7 +11918,14 @@
             updateWeightCalculations();
         }
 
+        let pendingInvFormPackaging = null;
         function preparePurchase() {
+            if (!invIsWeight()) {
+                const upb = invNum('inv-pk-upb'), upd = invNum('inv-pk-upd');
+                pendingInvFormPackaging = (upb > 0 || upd > 0) ? { bulkPackSize: upb > 0 ? upb : null, unitsPerDisplay: upd > 0 ? upd : null } : null;
+            } else {
+                pendingInvFormPackaging = null;
+            }
             console.log('preparePurchase llamado');
             
             const isComposite = document.getElementById('inv-is-composite')?.checked || false;
@@ -12090,6 +12281,7 @@
             console.log('Cerrando modal y reseteando formulario...');
             closePurchaseModal();
             document.getElementById('add-inventory-form').reset();
+            invCostAnchor = 'unit';
             restoreInventoryFormState();
             toggleWeightSection(); // Restaurar labels de stock/costo a estado normal
             // Limpiar estado de compuestos (el reset no dispara onchange)
@@ -12129,6 +12321,14 @@
             // Si este producto nuevo vino de una línea de Escanear Factura,
             // se aprende: la próxima vez que la factura diga ese mismo texto
             // va a sugerir este producto directo, en vez de ofrecer "nuevo" de nuevo.
+            // Unidades por bulto / por display cargadas en el formulario de Nuevo Producto
+            if (pendingInvFormPackaging && product) {
+                const liveP = appState.inventory.find(p => p.id === product.id) || product;
+                if (pendingInvFormPackaging.bulkPackSize) liveP.bulkPackSize = pendingInvFormPackaging.bulkPackSize;
+                if (pendingInvFormPackaging.unitsPerDisplay) liveP.unitsPerDisplay = pendingInvFormPackaging.unitsPerDisplay;
+                pendingInvFormPackaging = null;
+                saveToLocalStorage();
+            }
             if (pendingNewProductScanRawName) {
                 learnInvoiceNameMapping(pendingNewProductScanRawName, product.id, product.name, scanInvoiceSupplier);
                 pendingNewProductScanRawName = null;
@@ -12885,6 +13085,16 @@
                 qtyInput.step = 1;
             }
             
+            // Bultos / displays / sueltas (no aplica a productos por peso)
+            addStockCostAnchor = 'unit';
+            const packRow = document.getElementById('add-stock-pack-row');
+            if (packRow) packRow.classList.toggle('hidden', isWeight);
+            ['as-pk-bultos', 'as-pk-displays', 'as-pk-sueltas'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            const upbEl = document.getElementById('as-pk-upb'); if (upbEl) upbEl.value = product.bulkPackSize > 0 ? product.bulkPackSize : '';
+            const updEl = document.getElementById('as-pk-upd'); if (updEl) updEl.value = product.unitsPerDisplay > 0 ? product.unitsPerDisplay : '';
+            const pkHint = document.getElementById('as-pk-hint'); if (pkHint) pkHint.textContent = '';
+            const totalInputReset = document.getElementById('add-stock-total-input'); if (totalInputReset) totalInputReset.value = '';
+
             // Precargar costo unitario y estado de IVA
             const unitCostInput = document.getElementById('add-stock-unit-cost');
             if (unitCostInput) unitCostInput.value = product.cost || 0;
@@ -13021,10 +13231,12 @@
                 costInput.value = (currentCost / 1.21).toFixed(2);
                 addStockVatApplied = false;
             }
+            addStockCostAnchor = 'unit'; // el costo por unidad ya quedó con (o sin) IVA
             updateAddStockCost();
         }
 
         function onAddStockCostInput() {
+            addStockCostAnchor = 'unit';
             addStockVatApplied = false;
             const checkbox = document.getElementById('add-stock-vat');
             if (checkbox) checkbox.checked = false;
@@ -13057,9 +13269,50 @@
                 totalCost = qty * unitCost;
             }
             
-            document.getElementById('add-stock-total-cost').textContent = `$${formatMoney(totalCost)}`;
+            const totalInput = document.getElementById('add-stock-total-input');
+            const totalHint = document.getElementById('add-stock-total-cost');
+            if (isWeight) {
+                // Por peso el campo de costo ya es el total: el total se muestra, no se edita acá
+                if (totalInput) { totalInput.value = totalCost > 0 ? Math.round(totalCost * 100) / 100 : ''; totalInput.readOnly = true; }
+                if (totalHint) totalHint.textContent = 'Por peso: el costo de arriba ya es el total de la compra.';
+            } else if (addStockCostAnchor === 'total') {
+                const total = parseFloat(String(totalInput?.value || '').replace(',', '.')) || 0;
+                const vat = !!document.getElementById('add-stock-vat')?.checked;
+                if (qty > 0 && total > 0) {
+                    const unit = (total / qty) * (vat ? 1.21 : 1);
+                    if (unitCostInput) unitCostInput.value = String(Math.round(unit * 10000) / 10000);
+                    addStockVatApplied = vat;
+                    if (totalHint) totalHint.textContent = '= $' + formatMoney(unit) + ' por unidad' + (vat ? ' (con IVA: total $' + formatMoney(total * 1.21) + ')' : '');
+                } else if (totalHint) {
+                    totalHint.textContent = qty > 0 ? 'Escribí el total' : 'Completá la cantidad para calcular el costo por unidad';
+                }
+            } else {
+                if (totalInput) { totalInput.readOnly = false; if (document.activeElement !== totalInput) totalInput.value = totalCost > 0 ? Math.round(totalCost * 100) / 100 : ''; }
+                if (totalHint) totalHint.textContent = totalCost > 0 ? 'Costo de la compra: $' + formatMoney(totalCost) : 'Escribí el total y calcula el costo por unidad (o al revés)';
+            }
             // Recalcular el margen en vivo: cambió el costo, el precio sigue igual
             updateAddStockMarginDisplay();
+        }
+
+        // 'unit' = manda el costo unitario; 'total' = manda el costo total (como en Cargar factura)
+        let addStockCostAnchor = 'unit';
+        function onAddStockTotalInput() {
+            addStockCostAnchor = 'total';
+            updateAddStockCost();
+        }
+
+        function onAddStockPackInput() {
+            const num = (id) => parseFloat(String(document.getElementById(id)?.value || '').replace(',', '.')) || 0;
+            const units = num('as-pk-bultos') * num('as-pk-upb') + num('as-pk-displays') * num('as-pk-upd') + num('as-pk-sueltas');
+            const anyFilled = ['as-pk-bultos', 'as-pk-displays', 'as-pk-sueltas'].some(id => (document.getElementById(id)?.value || '') !== '');
+            const hint = document.getElementById('as-pk-hint');
+            const missing = (num('as-pk-bultos') > 0 && !(num('as-pk-upb') > 0)) ? 'bulto' : ((num('as-pk-displays') > 0 && !(num('as-pk-upd') > 0)) ? 'display' : null);
+            if (hint) hint.textContent = missing ? 'Completá cuántas unidades trae un ' + missing + ' para que sume.' : (anyFilled ? 'Total: ' + units + ' unidades' : '');
+            if (anyFilled) {
+                const qtyInput = document.getElementById('add-stock-qty');
+                if (qtyInput) qtyInput.value = units || '';
+            }
+            updateAddStockCost();
         }
 
         function calculateAddStockPriceFromMargin() {
@@ -13497,6 +13750,14 @@
                 return;
             }
             
+            // Unidades por bulto / por display cargadas acá: quedan en el producto
+            if (!isWeight) {
+                const upbVal = parseFloat(document.getElementById('as-pk-upb')?.value) || 0;
+                const updVal = parseFloat(document.getElementById('as-pk-upd')?.value) || 0;
+                if (upbVal > 0) product.bulkPackSize = upbVal;
+                if (updVal > 0) product.unitsPerDisplay = updVal;
+            }
+
             // Leer costo del input
             const unitCostInput = document.getElementById('add-stock-unit-cost');
             const costValue = unitCostInput ? (parseFloat(unitCostInput.value.replace(',', '.')) || product.cost || 0) : (product.cost || 0);

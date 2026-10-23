@@ -479,7 +479,7 @@
                 </div>
                 <div>
                     <label id="add-stock-cost-label" class="block text-sm font-medium text-gray-700 mb-2">Costo unitario ($)</label>
-                    <input type="number" id="add-stock-unit-cost" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-lg font-bold text-center" step="0.01" oninput="onAddStockCostInput()" onkeypress="handleAddStockKeypress(event)">
+                    <input type="number" id="add-stock-unit-cost" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-lg font-bold text-center" step="any" oninput="onAddStockCostInput()" onkeypress="handleAddStockKeypress(event)">
                     <div id="add-stock-cost-per-gram" class="text-xs text-blue-600 mt-1 hidden"></div>
                     <label class="flex items-center gap-2 mt-1 cursor-pointer">
                         <input type="checkbox" id="add-stock-vat" onchange="toggleAddStockVat()">
@@ -488,7 +488,7 @@
                 </div>
                 <div class="p-3 bg-blue-50 rounded-lg">
                     <label class="text-sm text-gray-600" for="add-stock-total-input">Costo total de la compra ($):</label>
-                    <input type="number" id="add-stock-total-input" class="w-full border-2 border-blue-200 rounded-lg px-3 py-2 text-2xl font-bold text-blue-800 bg-white" step="0.01" min="0" placeholder="0" oninput="onAddStockTotalInput()" onkeypress="handleAddStockKeypress(event)">
+                    <input type="number" id="add-stock-total-input" class="w-full border-2 border-blue-200 rounded-lg px-3 py-2 text-2xl font-bold text-blue-800 bg-white" step="any" min="0" placeholder="0" oninput="onAddStockTotalInput()" onkeypress="handleAddStockKeypress(event)">
                     <p class="text-xs text-gray-500 mt-1" id="add-stock-total-cost">Escribí el total y calcula el costo por unidad (o al revés)</p>
                 </div>
                 <div class="p-4 bg-orange-50 border-2 border-orange-200 rounded-xl">
@@ -498,7 +498,7 @@
                     <div class="flex items-center gap-2">
                         <span class="text-orange-600 font-bold">$</span>
                         <input type="number" id="add-stock-new-price" class="flex-1 border-2 border-orange-300 rounded-lg px-3 py-2 font-bold text-lg" 
-                            placeholder="Precio actual" step="0.01" oninput="updateAddStockMarginDisplay()" onkeypress="handleAddStockKeypress(event)">
+                            placeholder="Precio actual" step="any" oninput="updateAddStockMarginDisplay()" onkeypress="handleAddStockKeypress(event)">
                     </div>
                     <div class="mt-2">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Margen de ganancia (%)</label>
@@ -605,7 +605,7 @@
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Costo</label>
-                        <input type="number" id="edit-prod-cost" class="w-full border rounded-lg px-3 py-2" step="0.01" oninput="onEditCostInput()">
+                        <input type="number" id="edit-prod-cost" class="w-full border rounded-lg px-3 py-2" step="any" oninput="onEditCostInput()">
                         <label class="flex items-center gap-2 mt-1 cursor-pointer">
                             <input type="checkbox" id="edit-prod-vat" onchange="toggleEditVat()">
                             <span class="text-xs text-gray-600">💰 + IVA 21% (calcular sobre costo con IVA)</span>
@@ -613,7 +613,7 @@
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Precio de venta</label>
-                        <input type="number" id="edit-prod-price" class="w-full border rounded-lg px-3 py-2" step="0.01" oninput="calculateEditMargin()">
+                        <input type="number" id="edit-prod-price" class="w-full border rounded-lg px-3 py-2" step="any" oninput="calculateEditMargin()">
                     </div>
                 </div>
                 <div class="flex items-center gap-3 bg-yellow-50 p-2 rounded-lg border border-yellow-200">
@@ -719,7 +719,7 @@
                                 <input type="hidden" id="edit-prod-component-selected-id">
                                 <div id="edit-prod-component-results" class="absolute z-20 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto hidden"></div>
                             </div>
-                            <input type="number" id="edit-prod-component-qty" class="w-24 border rounded-lg px-3 py-2 text-sm" placeholder="Cant" min="0.01" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();addEditProdComponent();}">
+                            <input type="number" id="edit-prod-component-qty" class="w-24 border rounded-lg px-3 py-2 text-sm" placeholder="Cant" min="0.01" step="any" onkeydown="if(event.key==='Enter'){event.preventDefault();addEditProdComponent();}">
                             <button type="button" onclick="addEditProdComponent()" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-bold">+</button>
                         </div>
                         <div id="edit-prod-components-list" class="space-y-1"></div>
@@ -815,7 +815,7 @@
             <div class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Monto</label>
-                    <input type="number" id="move-amount" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01">
+                    <input type="number" id="move-amount" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Concepto</label>
@@ -859,7 +859,7 @@
             <div class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Monto</label>
-                    <input type="number" id="adjust-amount" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01">
+                    <input type="number" id="adjust-amount" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any">
                 </div>
                 <div id="withdrawal-type-section" class="hidden">
                     <label class="block text-sm font-medium text-gray-700 mb-2">Tipo de retiro</label>
@@ -903,7 +903,7 @@
             <div class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Monto</label>
-                    <input type="number" id="reserve-amount" class="w-full border-2 border-amber-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01">
+                    <input type="number" id="reserve-amount" class="w-full border-2 border-amber-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Nota (opcional)</label>
@@ -930,11 +930,11 @@
             <div class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">💵 Efectivo contado en caja</label>
-                    <input type="number" id="shift-counted" class="w-full border-2 border-orange-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01">
+                    <input type="number" id="shift-counted" class="w-full border-2 border-orange-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">🏦 Plata contada en cuenta</label>
-                    <input type="number" id="shift-counted-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01">
+                    <input type="number" id="shift-counted-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Nota (opcional)</label>
@@ -1853,7 +1853,7 @@
                     </div>
                     <div>
                         <label id="inv-cost-label" class="block text-xs font-medium text-gray-600 mb-1">Costo ($)</label>
-                        <input type="number" id="inv-cost" class="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" required oninput="onInvCostInput()" onkeydown="handleInvCostKeydown(event)">
+                        <input type="number" id="inv-cost" class="w-full border rounded-lg px-3 py-2 text-sm" step="any" required oninput="onInvCostInput()" onkeydown="handleInvCostKeydown(event)">
                         <p id="inv-cost-hint" class="text-xs text-gray-500 mt-1"></p>
                         <label class="flex items-center gap-2 mt-1 cursor-pointer">
                             <input type="checkbox" id="inv-vat" onchange="toggleInvVat()">
@@ -1867,7 +1867,7 @@
                     </div>
                     <div id="inv-total-cost-cell">
                         <label class="block text-xs font-medium text-gray-600 mb-1">Costo total de la compra ($)</label>
-                        <input type="number" id="inv-total-cost" class="w-full border rounded-lg px-3 py-2 text-sm font-bold" step="0.01" min="0" placeholder="0" oninput="onInvTotalCostInput()">
+                        <input type="number" id="inv-total-cost" class="w-full border rounded-lg px-3 py-2 text-sm font-bold" step="any" min="0" placeholder="0" oninput="onInvTotalCostInput()">
                         <p id="inv-total-cost-hint" class="text-xs text-gray-500 mt-1">Escribí el total y calcula el costo por unidad (o al revés)</p>
                     </div>
                     <!-- Unidades como en Cargar factura: bultos / displays / sueltas -->
@@ -1918,7 +1918,7 @@
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1">Precio venta ($)</label>
-                        <input type="number" id="inv-price" class="w-full border rounded-lg px-3 py-2 text-sm font-bold text-green-700" step="0.01" oninput="calculateInventoryMargin()" onkeydown="if(event.key==='Enter'){event.preventDefault();preparePurchase();}">
+                        <input type="number" id="inv-price" class="w-full border rounded-lg px-3 py-2 text-sm font-bold text-green-700" step="any" oninput="calculateInventoryMargin()" onkeydown="if(event.key==='Enter'){event.preventDefault();preparePurchase();}">
                     </div>
                     <!-- Sección Producto Compuesto / Receta -->
                     <div class="lg:col-span-4 bg-orange-50 rounded-xl p-4 border border-orange-200">
@@ -1934,7 +1934,7 @@
                                     <input type="hidden" id="inv-component-selected-id">
                                     <div id="inv-component-results" class="absolute z-20 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto hidden"></div>
                                 </div>
-                                <input type="number" id="inv-component-qty" class="w-24 border rounded-lg px-3 py-2 text-sm" placeholder="Cant" min="0.01" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();addInvComponent();}">
+                                <input type="number" id="inv-component-qty" class="w-24 border rounded-lg px-3 py-2 text-sm" placeholder="Cant" min="0.01" step="any" onkeydown="if(event.key==='Enter'){event.preventDefault();addInvComponent();}">
                                 <button type="button" onclick="addInvComponent()" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-bold">+</button>
                             </div>
                             <div id="inv-components-list" class="space-y-1"></div>
@@ -2879,7 +2879,7 @@
                     </div>
                     <div>
                         <label class="block text-xs text-gray-600 mb-1">Monto</label>
-                        <input type="number" id="sp-amount" min="0" step="0.01" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0">
+                        <input type="number" id="sp-amount" min="0" step="any" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0">
                     </div>
                     <div>
                         <label class="block text-xs text-gray-600 mb-1">Fecha de pago</label>
@@ -2945,7 +2945,7 @@
                         <label class="text-xs font-bold text-gray-500 uppercase block mb-1">Ingreso diario estimado</label>
                         <div class="flex items-center gap-2">
                             <span class="text-gray-500 text-sm">$</span>
-                            <input type="number" id="cfp-estimated-income" class="border-2 border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full" placeholder="Promedio histórico" step="0.01" min="0" onchange="saveCashFlowEstimatedIncome()">
+                            <input type="number" id="cfp-estimated-income" class="border-2 border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full" placeholder="Promedio histórico" step="any" min="0" onchange="saveCashFlowEstimatedIncome()">
                             <button onclick="resetCashFlowEstimatedIncome()" class="text-xs text-blue-600 hover:text-blue-800 font-bold" title="Usar promedio histórico">Auto</button>
                         </div>
                     </div>
@@ -2953,7 +2953,7 @@
                         <label class="text-xs font-bold text-gray-500 uppercase block mb-1">Alerta si saldo baja de</label>
                         <div class="flex items-center gap-2">
                             <span class="text-gray-500 text-sm">$</span>
-                            <input type="number" id="cfp-low-threshold" class="border-2 border-gray-200 rounded-lg px-3 py-1.5 text-sm w-32" placeholder="0" step="0.01" min="0" onchange="saveCashFlowLowThreshold()">
+                            <input type="number" id="cfp-low-threshold" class="border-2 border-gray-200 rounded-lg px-3 py-1.5 text-sm w-32" placeholder="0" step="any" min="0" onchange="saveCashFlowLowThreshold()">
                         </div>
                     </div>
                 </div>
@@ -3354,21 +3354,21 @@
                             <label class="block text-sm font-medium text-gray-700 mb-2">💵 Dinero en Caja</label>
                             <div class="relative">
                                 <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">$</span>
-                                <input type="number" id="settings-cash" class="w-full border-2 border-green-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('settings-bank').focus();}">
+                                <input type="number" id="settings-cash" class="w-full border-2 border-green-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="any" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('settings-bank').focus();}">
                             </div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">🏦 Dinero en Cuenta</label>
                             <div class="relative">
                                 <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">$</span>
-                                <input type="number" id="settings-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('settings-reserve').focus();}">
+                                <input type="number" id="settings-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="any" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('settings-reserve').focus();}">
                             </div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">🔐 Reserva (caja fuerte)</label>
                             <div class="relative">
                                 <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">$</span>
-                                <input type="number" id="settings-reserve" class="w-full border-2 border-amber-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('settings-initial-capital').focus();}">
+                                <input type="number" id="settings-reserve" class="w-full border-2 border-amber-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="any" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('settings-initial-capital').focus();}">
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Plata guardada fuera de la caja de cambio.</p>
                         </div>
@@ -3376,7 +3376,7 @@
                             <label class="block text-sm font-medium text-gray-700 mb-2">🔥 Capital Inicial (plata que pusiste para empezar)</label>
                             <div class="relative">
                                 <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">$</span>
-                                <input type="number" id="settings-initial-capital" class="w-full border-2 border-orange-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();saveBalancesFromSettings();}">
+                                <input type="number" id="settings-initial-capital" class="w-full border-2 border-orange-200 rounded-xl px-4 py-3 text-2xl font-bold text-center pl-10" value="0" min="0" step="any" onkeydown="if(event.key==='Enter'){event.preventDefault();saveBalancesFromSettings();}">
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Este valor se usa para calcular la ganancia neta y el ROI.</p>
                         </div>
@@ -3566,7 +3566,7 @@
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Facturado fuera de la app ($/año)</label>
-                                <input type="number" id="arca-facturado-previo" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0" min="0" step="0.01">
+                                <input type="number" id="arca-facturado-previo" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0" min="0" step="any">
                             </div>
                         </div>
                         <div id="arca-status" class="mt-1"></div>
@@ -3603,7 +3603,7 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Comisión de la tarjeta por venta (%)</label>
                             <div class="relative">
-                                <input type="number" id="settings-debit-fee" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center" value="0" min="0" max="99" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();saveDebitFeeFromSettings();}">
+                                <input type="number" id="settings-debit-fee" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center" value="0" min="0" max="99" step="any" onkeydown="if(event.key==='Enter'){event.preventDefault();saveDebitFeeFromSettings();}">
                                 <span class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold">%</span>
                             </div>
                             <p class="text-xs text-gray-500 mt-2">Al cobrar con Débito, este % se descuenta antes de acreditar el resto a la Cuenta. Transferencia no tiene comisión. Cambiarlo no modifica ventas ya hechas.</p>
@@ -4131,7 +4131,7 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Precio del pack ($)</label>
-                            <input type="number" id="promo-pack-price" class="w-full border rounded-lg px-3 py-2" placeholder="3000" min="0" step="0.01" oninput="updatePromoMarginPreview()">
+                            <input type="number" id="promo-pack-price" class="w-full border rounded-lg px-3 py-2" placeholder="3000" min="0" step="any" oninput="updatePromoMarginPreview()">
                         </div>
                     </div>
                 </div>
@@ -4139,7 +4139,7 @@
                 <div id="promo-bundle-config" class="hidden bg-gray-50 rounded-xl p-4 space-y-3">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Precio total del combo ($)</label>
-                        <input type="number" id="promo-bundle-price" class="w-full border rounded-lg px-3 py-2" placeholder="4500" min="0" step="0.01" oninput="updatePromoMarginPreview()">
+                        <input type="number" id="promo-bundle-price" class="w-full border rounded-lg px-3 py-2" placeholder="4500" min="0" step="any" oninput="updatePromoMarginPreview()">
                         <p class="text-xs text-gray-500 mt-1">Cuando todos los productos seleccionados estén en el carrito, se cobrará este precio total.</p>
                     </div>
                 </div>
@@ -12725,10 +12725,10 @@
                     </td>
                     <td class="px-3 py-2">${batchesHtml}</td>
                     <td class="px-3 py-2 text-sm text-right text-gray-600">
-                        ${inventoryEditField === 'cost' && !isComposite ? `<input type="number" min="0" step="0.01" value="${displayCost}" class="w-20 border rounded px-1 py-0.5 text-right" onchange="updateInventoryField('${p.id}', 'cost', this.value)">` : `$${formatMoney(displayCost)}`}
+                        ${inventoryEditField === 'cost' && !isComposite ? `<input type="number" min="0" step="any" value="${displayCost}" class="w-20 border rounded px-1 py-0.5 text-right" onchange="updateInventoryField('${p.id}', 'cost', this.value)">` : `$${formatMoney(displayCost)}`}
                     </td>
                     <td class="px-3 py-2 text-sm text-right font-bold text-green-600">
-                        ${inventoryEditField === 'salePrice' ? `<input type="number" min="0" step="0.01" value="${displayPrice}" class="w-20 border rounded px-1 py-0.5 text-right font-bold text-green-600" onchange="updateInventoryField('${p.id}', 'salePrice', this.value)">` : `$${formatMoney(displayPrice)}`}
+                        ${inventoryEditField === 'salePrice' ? `<input type="number" min="0" step="any" value="${displayPrice}" class="w-20 border rounded px-1 py-0.5 text-right font-bold text-green-600" onchange="updateInventoryField('${p.id}', 'salePrice', this.value)">` : `$${formatMoney(displayPrice)}`}
                     </td>
                     <td class="px-3 py-2 text-sm text-right font-bold ${marginColor}">$${formatMoney(gananciaPesos)}</td>
                     <td class="px-3 py-2 text-sm text-right font-bold ${marginColor}">${marginText}</td>
@@ -14486,7 +14486,7 @@
                 </div>
                 <div class="flex justify-end items-center gap-2 mt-2">
                     <label class="text-xs text-gray-500">Precio que pagué:</label>
-                    <input type="number" min="0" step="0.01" value="${paid != null ? paid : ''}" placeholder="$${formatMoney(totalConIva)}" class="w-28 border rounded-lg px-2 py-1 text-sm text-right" onchange="updateScanInvoicePaidAmount(this.value)">
+                    <input type="number" min="0" step="any" value="${paid != null ? paid : ''}" placeholder="$${formatMoney(totalConIva)}" class="w-28 border rounded-lg px-2 py-1 text-sm text-right" onchange="updateScanInvoicePaidAmount(this.value)">
                     ${diff != null && Math.abs(diff) > 0.01 ? `<span class="text-xs font-bold ${diff > 0 ? 'text-orange-600' : 'text-red-600'}">${diff > 0 ? '+' : ''}$${formatMoney(diff)} ${diff > 0 ? 'de más' : 'de menos'}</span>` : (diff != null ? `<span class="text-xs font-bold text-green-600">✓ coincide</span>` : '')}
                 </div>
             </div>`;
@@ -14639,7 +14639,7 @@
                     </td>
                     <td class="px-1 py-1 align-top">
                         <label class="block text-[8px] text-gray-400 uppercase">Costo total</label>
-                        <input type="number" min="0" step="0.01" value="${totalCost || ''}" class="w-20 border rounded px-1 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'totalCost', this.value)" onchange="updateScanStockWeightField('${item.localId}', 'totalCost', this.value)">
+                        <input type="number" min="0" step="any" value="${totalCost || ''}" class="w-20 border rounded px-1 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'totalCost', this.value)" onchange="updateScanStockWeightField('${item.localId}', 'totalCost', this.value)">
                     </td>
                     <td class="px-1 py-1 align-top">
                         <label class="block text-[8px] text-gray-400 uppercase">$/gramo</label>
@@ -14647,7 +14647,7 @@
                     </td>
                     <td class="px-1 py-1 align-top">
                         <label class="block text-[8px] text-gray-400 uppercase">Precio (${matchedProduct.weightPerUnit}g)</label>
-                        <input type="number" min="0" step="0.01" placeholder="${currentSalePrice.toFixed(2)}" value="${item.newPrice || ''}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanItemNewPrice('${item.localId}', this.value)">
+                        <input type="number" min="0" step="any" placeholder="${currentSalePrice.toFixed(2)}" value="${item.newPrice || ''}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanItemNewPrice('${item.localId}', this.value)">
                     </td>
                     <td class="px-1 py-1 align-top"><input type="number" step="0.1" value="${marginPct != null ? marginPct.toFixed(1) : ''}" class="w-16 border rounded px-1 py-1 text-center" onchange="updateScanItemMarginPercent('${item.localId}', this.value)"></td>
                     <td class="px-1 py-1 align-top"><input type="date" value="${item.expiry || ''}" class="w-32 border rounded px-1 py-1" onchange="updateScanItemExpiry('${item.localId}', this.value)"></td>
@@ -14676,16 +14676,16 @@
             <tr class="border-t ${!item.productId ? 'bg-orange-50' : ''}">
                 ${selectCell}
                 ${productCell}
-                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.bultos || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" oninput="scanStockQtyQuietSync('${item.localId}', 'bultos', this.value)" onchange="updateScanStockQtyField('${item.localId}', 'bultos', this.value)"></td>
-                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.displaysQty || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" oninput="scanStockQtyQuietSync('${item.localId}', 'displaysQty', this.value)" onchange="updateScanStockQtyField('${item.localId}', 'displaysQty', this.value)"></td>
-                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" value="${item.unidadesSueltas || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" oninput="scanStockQtyQuietSync('${item.localId}', 'unidadesSueltas', this.value)" onchange="updateScanStockQtyField('${item.localId}', 'unidadesSueltas', this.value)">${factorsHint}</td>
+                <td class="px-1 py-1 align-top"><input type="number" min="0" step="any" value="${item.bultos || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" oninput="scanStockQtyQuietSync('${item.localId}', 'bultos', this.value)" onchange="updateScanStockQtyField('${item.localId}', 'bultos', this.value)"></td>
+                <td class="px-1 py-1 align-top"><input type="number" min="0" step="any" value="${item.displaysQty || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" oninput="scanStockQtyQuietSync('${item.localId}', 'displaysQty', this.value)" onchange="updateScanStockQtyField('${item.localId}', 'displaysQty', this.value)"></td>
+                <td class="px-1 py-1 align-top"><input type="number" min="0" step="any" value="${item.unidadesSueltas || ''}" placeholder="0" class="w-14 border rounded px-1 py-1 text-center" oninput="scanStockQtyQuietSync('${item.localId}', 'unidadesSueltas', this.value)" onchange="updateScanStockQtyField('${item.localId}', 'unidadesSueltas', this.value)">${factorsHint}</td>
                 <td class="px-1 py-1 align-top"><input type="number" id="scanstock-totalunid-${item.localId}" value="${totalUnidades}" readonly class="w-14 border rounded px-1 py-1 text-center bg-gray-50 text-gray-500"></td>
                 <td class="px-1 py-1 align-top">
-                    <input type="number" min="0" step="0.01" value="${totalPrice}" class="w-20 border rounded px-1 py-1 text-center" oninput="scanStockTotalPriceQuietSync('${item.localId}', this.value)" onchange="updateScanStockTotalPrice('${item.localId}', this.value)">
+                    <input type="number" min="0" step="any" value="${totalPrice}" class="w-20 border rounded px-1 py-1 text-center" oninput="scanStockTotalPriceQuietSync('${item.localId}', this.value)" onchange="updateScanStockTotalPrice('${item.localId}', this.value)">
                     ${totalUnidades > 0 ? `<p class="text-[8px] text-gray-400 mt-0.5 leading-tight">De las ${totalUnidades} u. juntas (si lo cambiás, se recalcula el unitario solo)</p>` : ''}
                 </td>
-                <td class="px-1 py-1 align-top"><input type="number" id="scanstock-unitprice-${item.localId}" min="0" step="0.01" value="${(item.unitPrice || 0).toFixed(2)}" class="w-20 border rounded px-1 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'unitPrice', this.value)" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)"></td>
-                <td class="px-1 py-1 align-top"><input type="number" min="0" step="0.01" placeholder="${currentSalePrice.toFixed(2)}" value="${item.newPrice || ''}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanItemNewPrice('${item.localId}', this.value)"></td>
+                <td class="px-1 py-1 align-top"><input type="number" id="scanstock-unitprice-${item.localId}" min="0" step="any" value="${(item.unitPrice || 0).toFixed(2)}" class="w-20 border rounded px-1 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'unitPrice', this.value)" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)"></td>
+                <td class="px-1 py-1 align-top"><input type="number" min="0" step="any" placeholder="${currentSalePrice.toFixed(2)}" value="${item.newPrice || ''}" class="w-20 border rounded px-1 py-1 text-center" onchange="updateScanItemNewPrice('${item.localId}', this.value)"></td>
                 <td class="px-1 py-1 align-top"><input type="number" id="scanstock-margin-${item.localId}" step="0.1" value="${marginPct != null ? marginPct.toFixed(1) : ''}" class="w-16 border rounded px-1 py-1 text-center" onchange="updateScanItemMarginPercent('${item.localId}', this.value)"></td>
                 <td class="px-1 py-1 align-top"><input type="date" value="${item.expiry || ''}" class="w-32 border rounded px-1 py-1" onchange="updateScanItemExpiry('${item.localId}', this.value)"></td>
                 <td class="px-1 py-1 align-top whitespace-nowrap">
@@ -14949,7 +14949,7 @@
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-blue-500 uppercase">Costo total</label>
-                        <input type="number" min="0" step="0.01" value="${item.totalCost || ''}" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'totalCost', this.value)" onchange="updateScanItemWeightField('${item.localId}', 'totalCost', this.value)">
+                        <input type="number" min="0" step="any" value="${item.totalCost || ''}" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'totalCost', this.value)" onchange="updateScanItemWeightField('${item.localId}', 'totalCost', this.value)">
                     </div>
                 </div>
                 <p class="text-[10px] text-blue-500 px-0.5">El stock se maneja en bolsas, pero en ventas se vende suelto: por gramos o por precio.</p>
@@ -14967,15 +14967,15 @@
                 <div class="flex gap-1.5 items-end mt-1">
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Bultos</label>
-                        <input type="number" min="0" step="0.01" value="${item.bultos || ''}" placeholder="0" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanNewQtyQuietSync('${item.localId}', 'bultos', this.value)" onchange="updateScanNewQtyField('${item.localId}', 'bultos', this.value)">
+                        <input type="number" min="0" step="any" value="${item.bultos || ''}" placeholder="0" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanNewQtyQuietSync('${item.localId}', 'bultos', this.value)" onchange="updateScanNewQtyField('${item.localId}', 'bultos', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Displays</label>
-                        <input type="number" min="0" step="0.01" value="${item.displaysQty || ''}" placeholder="0" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanNewQtyQuietSync('${item.localId}', 'displaysQty', this.value)" onchange="updateScanNewQtyField('${item.localId}', 'displaysQty', this.value)">
+                        <input type="number" min="0" step="any" value="${item.displaysQty || ''}" placeholder="0" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanNewQtyQuietSync('${item.localId}', 'displaysQty', this.value)" onchange="updateScanNewQtyField('${item.localId}', 'displaysQty', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Unidades sueltas</label>
-                        <input type="number" min="0" step="0.01" value="${item.unidadesSueltas || ''}" placeholder="0" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanNewQtyQuietSync('${item.localId}', 'unidadesSueltas', this.value)" onchange="updateScanNewQtyField('${item.localId}', 'unidadesSueltas', this.value)">
+                        <input type="number" min="0" step="any" value="${item.unidadesSueltas || ''}" placeholder="0" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanNewQtyQuietSync('${item.localId}', 'unidadesSueltas', this.value)" onchange="updateScanNewQtyField('${item.localId}', 'unidadesSueltas', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Total unid.</label>
@@ -14996,11 +14996,11 @@
                 <div class="flex gap-1.5 items-end mt-1">
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Precio unit.</label>
-                        <input type="number" min="0" step="0.01" value="${(item.unitPrice || 0).toFixed(2)}" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'unitPrice', this.value)" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)">
+                        <input type="number" min="0" step="any" value="${(item.unitPrice || 0).toFixed(2)}" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanItemQuietSync('${item.localId}', 'unitPrice', this.value)" onchange="updateScanItemField('${item.localId}', 'unitPrice', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Precio total</label>
-                        <input type="number" min="0" step="0.01" value="${totalPrice}" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanItemTotalPriceQuietSync('${item.localId}', this.value)" onchange="updateScanItemTotalPrice('${item.localId}', this.value)">
+                        <input type="number" min="0" step="any" value="${totalPrice}" class="w-full border rounded-lg px-2 py-1 text-center" oninput="scanItemTotalPriceQuietSync('${item.localId}', this.value)" onchange="updateScanItemTotalPrice('${item.localId}', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Vencim.</label>
@@ -15011,7 +15011,7 @@
                 <div class="flex gap-1.5 items-end mt-1">
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Precio venta${isWeightMode ? ' (por bolsa)' : ''}</label>
-                        <input type="number" min="0" step="0.01" value="${item.newPrice || ''}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemNewPrice('${item.localId}', this.value)">
+                        <input type="number" min="0" step="any" value="${item.newPrice || ''}" class="w-full border rounded-lg px-2 py-1 text-center" onchange="updateScanItemNewPrice('${item.localId}', this.value)">
                     </div>
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Margen %</label>
@@ -15042,7 +15042,7 @@
                 <div class="flex gap-2 items-end">
                     <div class="flex-1">
                         <label class="block text-[10px] text-gray-400 uppercase">Monto total del gasto</label>
-                        <input type="number" min="0" step="0.01" id="scanitem-expense-${item.localId}" value="${total}" class="w-full border rounded-lg px-2 py-1 text-center">
+                        <input type="number" min="0" step="any" id="scanitem-expense-${item.localId}" value="${total}" class="w-full border rounded-lg px-2 py-1 text-center">
                     </div>
                     <button onclick="confirmScanItemAsExpense('${item.localId}')" class="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg font-bold text-sm shrink-0">Registrar Gasto</button>
                 </div>
@@ -15740,7 +15740,7 @@
                     </div>
                     <div class="flex-1">
                         <label class="text-xs text-gray-500">${isWeight ? 'Costo de compra' : 'Costo unitario'}</label>
-                        <input type="number" class="edit-batch-cost w-full border rounded px-2 py-1 text-sm" value="${totalCost.toFixed(2)}" min="0" step="0.01">
+                        <input type="number" class="edit-batch-cost w-full border rounded px-2 py-1 text-sm" value="${totalCost.toFixed(2)}" min="0" step="any">
                         ${isWeight ? `<p class="text-xs text-blue-600 mt-0.5">Costo: $${formatMoney(costPerGram)}/g • $${formatMoney(unitCost)} por ${product.weightPerUnit}g</p>` : ''}
                     </div>
                     <div class="flex-1">
@@ -15800,7 +15800,7 @@
                 </div>
                 <div class="flex-1">
                     <label class="text-xs text-gray-500">${isWeight ? 'Costo de compra' : 'Costo unitario'}</label>
-                    <input type="number" class="edit-batch-cost w-full border rounded px-2 py-1 text-sm" value="${defaultTotalCost.toFixed(2)}" min="0" step="0.01">
+                    <input type="number" class="edit-batch-cost w-full border rounded px-2 py-1 text-sm" value="${defaultTotalCost.toFixed(2)}" min="0" step="any">
                     ${isWeight ? `<p class="text-xs text-blue-600 mt-0.5">Costo: $${formatMoney(defaultCostPerGram)}/g • $${formatMoney(product.cost || 0)} por ${product.weightPerUnit}g</p>` : ''}
                 </div>
                 <div class="flex-1">
@@ -19129,7 +19129,7 @@
                                 '<label class="text-gray-600" for="emp-dni-' + emp.id + '">DNI</label>' +
                                 '<input id="emp-dni-' + emp.id + '" type="text" inputmode="numeric" value="' + escapeHtml(emp.dni || '') + '" placeholder="para fichar" class="w-28 border rounded-lg px-2 py-1" onchange="setEmployeeDni(\'' + emp.id + '\', this.value)">' +
                                 '<label class="text-gray-600" for="emp-rate-' + emp.id + '">Precio por hora $</label>' +
-                                '<input id="emp-rate-' + emp.id + '" type="number" min="0" step="0.01" value="' + (rate || '') + '" placeholder="0" class="w-24 border rounded-lg px-2 py-1 text-right" onchange="setEmployeeHourlyRate(\'' + emp.id + '\', this.value)">' +
+                                '<input id="emp-rate-' + emp.id + '" type="number" min="0" step="any" value="' + (rate || '') + '" placeholder="0" class="w-24 border rounded-lg px-2 py-1 text-right" onchange="setEmployeeHourlyRate(\'' + emp.id + '\', this.value)">' +
                                 ('<select onchange="setEmployeePaySource(\'' + emp.id + '\', this.value)" class="border rounded-lg px-2 py-1 bg-white" title="De dónde se le paga"><option value="cash"' + (emp.paySource !== 'bank' ? ' selected' : '') + '>💵 Se paga de Caja</option><option value="bank"' + (emp.paySource === 'bank' ? ' selected' : '') + '>🏦 Se paga de Cuenta</option></select>') +
                             '</div>' +
                         '</div>' +
@@ -25524,7 +25524,7 @@ Total de productos a comprar: ${shoppingList.length}
                     <input type="number" min="0" step="${row.bulkOnly && row.bulkPackSize > 0 ? row.bulkPackSize : 1}" value="${row.qty}" class="w-20 border rounded-lg px-2 py-1 text-center" onchange="updateWholesaleRow('${row.productId}', 'qty', this.value)">
                 </td>
                 <td class="px-3 py-2 text-center">
-                    <input type="number" min="0" step="0.01" value="${row.cost}" class="w-24 border rounded-lg px-2 py-1 text-center" onchange="updateWholesaleRow('${row.productId}', 'cost', this.value)">
+                    <input type="number" min="0" step="any" value="${row.cost}" class="w-24 border rounded-lg px-2 py-1 text-center" onchange="updateWholesaleRow('${row.productId}', 'cost', this.value)">
                 </td>
                 <td class="px-3 py-2 text-center">
                     <input type="date" value="${row.expiry}" class="border rounded-lg px-2 py-1" onchange="updateWholesaleRow('${row.productId}', 'expiry', this.value)">
@@ -26013,7 +26013,7 @@ Total de productos a comprar: ${shoppingList.length}
                 </div>
                 <div>
                     <label class="block text-[10px] text-gray-400 uppercase">Costo unit.</label>
-                    <input type="number" min="0" step="0.01" value="${item.cost}" class="w-24 border rounded-lg px-2 py-1 text-center" onchange="updatePurchaseReviewField('${item.id}', 'cost', this.value)">
+                    <input type="number" min="0" step="any" value="${item.cost}" class="w-24 border rounded-lg px-2 py-1 text-center" onchange="updatePurchaseReviewField('${item.id}', 'cost', this.value)">
                 </div>
                 <div>
                     <label class="block text-[10px] text-gray-400 uppercase">Vencimiento</label>
@@ -32246,11 +32246,11 @@ RESULTADOS:
                 <p class="text-sm text-gray-600 mb-2">Registrar apertura</p>
                 <div class="mb-3">
                     <label class="block text-sm font-medium text-gray-700 mb-2">💵 Monto en caja (efectivo)</label>
-                    <input type="number" id="cash-count-opening" class="w-full border-2 border-green-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01">
+                    <input type="number" id="cash-count-opening" class="w-full border-2 border-green-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any">
                 </div>
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-2">🏦 Monto en cuenta (banco)</label>
-                    <input type="number" id="cash-count-opening-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01">
+                    <input type="number" id="cash-count-opening-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any">
                 </div>
                 <button onclick="saveCashOpening()" class="w-full bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700">Guardar Apertura</button>
                 <button onclick="closeCashCountModal()" class="w-full bg-gray-200 text-gray-700 py-2 rounded-xl font-bold mt-2 hover:bg-gray-300">Cancelar</button>
@@ -32284,11 +32284,11 @@ RESULTADOS:
                 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">💵 Monto real en caja (contado)</label>
-                    <input type="number" id="cash-count-closing" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" oninput="updateCashDifference()">
+                    <input type="number" id="cash-count-closing" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any" oninput="updateCashDifference()">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">🏦 Monto real en cuenta (banco)</label>
-                    <input type="number" id="cash-count-closing-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" oninput="updateCashDifference()">
+                    <input type="number" id="cash-count-closing-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any" oninput="updateCashDifference()">
                 </div>
                 
                 <div id="cash-count-diff-box" class="p-3 rounded-lg text-center font-bold hidden">
@@ -32334,7 +32334,7 @@ RESULTADOS:
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Monto ($)</label>
-                    <input type="number" id="manual-sale-amount" class="w-full border-2 border-green-200 rounded-xl px-4 py-2 text-xl font-bold text-center" placeholder="0" min="0.01" step="0.01">
+                    <input type="number" id="manual-sale-amount" class="w-full border-2 border-green-200 rounded-xl px-4 py-2 text-xl font-bold text-center" placeholder="0" min="0.01" step="any">
                 </div>
                 <div class="flex gap-2">
                     <button onclick="closeManualSaleModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
@@ -32408,7 +32408,7 @@ RESULTADOS:
                 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1" id="weight-sale-input-label">Gramos a vender</label>
-                    <input type="number" id="weight-sale-input" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center" placeholder="0" min="0.01" step="0.01" oninput="onWeightSaleInput()" onkeydown="if(event.key==='Enter'){event.preventDefault();addWeightToCart();}">
+                    <input type="number" id="weight-sale-input" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-2xl font-bold text-center" placeholder="0" min="0.01" step="any" oninput="onWeightSaleInput()" onkeydown="if(event.key==='Enter'){event.preventDefault();addWeightToCart();}">
                 </div>
                 
                 <div class="bg-green-50 rounded-xl p-4 text-center">
@@ -32515,7 +32515,7 @@ RESULTADOS:
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Monto ($)</label>
-                        <input type="number" id="rec-expense-amount" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm font-bold" placeholder="0" min="0.01" step="0.01">
+                        <input type="number" id="rec-expense-amount" class="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm font-bold" placeholder="0" min="0.01" step="any">
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Frecuencia</label>
@@ -32632,7 +32632,7 @@ RESULTADOS:
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Monto ($)</label>
-                    <input type="number" id="expense-amount" class="w-full border-2 border-red-200 rounded-xl px-4 py-2 text-xl font-bold text-center" placeholder="0" min="0.01" step="0.01">
+                    <input type="number" id="expense-amount" class="w-full border-2 border-red-200 rounded-xl px-4 py-2 text-xl font-bold text-center" placeholder="0" min="0.01" step="any">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Fuente</label>
@@ -32702,7 +32702,7 @@ RESULTADOS:
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Costo total</label>
-                    <input type="number" min="0" step="0.01" id="asset-total-cost" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0">
+                    <input type="number" min="0" step="any" id="asset-total-cost" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
@@ -32714,7 +32714,7 @@ RESULTADOS:
                         Ya pagué algo ahora
                     </label>
                     <div id="asset-initial-payment-section" class="hidden space-y-2 mt-2">
-                        <input type="number" min="0" step="0.01" id="asset-initial-payment" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Monto pagado ahora">
+                        <input type="number" min="0" step="any" id="asset-initial-payment" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Monto pagado ahora">
                         <div class="flex gap-2">
                             <button type="button" onclick="setAssetPaymentSource('cash')" id="btn-asset-source-cash" class="flex-1 py-2 rounded-lg border-2 text-xs font-bold">💵 Caja</button>
                             <button type="button" onclick="setAssetPaymentSource('bank')" id="btn-asset-source-bank" class="flex-1 py-2 rounded-lg border-2 text-xs font-bold">🏦 Cuenta</button>
@@ -32736,7 +32736,7 @@ RESULTADOS:
             <div class="space-y-3">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Monto</label>
-                    <input type="number" min="0" step="0.01" id="asset-payment-amount" class="w-full border rounded-lg px-3 py-2 text-sm">
+                    <input type="number" min="0" step="any" id="asset-payment-amount" class="w-full border rounded-lg px-3 py-2 text-sm">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">¿De dónde sale?</label>
@@ -32760,7 +32760,7 @@ RESULTADOS:
             <div class="space-y-3">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">¿Por cuánto lo vendiste?</label>
-                    <input type="number" min="0" step="0.01" id="asset-sell-amount" class="w-full border rounded-lg px-3 py-2 text-sm">
+                    <input type="number" min="0" step="any" id="asset-sell-amount" class="w-full border rounded-lg px-3 py-2 text-sm">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">¿A dónde entra la plata?</label>
@@ -33098,7 +33098,7 @@ RESULTADOS:
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Costo estimado (opcional)</label>
-                    <input type="number" id="found-stock-cost" class="w-full border-2 border-green-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" oninput="updateFoundStockCost()">
+                    <input type="number" id="found-stock-cost" class="w-full border-2 border-green-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any" oninput="updateFoundStockCost()">
                     <p class="text-xs text-gray-500 mt-1">Si el producto tiene valor, ingresalo para reflejarlo en el balance</p>
                 </div>
                 <div>
@@ -33169,7 +33169,7 @@ RESULTADOS:
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Costo unitario ($)</label>
-                    <input type="number" id="reconcile-fs-cost" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-lg font-bold text-center" min="0" step="0.01" oninput="onReconcileFsCostInput()">
+                    <input type="number" id="reconcile-fs-cost" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-lg font-bold text-center" min="0" step="any" oninput="onReconcileFsCostInput()">
                     <label class="flex items-center gap-2 mt-1 cursor-pointer">
                         <input type="checkbox" id="reconcile-fs-vat" onchange="toggleReconcileFsVat()">
                         <span class="text-xs text-gray-600">💰 + IVA 21%</span>
@@ -33184,7 +33184,7 @@ RESULTADOS:
                     <label class="block text-sm font-bold text-orange-800 mb-2"><i class="fas fa-tag mr-1"></i> Nuevo Precio de Venta (Opcional)</label>
                     <div class="flex items-center gap-2">
                         <span class="text-orange-600 font-bold">$</span>
-                        <input type="number" id="reconcile-fs-new-price" class="flex-1 border-2 border-orange-300 rounded-lg px-3 py-2 font-bold text-lg" placeholder="Precio actual" step="0.01" oninput="updateReconcileFsTotals()">
+                        <input type="number" id="reconcile-fs-new-price" class="flex-1 border-2 border-orange-300 rounded-lg px-3 py-2 font-bold text-lg" placeholder="Precio actual" step="any" oninput="updateReconcileFsTotals()">
                     </div>
                     <div class="mt-2">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Margen de ganancia (%)</label>
@@ -33291,7 +33291,7 @@ RESULTADOS:
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Monto a devolver</label>
-                    <input type="number" id="return-amount" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="0.01" onkeydown="if(event.key==='Enter'){event.preventDefault();saveReturn();}">
+                    <input type="number" id="return-amount" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any" onkeydown="if(event.key==='Enter'){event.preventDefault();saveReturn();}">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Motivo</label>

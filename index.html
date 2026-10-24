@@ -8,6 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <!-- PWA -->
@@ -3575,8 +3576,14 @@
                         <hr class="border-gray-200">
 
                         <div>
-                            <p class="text-sm font-medium text-gray-700 mb-2">Datos del emisor (salen en la factura impresa)</p>
+                            <p class="text-sm font-medium text-gray-700 mb-2">Datos del negocio y del emisor (salen en el ticket y en la factura impresa)</p>
                             <div class="space-y-2">
+                                <input type="text" id="arca-emisor-fantasia" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Nombre del negocio en el ticket (ej: KIOSCO 47)">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <input type="text" id="arca-emisor-telefono" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Teléfono / WhatsApp">
+                                    <input type="text" id="arca-emisor-web" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Instagram o web">
+                                </div>
+                                <input type="text" id="arca-ticket-pie" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Mensaje al pie del ticket (¡Gracias por su compra!)">
                                 <input type="text" id="arca-emisor-nombre" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Razón social / Nombre y apellido">
                                 <input type="text" id="arca-emisor-domicilio" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Domicilio comercial">
                                 <div class="grid grid-cols-2 gap-2">
@@ -4848,12 +4855,10 @@
             // Inventory form handler
             const invForm = document.getElementById('add-inventory-form');
             if (invForm) {
-                invForm.addEventListener('submit', function(e) {
-                    e.preventDefault();
-                    console.log('Form submit detected, calling preparePurchase');
-                    preparePurchase();
-                });
-                console.log('Inventory form handler attached');
+                // El submit ya lo maneja el onsubmit del <form> (llama a preparePurchase).
+                // NO agregar otro listener de submit acá: se llamaba dos veces, la primera
+                // guardaba y limpiaba el formulario y la segunda tiraba "Ingresa el nombre
+                // del producto".
                 
                 // Agregar navegación con Enter entre campos
                 const inputs = invForm.querySelectorAll('input, select, button[type="button"]');
@@ -9220,8 +9225,21 @@
         }
 
         function buildElectronTicketPayload(sale) {
+            const biz = getTicketBusinessInfo();
             const lines = [];
-            lines.push({ text: (sale.date || '') + ' ' + (sale.time || ''), align: 'center' });
+            if (biz.razonSocial) lines.push({ text: biz.razonSocial, align: 'center' });
+            if (biz.fiscal) lines.push({ text: 'CUIT: ' + biz.cuit, align: 'center' });
+            if (biz.domicilio) lines.push({ text: biz.domicilio, align: 'center' });
+            if (biz.telefono) lines.push({ text: 'Tel: ' + biz.telefono, align: 'center' });
+            if (biz.web) lines.push({ text: biz.web, align: 'center' });
+            if (biz.fiscal) {
+                lines.push({ text: 'IIBB: ' + biz.iibb + (biz.inicio ? ' - Inicio Act.: ' + biz.inicio : ''), align: 'center' });
+                lines.push({ text: 'Responsable Monotributo', align: 'center' });
+            }
+            if (biz.razonSocial || biz.fiscal || biz.domicilio || biz.telefono || biz.web) lines.push({ hr: true });
+            lines.push({ left: 'Fecha: ' + isoToDmy(sale.date || ''), right: sale.time || '' });
+            lines.push({ left: 'Ticket N°', right: saleTicketNumber(sale) });
+            if (sale.user) lines.push({ left: 'Atendió', right: String(sale.user) });
             lines.push({ hr: true });
 
             sale.items.forEach(item => {
@@ -9251,22 +9269,42 @@
                 lines.push({ text: 'PENDIENTE DE PAGO', align: 'center', bold: true });
             } else {
                 lines.push({ hr: true });
-                lines.push({ text: 'PAGO CON TARJETA/DÉBITO', align: 'center', bold: true });
+                lines.push({ left: 'Forma de pago', right: paymentMethodLabel(sale), bold: true });
             }
 
+            let hasValidFactura = false;
             saleFacturas(sale).forEach(f => {
+                const nc = (f.notaCredito && f.notaCredito.cae) ? f.notaCredito : null;
                 lines.push({ hr: true });
-                lines.push({ text: 'FACTURA ' + arcaCbteLetra(f.cbteTipo) + ' N° ' + String(f.ptoVta).padStart(4, '0') + '-' + String(f.cbteNro).padStart(8, '0'), align: 'center', bold: true });
-                lines.push({ text: 'Importe: $' + formatMoney(f.total !== undefined ? f.total : sale.total), align: 'center' });
-                lines.push({ text: 'CAE: ' + f.cae, align: 'center' });
-                lines.push({ text: 'Vto. CAE: ' + f.caeVencimiento, align: 'center' });
+                lines.push({ text: 'FACTURA ' + arcaCbteLetra(f.cbteTipo), align: 'center', bold: true, size: 'large' });
+                lines.push({ text: 'Cód. ' + String(f.cbteTipo).padStart(3, '0') + ' - ORIGINAL', align: 'center' });
+                lines.push({ left: 'P.V. ' + String(f.ptoVta).padStart(4, '0'), right: 'Nro ' + String(f.cbteNro).padStart(8, '0') });
+                lines.push({ left: 'Fecha emisión', right: isoToDmy(f.fecha || sale.date) });
+                lines.push({ text: 'A CONSUMIDOR FINAL', align: 'center' });
+                lines.push({ left: 'IMPORTE TOTAL', right: '$' + formatMoney(f.total !== undefined ? f.total : sale.total), bold: true });
+                if (nc) {
+                    lines.push({ text: 'ANULADA con Nota de Crédito', align: 'center', bold: true });
+                    lines.push({ text: 'N° ' + String(nc.ptoVta).padStart(4, '0') + '-' + String(nc.cbteNro).padStart(8, '0'), align: 'center' });
+                    return;
+                }
+                hasValidFactura = true;
+                lines.push({ text: 'Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)', align: 'left' });
+                lines.push({ left: 'CAE', right: String(f.cae) });
+                lines.push({ left: 'Vto. CAE', right: isoToDmy(f.caeVencimiento) });
+                const qrData = arcaQrData(sale, f);
+                const qrPng = qrPngDataUrl(qrData, 256);
+                lines.push({ qr: qrData, qrImage: qrPng ? qrPng.split(',')[1] : '', align: 'center' });
+                lines.push({ text: 'Comprobante Autorizado', align: 'center', bold: true });
+                lines.push({ text: 'Esta Administración Federal no se responsabiliza por los datos ingresados en el detalle de la operación', align: 'left' });
             });
 
             lines.push({ hr: true });
-            lines.push({ text: '¡Gracias por su compra!', align: 'center' });
+            if (!hasValidFactura) lines.push({ text: 'NO VÁLIDO COMO FACTURA', align: 'center', bold: true });
+            lines.push({ text: biz.pie, align: 'center' });
 
             return {
-                header: 'KIOSCO 47',
+                header: biz.fantasia,
+                mixedSizes: true,
                 lines: lines,
                 // Efectivo: abrir el cajón al imprimir el ticket de la venta
                 openDrawer: sale.paymentMethod === 'cash'
@@ -9312,30 +9350,56 @@
                 </div>
             ` : `
                 <hr>
-                <div style="text-align: center; font-weight: bold;">
-                    <span>PAGO CON TARJETA/DÉBITO</span>
+                <div style="display: flex; justify-content: space-between; font-weight: bold;">
+                    <span>Forma de pago</span>
+                    <span>${paymentMethodLabel(sale)}</span>
                 </div>
             `;
-            
+
+            const biz = getTicketBusinessInfo();
+            const bizHtml = [
+                biz.razonSocial ? `<div>${escapeHtml(biz.razonSocial)}</div>` : '',
+                biz.fiscal ? `<div>CUIT: ${escapeHtml(biz.cuit)}</div>` : '',
+                biz.domicilio ? `<div>${escapeHtml(biz.domicilio)}</div>` : '',
+                biz.telefono ? `<div>Tel: ${escapeHtml(biz.telefono)}</div>` : '',
+                biz.web ? `<div>${escapeHtml(biz.web)}</div>` : '',
+                biz.fiscal ? `<div>IIBB: ${escapeHtml(biz.iibb)}${biz.inicio ? ' - Inicio Act.: ' + biz.inicio : ''}</div><div>Responsable Monotributo</div>` : ''
+            ].join('');
+
             // Bloques de facturas emitidas (puede haber varias parciales)
-            const facturasHtml = saleFacturas(sale).map(f => `
+            let hasValidFactura = false;
+            const facturasHtml = saleFacturas(sale).map(f => {
+                const nc = (f.notaCredito && f.notaCredito.cae) ? f.notaCredito : null;
+                if (!nc) hasValidFactura = true;
+                return `
                 <hr>
-                <div style="text-align: center; font-size: 11px;">
-                    <p style="font-weight: bold;">FACTURA ${arcaCbteLetra(f.cbteTipo)} N° ${String(f.ptoVta).padStart(4, '0')}-${String(f.cbteNro).padStart(8, '0')}</p>
-                    <p>Importe: $${formatMoney(f.total !== undefined ? f.total : sale.total)}</p>
-                    <p>CAE: ${f.cae}</p>
-                    <p>Vto. CAE: ${f.caeVencimiento}</p>
-                    <img src="${arcaQrUrl(sale, f)}" width="120" height="120" style="margin: 5px auto; display: block;">
-                </div>
-            `).join('');
+                <div style="font-size: 11px;">
+                    <p style="text-align: center; font-weight: bold; font-size: 16px; margin: 4px 0 0;">FACTURA ${arcaCbteLetra(f.cbteTipo)}</p>
+                    <p style="text-align: center; margin: 0 0 4px;">Cód. ${String(f.cbteTipo).padStart(3, '0')} - ORIGINAL</p>
+                    <div style="display: flex; justify-content: space-between;"><span>P.V. ${String(f.ptoVta).padStart(4, '0')}</span><span>Nro ${String(f.cbteNro).padStart(8, '0')}</span></div>
+                    <div style="display: flex; justify-content: space-between;"><span>Fecha emisión</span><span>${isoToDmy(f.fecha || sale.date)}</span></div>
+                    <p style="text-align: center; margin: 4px 0;">A CONSUMIDOR FINAL</p>
+                    <div style="display: flex; justify-content: space-between; font-weight: bold;"><span>IMPORTE TOTAL</span><span>$${formatMoney(f.total !== undefined ? f.total : sale.total)}</span></div>
+                    ${nc ? `<p style="text-align: center; font-weight: bold;">ANULADA con Nota de Crédito N° ${String(nc.ptoVta).padStart(4, '0')}-${String(nc.cbteNro).padStart(8, '0')}</p>` : `
+                    <p style="font-size: 9px; margin: 4px 0;">Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)</p>
+                    <div style="display: flex; justify-content: space-between;"><span>CAE</span><span>${f.cae}</span></div>
+                    <div style="display: flex; justify-content: space-between;"><span>Vto. CAE</span><span>${isoToDmy(f.caeVencimiento)}</span></div>
+                    <img src="${arcaQrUrl(sale, f)}" width="130" height="130" style="margin: 6px auto; display: block;">
+                    <p style="text-align: center; font-weight: bold; margin: 0;">Comprobante Autorizado</p>
+                    <p style="font-size: 8px; margin: 2px 0;">Esta Administración Federal no se responsabiliza por los datos ingresados en el detalle de la operación</p>`}
+                </div>`;
+            }).join('');
 
             receiptWindow.document.write(`
                 <html>
                 <head><title>Ticket ${sale.id}</title></head>
                 <body style="font-family: monospace; padding: 20px; max-width: 300px;">
-                    <h2 style="text-align: center;">KIOSCO 47</h2>
-                    <p style="text-align: center; font-size: 10px;">Kiosco 47</p>
-                    <p style="text-align: center;">${sale.date} ${sale.time}</p>
+                    <h2 style="text-align: center; margin-bottom: 4px;">${escapeHtml(biz.fantasia)}</h2>
+                    <div style="text-align: center; font-size: 10px;">${bizHtml}</div>
+                    <hr>
+                    <div style="display: flex; justify-content: space-between; font-size: 11px;"><span>Fecha: ${isoToDmy(sale.date)}</span><span>${sale.time || ''}</span></div>
+                    <div style="display: flex; justify-content: space-between; font-size: 11px;"><span>Ticket N°</span><span>${saleTicketNumber(sale)}</span></div>
+                    ${sale.user ? `<div style="display: flex; justify-content: space-between; font-size: 11px;"><span>Atendió</span><span>${escapeHtml(String(sale.user))}</span></div>` : ''}
                     <hr>
                     ${sale.items.map(item => { const d = printItemDetail(item); return `
                         <div style="margin-top: 6px; font-weight: bold;">${escapeHtml(item.name || 'Producto')}</div>
@@ -9361,8 +9425,9 @@
                     </div>
                     ${cashInfo}
                     ${facturasHtml}
-                    <p style="text-align: center; margin-top: 20px;">¡Gracias por su compra!</p>
-                    <p style="text-align: center; font-size: 10px; color: #999; margin-top: 10px;">Powered by KioscoPro App</p>
+                    <hr>
+                    ${hasValidFactura ? '' : '<p style="text-align: center; font-weight: bold; margin: 6px 0;">NO VÁLIDO COMO FACTURA</p>'}
+                    <p style="text-align: center; margin-top: 10px;">${escapeHtml(biz.pie)}</p>
                 </body>
                 </html>
             `);
@@ -10646,7 +10711,9 @@
             <div class="col col-izq">
                 <div class="razon">${cfg.emisorNombre || 'Razón Social'}</div>
                 <div><strong>Domicilio comercial:</strong> ${cfg.emisorDomicilio || '-'}</div>
-                <div><strong>Condición frente al IVA:</strong> Monotributo</div>
+                <div><strong>Condición frente al IVA:</strong> Responsable Monotributo</div>
+                ${cfg.emisorFantasia ? `<div><strong>Nombre de fantasía:</strong> ${escapeHtml(cfg.emisorFantasia)}</div>` : ''}
+                ${cfg.emisorTelefono ? `<div><strong>Teléfono:</strong> ${escapeHtml(cfg.emisorTelefono)}</div>` : ''}
             </div>
             <div class="col col-der">
                 <div class="factura-titulo">FACTURA</div>
@@ -10746,7 +10813,9 @@
             return sale.items.map((_, i) => i).filter(i => !usados.has(i));
         }
 
-        function arcaQrUrl(sale, factura) {
+        // Texto que lleva el QR de ARCA (RG 4892): la URL de consulta con los datos
+        // del comprobante en base64.
+        function arcaQrData(sale, factura) {
             const f = factura || saleFacturas(sale)[0];
             if (!f) return '';
             const cfg = appState.arcaConfig || {};
@@ -10766,8 +10835,80 @@
                 codAut: Number(f.cae)
             };
             const b64 = btoa(JSON.stringify(payload));
-            return 'https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=' +
-                encodeURIComponent('https://www.afip.gob.ar/fe/qr/?p=' + b64);
+            return 'https://www.afip.gob.ar/fe/qr/?p=' + b64;
+        }
+
+        // Imagen PNG (data URL) de un QR, armada en la PC con qrcode-generator.
+        // targetPx = ancho aproximado; el ancho final es múltiplo de 8 (impresora térmica).
+        // Devuelve '' si la librería no cargó (sin internet en la web).
+        function qrPngDataUrl(text, targetPx) {
+            try {
+                if (!text || typeof qrcode !== 'function') return '';
+                const qr = qrcode(0, 'M');
+                qr.addData(text);
+                qr.make();
+                const count = qr.getModuleCount();
+                const quiet = 4;
+                const cell = Math.max(2, Math.floor((targetPx || 200) / (count + quiet * 2)));
+                const raw = cell * (count + quiet * 2);
+                const size = Math.ceil(raw / 8) * 8;
+                const offset = Math.floor((size - cell * count) / 2);
+                const canvas = document.createElement('canvas');
+                canvas.width = size; canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, size, size);
+                ctx.fillStyle = '#000';
+                for (let r = 0; r < count; r++) {
+                    for (let c = 0; c < count; c++) {
+                        if (qr.isDark(r, c)) ctx.fillRect(offset + c * cell, offset + r * cell, cell, cell);
+                    }
+                }
+                return canvas.toDataURL('image/png');
+            } catch (e) {
+                console.error('QR:', e);
+                return '';
+            }
+        }
+
+        function arcaQrUrl(sale, factura) {
+            const data = arcaQrData(sale, factura);
+            if (!data) return '';
+            return qrPngDataUrl(data, 160) ||
+                ('https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=' + encodeURIComponent(data));
+        }
+
+        function formatCuit(cuit) {
+            const c = String(cuit || '').replace(/\D/g, '');
+            return c.length === 11 ? c.slice(0, 2) + '-' + c.slice(2, 10) + '-' + c.slice(10) : (cuit || '');
+        }
+
+        function isoToDmy(iso) {
+            return iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('/') : (iso || '');
+        }
+
+        // Datos del negocio para tickets: nombre de fantasía, contacto y, si está
+        // configurado ARCA, los datos fiscales del emisor.
+        function getTicketBusinessInfo() {
+            const cfg = appState.arcaConfig || {};
+            const fiscal = !!(cfg.cuit && String(cfg.cuit).trim());
+            return {
+                fantasia: (cfg.emisorFantasia || '').trim() || 'KIOSCO 47',
+                razonSocial: (cfg.emisorNombre || '').trim(),
+                domicilio: (cfg.emisorDomicilio || '').trim(),
+                telefono: (cfg.emisorTelefono || '').trim(),
+                web: (cfg.emisorWeb || '').trim(),
+                pie: (cfg.ticketPie || '').trim() || '¡Gracias por su compra!',
+                fiscal,
+                cuit: fiscal ? formatCuit(cfg.cuit) : '',
+                iibb: cfg.emisorIibb || 'Exento',
+                inicio: isoToDmy(cfg.emisorInicio || '')
+            };
+        }
+
+        // Número corto de comprobante interno (para identificar el ticket).
+        function saleTicketNumber(sale) {
+            return String(sale.id || '').replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase();
         }
 
         function arcaCbteLetra(tipo) {
@@ -10881,7 +11022,11 @@
                 emisorNombre: document.getElementById('arca-emisor-nombre').value.trim(),
                 emisorDomicilio: document.getElementById('arca-emisor-domicilio').value.trim(),
                 emisorInicio: document.getElementById('arca-emisor-inicio').value || '',
-                emisorIibb: document.getElementById('arca-emisor-iibb').value.trim() || 'Exento'
+                emisorIibb: document.getElementById('arca-emisor-iibb').value.trim() || 'Exento',
+                emisorFantasia: (document.getElementById('arca-emisor-fantasia')?.value || '').trim(),
+                emisorTelefono: (document.getElementById('arca-emisor-telefono')?.value || '').trim(),
+                emisorWeb: (document.getElementById('arca-emisor-web')?.value || '').trim(),
+                ticketPie: (document.getElementById('arca-ticket-pie')?.value || '').trim()
             };
             saveToLocalStorage();
             renderArcaStatus();
@@ -14275,7 +14420,11 @@
                 const data = await res.json();
                 if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo leer la factura');
                 if (!data.items || data.items.length === 0) {
-                    statusEl.textContent = '⚠️ No se detectaron productos. Probá con otra foto/escaneo más claro y derecho.';
+                    // "truncated": la IA se quedó sin presupuesto de respuesta a mitad de
+                    // leer (factura muy larga/densa) -- no es un problema de la foto.
+                    statusEl.textContent = data.truncated
+                        ? '⚠️ La factura es muy larga o densa y se cortó la lectura. Probá escaneando menos páginas por vez (ej. de a una).'
+                        : '⚠️ No se detectaron productos. Probá con otra foto/escaneo más claro y derecho.';
                     return;
                 }
                 scanInvoiceItems = data.items.map(it => {
@@ -26197,6 +26346,10 @@ Total de productos a comprar: ${shoppingList.length}
             if (arcaIniEl) arcaIniEl.value = arcaCfg.emisorInicio || '';
             const arcaIibbEl = document.getElementById('arca-emisor-iibb');
             if (arcaIibbEl) arcaIibbEl.value = arcaCfg.emisorIibb || '';
+            [['arca-emisor-fantasia', 'emisorFantasia'], ['arca-emisor-telefono', 'emisorTelefono'], ['arca-emisor-web', 'emisorWeb'], ['arca-ticket-pie', 'ticketPie']].forEach(([id, key]) => {
+                const el = document.getElementById(id);
+                if (el) el.value = arcaCfg[key] || '';
+            });
             renderArcaStatus();
             
             document.getElementById('settings-product-count').textContent = getActiveInventory().length;

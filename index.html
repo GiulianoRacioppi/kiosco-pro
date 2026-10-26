@@ -3084,6 +3084,58 @@
         </div>
 
         <div id="reports" class="section hidden space-y-6 fade-in">
+            <!-- ==================== PLATA EN MERCADERÍA (VALOR DE STOCK AL COSTO) ==================== -->
+            <div class="bg-white rounded-2xl p-6 shadow-lg">
+                <h3 class="text-xl font-bold mb-2 flex items-center gap-2">
+                    <i class="fas fa-coins text-amber-500"></i> Plata en mercadería
+                </h3>
+                <p class="text-sm text-gray-500 mb-4">En qué productos tenés plata inmovilizada, al costo de hoy.</p>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-blue-50 rounded-xl p-4">
+                        <p class="text-xs text-blue-600 font-bold uppercase">Al costo</p>
+                        <p class="text-xl font-bold text-blue-800" id="stockvalue-total-cost">$0</p>
+                    </div>
+                    <div class="bg-green-50 rounded-xl p-4">
+                        <p class="text-xs text-green-600 font-bold uppercase">A precio de venta</p>
+                        <p class="text-xl font-bold text-green-800" id="stockvalue-total-sale">$0</p>
+                    </div>
+                    <div class="bg-purple-50 rounded-xl p-4">
+                        <p class="text-xs text-purple-600 font-bold uppercase">Ganancia si vendés todo</p>
+                        <p class="text-xl font-bold text-purple-800" id="stockvalue-total-margin">$0</p>
+                    </div>
+                    <div class="bg-gray-50 rounded-xl p-4">
+                        <p class="text-xs text-gray-600 font-bold uppercase">Productos con stock</p>
+                        <p class="text-xl font-bold text-gray-800" id="stockvalue-total-count">0</p>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <h4 class="text-sm font-bold text-gray-700 mb-2">Por categoría</h4>
+                    <div id="stockvalue-by-category" class="space-y-1.5"></div>
+                </div>
+
+                <div class="flex items-center justify-between mb-2 gap-2">
+                    <h4 class="text-sm font-bold text-gray-700">Por producto (de mayor a menor)</h4>
+                    <input type="text" id="stockvalue-search" placeholder="Buscar producto..." class="border rounded-lg px-3 py-1 text-xs" oninput="renderStockValueReport()">
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500">Stock</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500">Costo unit.</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500">Valor al costo</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500">% del total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stockvalue-table-body"></tbody>
+                    </table>
+                </div>
+                <button id="stockvalue-expand-btn" onclick="toggleStockValueExpanded()" class="w-full mt-2 text-xs text-blue-600 hover:text-blue-800 font-bold hidden"></button>
+            </div>
+
             <div class="bg-white rounded-2xl p-6 shadow-lg">
                 <h3 class="text-xl font-bold mb-6 flex items-center gap-2">
                     <i class="fas fa-file-export text-purple-600"></i> Exportar Datos
@@ -26379,12 +26431,116 @@ Total de productos a comprar: ${shoppingList.length}
             const endDate = new Date();
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - 30);
-            
+
             const startInput = document.getElementById('report-start-date');
             const endInput = document.getElementById('report-end-date');
-            
+
             if (startInput) startInput.value = formatDateISO(startDate);
             if (endInput) endInput.value = formatDateISO(endDate);
+
+            renderStockValueReport();
+        }
+
+        // ==================== PLATA EN MERCADERÍA (VALOR DE STOCK AL COSTO) ====================
+        // En qué productos/categorías está inmovilizado el capital, al costo de hoy
+        // (mismo criterio de valuación que calculateFinancialMetrics: los compuestos no
+        // suman solos, su valor ya está en los subproductos que los componen).
+        function renderStockValueReport() {
+            const tbody = document.getElementById('stockvalue-table-body');
+            if (!tbody) return; // la sección Reportes todavía no se montó
+
+            const search = (document.getElementById('stockvalue-search')?.value || '').trim().toLowerCase();
+
+            const rows = getActiveInventory()
+                .filter(p => !p.isComposite)
+                .map(p => {
+                    const stock = getProductStock(p);
+                    const cost = parseFloat(p.cost) || 0;
+                    const salePrice = parseFloat(p.salePrice) || 0;
+                    return { product: p, stock, cost, salePrice, valueCost: cost * stock, valueSale: salePrice * stock };
+                })
+                .filter(r => r.stock > 0);
+
+            const totalCost = rows.reduce((s, r) => s + r.valueCost, 0);
+            const totalSale = rows.reduce((s, r) => s + r.valueSale, 0);
+
+            const totalCostEl = document.getElementById('stockvalue-total-cost');
+            const totalSaleEl = document.getElementById('stockvalue-total-sale');
+            const totalMarginEl = document.getElementById('stockvalue-total-margin');
+            const totalCountEl = document.getElementById('stockvalue-total-count');
+            if (totalCostEl) totalCostEl.textContent = '$' + formatMoney(totalCost);
+            if (totalSaleEl) totalSaleEl.textContent = '$' + formatMoney(totalSale);
+            if (totalMarginEl) totalMarginEl.textContent = '$' + formatMoney(totalSale - totalCost);
+            if (totalCountEl) totalCountEl.textContent = rows.length;
+
+            // Por categoría
+            const byCategory = {};
+            rows.forEach(r => {
+                const key = r.product.category || 'Sin categoría';
+                byCategory[key] = (byCategory[key] || 0) + r.valueCost;
+            });
+            const categoryRows = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+            const catContainer = document.getElementById('stockvalue-by-category');
+            if (catContainer) {
+                catContainer.innerHTML = categoryRows.length === 0 ? '<p class="text-sm text-gray-400">Sin datos</p>' : categoryRows.map(([cat, value]) => {
+                    const pct = totalCost > 0 ? (value / totalCost * 100) : 0;
+                    const label = cat.charAt(0).toUpperCase() + cat.slice(1);
+                    return `
+                        <div class="flex items-center gap-3 text-sm">
+                            <span class="flex-1 truncate text-gray-700">${escapeHtml(label)}</span>
+                            <div class="w-32 bg-gray-100 rounded-full h-2 overflow-hidden flex-shrink-0">
+                                <div class="bg-blue-500 h-2 rounded-full" style="width:${Math.min(100, pct)}%"></div>
+                            </div>
+                            <span class="w-20 text-right font-bold text-gray-800 flex-shrink-0">$${formatMoney(value)}</span>
+                            <span class="w-14 text-right text-gray-400 text-xs flex-shrink-0">${fmtNumber(pct, 1)}%</span>
+                        </div>`;
+                }).join('');
+            }
+
+            // Por producto, de mayor a menor valor al costo
+            let filteredRows = rows;
+            if (search) {
+                filteredRows = rows.filter(r => (r.product.name || '').toLowerCase().includes(search) || (r.product.barcode || '').toLowerCase().includes(search));
+            }
+            filteredRows = filteredRows.slice().sort((a, b) => b.valueCost - a.valueCost);
+
+            if (typeof window.stockValueExpanded === 'undefined') window.stockValueExpanded = false;
+            const limit = window.stockValueExpanded ? filteredRows.length : 20;
+            const displayRows = filteredRows.slice(0, limit);
+
+            tbody.innerHTML = displayRows.length === 0
+                ? '<tr><td colspan="5" class="text-center py-6 text-gray-400">No hay productos con stock</td></tr>'
+                : displayRows.map(r => {
+                    const p = r.product;
+                    const isWeight = p.saleByWeight && p.weightPerUnit > 0;
+                    const stockDisplay = isWeight ? (Math.round(r.stock * p.weightPerUnit) + 'g') : (r.stock + ' u.');
+                    const pct = totalCost > 0 ? (r.valueCost / totalCost * 100) : 0;
+                    return `
+                        <tr class="border-b hover:bg-gray-50">
+                            <td class="px-3 py-2 text-left text-gray-800">${escapeHtml(p.name)}</td>
+                            <td class="px-3 py-2 text-center text-gray-600">${stockDisplay}</td>
+                            <td class="px-3 py-2 text-right text-gray-600">$${formatMoney(r.cost)}</td>
+                            <td class="px-3 py-2 text-right font-bold text-blue-700">$${formatMoney(r.valueCost)}</td>
+                            <td class="px-3 py-2 text-right text-gray-400">${fmtNumber(pct, 1)}%</td>
+                        </tr>`;
+                }).join('');
+
+            const expandBtn = document.getElementById('stockvalue-expand-btn');
+            if (expandBtn) {
+                if (filteredRows.length > 20) {
+                    expandBtn.classList.remove('hidden');
+                    expandBtn.textContent = window.stockValueExpanded
+                        ? '▲ Ver menos'
+                        : ('▼ Ver los ' + (filteredRows.length - 20) + ' productos restantes');
+                } else {
+                    expandBtn.classList.add('hidden');
+                }
+            }
+        }
+
+        function toggleStockValueExpanded() {
+            window.stockValueExpanded = !window.stockValueExpanded;
+            renderStockValueReport();
         }
 
         function renderSettings() {

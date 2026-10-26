@@ -255,6 +255,9 @@
            hace que las columnas de números/fechas se mantengan angostas solas,
            sin necesidad de saber en qué columna está el nombre en cada tabla. */
         #inventory table { table-layout: auto !important; }
+        /* Quincena de empleados: la columna de fichajes (con sus campos de edición) no se puede cortar */
+        #emp-period-days table { table-layout: auto !important; }
+        #emp-period-days td { overflow: visible !important; }
         #inventory th,
         #inventory td {
             white-space: normal !important;
@@ -16602,8 +16605,10 @@
             const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
             const monthSales = appState.sales.filter(s => { const d = saleRevenueDate(s); return d && d.startsWith(monthPrefix); });
-            const monthExpenses = appState.expenses.filter(e => e.date && e.date.startsWith(monthPrefix));
+            // Sueldos: cuentan en el mes trabajado (expenseProfitDate), y lo ganado sin pagar también se resta
+            const monthExpenses = appState.expenses.filter(e => { const d = expenseProfitDate(e); return d && d.startsWith(monthPrefix); });
             const monthInvestments = appState.investments.filter(i => i.date && i.date.startsWith(monthPrefix));
+            const monthAccruedSalaries = getUnpaidAccruedSalaries(monthPrefix);
 
             const monthSalesTotal = monthSales.reduce((sum, s) => sum + s.total, 0);
             const monthProfitTotal = monthSales.reduce((sum, s) => sum + s.profit, 0);
@@ -16640,7 +16645,7 @@
             // Ganancia mostrada  = ganancia de ventas + sobrantes de caja + stock gratis
             // Gastos mostrados   = gastos reales (ya incluyen el faltante de caja) + mermas
             const displayedProfit = monthProfitTotal + monthSurplus + monthFoundStock;
-            const displayedExpenses = monthExpensesTotal + monthLosses;
+            const displayedExpenses = monthExpensesTotal + monthLosses + monthAccruedSalaries;
 
             if (monthProfitEl) monthProfitEl.textContent = '$' + formatMoney(displayedProfit);
             if (monthProfitExtraEl) {
@@ -16654,6 +16659,7 @@
                 const p = [];
                 if (monthLosses > 0) p.push(`+$${formatMoney(monthLosses)} mermas/pérdidas`);
                 if (monthShortage > 0) p.push(`incluye $${formatMoney(monthShortage)} faltante de caja`);
+                if (monthAccruedSalaries > 0) p.push(`+$${formatMoney(monthAccruedSalaries)} sueldos ganados sin pagar`);
                 monthExpensesExtraEl.textContent = p.join(' · ');
             }
 
@@ -18968,12 +18974,45 @@
             const deductionAmount = Math.round(deductedMin * perMin * 100) / 100;
             const extraAmount = Math.round(approvedExtraMin * perMin * 100) / 100;
             const amount = Math.max(0, Math.round((salary - deductionAmount + extraAmount) * 100) / 100);
+            // Ganado a hoy: lo mismo pero solo con los días hasta hoy (hoy cuenta completo), sin dar por cumplidos los futuros
+            const todayStr = formatDateISO(new Date(nowMs));
+            const earnedToDateMin = days.filter(x => x.date <= todayStr).reduce((s, x) => s + x.scheduledMin - x.deductedMin + x.approvedExtraMin, 0);
+            const earnedToDateAmount = Math.max(0, Math.round(earnedToDateMin * perMin * 100) / 100);
             return {
                 q, rec, hourly, hourlyRate, source, configured: hourly || !!rec, salary, days, scheduledMin, deductedMin, approvedExtraMin, pendingExtraMin,
-                perHour: Math.round(perMin * 60 * 100) / 100, deductionAmount, extraAmount, amount,
+                perHour: Math.round(perMin * 60 * 100) / 100, deductionAmount, extraAmount, amount, earnedToDateAmount,
                 payDate: getQuincenaPayDate(q), payment: getPayrollPayment(emp.id, q.key),
                 missingOutDays: days.filter(d => d.missingOut).map(d => d.date)
             };
+        }
+
+        // Fecha con la que un gasto cuenta para la GANANCIA: los sueldos van al mes de la quincena
+        // trabajada, no al día en que se pagaron (Caja/Cuenta sí se mueven el día del pago, con e.date).
+        function expenseProfitDate(e) {
+            if (!e) return null;
+            if (e.accrualDate) return e.accrualDate;
+            if (e.withdrawalType === 'salary' && e.id) {
+                const pay = (appState.payrollPayments || []).find(p => p && p.expenseId === e.id && p.status !== 'deleted');
+                const m = pay && /^(\d{4})-(\d{2})-([12])$/.exec(pay.periodKey || '');
+                if (m) return getQuincena(m[1] + '-' + m[2] + '-' + (m[3] === '1' ? '01' : '16')).end;
+            }
+            return e.date;
+        }
+
+        // Sueldos ganados en un mes (YYYY-MM) que todavía no se pagaron: lo trabajado hasta hoy.
+        // Se restan de la ganancia de ese mes; cuando se registra el pago, el gasto ocupa su lugar.
+        function getUnpaidAccruedSalaries(monthPrefix) {
+            const nowMs = Date.now();
+            const todayStr = formatDateISO(new Date(nowMs));
+            let total = 0;
+            getActiveEmployees().forEach(emp => {
+                [monthPrefix + '-01', monthPrefix + '-16'].forEach(start => {
+                    if (start > todayStr) return;
+                    const c = computeEmployeeQuincena(emp, getQuincena(start), nowMs);
+                    if (c.configured && !c.payment) total += c.earnedToDateAmount;
+                });
+            });
+            return Math.round(total * 100) / 100;
         }
 
         // Ocurrencias de un gasto fijo 'quincena' (sueldo) entre dos fechas, por fecha de pago
@@ -19420,7 +19459,7 @@
             const expenseId = 'WITHDRAW-' + now;
             if (source === 'cash') appState.cash -= amount; else appState.bank -= amount;
             appState.expenses.push({
-                id: expenseId, date: today, concept: 'Sueldo ' + emp.name + ' (' + empPeriodQuincena.label + ')', amount, source,
+                id: expenseId, date: today, accrualDate: empPeriodQuincena.end, concept: 'Sueldo ' + emp.name + ' (' + empPeriodQuincena.label + ')', amount, source,
                 type: 'withdrawal', withdrawalType: 'salary', user: appState.currentUser ? appState.currentUser.name : null, timestamp: now
             });
             if (!Array.isArray(appState.payrollPayments)) appState.payrollPayments = [];
@@ -19532,11 +19571,12 @@
 
             sumEl.innerHTML = !c.configured
                 ? '<p class="text-sm text-red-600">Para calcular el pago, cargá el <strong>precio por hora</strong> de ' + escapeHtml(emp.name) + ' en su tarjeta (arriba).</p>'
-                : '<div class="grid grid-cols-2 md:grid-cols-6 gap-2 text-sm">' +
+                : '<div class="grid grid-cols-2 md:grid-cols-7 gap-2 text-sm">' +
                     '<div class="bg-gray-50 rounded-xl p-3"><p class="text-xs text-gray-500">Sueldo quincena</p><p class="font-bold">$' + formatMoney(c.salary) + '</p>' + (c.hourly ? '<p class="text-[10px] text-gray-500">horas × $' + formatMoney(c.hourlyRate) + '</p>' : '') + '</div>' +
                     '<div class="bg-gray-50 rounded-xl p-3"><p class="text-xs text-gray-500">Horas de horario</p><p class="font-bold">' + fmtMinutes(c.scheduledMin) + '</p><p class="text-[10px] text-gray-500">$' + formatMoney(c.perHour) + ' la hora</p></div>' +
                     '<div class="bg-red-50 rounded-xl p-3"><p class="text-xs text-red-600">Descuentos</p><p class="font-bold text-red-700">-$' + formatMoney(c.deductionAmount) + '</p><p class="text-[10px] text-red-600">' + fmtMinutes(c.deductedMin) + '</p></div>' +
                     '<div class="bg-green-50 rounded-xl p-3"><p class="text-xs text-green-700">Extras aprobadas</p><p class="font-bold text-green-700">+$' + formatMoney(c.extraAmount) + '</p><p class="text-[10px] text-green-700">' + fmtMinutes(c.approvedExtraMin) + (c.pendingExtraMin ? ' · ' + fmtMinutes(c.pendingExtraMin) + ' sin aprobar' : '') + '</p></div>' +
+                    '<div class="bg-amber-50 rounded-xl p-3"><p class="text-xs text-amber-700">Ganado a hoy</p><p class="font-bold text-amber-800 text-lg">$' + formatMoney(c.earnedToDateAmount) + '</p><p class="text-[10px] text-amber-700">' + (formatDateISO(new Date(nowMs)) >= c.q.end ? 'quincena completa' : 'trabajado hasta hoy ' + fmtD(formatDateISO(new Date(nowMs)))) + '</p></div>' +
                     '<div class="bg-indigo-50 rounded-xl p-3"><p class="text-xs text-indigo-700">A pagar</p><p class="font-bold text-indigo-800 text-lg">$' + formatMoney(c.amount) + '</p><p class="text-[10px] text-indigo-700">el ' + fmtD(c.payDate) + ' (4.º día hábil)</p></div>' +
                     '<div class="rounded-xl p-3 flex items-center justify-center">' + (c.payment
                         ? '<p class="text-xs text-green-700 font-bold text-center">✅ Pagado $' + formatMoney(c.payment.amount) + '<br>el ' + fmtD(c.payment.date) + '</p>'
@@ -20790,10 +20830,12 @@
             // negocio -- es reparto de la ganancia ya generada, igual criterio que arriba).
             const expensesByMonth = {};
             (appState.expenses || []).forEach(e => {
-                if (!e.date || isOwnerWithdrawal(e)) return;
-                const ym = e.date.slice(0, 7);
+                const d = expenseProfitDate(e);
+                if (!d || isOwnerWithdrawal(e)) return;
+                const ym = d.slice(0, 7);
                 expensesByMonth[ym] = (expensesByMonth[ym] || 0) + (e.amount || 0);
             });
+            months.forEach(m => { const acc = getUnpaidAccruedSalaries(m.key); if (acc > 0) expensesByMonth[m.key] = (expensesByMonth[m.key] || 0) + acc; });
 
             const labels = months.map(m => {
                 const label = m.date.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });

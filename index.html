@@ -1726,6 +1726,15 @@
                 <div id="day-sales-list" class="space-y-2 max-h-96 overflow-y-auto"></div>
                 <div id="day-products-list" class="space-y-2 max-h-96 overflow-y-auto hidden"></div>
                 <div id="day-expenses-list" class="space-y-2 max-h-96 overflow-y-auto hidden"></div>
+                <div id="day-investments-toolbar" class="hidden flex items-center justify-between gap-2 mb-2 p-2 bg-indigo-50 rounded-lg text-sm">
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" id="day-investments-select-all" onchange="toggleAllInvestmentsSelection(this.checked)">
+                        <span id="day-investments-selected-count" class="text-gray-600">Seleccionar todas</span>
+                    </label>
+                    <button id="day-investments-bulk-move-btn" onclick="bulkMoveInvestmentsDate()" disabled class="bg-indigo-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-indigo-700">
+                        <i class="fas fa-calendar-alt"></i> Mover seleccionadas a otra fecha
+                    </button>
+                </div>
                 <div id="day-investments-list" class="space-y-2 max-h-96 overflow-y-auto hidden"></div>
             </div>
         </div>
@@ -16595,6 +16604,8 @@
 
         let currentDayTab = 'sales';
         let selectedCalendarDate = null;
+        // Inversiones tildadas en el detalle del día, para mover varias de fecha de una (ids)
+        let selectedInvestmentIds = new Set();
 
         function showDayTab(tab) {
             currentDayTab = tab;
@@ -16616,6 +16627,7 @@
             document.getElementById('day-products-list').classList.toggle('hidden', tab !== 'products');
             document.getElementById('day-expenses-list').classList.toggle('hidden', tab !== 'expenses');
             document.getElementById('day-investments-list').classList.toggle('hidden', tab !== 'investments');
+            document.getElementById('day-investments-toolbar').classList.toggle('hidden', tab !== 'investments');
         }
 
         function selectCalendarDate(dateStr) {
@@ -16625,6 +16637,8 @@
         }
 
         function showDayDetail(dateStr) {
+            // Día nuevo: arrancar sin inversiones tildadas de una vista anterior
+            selectedInvestmentIds.clear();
             // Actualizar la fecha activa al día seleccionado
             appState.activeDate = parseDateLocal(dateStr);
             updateDateDisplay();
@@ -16796,6 +16810,7 @@
                         : '';
                 return `
                 <div class="sale-item flex justify-between items-center p-3 rounded-lg border bg-blue-50">
+                    <input type="checkbox" class="day-inv-checkbox w-4 h-4 mr-2 flex-shrink-0" data-id="${inv.id}" ${selectedInvestmentIds.has(inv.id) ? 'checked' : ''} onchange="toggleInvestmentSelection('${inv.id}', this.checked)">
                     <div class="flex-1">
                         <p class="font-bold text-gray-800">📦 ${inv.concept}${vatBadge}</p>
                         <p class="text-sm text-gray-500">${new Date(inv.timestamp).toLocaleTimeString('es-ES')} • ${inv.source === 'cash' ? '💵 Caja' : inv.source === 'bank' ? '🏦 Cuenta' : '📦 Compra'} • INVERSIÓN</p>
@@ -17002,6 +17017,81 @@
             renderAll();
             if (dateStr && typeof showDayDetail === 'function') showDayDetail(dateStr);
             showNotification('📅 Compra movida del ' + oldDate.split('-').reverse().join('/') + ' al ' + newDate.split('-').reverse().join('/'), 'success');
+        }
+
+        // ===== Selección múltiple de inversiones (mover varias de fecha a la vez) =====
+        function toggleInvestmentSelection(investmentId, checked) {
+            if (checked) selectedInvestmentIds.add(investmentId); else selectedInvestmentIds.delete(investmentId);
+            updateInvestmentsBulkToolbar();
+        }
+
+        function toggleAllInvestmentsSelection(checked) {
+            document.querySelectorAll('#day-investments-list .day-inv-checkbox').forEach(cb => {
+                cb.checked = checked;
+                if (checked) selectedInvestmentIds.add(cb.dataset.id); else selectedInvestmentIds.delete(cb.dataset.id);
+            });
+            updateInvestmentsBulkToolbar();
+        }
+
+        // Actualiza el contador/botón de la barra sin re-renderizar toda la lista
+        // (así no se pierde el scroll ni el resto de los tildes al tocar uno solo)
+        function updateInvestmentsBulkToolbar() {
+            const checkboxes = document.querySelectorAll('#day-investments-list .day-inv-checkbox');
+            const total = checkboxes.length;
+            const n = selectedInvestmentIds.size;
+            const countEl = document.getElementById('day-investments-selected-count');
+            if (countEl) countEl.textContent = n === 0 ? 'Seleccionar todas' : (n + ' seleccionada' + (n === 1 ? '' : 's'));
+            const btn = document.getElementById('day-investments-bulk-move-btn');
+            if (btn) btn.disabled = n === 0;
+            const selectAllCb = document.getElementById('day-investments-select-all');
+            if (selectAllCb) {
+                selectAllCb.checked = total > 0 && n === total;
+                selectAllCb.indeterminate = n > 0 && n < total;
+            }
+        }
+
+        // Mueve TODAS las inversiones tildadas a una misma fecha nueva, en un solo paso
+        // (mismo criterio que changeInvestmentDate: valida, mueve el lote asociado si hay,
+        // y avisa si la fecha es futura -- pero con un solo guardado para todas juntas)
+        async function bulkMoveInvestmentsDate() {
+            const ids = Array.from(selectedInvestmentIds);
+            if (ids.length === 0) return;
+            const items = ids.map(id => appState.investments.find(i => i.id === id)).filter(Boolean);
+            if (items.length === 0) { selectedInvestmentIds.clear(); updateInvestmentsBulkToolbar(); return; }
+
+            const oldDate = items[0].date;
+            const raw = await showPromptModal('Nueva fecha para las ' + items.length + ' compras seleccionadas (AAAA-MM-DD):', oldDate);
+            if (raw === null || raw === undefined) return;
+            const newDate = String(raw).trim();
+            const valid = /^\d{4}-\d{2}-\d{2}$/.test(newDate) && formatDateISO(parseDateLocal(newDate)) === newDate;
+            if (!valid) { showNotification('Fecha inválida. Usá el formato AAAA-MM-DD (ej: 2026-10-20)', 'error'); return; }
+            if (newDate === oldDate) return;
+
+            let confirmMsg = '¿Mover las ' + items.length + ' compras seleccionadas al ' + newDate.split('-').reverse().join('/') + '?';
+            if (newDate > formatDateISO(new Date())) confirmMsg += '\n\n⚠️ Es una fecha futura.';
+            if (!(await showConfirmModal(confirmMsg))) return;
+
+            const now = Date.now();
+            items.forEach(investment => {
+                investment.date = newDate;
+                investment.timestamp = now; // para que la sincronización se quede con este cambio
+
+                // Lote de mercadería asociado (si lo hay): misma fecha de ingreso
+                if (investment.productId && investment.batchId) {
+                    const product = appState.inventory.find(p => p.id === investment.productId);
+                    const batch = product && Array.isArray(product.batches) ? product.batches.find(b => b.id === investment.batchId) : null;
+                    if (batch) {
+                        batch.dateAdded = newDate;
+                        batch.updatedAt = new Date().toISOString();
+                    }
+                }
+            });
+
+            selectedInvestmentIds.clear();
+            saveToLocalStorage();
+            renderAll();
+            if (typeof showDayDetail === 'function') showDayDetail(oldDate);
+            showNotification('📅 ' + items.length + ' compra' + (items.length === 1 ? '' : 's') + ' movidas al ' + newDate.split('-').reverse().join('/'), 'success');
         }
 
         async function editInvestment(investmentId, dateStr) {

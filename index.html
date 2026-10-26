@@ -12967,9 +12967,7 @@
                     // Los productos compuestos no suman al valor de inventario
                     // porque su valor ya está representado por los componentes
                     if (p.isComposite) return sum;
-                    const cost = parseFloat(p.cost) || 0;
-                    const stock = getProductStock(p);
-                    return sum + (cost * stock);
+                    return sum + getProductBatchCostValue(p); // suma de lotes reales, no product.cost
                 }, 0);
                 
                 const saleValue = inventory.reduce((sum, p) => {
@@ -13743,6 +13741,23 @@
                 return product.batches.reduce((sum, b) => sum + (b.stock || 0), 0);
             }
             return parseFloat(product.stock) || 0;
+        }
+
+        // Valor real al costo de un producto: suma de (stock × costo) de cada LOTE.
+        // OJO: product.cost es solo una referencia -- "el costo más recientemente
+        // cargado" (se pisa en cada compra/edición) -- y puede quedar desactualizado
+        // si se edita el campo "Costo" a mano sin que coincida con los lotes reales
+        // (pasó con "caramelos miel": quedó en $8230 con lotes a $55, un factor ~150x).
+        // Para VALORIZAR stock siempre hay que sumar los lotes, nunca product.cost × stock.
+        function getProductBatchCostValue(product) {
+            if (!product) return 0;
+            // Los compuestos quedan en $0 acá a propósito (batches:[] y stock:0):
+            // su valor ya está contado a través de los subproductos que los componen,
+            // sumarlo de nuevo acá lo duplicaría -- mismo criterio que usa el resto de la app.
+            if (Array.isArray(product.batches) && product.batches.length > 0) {
+                return product.batches.reduce((sum, b) => sum + ((b.cost || 0) * (b.stock || 0)), 0);
+            }
+            return (parseFloat(product.cost) || 0) * (parseFloat(product.stock) || 0);
         }
 
         // Libro de movimientos de stock: se llama DESPUÉS de cambiar el stock real
@@ -20438,10 +20453,7 @@
                 // ===== CAPITAL =====
                 // Calcular capital automáticamente: Caja + Cuenta + Valor de Stock
                 const activeInv = getActiveInventory();
-                const inventoryValue = activeInv.reduce((sum, p) => {
-                    const stock = p.batches ? p.batches.reduce((s, b) => s + (b.stock || 0), 0) : (p.stock || 0);
-                    return sum + ((p.cost || 0) * stock);
-                }, 0);
+                const inventoryValue = activeInv.reduce((sum, p) => sum + getProductBatchCostValue(p), 0); // suma de lotes reales, no product.cost
                 
                 const totalCapital = appState.cash + appState.bank + inventoryValue;
                 
@@ -26455,9 +26467,14 @@ Total de productos a comprar: ${shoppingList.length}
                 .filter(p => !p.isComposite)
                 .map(p => {
                     const stock = getProductStock(p);
-                    const cost = parseFloat(p.cost) || 0;
+                    // Valor real = suma de los lotes, no product.cost × stock -- ese campo
+                    // es solo una referencia y puede quedar desactualizado (ver nota en
+                    // getProductBatchCostValue). El "costo unitario" que se muestra sale
+                    // del mismo valor real, así la tabla siempre cierra sola.
+                    const valueCost = getProductBatchCostValue(p);
+                    const cost = stock > 0 ? valueCost / stock : 0;
                     const salePrice = parseFloat(p.salePrice) || 0;
-                    return { product: p, stock, cost, salePrice, valueCost: cost * stock, valueSale: salePrice * stock };
+                    return { product: p, stock, cost, salePrice, valueCost, valueSale: salePrice * stock };
                 })
                 .filter(r => r.stock > 0);
 
@@ -27764,7 +27781,7 @@ Total de productos a comprar: ${shoppingList.length}
 
             // Stock valorizado
             const activeInv = getActiveInventory();
-            const stockCost = activeInv.reduce((sum, p) => sum + ((p.cost || 0) * getProductStock(p)), 0);
+            const stockCost = activeInv.reduce((sum, p) => sum + getProductBatchCostValue(p), 0); // suma de lotes reales, no product.cost
             const stockSale = activeInv.reduce((sum, p) => sum + (((p.salePrice || p.price || 0)) * getProductStock(p)), 0);
 
             // ===== HOJA 1: RESUMEN =====
@@ -27866,7 +27883,7 @@ Total de productos a comprar: ${shoppingList.length}
             const totalExpenses = appState.expenses.reduce((sum, e) => sum + e.amount, 0);
             
             const activeInv = getActiveInventory();
-            const inventoryCost = activeInv.reduce((sum, p) => sum + (p.cost * getProductStock(p)), 0);
+            const inventoryCost = activeInv.reduce((sum, p) => sum + getProductBatchCostValue(p), 0); // suma de lotes reales, no product.cost
             const inventorySale = activeInv.reduce((sum, p) => sum + (p.salePrice * getProductStock(p)), 0);
             
             const report = `

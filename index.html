@@ -19329,6 +19329,62 @@
             renderEmployeesSection();
         }
 
+        // ---------- Edición de fichajes directo en la tabla de la quincena ----------
+        let empPeriodEditMode = false;
+
+        function clockHM(ms) {
+            const d = new Date(ms);
+            return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+        }
+
+        function toggleEmpPeriodEdit() {
+            empPeriodEditMode = !empPeriodEditMode;
+            renderEmployeePeriod();
+        }
+
+        // Redibuja después del blur y devuelve el foco al campo donde quedó el usuario (remap: id viejo -> id nuevo)
+        function rerenderEmployeesKeepingFocus(remap) {
+            setTimeout(() => {
+                let id = document.activeElement && document.activeElement.id;
+                if (remap && remap[id]) id = remap[id];
+                renderEmployeesSection();
+                const el = id && document.getElementById(id);
+                if (el) el.focus();
+            }, 0);
+        }
+
+        function saveInlineClock(id) {
+            const live = (appState.timeClock || []).find(c => c.id === id);
+            const inEl = document.getElementById('clk-in-' + id);
+            const outEl = document.getElementById('clk-out-' + id);
+            if (!live || !inEl || !outEl) return;
+            const tin = inEl.value, tout = outEl.value;
+            if (!tin) { inEl.value = clockHM(live.inAt); return; }
+            if (tin === clockHM(live.inAt) && tout === (live.outAt ? clockHM(live.outAt) : '')) return;
+            const inAt = empTimeToMs(live.date, tin);
+            let outAt = tout ? empTimeToMs(live.date, tout) : null;
+            if (outAt !== null && outAt <= inAt) outAt += 24 * 3600 * 1000;
+            touchEmp(Object.assign(live, { inAt, outAt, source: 'manual' }));
+            saveToLocalStorage();
+            refreshMyClockButton();
+            rerenderEmployeesKeepingFocus();
+        }
+
+        function addInlineClock(empId, date) {
+            const inEl = document.getElementById('clk-new-in-' + date);
+            const outEl = document.getElementById('clk-new-out-' + date);
+            if (!inEl || !outEl || !inEl.value) return;
+            const inAt = empTimeToMs(date, inEl.value);
+            let outAt = outEl.value ? empTimeToMs(date, outEl.value) : null;
+            if (outAt !== null && outAt <= inAt) outAt += 24 * 3600 * 1000;
+            if (!Array.isArray(appState.timeClock)) appState.timeClock = [];
+            const newId = 'CLK-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+            appState.timeClock.push(touchEmp({ id: newId, employeeId: empId, date, inAt, outAt, source: 'manual', status: 'active', by: appState.currentUser ? appState.currentUser.name : null }));
+            saveToLocalStorage();
+            refreshMyClockButton();
+            rerenderEmployeesKeepingFocus({ ['clk-new-out-' + date]: 'clk-out-' + newId });
+        }
+
         // ---------- Ajustes por día: justificar / aprobar horas extra ----------
         function upsertAttendanceDay(empId, dateStr, changes) {
             if (!Array.isArray(appState.attendanceDays)) appState.attendanceDays = [];
@@ -19490,7 +19546,8 @@
                   '<p class="text-[11px] text-gray-400 mt-2">Los días que todavía no pasaron se cuentan como cumplidos. El monto se actualiza solo con cada fichaje.</p>';
 
             daysEl.innerHTML = '<table class="w-full text-xs"><thead class="bg-gray-50 text-gray-500"><tr>' +
-                '<th class="px-2 py-2 text-left">Día</th><th class="px-2 py-2 text-left">Horario</th><th class="px-2 py-2 text-left">Fichajes</th>' +
+                '<th class="px-2 py-2 text-left">Día</th><th class="px-2 py-2 text-left">Horario</th>' +
+                '<th class="px-2 py-2 text-left whitespace-nowrap">Fichajes <button onclick="toggleEmpPeriodEdit()" class="ml-1 ' + (empPeriodEditMode ? 'text-indigo-600 font-bold' : 'text-gray-400 opacity-50 hover:opacity-100') + '" title="' + (empPeriodEditMode ? 'Terminar de editar' : 'Editar fichajes') + '">' + (empPeriodEditMode ? '<i class="fas fa-check"></i> Listo' : '<i class="fas fa-pen"></i>') + '</button></th>' +
                 '<th class="px-2 py-2 text-right">Trabajó</th><th class="px-2 py-2 text-right">Faltó / tarde</th><th class="px-2 py-2 text-right">Descuento</th>' +
                 '<th class="px-2 py-2 text-right">Extra (aprobar min)</th><th class="px-2 py-2 text-center">Justificado</th></tr></thead><tbody class="divide-y">' +
                 c.days.map(d => {
@@ -19500,19 +19557,26 @@
                         ? (d.scheduledMin ? fmtMinutes(d.scheduledMin) + ' <span class="text-gray-400">(horas)</span>' : '<span class="text-gray-300">—</span>')
                         : (d.shifts.length ? d.shifts.map(s => s.start + '–' + s.end).join(' y ') : '<span class="text-gray-300">—</span>');
                     const countedOf = (e) => { const ce = d.flexible && (d.countedEntries || []).find(x => x.id === e.id); return ce ? ' <span class="text-gray-400" title="Lo que se cuenta">(cuenta ' + fmtMinutes(ce.countedMin) + ')</span>' : ''; };
-                    const fich = d.entries.map(e => '<span class="inline-flex items-center gap-1 mr-1">' + hm(e.inAt) + '–' + (e.outAt ? hm(e.outAt) : '<span class="text-orange-600">sin salida</span>') + countedOf(e) +
-                        ' <button onclick="openClockModal(\'' + emp.id + '\', \'' + e.id + '\')" class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 font-bold" title="Editar este fichaje">✏️ Editar</button>' +
-                        '<button onclick="deleteClockEntry(\'' + e.id + '\')" class="px-1.5 py-0.5 rounded bg-red-50 text-red-600 hover:bg-red-100" title="Borrar este fichaje"><i class="fas fa-trash"></i></button></span>').join('') +
-                        '<button onclick="openClockModal(\'' + emp.id + '\', null, \'' + d.date + '\')" class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold" title="Cargar un fichaje a mano">+ Cargar</button>';
+                    const sortedEntries = d.entries.slice().sort((a, b) => a.inAt - b.inAt);
+                    const timeInput = (id, val, onblur, title) => '<input id="' + id + '" type="time" value="' + val + '" class="border rounded px-1 py-0.5 bg-white text-gray-800" onblur="' + onblur + '" title="' + title + '">';
+                    // Modo edición (lápiz del encabezado): cada horario se escribe directo; la fila vacía del final agrega un fichaje
+                    const fich = empPeriodEditMode
+                        ? sortedEntries.map(e => '<span class="inline-flex items-center gap-1 mr-2 mb-1">' +
+                                timeInput('clk-in-' + e.id, clockHM(e.inAt), 'saveInlineClock(\'' + e.id + '\')', 'Entrada') + '–' +
+                                timeInput('clk-out-' + e.id, e.outAt ? clockHM(e.outAt) : '', 'saveInlineClock(\'' + e.id + '\')', 'Salida') +
+                                '<button onclick="deleteClockEntry(\'' + e.id + '\')" class="text-red-400 hover:text-red-600 px-1" title="Borrar este fichaje"><i class="fas fa-trash"></i></button></span>').join('') +
+                            '<span class="inline-flex items-center gap-1 opacity-50 focus-within:opacity-100" title="Agregar fichaje">' +
+                                timeInput('clk-new-in-' + d.date, '', 'addInlineClock(\'' + emp.id + '\', \'' + d.date + '\')', 'Entrada (nuevo fichaje)') + '–' +
+                                timeInput('clk-new-out-' + d.date, '', 'addInlineClock(\'' + emp.id + '\', \'' + d.date + '\')', 'Salida (nuevo fichaje)') + '</span>'
+                        : (sortedEntries.length
+                            ? sortedEntries.map(e => hm(e.inAt) + '–' + (e.outAt ? hm(e.outAt) : '<span class="text-orange-600">sin salida</span>') + countedOf(e)).join(', ')
+                            : '<span class="text-gray-300">—</span>');
                     const extraCell = d.extraMin > 0 || d.approvedExtraMin > 0
                         ? fmtMinutes(d.extraMin) + ' <input type="number" min="0" step="1" value="' + d.approvedExtraMin + '" class="w-14 border rounded px-1 py-0.5 text-right" title="Minutos aprobados" onchange="setApprovedExtra(\'' + emp.id + '\', \'' + d.date + '\', this.value)">'
                         : '<span class="text-gray-300">—</span>';
                     const rowCls = d.deductedMin > 0 ? 'bg-red-50' : (isFuture ? 'text-gray-400' : '');
-                    // Lápiz al lado del día: corrige el primer fichaje del día, o carga uno si no hay
-                    const firstEntry = d.entries.slice().sort((a, b) => a.inAt - b.inAt)[0];
-                    const dayEditBtn = '<button onclick="openClockModal(\'' + emp.id + '\', ' + (firstEntry ? '\'' + firstEntry.id + '\'' : 'null') + ', \'' + d.date + '\')" class="ml-1 px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 hover:bg-blue-200" title="' + (firstEntry ? 'Editar el fichaje de este día' : 'Cargar fichaje de este día') + '">✏️</button>';
                     return '<tr class="' + rowCls + '">' +
-                        '<td class="px-2 py-1.5 font-bold whitespace-nowrap">' + wd + ' ' + fmtD(d.date) + dayEditBtn + '</td>' +
+                        '<td class="px-2 py-1.5 font-bold whitespace-nowrap">' + wd + ' ' + fmtD(d.date) + '</td>' +
                         '<td class="px-2 py-1.5">' + horario + '</td>' +
                         '<td class="px-2 py-1.5">' + fich + '</td>' +
                         '<td class="px-2 py-1.5 text-right">' + (d.workedMin ? fmtMinutes(d.workedMin) : '') + '</td>' +

@@ -646,10 +646,19 @@
                             <input type="checkbox" id="edit-prod-is-candy" onchange="toggleEditCandySection()">
                             <span class="text-xs font-bold text-pink-700">🍬 Es un caramelo a granel (se puede vender por unidad en "Surtido de Caramelos")</span>
                         </label>
-                        <div id="edit-prod-candy-section" class="hidden bg-pink-50 rounded-lg p-3 border border-pink-200">
-                            <label class="block text-xs font-medium text-gray-600 mb-1">Peso de 10 caramelos (g)</label>
-                            <input type="number" id="edit-prod-candy-weight-10" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="ej: 47" min="0.1" step="0.1" oninput="updateEditCandyWeightPerUnit()">
-                            <p class="text-xs text-pink-600 mt-1">1 caramelo ≈ <span id="edit-prod-candy-weight-each">0</span>g -- es solo estimado, para calcular costo y margen por caramelo. El stock real se sigue manejando en gramos exactos, así que vender de a uno nunca acumula error con el tiempo.</p>
+                        <div id="edit-prod-candy-section" class="hidden bg-pink-50 rounded-lg p-3 border border-pink-200 space-y-2">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Peso de 10 caramelos (g)</label>
+                                    <input type="number" id="edit-prod-candy-weight-10" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="ej: 47" min="0" step="any" oninput="updateEditCandyWeightPerUnit()">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Precio de cada caramelo ($)</label>
+                                    <input type="number" id="edit-prod-candy-price" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="ej: 100" min="0" step="any" oninput="updateEditCandyWeightPerUnit()">
+                                </div>
+                            </div>
+                            <p class="text-xs text-pink-700" id="edit-prod-candy-summary">1 caramelo ≈ <span id="edit-prod-candy-weight-each">0</span>g</p>
+                            <p class="text-[11px] text-pink-600">El stock se descuenta en gramos: 10 caramelos descuentan lo que pesan 10, y $1000 descuentan los gramos de los caramelos que salen por esa plata. El costo es gramos × costo por gramo de tus compras (en "Agregar stock" cargás los gramos y cuánto pagaste).</p>
                         </div>
                         <div id="edit-prod-weight-per-unit-row" class="grid grid-cols-2 md:grid-cols-3 gap-4">
                             <div>
@@ -933,12 +942,14 @@
             </div>
             <div class="space-y-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">💵 Efectivo contado en caja</label>
+                    <div class="flex items-center justify-between mb-2"><label class="block text-sm font-medium text-gray-700">💵 Efectivo contado en caja</label><button type="button" onclick="toggleCashCalc('shift-counted', 'cash')" class="text-xs font-bold px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100" title="Contar billetes">🧮 Calculadora</button></div>
                     <input type="number" id="shift-counted" class="w-full border-2 border-orange-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any">
+                    <div id="calc-shift-counted" class="cash-calc-box hidden"></div>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">🏦 Plata contada en cuenta</label>
+                    <div class="flex items-center justify-between mb-2"><label class="block text-sm font-medium text-gray-700">🏦 Plata contada en cuenta</label><button type="button" onclick="toggleCashCalc('shift-counted-bank', 'sum')" class="text-xs font-bold px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100" title="Sumar varios montos">🧮 Calculadora</button></div>
                     <input type="number" id="shift-counted-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any">
+                    <div id="calc-shift-counted-bank" class="cash-calc-box hidden"></div>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Nota (opcional)</label>
@@ -1468,13 +1479,13 @@
                             </div>
                         </div>
 
-                        <!-- Código de precio especial (empleados/socios): todo el carrito pasa a costo +10% -->
+                        <!-- Un solo lugar para los códigos: de cliente/empleado (costo + %) o N° de ticket de descuento -->
                         <div id="special-price-input-section" class="bg-gradient-to-r from-amber-50 to-yellow-100 rounded-xl p-4 border-2 border-amber-300 mb-4">
                             <h4 class="text-xs font-bold text-amber-800 mb-2 flex items-center gap-2">
                                 <i class="fas fa-id-badge"></i> Código de descuento o cliente
                             </h4>
                             <div class="flex gap-2 mb-2">
-                                <input type="text" id="special-price-code-input" placeholder="Código"
+                                <input type="text" id="special-price-code-input" placeholder="Código de cliente o N° de ticket"
                                     class="flex-1 border-2 border-amber-300 rounded-lg px-3 py-2 text-center font-mono font-bold uppercase tracking-widest"
                                     onkeydown="if(event.key==='Enter'){event.preventDefault();applySpecialPriceCode();}">
                                 <button onclick="applySpecialPriceCode()" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-bold text-sm">
@@ -1495,9 +1506,6 @@
                             </div>
                         </div>
 
-                        <button onclick="toggleTicketInput()" id="btn-toggle-ticket" class="w-full text-sm text-yellow-700 hover:text-yellow-800 font-bold py-2 flex items-center justify-center gap-2">
-                            <i class="fas fa-ticket-alt"></i> Tengo un ticket de descuento
-                        </button>
                     </div>
                 </div>
 
@@ -6283,13 +6291,30 @@
         }
         window.toggleEditCandySection = toggleEditCandySection;
 
+        // Peso de 10 y precio por caramelo: NO tocan "gramos por unidad" (eso es cómo se guarda el
+        // stock). El precio de venta del producto se acomoda solo: precio por gramo × gramos por unidad.
         function updateEditCandyWeightPerUnit() {
             const weight10 = parseFloat(document.getElementById('edit-prod-candy-weight-10')?.value) || 0;
-            const perUnit = weight10 / 10; // sin redondear -- la precisión completa queda en weightPerUnit
-            const weightInput = document.getElementById('edit-prod-weight-per-unit');
-            if (weightInput) weightInput.value = perUnit > 0 ? perUnit : '';
-            const eachEl = document.getElementById('edit-prod-candy-weight-each');
-            if (eachEl) eachEl.textContent = fmtNumber(perUnit, 3);
+            const gEach = weight10 / 10;
+            const candyPrice = parseFloat(document.getElementById('edit-prod-candy-price')?.value) || 0;
+            const wpu = parseFloat(document.getElementById('edit-prod-weight-per-unit')?.value) || 0;
+            const unitCost = parseFloat(String(document.getElementById('edit-prod-cost')?.value || '').replace(',', '.')) || 0;
+            const costPerGram = wpu > 0 ? unitCost / wpu : 0;
+            if (gEach > 0 && candyPrice > 0 && wpu > 0) {
+                const priceInput = document.getElementById('edit-prod-price');
+                if (priceInput) {
+                    priceInput.value = Math.round(candyPrice / gEach * wpu * 100) / 100;
+                    if (typeof calculateEditMargin === 'function') calculateEditMargin();
+                }
+            }
+            const summary = document.getElementById('edit-prod-candy-summary');
+            if (summary) {
+                const candyCost = gEach * costPerGram;
+                summary.textContent = gEach > 0
+                    ? '1 caramelo ≈ ' + fmtNumber(gEach, 2) + 'g · costo ≈ $' + formatMoney(candyCost) + ' ($' + formatMoney(costPerGram) + '/g)' +
+                      (candyPrice > 0 ? ' · ganás ≈ $' + formatMoney(candyPrice - candyCost) + (candyCost > 0 ? ' (' + fmtNumber((candyPrice - candyCost) / candyCost * 100, 0) + '%)' : '') : '')
+                    : 'Pesá 10 caramelos y poné cuánto pesan';
+            }
             updateEditWeightCalculations();
         }
         window.updateEditCandyWeightPerUnit = updateEditCandyWeightPerUnit;
@@ -6303,11 +6328,16 @@
             const stockUnits = getProductStock(product);
             const stockGrams = stockUnits * (product.weightPerUnit || 1);
             const pricePerGram = product.salePrice / (product.weightPerUnit || 1);
-            
+
             document.getElementById('weight-sale-product-name').textContent = product.name;
-            document.getElementById('weight-sale-price-per-gram').textContent = '$' + formatMoney(pricePerGram);
             const isCandyProduct = !!product.isCandy;
-            document.getElementById('weight-sale-stock-grams').textContent = formatMoney(stockGrams) + 'g (' + (isCandyProduct ? '≈ ' + Math.floor(stockUnits + 1e-9) + ' caramelos' : formatMoney(stockUnits) + ' unidades') + ')';
+            const gEach = isCandyProduct ? getCandyGramsEach(product) : 0;
+            const priceLabel = document.getElementById('weight-sale-price-label');
+            if (priceLabel) priceLabel.textContent = isCandyProduct ? 'Precio:' : 'Precio por gramo:';
+            document.getElementById('weight-sale-price-per-gram').textContent = isCandyProduct
+                ? '$' + formatMoney(getCandyUnitPrice(product)) + ' c/caramelo (' + fmtNumber(gEach, 2) + 'g c/u)'
+                : '$' + formatMoney(pricePerGram);
+            document.getElementById('weight-sale-stock-grams').textContent = formatMoney(stockGrams) + 'g (' + (isCandyProduct ? '≈ ' + Math.floor(stockGrams / (gEach || 1) + 1e-9) + ' caramelos' : formatMoney(stockUnits) + ' unidades') + ')';
             const unitsBtn = document.getElementById('weight-mode-units');
             if (unitsBtn) unitsBtn.classList.toggle('hidden', !isCandyProduct);
             
@@ -6364,41 +6394,49 @@
             onWeightSaleInput();
         }
         
+        // Cuenta de una venta por peso. quantity = unidades de stock (gramos / gramos por unidad);
+        // unitPrice = precio por unidad de stock, tal que unitPrice × quantity = price.
+        // Caramelos: todo sale del peso y del precio de UN caramelo (regla de 3).
+        function computeWeightSale(product, mode, input) {
+            const wpu = product.weightPerUnit || 1;
+            if (product.isCandy) {
+                const gEach = getCandyGramsEach(product);
+                const candyPrice = getCandyUnitPrice(product);
+                const pricePerGram = gEach > 0 ? candyPrice / gEach : 0;
+                let candies, grams, price;
+                if (mode === 'units') { candies = Math.floor(input); grams = candies * gEach; price = candies * candyPrice; }
+                else if (mode === 'grams') { grams = input; candies = gEach > 0 ? grams / gEach : 0; price = grams * pricePerGram; }
+                else { price = input; candies = candyPrice > 0 ? price / candyPrice : 0; grams = candies * gEach; }
+                return { quantity: grams / wpu, grams, price, candies, candyPrice, unitPrice: pricePerGram * wpu, cost: grams * getProductCostPerGram(product) };
+            }
+            const salePrice = product.salePrice || 0;
+            let quantity, grams, price;
+            if (mode === 'grams') { grams = input; quantity = grams / wpu; price = grams * (salePrice / wpu); }
+            else { price = input; quantity = salePrice > 0 ? price / salePrice : 0; grams = quantity * wpu; }
+            return { quantity, grams, price, candies: null, unitPrice: salePrice, cost: grams * getProductCostPerGram(product) };
+        }
+
         function onWeightSaleInput() {
             if (!currentWeightProduct) return;
-            
+
             const input = parseFloat(document.getElementById('weight-sale-input').value) || 0;
-            const weightPerUnit = currentWeightProduct.weightPerUnit || 1;
-            const salePrice = currentWeightProduct.salePrice || 0;
-            const pricePerGram = salePrice / weightPerUnit;
             const stockUnits = getProductStock(currentWeightProduct);
-            const stockGrams = stockUnits * weightPerUnit;
-            
-            let quantity = 0;
-            let grams = 0;
-            let price = 0;
-            
+            const r = computeWeightSale(currentWeightProduct, currentWeightMode, input);
+            const quantity = r.quantity;
+            const isCandy = r.candies !== null;
+            const costText = isCandy && r.grams > 0 ? ` · costo ≈ $${formatMoney(r.cost)} (ganás ≈ $${formatMoney(r.price - r.cost)})` : '';
+
             if (currentWeightMode === 'units') {
-                // Caramelos: cada uno es exactamente 1 unidad de stock (su peso estimado)
-                quantity = Math.floor(input);
-                grams = quantity * weightPerUnit;
-                price = quantity * salePrice;
-                document.getElementById('weight-sale-result').textContent = '$' + formatMoney(price);
-                document.getElementById('weight-sale-detail').textContent = quantity > 0 ? `${quantity} × $${formatMoney(salePrice)} · descuenta ≈ ${formatMoney(grams)}g del stock` : '';
+                document.getElementById('weight-sale-result').textContent = '$' + formatMoney(r.price);
+                document.getElementById('weight-sale-detail').textContent = r.candies > 0 ? `${r.candies} × $${formatMoney(r.candyPrice)} · descuenta ${fmtNumber(r.grams, 1)}g del stock${costText}` : '';
             } else if (currentWeightMode === 'grams') {
-                grams = input;
-                quantity = grams / weightPerUnit;
-                price = grams * pricePerGram;
-                document.getElementById('weight-sale-result').textContent = '$' + formatMoney(price);
-                document.getElementById('weight-sale-detail').textContent = grams > 0 ? `= ${formatMoney(quantity)} unidades` : '';
+                document.getElementById('weight-sale-result').textContent = '$' + formatMoney(r.price);
+                document.getElementById('weight-sale-detail').textContent = r.grams > 0 ? (isCandy ? `≈ ${fmtNumber(r.candies, 1)} caramelos${costText}` : `= ${formatMoney(quantity)} unidades`) : '';
             } else {
-                price = input;
-                quantity = price / salePrice;
-                grams = quantity * weightPerUnit;
-                document.getElementById('weight-sale-result').textContent = formatMoney(grams) + 'g';
-                document.getElementById('weight-sale-detail').textContent = price > 0 ? `= ${formatMoney(quantity)} unidades` : '';
+                document.getElementById('weight-sale-result').textContent = fmtNumber(r.grams, 1) + 'g';
+                document.getElementById('weight-sale-detail').textContent = r.price > 0 ? (isCandy ? `≈ ${fmtNumber(r.candies, 1)} caramelos · descuenta ${fmtNumber(r.grams, 1)}g del stock${costText}` : `= ${formatMoney(quantity)} unidades`) : '';
             }
-            
+
             if (quantity > stockUnits && stockUnits > 0) {
                 document.getElementById('weight-sale-detail').textContent += ' ⚠️ Sin stock suficiente';
                 document.getElementById('weight-sale-detail').classList.add('text-red-600');
@@ -6412,27 +6450,15 @@
             const productName = currentWeightProduct.name; // closeWeightSaleModal() lo pone en null
 
             const input = parseFloat(document.getElementById('weight-sale-input').value) || 0;
-            const weightPerUnit = currentWeightProduct.weightPerUnit || 1;
-            const salePrice = currentWeightProduct.salePrice || 0;
             const stockUnits = getProductStock(currentWeightProduct);
 
-            let quantity, grams, price;
+            const r = computeWeightSale(currentWeightProduct, currentWeightMode, input);
+            const quantity = r.quantity, grams = r.grams;
+            const unitPrice = r.unitPrice;
+            // Caramelos vendidos por cantidad: se guarda cuántos y a cuánto cada uno (carrito y ticket)
+            const candyCount = r.candies !== null && currentWeightMode === 'units' ? r.candies : 0;
 
-            if (currentWeightMode === 'units') {
-                quantity = Math.floor(input); // caramelos enteros: 1 caramelo = 1 unidad de stock
-                grams = quantity * weightPerUnit;
-                price = quantity * salePrice;
-            } else if (currentWeightMode === 'grams') {
-                grams = input;
-                quantity = grams / weightPerUnit;
-                price = grams * (salePrice / weightPerUnit);
-            } else {
-                price = input;
-                quantity = price / salePrice;
-                grams = quantity * weightPerUnit;
-            }
-
-            if (quantity <= 0) {
+            if (!(quantity > 0)) {
                 showNotification('Ingresá un valor mayor a 0', 'error');
                 return;
             }
@@ -6445,40 +6471,32 @@
                 return;
             }
 
+            // Se suma a una línea existente solo si tiene el mismo precio y el mismo tipo (por caramelos o no)
+            const sameLine = (i) => i.productId === currentWeightProduct.id && !i.candyMix && Math.abs((i.price || 0) - unitPrice) < 1e-6 && !!i.candyCount === !!candyCount;
+            const addTo = (item) => {
+                item.quantity += quantity;
+                item.weightGrams = (item.weightGrams || 0) + grams;
+                if (candyCount) item.candyCount = (item.candyCount || 0) + candyCount;
+            };
+            const newLine = () => {
+                const line = { productId: currentWeightProduct.id, name: currentWeightProduct.name, price: unitPrice, quantity: quantity, weightGrams: grams };
+                if (candyCount) { line.candyCount = candyCount; line.candyUnitPrice = r.candyPrice; }
+                return line;
+            };
+
             if (currentWeightDestination === 'pedido') {
-                const existingItem = pendingPedidoItems.find(i => i.productId === currentWeightProduct.id);
-                if (existingItem) {
-                    existingItem.quantity += quantity;
-                    existingItem.weightGrams = (existingItem.weightGrams || 0) + grams;
-                } else {
-                    pendingPedidoItems.push({
-                        productId: currentWeightProduct.id,
-                        name: currentWeightProduct.name,
-                        price: salePrice,
-                        quantity: quantity,
-                        weightGrams: grams
-                    });
-                }
+                const existingItem = pendingPedidoItems.find(sameLine);
+                if (existingItem) addTo(existingItem);
+                else pendingPedidoItems.push(newLine());
                 closeWeightSaleModal();
                 renderPedidoItemsList();
                 showNotification(`${productName} ${formatMoney(grams)}g agregado al pedido`, 'success');
                 return;
             }
 
-            const existingItem = appState.cart.find(item => item.productId === currentWeightProduct.id && !item.candyMix);
-            if (existingItem) {
-                existingItem.quantity += quantity;
-                existingItem.weightGrams = (existingItem.weightGrams || 0) + grams;
-            } else {
-                appState.cart.push({
-                    productId: currentWeightProduct.id,
-                    name: currentWeightProduct.name,
-                    price: salePrice,
-                    cost: currentWeightProduct.cost,
-                    quantity: quantity,
-                    weightGrams: grams
-                });
-            }
+            const existingItem = appState.cart.find(sameLine);
+            if (existingItem) addTo(existingItem);
+            else appState.cart.push(Object.assign(newLine(), { cost: currentWeightProduct.cost }));
 
             closeWeightSaleModal();
             renderCart();
@@ -6613,19 +6631,37 @@
 
         // Precio de UN caramelo: el que se carga en el Surtido (product.candyUnitPrice); si no
         // hay, el precio de venta del producto (cuando la unidad del producto ya es 1 caramelo).
-        function getCandyUnitPrice(p) {
-            return (parseFloat(p && p.candyUnitPrice) || 0) > 0 ? parseFloat(p.candyUnitPrice) : ((p && p.salePrice) || 0);
-        }
-        // Cuántas unidades de stock descuenta UN caramelo. Sin precio por caramelo propio:
-        // 1 (la unidad del producto es el caramelo). Con precio propio: si se cargó el peso de
-        // un caramelo, ese peso; si no, lo equivalente en plata al precio normal del producto
-        // (ej: bolsa de 1000 g a $13.048 y caramelo a $100 -> 7,66 g por caramelo).
-        function getCandyStockUnitsPerCandy(p) {
+        // Modelo del caramelo por peso: el stock se lleva en gramos (lotes con costo por gramo de la
+        // compra), y el caramelo tiene su peso (product.candyWeight = peso de 10 / 10) y su precio
+        // (product.candyUnitPrice). Vender N caramelos descuenta N × peso; vender $X descuenta los
+        // gramos de X / precio caramelos. El costo sale de los lotes (FIFO): gramos × costo por gramo.
+        function getCandyGramsEach(p) {
+            const wpu = (p && p.weightPerUnit) || 1;
+            const g = parseFloat(p && p.candyWeight) || 0;
+            if (g > 0) return g;
+            // Productos viejos sin el peso cargado: lo mismo que descontaban antes
             const own = parseFloat(p && p.candyUnitPrice) || 0;
-            if (!(own > 0)) return 1;
-            const gramsEach = parseFloat(p.candyWeight) || 0;
-            if (p.saleByWeight && p.weightPerUnit > 0 && gramsEach > 0) return gramsEach / p.weightPerUnit;
-            return (p.salePrice || 0) > 0 ? own / p.salePrice : 1;
+            if (own > 0 && (p.salePrice || 0) > 0) return own / p.salePrice * wpu;
+            return wpu; // la unidad del producto era el caramelo
+        }
+        function getCandyUnitPrice(p) {
+            if ((parseFloat(p && p.candyUnitPrice) || 0) > 0) return parseFloat(p.candyUnitPrice);
+            if (p && p.saleByWeight && p.weightPerUnit > 0) return (p.salePrice || 0) / p.weightPerUnit * getCandyGramsEach(p);
+            return (p && p.salePrice) || 0;
+        }
+        // Cuántas unidades de stock descuenta UN caramelo
+        function getCandyStockUnitsPerCandy(p) {
+            if (p && p.saleByWeight && p.weightPerUnit > 0) return getCandyGramsEach(p) / p.weightPerUnit;
+            const own = parseFloat(p && p.candyUnitPrice) || 0;
+            return own > 0 && (p.salePrice || 0) > 0 ? own / p.salePrice : 1;
+        }
+        // Costo de 1 gramo según los lotes que quedan (si no hay stock, el costo de referencia)
+        function getProductCostPerGram(p) {
+            const wpu = (p && p.weightPerUnit) || 1;
+            const batches = ((p && p.batches) || []).filter(b => (b.stock || 0) > 0);
+            const units = batches.reduce((s, b) => s + b.stock, 0);
+            if (units > 0) return batches.reduce((s, b) => s + b.stock * (b.cost || 0), 0) / units / wpu;
+            return ((p && p.cost) || 0) / wpu;
         }
         function setCandyUnitPrice(productId, value) {
             const p = appState.inventory.find(x => x.id === productId);
@@ -7293,14 +7329,18 @@
                             // peso, sin inventar un conteo de piezas que no es confiable
                             // (sobre todo si el peso de 1 caramelo no está bien configurado).
                             const isCandy = product.isCandy;
-                            const isWholeCandyCount = isCandy && item.quantity >= 1 && Math.abs(item.quantity - Math.round(item.quantity)) < 0.01;
+                            // Vendido por cantidad de caramelos: se guardó cuántos (candyCount). Líneas viejas:
+                            // solo si la unidad del producto es justo 1 caramelo y la cantidad es entera.
+                            const candyCountShown = item.candyCount > 0 ? item.candyCount
+                                : (isCandy && Math.abs(getCandyStockUnitsPerCandy(product) - 1) < 1e-6 && item.quantity >= 1 && Math.abs(item.quantity - Math.round(item.quantity)) < 0.01 ? Math.round(item.quantity) : 0);
+                            const isWholeCandyCount = candyCountShown > 0;
                             return `
                             <div class="sale-item flex justify-between items-center p-3 rounded-lg border border-blue-200 bg-blue-50">
                                 <div class="flex-1">
                                     <p class="font-bold text-gray-800">${escapeHtml(item.name || 'Producto')}</p>
                                     ${isWholeCandyCount
-                                        ? `<p class="text-sm text-gray-500">$${formatMoney(price)} c/u</p>
-                                           <p class="text-sm text-blue-700 font-bold">${Math.round(item.quantity)} caramelos = $${formatMoney(subtotal)}</p>`
+                                        ? `<p class="text-sm text-gray-500">$${formatMoney(item.candyUnitPrice || price)} c/u · ${fmtNumber(grams, 1)}g</p>
+                                           <p class="text-sm text-blue-700 font-bold">${candyCountShown} caramelos = $${formatMoney(subtotal)}</p>`
                                         : `<p class="text-sm text-gray-500">$${formatMoney(price)} por ${product.weightPerUnit}g</p>
                                            <p class="text-sm text-blue-700 font-bold">${formatMoney(grams)}g = $${formatMoney(subtotal)}</p>`}
                                 </div>
@@ -7899,6 +7939,20 @@
             showNotification('🎟️ Ticket aplicado correctamente', 'success');
         }
         
+        // Muestra/oculta el recuadro "Ticket aplicado" según appState.appliedTicket
+        function refreshAppliedTicketUI() {
+            const t = appState.appliedTicket;
+            const section = document.getElementById('applied-ticket-section');
+            if (!section) return;
+            section.classList.toggle('hidden', !t);
+            if (t) {
+                const numEl = document.getElementById('applied-ticket-number');
+                const descEl = document.getElementById('applied-ticket-desc');
+                if (numEl) numEl.textContent = t.ticketNumber;
+                if (descEl) descEl.textContent = calculateTicketDiscount(t, 0, []).label || t.promoName || '';
+            }
+        }
+
         function removeAppliedTicket(render = true) {
             appState.appliedTicket = null;
             document.getElementById('applied-ticket-section').classList.add('hidden');
@@ -7925,9 +7979,19 @@
         // lógica en cada función que agrega al carrito.
         function applySpecialPriceToCart() {
             if (!appState.activeSpecialPriceCode) return;
-            const markupPct = appState.activeSpecialPriceCode.markupPct;
-            appState.cart.forEach(item => {
+            applySpecialPriceToItems(appState.cart, appState.activeSpecialPriceCode.markupPct);
+        }
+
+        // Costo + % sobre una lista de líneas (carrito de Vender o carrito de una comanda).
+        // Las líneas de la comanda no guardan el costo: se toma el del producto.
+        function applySpecialPriceToItems(items, markupPct) {
+            items.forEach(item => {
                 if (!item.productId || item.isManual) return;
+                if (item.cost == null) {
+                    const product = appState.inventory.find(p => p.id === item.productId);
+                    if (!product) return;
+                    item.cost = product.isComposite ? calculateCompositeCost(product) : (product.cost || 0);
+                }
                 // Los productos por peso (weightGrams != null) ya traen un precio
                 // armado a propósito para ESA venta puntual (ej: "quiero cobrar
                 // $1100", calculado en el modal de peso) -- item.price ahí es el
@@ -7953,17 +8017,50 @@
             });
         }
 
+        // Busca un código en los dos lugares: primero los de cliente/empleado (costo + %),
+        // después los tickets de descuento (N° de 6 dígitos). Nunca se pisan: ver generateTicketNumber().
+        function findSpecialPriceCode(code) {
+            const c = String(code || '').trim().toLowerCase();
+            return c ? (appState.specialPriceCodes || []).find(x => String(x.code || '').toLowerCase() === c) || null : null;
+        }
+        function findDiscountTicketByNumber(code) {
+            const c = String(code || '').trim();
+            return c ? (appState.discountTickets || []).find(t => String(t.ticketNumber) === c) || null : null;
+        }
+        // Por qué un ticket no se puede usar ahora (o null si se puede)
+        function discountTicketProblem(ticket) {
+            if (!ticket) return 'Ticket no encontrado';
+            if (ticket.used) return 'Este ticket ya fue usado';
+            if (ticket.expiryDate && new Date(ticket.expiryDate) <= new Date()) return 'Ticket vencido';
+            return null;
+        }
+
         function applySpecialPriceCode() {
             const input = document.getElementById('special-price-code-input');
             const code = input ? input.value.trim() : '';
             if (!code) { showNotification('Ingresá un código', 'error'); return; }
-            const entry = (appState.specialPriceCodes || []).find(c => c.code.toLowerCase() === code.toLowerCase());
-            if (!entry) { showNotification('Código no válido', 'error'); return; }
+            const entry = findSpecialPriceCode(code);
+            if (!entry) {
+                if (findDiscountTicketByNumber(code)) {
+                    // Ticket de descuento: mismas validaciones de siempre (vencido, usado, mínimo, combo mejor)
+                    document.getElementById('cart-ticket-code').value = code;
+                    applyManualTicket();
+                    if (appState.appliedTicket && String(appState.appliedTicket.ticketNumber) === code) {
+                        if (input) input.value = '';
+                    } else {
+                        const msg = (document.getElementById('ticket-status-msg') || {}).textContent || 'No se pudo aplicar el ticket';
+                        showNotification(msg.replace(/^❌\s*/, ''), 'error', 6000);
+                    }
+                    return;
+                }
+                showNotification('Código no válido', 'error');
+                return;
+            }
             const markupPct = entry.markupPct != null ? entry.markupPct : 10;
             appState.activeSpecialPriceCode = { id: entry.id, name: entry.name, code: entry.code, markupPct };
             applySpecialPriceToCart();
             if (input) input.value = '';
-            document.getElementById('special-price-input-section').classList.add('hidden');
+            // El recuadro queda visible: se puede sumar también un ticket de descuento
             document.getElementById('applied-special-price-section').classList.remove('hidden');
             document.getElementById('applied-special-price-name').textContent = entry.name;
             updateCartTotals();
@@ -7975,9 +8072,23 @@
         function clearSpecialPriceCode(render = true) {
             if (!appState.activeSpecialPriceCode) return;
             appState.activeSpecialPriceCode = null;
-            // Restaurar el precio de venta normal de cada línea (se vuelve a buscar en
-            // el inventario, no quedó guardado aparte en el ítem del carrito).
-            appState.cart.forEach(item => {
+            restoreNormalPrices(appState.cart);
+            const inputSection = document.getElementById('special-price-input-section');
+            const appliedSection = document.getElementById('applied-special-price-section');
+            if (inputSection) inputSection.classList.remove('hidden');
+            if (appliedSection) appliedSection.classList.add('hidden');
+            if (render) {
+                updateCartTotals();
+                renderCart();
+                showNotification('Precio especial quitado', 'success');
+            }
+        }
+        window.clearSpecialPriceCode = clearSpecialPriceCode;
+
+        // Restaurar el precio de venta normal de cada línea (se vuelve a buscar en
+        // el inventario, no quedó guardado aparte en el ítem del carrito).
+        function restoreNormalPrices(items) {
+            items.forEach(item => {
                 if (!item.productId || item.isManual) return;
                 // Mismo motivo que en applySpecialPriceToCart(): a un producto por
                 // peso nunca se le tocó el precio por el código especial, así que
@@ -7991,17 +8102,7 @@
                 if (product) item.price = product.salePrice || 0;
                 item.isSpecialPrice = false;
             });
-            const inputSection = document.getElementById('special-price-input-section');
-            const appliedSection = document.getElementById('applied-special-price-section');
-            if (inputSection) inputSection.classList.remove('hidden');
-            if (appliedSection) appliedSection.classList.add('hidden');
-            if (render) {
-                updateCartTotals();
-                renderCart();
-                showNotification('Precio especial quitado', 'success');
-            }
         }
-        window.clearSpecialPriceCode = clearSpecialPriceCode;
 
         function updateCartTotals() {
             applySpecialPriceToCart();
@@ -8087,10 +8188,11 @@
             calculateChange();
         }
         
-        function calculateTicketDiscount(ticket, subtotal) {
+        function calculateTicketDiscount(ticket, subtotal, items) {
+            const lines = items || appState.cart;
             const applicableItems = (ticket.productIds && ticket.productIds.length > 0)
-                ? appState.cart.filter(item => ticket.productIds.includes(item.productId))
-                : appState.cart;
+                ? lines.filter(item => ticket.productIds.includes(item.productId))
+                : lines;
             
             const applicableSubtotal = applicableItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             const applicableQty = applicableItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -8868,24 +8970,6 @@
 
             const subtotal = appState.cartSubtotal || appState.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             
-            // Calcular stock esperado después de la venta para verificación asíncrona
-            const expectedAfterSale = {};
-            for (const item of appState.cart) {
-                if (!item.productId || item.isManual) continue;
-                const product = appState.inventory.find(p => p.id === item.productId);
-                if (!product) continue;
-                if (product.isComposite && product.components) {
-                    for (const comp of product.components) {
-                        const compProduct = appState.inventory.find(p => p.id === comp.productId);
-                        if (!compProduct) continue;
-                        const qty = item.quantity * (comp.quantity || 1);
-                        expectedAfterSale[compProduct.id] = (expectedAfterSale[compProduct.id] !== undefined ? expectedAfterSale[compProduct.id] : getProductStock(compProduct)) - qty;
-                    }
-                } else {
-                    expectedAfterSale[product.id] = (expectedAfterSale[product.id] !== undefined ? expectedAfterSale[product.id] : getProductStock(product)) - item.quantity;
-                }
-            }
-            
             // El efectivo se valida ANTES de cargar Stock Gratis (si la venta se frena acá,
             // no tiene que quedar nada agregado). Se repite abajo igual que siempre.
             if (appState.paymentMethod === 'cash') {
@@ -8907,6 +8991,26 @@
             // Recién ahora (la venta ya no se frena) se carga como Stock Gratis lo que
             // falte de lo que se aprobó vender sin stock.
             const undoFreeStock = coverApprovedShortfallsForSale(appState.cart);
+
+            // Stock esperado después de la venta (para la verificación asíncrona). Se calcula
+            // DESPUÉS de cargar el Stock Gratis: si no, al vender sin stock suficiente el
+            // "esperado" daba negativo (ej. -0.0277) y avisaba un falso "no coincide".
+            const expectedAfterSale = {};
+            for (const item of appState.cart) {
+                if (!item.productId || item.isManual) continue;
+                const product = appState.inventory.find(p => p.id === item.productId);
+                if (!product) continue;
+                if (product.isComposite && product.components) {
+                    for (const comp of product.components) {
+                        const compProduct = appState.inventory.find(p => p.id === comp.productId);
+                        if (!compProduct) continue;
+                        const qty = item.quantity * (comp.quantity || 1);
+                        expectedAfterSale[compProduct.id] = (expectedAfterSale[compProduct.id] !== undefined ? expectedAfterSale[compProduct.id] : getProductStock(compProduct)) - qty;
+                    }
+                } else {
+                    expectedAfterSale[product.id] = (expectedAfterSale[product.id] !== undefined ? expectedAfterSale[product.id] : getProductStock(product)) - item.quantity;
+                }
+            }
 
             // Calcular costo FIFO para cada ítem ANTES de descontar stock
             for (const item of appState.cart) {
@@ -9197,7 +9301,8 @@
                 
                 // Verificar asíncronamente que el stock se haya reflejado correctamente
                 for (const [productId, expected] of Object.entries(expectedAfterSale)) {
-                    verifyAndRetryStockChange('Venta ' + productId, productId, () => expected);
+                    const verifyProduct = appState.inventory.find(p => p.id === productId);
+                    verifyAndRetryStockChange('Venta de ' + (verifyProduct ? verifyProduct.name : productId), productId, () => expected);
                 }
                 
                 // Resetear método de pago a efectivo y actualizar la UI (salvo que el
@@ -9281,7 +9386,7 @@
             const subtotal = Math.round((parseFloat(item.price) || 0) * q * 100) / 100;
             const whole = Math.abs(q - Math.round(q)) < 1e-6 && q >= 1;
             // Surtido de caramelos: "10 x $100" (caramelos × precio por caramelo)
-            if (item.candyMix && item.candyCount > 0 && item.candyUnitPrice > 0) {
+            if (item.candyCount > 0 && item.candyUnitPrice > 0) {
                 return { byAmount: false, qty: item.candyCount, qtyText: item.candyCount + ' x $' + formatMoney(item.candyUnitPrice), subtotal };
             }
             if (item.weightGrams != null || !whole) return { byAmount: true, qty: null, qtyText: '', subtotal };
@@ -9583,13 +9688,13 @@
                 showNotification('El carrito está vacío', 'error');
                 return;
             }
-            const items = appState.cart.map(item => ({
-                productId: item.productId || null,
-                name: item.name,
-                quantity: item.quantity,
-                price: item.price
-            }));
-            openPedidoModal(null, items);
+            const items = appState.cart.map(item => {
+                const line = { productId: item.productId || null, name: item.name, quantity: item.quantity, price: item.price };
+                if (item.weightGrams != null) line.weightGrams = item.weightGrams;
+                return line;
+            });
+            // El precio especial de cliente ya viene en los precios; el ticket de descuento viaja aparte
+            openPedidoModal(null, items, appState.appliedTicket || null);
             showNotification('Completá cliente, fecha y hora para guardar el pedido', 'info', 5000);
         }
 
@@ -9654,8 +9759,76 @@
             document.getElementById('pedido-inline-change').textContent = '$' + formatMoney(Math.max(0, change));
         }
 
-        function openPedidoModal(pedidoId, presetItems) {
+        // ---------- Códigos en la comanda (mismo recuadro que en Vender) ----------
+        let pendingPedidoTicket = null;  // ticket de descuento de la comanda (se marca usado al facturarla)
+        let pendingPedidoSpecial = null; // código de cliente/empleado: { name, code, markupPct }
+
+        // Descuento de la comanda: el mayor entre el combo automático y el ticket (igual que en Vender)
+        function computePedidoDiscount(items) {
+            const subtotal = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+            const promo = calculateActivePromoDiscount(subtotal, items);
+            let res = { subtotal, discount: promo.discount || 0, label: promo.label || null, ticket: null, ticketNote: '' };
+            const t = pendingPedidoTicket;
+            if (t) {
+                if (t.minAmount && subtotal < t.minAmount) {
+                    res.ticketNote = 'mínimo $' + formatMoney(t.minAmount) + ' (faltan $' + formatMoney(t.minAmount - subtotal) + ')';
+                } else {
+                    const calc = calculateTicketDiscount(t, subtotal, items);
+                    if (calc.discount > res.discount) res = { subtotal, discount: calc.discount, label: '🎟️ ' + calc.label, ticket: t, ticketNote: '' };
+                    else if (calc.discount <= 0) res.ticketNote = 'no aplica a estos productos';
+                    else res.ticketNote = 'el combo da más descuento';
+                }
+            }
+            res.discount = Math.min(res.discount, subtotal);
+            return res;
+        }
+
+        function applyPedidoCode() {
+            const input = document.getElementById('pedido-code-input');
+            const code = input ? input.value.trim() : '';
+            if (!code) { showNotification('Ingresá un código', 'error'); return; }
+            const entry = findSpecialPriceCode(code);
+            if (entry) {
+                pendingPedidoSpecial = { id: entry.id, name: entry.name, code: entry.code, markupPct: entry.markupPct != null ? entry.markupPct : 10 };
+                if (input) input.value = '';
+                renderPedidoItemsList();
+                showNotification('🏷️ Precio especial aplicado: ' + entry.name, 'success');
+                return;
+            }
+            const ticket = findDiscountTicketByNumber(code);
+            if (!ticket) { showNotification('Código no válido', 'error'); return; }
+            const problem = discountTicketProblem(ticket);
+            if (problem) { showNotification(problem, 'error'); return; }
+            const otherPedido = (appState.pedidos || []).find(p => p.ticketId === ticket.id && p.id !== editingPedidoId && p.status !== 'cancelado' && p.status !== 'entregado');
+            if (otherPedido) { showNotification('Ese ticket ya está cargado en otra comanda' + (otherPedido.comandaNumber ? ' (#' + otherPedido.comandaNumber + ')' : ''), 'error'); return; }
+            pendingPedidoTicket = ticket;
+            if (input) input.value = '';
+            renderPedidoItemsList();
+            const r = computePedidoDiscount(pendingPedidoItems);
+            showNotification(r.ticket ? '🎟️ Ticket aplicado a la comanda' : '🎟️ Ticket cargado, pero por ahora no descuenta: ' + (r.ticketNote || 'sin productos'), r.ticket ? 'success' : 'warning', 6000);
+        }
+        window.applyPedidoCode = applyPedidoCode;
+
+        function removePedidoSpecial() {
+            pendingPedidoSpecial = null;
+            restoreNormalPrices(pendingPedidoItems);
+            renderPedidoItemsList();
+        }
+        window.removePedidoSpecial = removePedidoSpecial;
+
+        function removePedidoTicket() {
+            pendingPedidoTicket = null;
+            renderPedidoItemsList();
+        }
+        window.removePedidoTicket = removePedidoTicket;
+
+        function openPedidoModal(pedidoId, presetItems, presetTicket) {
             editingPedidoId = pedidoId || null;
+            pendingPedidoTicket = presetTicket || null;
+            // Si viene del carrito con código de cliente, los precios ya vienen con ese precio especial
+            pendingPedidoSpecial = !pedidoId && Array.isArray(presetItems) && presetItems.length > 0 && appState.activeSpecialPriceCode ? { ...appState.activeSpecialPriceCode } : null;
+            const codeInput = document.getElementById('pedido-code-input');
+            if (codeInput) codeInput.value = '';
             pedidoFromCart = !pedidoId && Array.isArray(presetItems) && presetItems.length > 0;
             const modal = document.getElementById('pedido-modal');
             document.getElementById('pedido-customer').value = '';
@@ -9680,6 +9853,8 @@
                     document.getElementById('pedido-remind-minutes').value = pedido.reminderMinutesBefore != null ? pedido.reminderMinutesBefore : 10;
                     document.getElementById('pedido-notes').value = pedido.notes || '';
                     pendingPedidoItems = JSON.parse(JSON.stringify(pedido.items || []));
+                    pendingPedidoTicket = pedido.ticketId ? ((appState.discountTickets || []).find(t => t.id === pedido.ticketId) || null) : null;
+                    pendingPedidoSpecial = pedido.specialPriceCode ? { name: pedido.specialPriceCodeName || pedido.specialPriceCode, code: pedido.specialPriceCode, markupPct: pedido.specialPriceMarkupPct != null ? pedido.specialPriceMarkupPct : 10 } : null;
                     pedidoInlinePaymentMethod = ['cash', 'debit', 'transfer', 'qr', 'fiado'].includes(pedido.paymentMethod) ? pedido.paymentMethod : 'cash';
                     if (pedido.paymentReceived) document.getElementById('pedido-inline-received').value = pedido.paymentReceived;
                     setPedidoPaymentStatus(pedido.paymentStatus || 'pendiente');
@@ -9695,6 +9870,8 @@
             editingPedidoId = null;
             pedidoFromCart = false;
             pendingPedidoItems = [];
+            pendingPedidoTicket = null;
+            pendingPedidoSpecial = null;
         }
 
         function filterPedidoProducts() {
@@ -9855,9 +10032,17 @@
             const totalItems = pendingPedidoItems.reduce((sum, i) => sum + (i.weightGrams != null ? 1 : (i.quantity || 0)), 0);
             if (countEl) countEl.textContent = `(${totalItems} items)`;
 
-            const subtotal = pendingPedidoItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-            const promoResult = calculateActivePromoDiscount(subtotal, pendingPedidoItems);
+            if (pendingPedidoSpecial) applySpecialPriceToItems(pendingPedidoItems, pendingPedidoSpecial.markupPct);
+            const promoResult = computePedidoDiscount(pendingPedidoItems);
+            const subtotal = promoResult.subtotal;
             const total = subtotal - promoResult.discount;
+
+            const codesEl = document.getElementById('pedido-applied-codes');
+            if (codesEl) {
+                codesEl.innerHTML =
+                    (pendingPedidoSpecial ? '<div class="flex justify-between items-center bg-amber-50 border border-amber-300 rounded-lg px-2 py-1"><span class="text-amber-800 font-bold">🏷️ ' + escapeHtml(pendingPedidoSpecial.name) + ' (costo +' + pendingPedidoSpecial.markupPct + '%)</span><button type="button" onclick="removePedidoSpecial()" class="text-red-500 hover:text-red-700 font-bold">✕ Quitar</button></div>' : '') +
+                    (pendingPedidoTicket ? '<div class="flex justify-between items-center bg-green-50 border border-green-200 rounded-lg px-2 py-1"><span class="text-green-700 font-bold">🎟️ Ticket #' + escapeHtml(String(pendingPedidoTicket.ticketNumber)) + (promoResult.ticket ? '' : ' <span class="font-normal text-orange-600">(no descuenta: ' + escapeHtml(promoResult.ticketNote || 'sin productos') + ')</span>') + '</span><button type="button" onclick="removePedidoTicket()" class="text-red-500 hover:text-red-700 font-bold">✕ Quitar</button></div>' : '');
+            }
 
             const subtotalEl = document.getElementById('pedido-items-subtotal');
             const discountRowEl = document.getElementById('pedido-items-discount-row');
@@ -9897,9 +10082,17 @@
                 return;
             }
 
-            const pedidoSubtotal = pendingPedidoItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-            const pedidoPromoResult = calculateActivePromoDiscount(pedidoSubtotal, pendingPedidoItems);
-            const total = pedidoSubtotal - pedidoPromoResult.discount;
+            if (pendingPedidoSpecial) applySpecialPriceToItems(pendingPedidoItems, pendingPedidoSpecial.markupPct);
+            const pedidoPromoResult = computePedidoDiscount(pendingPedidoItems);
+            const total = pedidoPromoResult.subtotal - pedidoPromoResult.discount;
+            // Códigos de la comanda: el ticket se guarda solo si es el que descuenta (se marca usado al facturar)
+            const pedidoCodes = {
+                ticketId: pedidoPromoResult.ticket ? pedidoPromoResult.ticket.id : null,
+                ticketNumber: pedidoPromoResult.ticket ? pedidoPromoResult.ticket.ticketNumber : null,
+                specialPriceCode: pendingPedidoSpecial ? pendingPedidoSpecial.code : null,
+                specialPriceCodeName: pendingPedidoSpecial ? pendingPedidoSpecial.name : null,
+                specialPriceMarkupPct: pendingPedidoSpecial ? pendingPedidoSpecial.markupPct : null
+            };
 
             // Si vas a guardar como "Ya pagó", el método/monto/vuelto ya se resuelven acá
             // mismo (elegidos en el propio modal) -- antes de tocar nada del pedido, para
@@ -9934,6 +10127,7 @@
                 pedido.total = total;
                 pedido.promoDiscount = pedidoPromoResult.discount || 0;
                 pedido.promoLabel = pedidoPromoResult.label || null;
+                Object.assign(pedido, pedidoCodes);
                 pedido.paymentStatus = paymentStatus;
                 if (paymentStatus === 'pagado') {
                     pedido.paymentMethod = paymentMethod;
@@ -9964,6 +10158,7 @@
                     total,
                     promoDiscount: pedidoPromoResult.discount || 0,
                     promoLabel: pedidoPromoResult.label || null,
+                    ...pedidoCodes,
                     status: 'pendiente',
                     paymentStatus,
                     reminderPreFired: false,
@@ -9985,6 +10180,7 @@
             if (wasFromCart) {
                 appState.cart = [];
                 clearSpecialPriceCode(false);
+                if (appState.appliedTicket) removeAppliedTicket(false); // el ticket pasó a la comanda
                 if (typeof renderCart === 'function') renderCart();
             }
 
@@ -10287,6 +10483,15 @@
             // (se consume y se limpia solo ahí, o al vaciar el carrito si no llega a venderse).
             pendingPedidoSaleInfo = { pedidoId: pedido.id, comandaNumber: pedido.comandaNumber || null, customerName: pedido.customerName || null };
 
+            // Ticket de descuento cargado en la comanda: se aplica a esta venta (y completeSale lo marca usado)
+            let pedidoTicket = null;
+            if (pedido.ticketId) {
+                const t = (appState.discountTickets || []).find(x => x.id === pedido.ticketId) || null;
+                const problem = discountTicketProblem(t);
+                if (problem) showNotification('⚠️ El ticket #' + (pedido.ticketNumber || '') + ' de la comanda no se aplicó: ' + problem, 'warning', 8000);
+                else pedidoTicket = t;
+            }
+
             if (yaPagado) {
                 // "Finalizar y Facturar": todo resuelto, se termina la venta ahí mismo. El
                 // carrito real de Vender puede tener en este momento a OTRO cliente
@@ -10303,6 +10508,7 @@
                 const savedPromoInfo = appState.activePromoInfo;
                 const savedPaymentMethod = appState.paymentMethod;
                 const savedSpecialPriceCode = appState.activeSpecialPriceCode;
+                const savedTicket = appState.appliedTicket;
                 const cashInput = document.getElementById('cash-received');
                 const savedCashReceived = cashInput ? cashInput.value : null;
                 const salesCountBefore = appState.sales.length;
@@ -10313,6 +10519,7 @@
                     // cajero tiene un código de precio especial activo en SU carrito
                     // (otro cliente), no tiene que filtrarse acá.
                     appState.activeSpecialPriceCode = null;
+                    appState.appliedTicket = pedidoTicket;
                     updateCartTotals();
 
                     // "mercadopago" (pedido online ya cobrado) se trata como "qr" para la
@@ -10341,6 +10548,8 @@
                     appState.cartFinalTotal = savedFinalTotal;
                     appState.activePromoInfo = savedPromoInfo;
                     appState.activeSpecialPriceCode = savedSpecialPriceCode;
+                    appState.appliedTicket = savedTicket;
+                    refreshAppliedTicketUI();
                     setPaymentMethod(savedPaymentMethod || 'cash');
                     if (cashInput) cashInput.value = savedCashReceived != null ? savedCashReceived : '';
                     if (savedPaymentMethod === 'cash') calculateChange();
@@ -10372,6 +10581,8 @@
                 marcarPedidoEntregado(pedido.id, pedido);
                 saveToLocalStorage();
                 appState.cart = pedidoCartItems;
+                appState.appliedTicket = pedidoTicket;
+                refreshAppliedTicketUI();
                 updateCartTotals();
                 showSection('sell');
                 if (typeof renderCart === 'function') renderCart();
@@ -16141,13 +16352,11 @@
                     const candyCheckbox = document.getElementById('edit-prod-is-candy');
                     if (candyCheckbox) {
                         candyCheckbox.checked = product.isCandy || false;
-                        // El peso de 10 no se guarda aparte -- se reconstruye desde
-                        // weightPerUnit (que si ES el dato guardado) para no pedirlo
-                        // de nuevo cada vez que se reabre el producto.
+                        // Peso de 10 = peso de un caramelo × 10 (candyWeight, o lo que descontaba antes)
                         const weight10Input = document.getElementById('edit-prod-candy-weight-10');
-                        if (weight10Input) weight10Input.value = product.isCandy && product.weightPerUnit ? (product.weightPerUnit * 10) : '';
-                        const eachEl = document.getElementById('edit-prod-candy-weight-each');
-                        if (eachEl) eachEl.textContent = fmtNumber(product.weightPerUnit || 0, 3);
+                        if (weight10Input) weight10Input.value = product.isCandy ? (Math.round(getCandyGramsEach(product) * 10 * 1000) / 1000 || '') : '';
+                        const candyPriceInput = document.getElementById('edit-prod-candy-price');
+                        if (candyPriceInput) candyPriceInput.value = product.isCandy ? (Math.round(getCandyUnitPrice(product) * 100) / 100 || '') : '';
                     }
                     toggleEditCandySection();
                     toggleEditWeightSection();
@@ -16407,6 +16616,12 @@
                     product.saleByWeight = true;
                     product.weightPerUnit = parseFloat(document.getElementById('edit-prod-weight-per-unit')?.value) || 0;
                     product.isCandy = document.getElementById('edit-prod-is-candy')?.checked || false;
+                    if (product.isCandy) {
+                        const w10 = parseFloat(document.getElementById('edit-prod-candy-weight-10')?.value) || 0;
+                        const cp = parseFloat(document.getElementById('edit-prod-candy-price')?.value) || 0;
+                        product.candyWeight = w10 > 0 ? Math.round(w10 / 10 * 10000) / 10000 : null;
+                        product.candyUnitPrice = cp > 0 ? Math.round(cp * 100) / 100 : null;
+                    }
                 } else {
                     delete product.saleByWeight;
                     delete product.weightPerUnit;
@@ -19138,13 +19353,14 @@
             if (open && Date.now() - open.inAt < 2 * 60 * 1000) {
                 if (!(await showConfirmModal(emp.name + ', recién fichaste la entrada. ¿Querés marcar la SALIDA?'))) { if (input) input.focus(); return; }
             }
-            clockToggleEmployee(emp.id);
+            const r = clockToggleEmployee(emp.id);
             const hm = (ms) => new Date(ms).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+            const turn = r ? ' del ' + r.turn : '';
             if (open) {
                 const mins = Math.round((Date.now() - open.inAt) / 60000);
-                showDniClockResult(true, '👋 Chau ' + emp.name + ': salida ' + hm(Date.now()) + ' (estuviste ' + fmtMinutes(mins) + ')');
+                showDniClockResult(true, '👋 Chau ' + emp.name + ': salida' + turn + ' ' + hm(Date.now()) + ' (estuviste ' + fmtMinutes(mins) + ')');
             } else {
-                showDniClockResult(true, '🕒 Hola ' + emp.name + ': entrada ' + hm(Date.now()));
+                showDniClockResult(true, '🕒 Hola ' + emp.name + ': entrada' + turn + ' ' + hm(Date.now()));
             }
             if (input) input.focus();
         }
@@ -19165,24 +19381,38 @@
             refreshMyClockButton();
         }
 
-        // Fichaje: si tiene una entrada abierta, la cierra; si no, abre una nueva (ahora)
+        // Qué turno del día es un fichaje: "1.er turno", "2.º turno"… (por orden de entrada en ese día)
+        function clockTurnLabel(empId, entry) {
+            const sameDay = getEmployeeClockEntries(empId).filter(c => c.date === entry.date).sort((a, b) => a.inAt - b.inAt);
+            const n = Math.max(1, sameDay.findIndex(c => c.id === entry.id) + 1);
+            return n === 1 ? '1.er turno' : n + '.º turno';
+        }
+
+        // Fichaje: si tiene una entrada abierta, la cierra; si no, abre una nueva (ahora).
+        // Se puede fichar las veces que haga falta en el día (turno cortado: entrada/salida del 1.º y del 2.º).
         function clockToggleEmployee(empId) {
             const emp = getActiveEmployees().find(e => e.id === empId);
-            if (!emp) return;
+            if (!emp) return null;
             if (!Array.isArray(appState.timeClock)) appState.timeClock = [];
             const open = getEmployeeClockEntries(empId).filter(c => !c.outAt).sort((a, b) => b.inAt - a.inAt)[0];
             const now = Date.now();
+            const hhmm = new Date(now).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+            let result;
             if (open) {
                 const live = appState.timeClock.find(c => c.id === open.id);
                 touchEmp(Object.assign(live, { outAt: now }));
-                showNotification('👋 Salida de ' + emp.name + ' a las ' + new Date(now).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }), 'success');
+                result = { type: 'out', entry: live, turn: clockTurnLabel(empId, live) };
+                showNotification('👋 Salida de ' + emp.name + ' (' + result.turn + ') a las ' + hhmm, 'success');
             } else {
-                appState.timeClock.push(touchEmp({ id: 'CLK-' + now + '-' + Math.random().toString(36).slice(2, 6), employeeId: empId, date: formatDateISO(new Date(now)), inAt: now, outAt: null, source: 'fichaje', status: 'active', by: appState.currentUser ? appState.currentUser.name : null }));
-                showNotification('🕒 Entrada de ' + emp.name + ' a las ' + new Date(now).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }), 'success');
+                const entry = touchEmp({ id: 'CLK-' + now + '-' + Math.random().toString(36).slice(2, 6), employeeId: empId, date: formatDateISO(new Date(now)), inAt: now, outAt: null, source: 'fichaje', status: 'active', by: appState.currentUser ? appState.currentUser.name : null });
+                appState.timeClock.push(entry);
+                result = { type: 'in', entry, turn: clockTurnLabel(empId, entry) };
+                showNotification('🕒 Entrada de ' + emp.name + ' (' + result.turn + ') a las ' + hhmm, 'success');
             }
             saveToLocalStorage();
             refreshMyClockButton();
             if (currentSection === 'employees') renderEmployeesSection();
+            return result;
         }
 
         function getMyEmployee() {
@@ -19206,10 +19436,11 @@
             btn.classList.remove('hidden');
             if (open) {
                 btn.className = 'w-full text-left px-3 py-2 rounded-xl transition flex items-center gap-2 text-sm mt-4 font-bold bg-orange-100 text-orange-700 hover:bg-orange-200';
-                if (label) label.textContent = 'Fichar salida (entró ' + new Date(open.inAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ')';
+                if (label) label.textContent = 'Fichar salida ' + clockTurnLabel(emp.id, open) + ' (entró ' + new Date(open.inAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ')';
             } else {
                 btn.className = 'w-full text-left px-3 py-2 rounded-xl transition flex items-center gap-2 text-sm mt-4 font-bold bg-green-100 text-green-700 hover:bg-green-200';
-                if (label) label.textContent = 'Fichar entrada';
+                const todayCount = getEmployeeClockEntries(emp.id).filter(c => c.date === formatDateISO(new Date())).length;
+                if (label) label.textContent = 'Fichar entrada' + (todayCount ? ' ' + (todayCount + 1) + '.º turno' : '');
             }
         }
 
@@ -19506,7 +19737,7 @@
             listEl.innerHTML = emps.length === 0 ? '<p class="text-center text-gray-400 text-sm py-3">Todavía no cargaste empleados</p>' : emps.map(emp => {
                 const open = getEmployeeClockEntries(emp.id).find(c => !c.outAt);
                 const today = computeEmployeeDay(emp, todayStr, nowMs);
-                const status = open ? '<span class="text-green-700 font-bold">🟢 Trabajando desde ' + hm(open.inAt) + '</span>'
+                const status = open ? '<span class="text-green-700 font-bold">🟢 Trabajando desde ' + hm(open.inAt) + ' (' + clockTurnLabel(emp.id, open) + ')</span>'
                     : (today.entries.length ? '<span class="text-gray-600">Hoy: ' + today.entries.map(c => hm(c.inAt) + '–' + (c.outAt ? hm(c.outAt) : '…')).join(', ') + '</span>'
                     : (today.scheduledMin ? '<span class="text-orange-600">Hoy no fichó todavía</span>' : '<span class="text-gray-400">Hoy no trabaja</span>'));
                 const rec = getEmployeeSalaryRec(emp.id);
@@ -21401,6 +21632,7 @@
         }
 
         function openCashCountModal(forDate) {
+            resetCashCalcs('cash-count-modal');
             const today = forDate || formatDateISO(appState.activeDate || new Date());
             // Registrar que ya se mostró el arqueo hoy para no repetirlo automáticamente
             // (solo cuando se abre para el día activo, no al editar un arqueo puntual de la lista)
@@ -22108,6 +22340,12 @@
                 showNotification('Ya existe un código igual (de "' + duplicate.name + '")', 'error');
                 return;
             }
+            // Se escribe en el mismo lugar que los tickets de descuento: no puede ser el N° de uno vigente
+            const clashTicket = findDiscountTicketByNumber(code);
+            if (clashTicket && !discountTicketProblem(clashTicket)) {
+                showNotification('Ese código es el número de un ticket de descuento vigente. Elegí otro.', 'error');
+                return;
+            }
             if (id) {
                 const entry = appState.specialPriceCodes.find(c => c.id === id);
                 if (!entry) return;
@@ -22630,7 +22868,79 @@
         }
 
         // ==================== CONTEO DE TURNO ====================
+        // ---------- Calculadora de arqueo: billetes × cantidad + suma libre; el total va solo al campo ----------
+        const CASH_CALC_BILLS = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20, 10];
+
+        // Cuenta escrita a mano ("350 + 120", "3x500", "1.500"): solo números y + - * / ( )
+        function evalCalcExpression(text) {
+            let s = String(text || '').trim();
+            if (!s) return 0;
+            s = s.replace(/\.(?=\d{3}(\D|$))/g, '').replace(/,/g, '.').replace(/[x×]/gi, '*');
+            if (!/^[0-9+\-*/(). ]+$/.test(s)) return NaN;
+            try {
+                const v = Function('"use strict"; return (' + s + ')')();
+                return typeof v === 'number' && isFinite(v) ? v : NaN;
+            } catch (e) { return NaN; }
+        }
+
+        function toggleCashCalc(targetId, mode) {
+            const box = document.getElementById('calc-' + targetId);
+            const target = document.getElementById(targetId);
+            if (!box || !target) return;
+            if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+            if (!box.innerHTML || !target.value) box.innerHTML = buildCashCalc(targetId, mode);
+            box.classList.remove('hidden');
+            const first = box.querySelector('input');
+            if (first) first.focus();
+        }
+
+        function buildCashCalc(targetId, mode) {
+            const bills = mode === 'cash' ? CASH_CALC_BILLS.map(b =>
+                '<div class="flex items-center gap-2"><span class="w-20 text-right font-bold text-gray-700">$' + formatMoney(b) + '</span><span class="text-gray-400">×</span>' +
+                '<input type="number" min="0" step="1" inputmode="numeric" data-bill="' + b + '" class="w-20 border rounded-lg px-2 py-1 text-center" placeholder="0" oninput="updateCashCalc(\'' + targetId + '\')">' +
+                '<span class="flex-1 text-right text-gray-600" data-bill-sub="' + b + '"></span></div>').join('') : '';
+            return '<div class="mt-2 p-3 bg-gray-50 border rounded-xl space-y-1.5 text-sm">' + bills +
+                '<div class="flex items-center gap-2' + (mode === 'cash' ? ' pt-1' : '') + '"><span class="' + (mode === 'cash' ? 'w-20 text-right ' : '') + 'text-xs text-gray-600">' + (mode === 'cash' ? 'Monedas / otros' : 'Sumá los montos') + '</span>' +
+                '<input type="text" data-calc-free class="flex-1 min-w-0 border rounded-lg px-2 py-1" placeholder="Ej: 350 + 120 + 1500" oninput="updateCashCalc(\'' + targetId + '\')"></div>' +
+                '<div class="flex justify-between items-center border-t pt-2 mt-1"><span class="font-bold text-gray-700">Total</span><span class="text-lg font-bold text-indigo-700" data-calc-total>$0</span></div>' +
+                '<p class="text-[11px] text-gray-400" data-calc-msg>El total se pasa solo al campo de arriba.</p></div>';
+        }
+
+        function updateCashCalc(targetId) {
+            const box = document.getElementById('calc-' + targetId);
+            const target = document.getElementById(targetId);
+            if (!box || !target) return;
+            let total = 0;
+            box.querySelectorAll('[data-bill]').forEach(inp => {
+                const b = parseFloat(inp.dataset.bill);
+                const n = Math.max(0, parseFloat(inp.value) || 0);
+                total += b * n;
+                const sub = box.querySelector('[data-bill-sub="' + inp.dataset.bill + '"]');
+                if (sub) sub.textContent = n ? '$' + formatMoney(b * n) : '';
+            });
+            const free = box.querySelector('[data-calc-free]');
+            const msg = box.querySelector('[data-calc-msg]');
+            const freeVal = evalCalcExpression(free ? free.value : '');
+            if (isNaN(freeVal)) {
+                free.classList.add('border-red-400');
+                if (msg) msg.textContent = 'No entiendo esa cuenta: usá números y + - x /';
+            } else {
+                if (free) free.classList.remove('border-red-400');
+                if (msg) msg.textContent = 'El total se pasa solo al campo de arriba.';
+                total += freeVal;
+            }
+            total = Math.round(total * 100) / 100;
+            box.querySelector('[data-calc-total]').textContent = '$' + formatMoney(total);
+            target.value = total;
+            target.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        function resetCashCalcs(modalId) {
+            document.querySelectorAll('#' + modalId + ' .cash-calc-box').forEach(b => { b.innerHTML = ''; b.classList.add('hidden'); });
+        }
+
         function openShiftCountModal() {
+            resetCashCalcs('shift-count-modal');
             const isAdminUser = isAdmin();
             // El empleado NO ve cuánto debería haber (cuenta de verdad); el admin sí
             const expectedRow = document.getElementById('shift-expected-row');
@@ -28607,12 +28917,14 @@ RESULTADOS:
         // ==================== PROMOTIONS SYSTEM ====================
 
         function generateTicketNumber() {
-            // Número aleatorio de 6 dígitos, único
-            const existing = appState.discountTickets.map(t => t.ticketNumber);
+            // Número aleatorio de 6 dígitos, único, y que nunca sea igual al código de un
+            // cliente/empleado (se escriben en el mismo lugar al vender)
+            const existing = new Set((appState.discountTickets || []).map(t => String(t.ticketNumber)));
+            (appState.specialPriceCodes || []).forEach(c => existing.add(String(c.code || '').trim().toLowerCase()));
             let num;
             do {
                 num = Math.floor(100000 + Math.random() * 900000).toString();
-            } while (existing.includes(num));
+            } while (existing.has(num));
             return num;
         }
 
@@ -32770,12 +33082,14 @@ RESULTADOS:
             <div id="cash-count-opening-section">
                 <p class="text-sm text-gray-600 mb-2">Registrar apertura</p>
                 <div class="mb-3">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">💵 Monto en caja (efectivo)</label>
+                    <div class="flex items-center justify-between mb-2"><label class="block text-sm font-medium text-gray-700">💵 Monto en caja (efectivo)</label><button type="button" onclick="toggleCashCalc('cash-count-opening', 'cash')" class="text-xs font-bold px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100" title="Contar billetes">🧮 Calculadora</button></div>
                     <input type="number" id="cash-count-opening" class="w-full border-2 border-green-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any">
+                    <div id="calc-cash-count-opening" class="cash-calc-box hidden"></div>
                 </div>
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">🏦 Monto en cuenta (banco)</label>
+                    <div class="flex items-center justify-between mb-2"><label class="block text-sm font-medium text-gray-700">🏦 Monto en cuenta (banco)</label><button type="button" onclick="toggleCashCalc('cash-count-opening-bank', 'sum')" class="text-xs font-bold px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100" title="Sumar varios montos">🧮 Calculadora</button></div>
                     <input type="number" id="cash-count-opening-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any">
+                    <div id="calc-cash-count-opening-bank" class="cash-calc-box hidden"></div>
                 </div>
                 <button onclick="saveCashOpening()" class="w-full bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700">Guardar Apertura</button>
                 <button onclick="closeCashCountModal()" class="w-full bg-gray-200 text-gray-700 py-2 rounded-xl font-bold mt-2 hover:bg-gray-300">Cancelar</button>
@@ -32808,12 +33122,14 @@ RESULTADOS:
                 </div>
                 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">💵 Monto real en caja (contado)</label>
+                    <div class="flex items-center justify-between mb-2"><label class="block text-sm font-medium text-gray-700">💵 Monto real en caja (contado)</label><button type="button" onclick="toggleCashCalc('cash-count-closing', 'cash')" class="text-xs font-bold px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100" title="Contar billetes">🧮 Calculadora</button></div>
                     <input type="number" id="cash-count-closing" class="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any" oninput="updateCashDifference()">
+                    <div id="calc-cash-count-closing" class="cash-calc-box hidden"></div>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">🏦 Monto real en cuenta (banco)</label>
+                    <div class="flex items-center justify-between mb-2"><label class="block text-sm font-medium text-gray-700">🏦 Monto real en cuenta (banco)</label><button type="button" onclick="toggleCashCalc('cash-count-closing-bank', 'sum')" class="text-xs font-bold px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100" title="Sumar varios montos">🧮 Calculadora</button></div>
                     <input type="number" id="cash-count-closing-bank" class="w-full border-2 border-blue-200 rounded-xl px-4 py-3 text-xl font-bold text-center" placeholder="0" min="0" step="any" oninput="updateCashDifference()">
+                    <div id="calc-cash-count-closing-bank" class="cash-calc-box hidden"></div>
                 </div>
                 
                 <div id="cash-count-diff-box" class="p-3 rounded-lg text-center font-bold hidden">
@@ -32916,7 +33232,7 @@ RESULTADOS:
             <div class="space-y-4">
                 <div class="bg-blue-50 rounded-xl p-3 text-sm">
                     <div class="flex justify-between mb-1">
-                        <span class="text-gray-600">Precio por gramo:</span>
+                        <span class="text-gray-600" id="weight-sale-price-label">Precio por gramo:</span>
                         <span class="font-bold text-blue-700" id="weight-sale-price-per-gram">$0</span>
                     </div>
                     <div class="flex justify-between">
@@ -33409,6 +33725,13 @@ RESULTADOS:
                     <div class="flex justify-between text-sm border-t pt-2 mt-1">
                         <span class="text-gray-600">Total:</span>
                         <span class="font-bold text-orange-700" id="pedido-items-total">$0</span>
+                    </div>
+                    <div class="mt-3">
+                        <div class="flex gap-2">
+                            <input type="text" id="pedido-code-input" placeholder="Código de cliente o N° de ticket" class="flex-1 min-w-0 border-2 border-amber-300 rounded-lg px-2 py-1.5 text-sm text-center font-mono font-bold uppercase" onkeydown="if(event.key==='Enter'){event.preventDefault();event.stopPropagation();applyPedidoCode();}">
+                            <button type="button" onclick="applyPedidoCode()" class="bg-amber-500 hover:bg-amber-600 text-white px-3 rounded-lg text-xs font-bold"><i class="fas fa-check"></i> Aplicar</button>
+                        </div>
+                        <div id="pedido-applied-codes" class="mt-1 space-y-1 text-xs"></div>
                     </div>
                 </div>
 

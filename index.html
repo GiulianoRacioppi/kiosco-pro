@@ -17256,6 +17256,10 @@
 
             // Eliminar el gasto
             appState.expenses.splice(expenseIndex, 1);
+            // Si era un pago o adelanto de sueldo, la quincena vuelve a quedar pendiente
+            (appState.payrollPayments || []).forEach(p => {
+                if (p && p.expenseId === expenseId && p.status !== 'deleted') { p.status = 'deleted'; p.timestamp = Date.now(); }
+            });
 
             saveToLocalStorage();
             renderAll();
@@ -18937,7 +18941,8 @@
         //  appState.employees:       [{ id, name, userId, active, status, scheduleVersions:[{ from, days:{0..6:[{start,end}]} }], timestamp }]
         //  appState.timeClock:       [{ id, employeeId, date, inAt(ms), outAt(ms|null), source, status, timestamp }]
         //  appState.attendanceDays:  [{ id:'empId|fecha', employeeId, date, justified, approvedExtraMin, timestamp }]
-        //  appState.payrollPayments: [{ id, employeeId, recId, periodKey, amount, date, source, expenseId, status, timestamp }]
+        //  appState.payrollPayments: [{ id, employeeId, recId, periodKey, amount, date, source, expenseId, status, timestamp, kind? }]
+        //    kind 'advance' = adelanto de sueldo de esa quincena (se resta de lo que queda por pagar)
         //  appState.payrollSettings: { toleranceMin, blockMin, saturdayBusiness }
         // Sueldo: un Gasto Fijo con frequency 'quincena' y employeeId = lo que cobra por quincena
         // completa. Valor del minuto = sueldo / minutos de horario de esa quincena.
@@ -19165,7 +19170,12 @@
         }
 
         function getPayrollPayment(empId, periodKey) {
-            return (appState.payrollPayments || []).find(p => p && p.employeeId === empId && p.periodKey === periodKey && p.status !== 'deleted') || null;
+            return (appState.payrollPayments || []).find(p => p && p.employeeId === empId && p.periodKey === periodKey && p.status !== 'deleted' && p.kind !== 'advance') || null;
+        }
+
+        // Adelantos de sueldo cargados a una quincena
+        function getEmployeeAdvances(empId, periodKey) {
+            return (appState.payrollPayments || []).filter(p => p && p.kind === 'advance' && p.employeeId === empId && p.periodKey === periodKey && p.status !== 'deleted');
         }
 
         // Cuánto hay que pagarle a un empleado por una quincena
@@ -19188,14 +19198,18 @@
             const perMin = hourly ? hourlyRate / 60 : (scheduledMin > 0 ? salary / scheduledMin : 0);
             const deductionAmount = Math.round(deductedMin * perMin * 100) / 100;
             const extraAmount = Math.round(approvedExtraMin * perMin * 100) / 100;
-            const amount = Math.max(0, Math.round((salary - deductionAmount + extraAmount) * 100) / 100);
+            const grossAmount = Math.max(0, Math.round((salary - deductionAmount + extraAmount) * 100) / 100);
+            // Los adelantos ya salieron de Caja/Cuenta: lo que queda por pagar es el total menos lo adelantado
+            const advances = getEmployeeAdvances(emp.id, q.key);
+            const advancesAmount = Math.round(advances.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0) * 100) / 100;
+            const amount = Math.max(0, Math.round((grossAmount - advancesAmount) * 100) / 100);
             // Ganado a hoy: lo mismo pero solo con los días hasta hoy (hoy cuenta completo), sin dar por cumplidos los futuros
             const todayStr = formatDateISO(new Date(nowMs));
             const earnedToDateMin = days.filter(x => x.date <= todayStr).reduce((s, x) => s + x.scheduledMin - x.deductedMin + x.approvedExtraMin, 0);
             const earnedToDateAmount = Math.max(0, Math.round(earnedToDateMin * perMin * 100) / 100);
             return {
                 q, rec, hourly, hourlyRate, source, configured: hourly || !!rec, salary, days, scheduledMin, deductedMin, approvedExtraMin, pendingExtraMin,
-                perHour: Math.round(perMin * 60 * 100) / 100, deductionAmount, extraAmount, amount, earnedToDateAmount,
+                perHour: Math.round(perMin * 60 * 100) / 100, deductionAmount, extraAmount, grossAmount, advances, advancesAmount, amount, earnedToDateAmount,
                 payDate: getQuincenaPayDate(q), payment: getPayrollPayment(emp.id, q.key),
                 missingOutDays: days.filter(d => d.missingOut).map(d => d.date)
             };
@@ -19224,7 +19238,8 @@
                 [monthPrefix + '-01', monthPrefix + '-16'].forEach(start => {
                     if (start > todayStr) return;
                     const c = computeEmployeeQuincena(emp, getQuincena(start), nowMs);
-                    if (c.configured && !c.payment) total += c.earnedToDateAmount;
+                    // Los adelantos ya figuran como gasto de sueldo de ese mes: no contarlos dos veces
+                    if (c.configured && !c.payment) total += Math.max(0, c.earnedToDateAmount - c.advancesAmount);
                 });
             });
             return Math.round(total * 100) / 100;
@@ -19679,25 +19694,84 @@
             if (calc.payment) { showNotification('Esta quincena ya figura como pagada', 'warning'); return; }
             if (!calc.configured) { showNotification('Cargá primero el precio por hora o el sueldo', 'error'); return; }
             const source = calc.source === 'bank' ? 'bank' : 'cash';
-            const raw = await showPromptModal('Monto a pagarle a ' + emp.name + ' por la quincena ' + empPeriodQuincena.label + ' (sale de ' + (source === 'bank' ? 'Cuenta' : 'Caja') + '):', String(calc.amount));
+            const advNote = calc.advancesAmount > 0 ? ' — ya se le adelantaron $' + formatMoney(calc.advancesAmount) + ' de $' + formatMoney(calc.grossAmount) : '';
+            const raw = await showPromptModal('Monto a pagarle a ' + emp.name + ' por la quincena ' + empPeriodQuincena.label + advNote + ' (sale de ' + (source === 'bank' ? 'Cuenta' : 'Caja') + '):', String(calc.amount));
             if (raw === null || raw === undefined) return;
             const amount = Math.round((parseFloat(String(raw).replace(',', '.')) || 0) * 100) / 100;
+            const now = Date.now();
+            const today = formatDateISO(new Date(now));
+            if (!Array.isArray(appState.payrollPayments)) appState.payrollPayments = [];
+            // Todo adelantado: se cierra la quincena sin mover plata
+            if (amount === 0 && calc.advancesAmount > 0) {
+                appState.payrollPayments.push(touchEmp({ id: 'PAY-' + now, employeeId: empId, recId: calc.rec ? calc.rec.id : null, periodKey, amount: 0, date: today, source, expenseId: null, status: 'active' }));
+                saveToLocalStorage();
+                renderEmployeePeriod();
+                showNotification('Quincena de ' + emp.name + ' cerrada: ya estaba cubierta con adelantos', 'success');
+                return;
+            }
             if (!(amount > 0)) { showNotification('Monto inválido', 'error'); return; }
             if (source === 'cash' && amount > (parseFloat(appState.cash) || 0)) { showNotification('No hay suficiente en Caja', 'error'); return; }
             if (source === 'bank' && amount > (parseFloat(appState.bank) || 0)) { showNotification('No hay suficiente en Cuenta', 'error'); return; }
-            const now = Date.now();
-            const today = formatDateISO(new Date(now));
             const expenseId = 'WITHDRAW-' + now;
             if (source === 'cash') appState.cash -= amount; else appState.bank -= amount;
             appState.expenses.push({
                 id: expenseId, date: today, accrualDate: empPeriodQuincena.end, concept: 'Sueldo ' + emp.name + ' (' + empPeriodQuincena.label + ')', amount, source,
                 type: 'withdrawal', withdrawalType: 'salary', user: appState.currentUser ? appState.currentUser.name : null, timestamp: now
             });
-            if (!Array.isArray(appState.payrollPayments)) appState.payrollPayments = [];
             appState.payrollPayments.push(touchEmp({ id: 'PAY-' + now, employeeId: empId, recId: calc.rec ? calc.rec.id : null, periodKey, amount, date: today, source, expenseId, status: 'active' }));
             saveToLocalStorage();
             renderEmployeePeriod();
             showNotification('💸 Pago de $' + formatMoney(amount) + ' a ' + emp.name + ' registrado (gasto "Pago de sueldos")', 'success');
+        }
+
+        // ---------- Adelantos de sueldo ----------
+        // Sale de Caja/Cuenta hoy como gasto de sueldo, pero cuenta para la ganancia del mes de la
+        // quincena (accrualDate) y se resta de lo que queda por pagar y de lo proyectado.
+        async function registerSalaryAdvance(empId, periodKey) {
+            const emp = getActiveEmployees().find(e => e.id === empId);
+            if (!emp || !empPeriodQuincena || empPeriodQuincena.key !== periodKey) return;
+            const q = empPeriodQuincena;
+            const calc = computeEmployeeQuincena(emp, q, Date.now());
+            if (calc.payment) { showNotification('Esta quincena ya está pagada: cargá el adelanto en la siguiente', 'warning'); return; }
+            const source = calc.source === 'bank' ? 'bank' : 'cash';
+            const raw = await showPromptModal('Adelanto de sueldo para ' + emp.name + ' (quincena ' + q.label + ', sale de ' + (source === 'bank' ? 'Cuenta' : 'Caja') + ').\nLe queda por cobrar $' + formatMoney(calc.amount) + ' · ganado a hoy $' + formatMoney(calc.earnedToDateAmount) + '.\nMonto:', '');
+            if (raw === null || raw === undefined) return;
+            const amount = Math.round((parseFloat(String(raw).replace(',', '.')) || 0) * 100) / 100;
+            if (!(amount > 0)) { showNotification('Monto inválido', 'error'); return; }
+            if (source === 'cash' && amount > (parseFloat(appState.cash) || 0)) { showNotification('No hay suficiente en Caja', 'error'); return; }
+            if (source === 'bank' && amount > (parseFloat(appState.bank) || 0)) { showNotification('No hay suficiente en Cuenta', 'error'); return; }
+            if (calc.configured && amount > calc.amount && !(await showConfirmModal('El adelanto ($' + formatMoney(amount) + ') es más de lo que le queda por cobrar en la quincena ($' + formatMoney(calc.amount) + '). ¿Cargarlo igual?'))) return;
+            const now = Date.now();
+            const today = formatDateISO(new Date(now));
+            const expenseId = 'WITHDRAW-' + now;
+            if (source === 'cash') appState.cash -= amount; else appState.bank -= amount;
+            appState.expenses.push({
+                id: expenseId, date: today, accrualDate: q.end, concept: 'Adelanto sueldo ' + emp.name + ' (' + q.label + ')', amount, source,
+                type: 'withdrawal', withdrawalType: 'salary', user: appState.currentUser ? appState.currentUser.name : null, timestamp: now
+            });
+            if (!Array.isArray(appState.payrollPayments)) appState.payrollPayments = [];
+            appState.payrollPayments.push(touchEmp({ id: 'ADV-' + now, kind: 'advance', employeeId: empId, recId: calc.rec ? calc.rec.id : null, periodKey, amount, date: today, source, expenseId, status: 'active' }));
+            saveToLocalStorage();
+            renderEmployeePeriod();
+            showNotification('💸 Adelanto de $' + formatMoney(amount) + ' a ' + emp.name + ' registrado', 'success');
+        }
+
+        async function deleteSalaryAdvance(advId) {
+            const adv = (appState.payrollPayments || []).find(p => p && p.id === advId && p.kind === 'advance' && p.status !== 'deleted');
+            if (!adv) return;
+            if (getPayrollPayment(adv.employeeId, adv.periodKey)) { showNotification('La quincena ya está pagada: no se puede borrar el adelanto', 'warning'); return; }
+            if (!(await showConfirmModal('¿Borrar el adelanto de $' + formatMoney(adv.amount) + '? La plata vuelve a ' + (adv.source === 'bank' ? 'Cuenta' : 'Caja') + '.'))) return;
+            const idx = adv.expenseId ? appState.expenses.findIndex(e => e.id === adv.expenseId) : -1;
+            if (idx !== -1) {
+                const exp = appState.expenses[idx];
+                if (exp.source === 'bank') appState.bank += exp.amount; else appState.cash += exp.amount;
+                appState.expenses.splice(idx, 1);
+            }
+            adv.status = 'deleted';
+            touchEmp(adv);
+            saveToLocalStorage();
+            renderEmployeePeriod();
+            showNotification('Adelanto borrado', 'success');
         }
 
         // ---------- Pantalla ----------
@@ -19802,13 +19876,17 @@
 
             sumEl.innerHTML = !c.configured
                 ? '<p class="text-sm text-red-600">Para calcular el pago, cargá el <strong>precio por hora</strong> de ' + escapeHtml(emp.name) + ' en su tarjeta (arriba).</p>'
-                : '<div class="grid grid-cols-2 md:grid-cols-7 gap-2 text-sm">' +
+                : '<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 text-sm">' +
                     '<div class="bg-gray-50 rounded-xl p-3"><p class="text-xs text-gray-500">Sueldo quincena</p><p class="font-bold">$' + formatMoney(c.salary) + '</p>' + (c.hourly ? '<p class="text-[10px] text-gray-500">horas × $' + formatMoney(c.hourlyRate) + '</p>' : '') + '</div>' +
                     '<div class="bg-gray-50 rounded-xl p-3"><p class="text-xs text-gray-500">Horas de horario</p><p class="font-bold">' + fmtMinutes(c.scheduledMin) + '</p><p class="text-[10px] text-gray-500">$' + formatMoney(c.perHour) + ' la hora</p></div>' +
                     '<div class="bg-red-50 rounded-xl p-3"><p class="text-xs text-red-600">Descuentos</p><p class="font-bold text-red-700">-$' + formatMoney(c.deductionAmount) + '</p><p class="text-[10px] text-red-600">' + fmtMinutes(c.deductedMin) + '</p></div>' +
                     '<div class="bg-green-50 rounded-xl p-3"><p class="text-xs text-green-700">Extras aprobadas</p><p class="font-bold text-green-700">+$' + formatMoney(c.extraAmount) + '</p><p class="text-[10px] text-green-700">' + fmtMinutes(c.approvedExtraMin) + (c.pendingExtraMin ? ' · ' + fmtMinutes(c.pendingExtraMin) + ' sin aprobar' : '') + '</p></div>' +
                     '<div class="bg-amber-50 rounded-xl p-3"><p class="text-xs text-amber-700">Ganado a hoy</p><p class="font-bold text-amber-800 text-lg">$' + formatMoney(c.earnedToDateAmount) + '</p><p class="text-[10px] text-amber-700">' + (formatDateISO(new Date(nowMs)) >= c.q.end ? 'quincena completa' : 'trabajado hasta hoy ' + fmtD(formatDateISO(new Date(nowMs)))) + '</p></div>' +
-                    '<div class="bg-indigo-50 rounded-xl p-3"><p class="text-xs text-indigo-700">A pagar</p><p class="font-bold text-indigo-800 text-lg">$' + formatMoney(c.amount) + '</p><p class="text-[10px] text-indigo-700">el ' + fmtD(c.payDate) + ' (4.º día hábil)</p></div>' +
+                    '<div class="bg-orange-50 rounded-xl p-3"><p class="text-xs text-orange-700">Adelantos</p><p class="font-bold text-orange-700">-$' + formatMoney(c.advancesAmount) + '</p>' +
+                        c.advances.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(a => '<p class="text-[10px] text-orange-700 flex items-center gap-1">' + fmtD(a.date) + ' $' + formatMoney(a.amount) +
+                            (c.payment ? '' : '<button onclick="deleteSalaryAdvance(\'' + a.id + '\')" class="text-orange-400 hover:text-red-600" title="Borrar adelanto (la plata vuelve)">✕</button>') + '</p>').join('') +
+                        (c.payment ? '' : '<button onclick="registerSalaryAdvance(\'' + emp.id + '\', \'' + c.q.key + '\')" class="mt-1 text-[11px] font-bold text-orange-700 hover:text-orange-900">+ Adelanto</button>') + '</div>' +
+                    '<div class="bg-indigo-50 rounded-xl p-3"><p class="text-xs text-indigo-700">A pagar</p><p class="font-bold text-indigo-800 text-lg">$' + formatMoney(c.amount) + '</p><p class="text-[10px] text-indigo-700">el ' + fmtD(c.payDate) + ' (4.º día hábil)' + (c.advancesAmount > 0 ? '<br>de $' + formatMoney(c.grossAmount) + ' menos adelantos' : '') + '</p></div>' +
                     '<div class="rounded-xl p-3 flex items-center justify-center">' + (c.payment
                         ? '<p class="text-xs text-green-700 font-bold text-center">✅ Pagado $' + formatMoney(c.payment.amount) + '<br>el ' + fmtD(c.payment.date) + '</p>'
                         : '<button onclick="registerPayrollPayment(\'' + emp.id + '\', \'' + c.q.key + '\')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold text-xs">Registrar pago</button>') + '</div>' +

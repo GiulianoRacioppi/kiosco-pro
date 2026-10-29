@@ -19239,7 +19239,8 @@
                     if (start > todayStr) return;
                     const c = computeEmployeeQuincena(emp, getQuincena(start), nowMs);
                     // Los adelantos ya figuran como gasto de sueldo de ese mes: no contarlos dos veces
-                    if (c.configured && !c.payment) total += Math.max(0, c.earnedToDateAmount - c.advancesAmount);
+                    // y si se pagó menos de lo ganado, lo que falta sigue siendo deuda
+                    if (c.configured) total += Math.max(0, c.earnedToDateAmount - c.advancesAmount - (c.payment ? (parseFloat(c.payment.amount) || 0) : 0));
                 });
             });
             return Math.round(total * 100) / 100;
@@ -19724,6 +19725,26 @@
             showNotification('💸 Pago de $' + formatMoney(amount) + ' a ' + emp.name + ' registrado (gasto "Pago de sueldos")', 'success');
         }
 
+        // Deshace el pago de una quincena: borra su gasto, devuelve la plata y la quincena vuelve a quedar pendiente
+        async function undoPayrollPayment(payId) {
+            const pay = (appState.payrollPayments || []).find(p => p && p.id === payId && p.kind !== 'advance' && p.status !== 'deleted');
+            if (!pay) return;
+            const where = pay.source === 'bank' ? 'Cuenta' : 'Caja';
+            if (!(await showConfirmModal('¿Deshacer el pago de $' + formatMoney(pay.amount) + ' del ' + pay.date + '?' + (pay.amount > 0 ? ' La plata vuelve a ' + where + '.' : '') + ' La quincena queda sin pagar.'))) return;
+            const idx = pay.expenseId ? appState.expenses.findIndex(e => e.id === pay.expenseId) : -1;
+            if (idx !== -1) {
+                const exp = appState.expenses[idx];
+                if (exp.source === 'bank') appState.bank += exp.amount; else appState.cash += exp.amount;
+                appState.expenses.splice(idx, 1);
+            }
+            pay.status = 'deleted';
+            touchEmp(pay);
+            saveToLocalStorage();
+            renderEmployeePeriod();
+            if (typeof renderAll === 'function') renderAll();
+            showNotification('Pago deshecho' + (idx !== -1 ? ': volvieron $' + formatMoney(pay.amount) + ' a ' + where : ''), 'success');
+        }
+
         // ---------- Adelantos de sueldo ----------
         // Sale de Caja/Cuenta hoy como gasto de sueldo, pero cuenta para la ganancia del mes de la
         // quincena (accrualDate) y se resta de lo que queda por pagar y de lo proyectado.
@@ -19888,7 +19909,8 @@
                         (c.payment ? '' : '<button onclick="registerSalaryAdvance(\'' + emp.id + '\', \'' + c.q.key + '\')" class="mt-1 text-[11px] font-bold text-orange-700 hover:text-orange-900">+ Adelanto</button>') + '</div>' +
                     '<div class="bg-indigo-50 rounded-xl p-3"><p class="text-xs text-indigo-700">A pagar</p><p class="font-bold text-indigo-800 text-lg">$' + formatMoney(c.amount) + '</p><p class="text-[10px] text-indigo-700">el ' + fmtD(c.payDate) + ' (4.º día hábil)' + (c.advancesAmount > 0 ? '<br>de $' + formatMoney(c.grossAmount) + ' menos adelantos' : '') + '</p></div>' +
                     '<div class="rounded-xl p-3 flex items-center justify-center">' + (c.payment
-                        ? '<p class="text-xs text-green-700 font-bold text-center">✅ Pagado $' + formatMoney(c.payment.amount) + '<br>el ' + fmtD(c.payment.date) + '</p>'
+                        ? '<div class="text-center"><p class="text-xs text-green-700 font-bold">✅ Pagado $' + formatMoney(c.payment.amount) + '<br>el ' + fmtD(c.payment.date) + '</p>' +
+                          '<button onclick="undoPayrollPayment(\'' + c.payment.id + '\')" class="mt-1 text-[11px] text-gray-400 hover:text-red-600 underline" title="Deshacer el pago (la plata vuelve)">Deshacer</button></div>'
                         : '<button onclick="registerPayrollPayment(\'' + emp.id + '\', \'' + c.q.key + '\')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold text-xs">Registrar pago</button>') + '</div>' +
                   '</div>' +
                   (c.missingOutDays.length ? '<p class="text-xs text-orange-600 mt-2">⚠️ Fichajes sin salida: ' + c.missingOutDays.map(fmtD).join(', ') + ' — se tomaron hasta el fin del turno; corregilos abajo.</p>' : '') +

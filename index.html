@@ -19707,6 +19707,7 @@
                 appState.payrollPayments.push(touchEmp({ id: 'PAY-' + now, employeeId: empId, recId: calc.rec ? calc.rec.id : null, periodKey, amount: 0, date: today, source, expenseId: null, status: 'active' }));
                 saveToLocalStorage();
                 renderEmployeePeriod();
+                renderAll(); // Caja/Cuenta del costado y Finanzas
                 showNotification('Quincena de ' + emp.name + ' cerrada: ya estaba cubierta con adelantos', 'success');
                 return;
             }
@@ -19722,6 +19723,7 @@
             appState.payrollPayments.push(touchEmp({ id: 'PAY-' + now, employeeId: empId, recId: calc.rec ? calc.rec.id : null, periodKey, amount, date: today, source, expenseId, status: 'active' }));
             saveToLocalStorage();
             renderEmployeePeriod();
+            renderAll(); // Caja/Cuenta del costado y Finanzas
             showNotification('💸 Pago de $' + formatMoney(amount) + ' a ' + emp.name + ' registrado (gasto "Pago de sueldos")', 'success');
         }
 
@@ -19774,6 +19776,7 @@
             appState.payrollPayments.push(touchEmp({ id: 'ADV-' + now, kind: 'advance', employeeId: empId, recId: calc.rec ? calc.rec.id : null, periodKey, amount, date: today, source, expenseId, status: 'active' }));
             saveToLocalStorage();
             renderEmployeePeriod();
+            renderAll(); // Caja/Cuenta del costado y Finanzas
             showNotification('💸 Adelanto de $' + formatMoney(amount) + ' a ' + emp.name + ' registrado', 'success');
         }
 
@@ -19792,6 +19795,7 @@
             touchEmp(adv);
             saveToLocalStorage();
             renderEmployeePeriod();
+            renderAll(); // Caja/Cuenta del costado y Finanzas
             showNotification('Adelanto borrado', 'success');
         }
 

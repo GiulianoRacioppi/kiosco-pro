@@ -10024,13 +10024,23 @@
 
         // Ventas viejas hechas con un código a 0%, y fiados anotados a nombre del dueño (cobrados o
         // no), que todavía figuran como venta. Las que ya tienen factura de ARCA quedan como venta:
-        // sacarlas dejaría la factura sin venta.
+        // sacarlas dejaría la factura sin venta. Solo las del mes actual: los meses anteriores no se tocan.
         const OWNER_FIADO_NAMES = ['g', 'giu', 'giuliano'];
+        function ownerConsumptionMonthStart() {
+            return formatDateISO(new Date()).slice(0, 7) + '-01';
+        }
         function getOwnerConsumptionCandidates() {
+            const monthStart = ownerConsumptionMonthStart();
             const codes = new Set((appState.specialPriceCodes || []).filter(isOwnerConsumptionCode).map(c => c.code));
             const isOwnerFiado = (s) => s.paymentMethod === 'fiado' && OWNER_FIADO_NAMES.includes(String(s.customerName || '').trim().toLowerCase());
-            return (appState.sales || []).filter(s => !s.ownerConsumption && ((s.specialPriceCode && codes.has(s.specialPriceCode)) || isOwnerFiado(s)))
+            return (appState.sales || []).filter(s => !s.ownerConsumption && s.date >= monthStart && ((s.specialPriceCode && codes.has(s.specialPriceCode)) || isOwnerFiado(s)))
                 .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        }
+
+        // Ventas de meses anteriores que se pasaron a consumo: vuelven a ser ventas con un solo botón
+        function getOldOwnerReclassifications() {
+            const monthStart = ownerConsumptionMonthStart();
+            return (appState.sales || []).filter(s => s.ownerConsumption && s.ownerConsumption.reclassified && !s.ownerConsumption.cancelled && s.date < monthStart);
         }
 
         // Plata que ya entró por esa venta: no se toca, porque ya pasó por los arqueos
@@ -10136,7 +10146,9 @@
                     '<span class="block text-xs text-gray-500">' + kindOf(oc) + ' · ' + itemsText(oc.items) + '</span></span>' +
                     '<button onclick="undoOwnerConsumption(\'' + s.id + '\')" class="text-xs text-gray-400 hover:text-red-600 underline shrink-0">Deshacer</button></div>';
             }).join('');
+            const oldCount = getOldOwnerReclassifications().length;
             document.getElementById('owner-consumption-content').innerHTML =
+                (oldCount ? '<button onclick="undoOldOwnerReclassifications()" class="mb-3 w-full bg-orange-100 hover:bg-orange-200 text-orange-800 py-2 rounded-lg font-bold text-sm">Volver a dejar como venta las ' + oldCount + ' de meses anteriores</button>' : '') +
                 (candidates.length ? '<h4 class="font-bold text-gray-700 mb-1">Ventas para pasar a consumo</h4>' +
                     '<p class="text-xs text-gray-500 mb-2">Se hicieron con un código a 0% o quedaron como fiado a tu nombre. Destildá las que fueron ventas de verdad. Los fiados sin cobrar pasan a retiro del dueño al costo: salen de Fiados y van en Gastos, igual que tu sueldo. Las pagadas quedan como compra al costo: esa plata sigue en Caja o Cuenta.</p>' +
                     candidateRows +
@@ -10184,6 +10196,20 @@
             showNotification('Consumo deshecho', 'success');
         }
         window.undoOwnerConsumption = undoOwnerConsumption;
+
+        async function undoOldOwnerReclassifications() {
+            const old = getOldOwnerReclassifications();
+            if (old.length === 0) return;
+            if (!(await showConfirmModal('¿Volver a dejar como venta las ' + old.length + ' de meses anteriores? Cada una vuelve a contar en su mes.'))) return;
+            const ids = new Set(old.map(s => 'OWNERGOODS-' + s.id));
+            old.forEach(undoSaleReclassification);
+            appState.expenses = appState.expenses.filter(e => !ids.has(e.id));
+            saveToLocalStorage();
+            renderAll();
+            renderOwnerConsumptionModal();
+            showNotification(old.length + ' ventas volvieron a ser ventas', 'success');
+        }
+        window.undoOldOwnerReclassifications = undoOldOwnerReclassifications;
 
         function showTicketNotification(sale) {
             const notif = document.createElement('div');

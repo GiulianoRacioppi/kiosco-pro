@@ -1112,6 +1112,11 @@
                 <i class="fas fa-sync-alt w-4 text-xs"></i> Rotación
             </button>
 
+            <!-- CAPITAL (cuánto vale el negocio, adónde fue la ganancia, cuánto se puede retirar): Solo admin -->
+            <button onclick="showSection('capital')" id="nav-capital" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm">
+                <i class="fas fa-landmark w-4 text-xs"></i> Capital
+            </button>
+
             <!-- CLIENTES (cuentas creadas en Kiosco47: nombre/teléfono/email/direcciones): Solo admin -->
             <button onclick="showSection('clientes')" id="nav-clientes" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="clientes">
                 <i class="fas fa-address-book w-4 text-xs"></i> Clientes
@@ -2840,6 +2845,22 @@
                 </div>
             </div>
             <div id="rotation-content" class="space-y-6"></div>
+        </div>
+
+        <!-- CAPITAL -->
+        <div id="capital" class="section hidden space-y-6 fade-in">
+            <div class="space-y-2">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-landmark text-indigo-600 mr-2"></i>Capital</h2>
+                    <p class="text-sm text-gray-500">Cuánto vale el negocio, adónde fue la ganancia y cuánto podés retirar</p>
+                </div>
+                <div class="flex items-center gap-1">
+                    <button onclick="shiftCapitalMonth(-1)" class="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700" title="Mes anterior"><i class="fas fa-chevron-left"></i></button>
+                    <span id="capital-label" class="px-2 text-sm font-bold text-gray-700"></span>
+                    <button id="capital-next" onclick="shiftCapitalMonth(1)" class="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 disabled:opacity-30" title="Mes siguiente"><i class="fas fa-chevron-right"></i></button>
+                </div>
+            </div>
+            <div id="capital-content" class="space-y-6"></div>
         </div>
 
         <div id="fixed-assets" class="section hidden space-y-6 fade-in">
@@ -4800,6 +4821,9 @@
             stockHistoryAliases: [],
             // Pantalla Rotación: margen de seguridad y días de stock objetivo
             rotationSettings: { safetyPct: 20, stockDaysTarget: 10, updatedAt: 0 },
+            // Pantalla Capital: % de retiro y colchón de caja. Cierres: una foto del negocio por mes
+            capitalSettings: { withdrawPct: 50, cushion: 100000, updatedAt: 0 },
+            monthlyCloses: [],
             invoiceNameMappings: [],
             invoiceSupplierCorrections: [],
             // Flujo de caja
@@ -5262,7 +5286,7 @@
             }
             
             // Protección: colaboradores no pueden ver ciertas secciones
-            const adminOnlySections = ['sales-calendar', 'cashflow', 'analysis', 'rotation', 'cashflow-projection', 'reports', 'billing', 'settings', 'promotions', 'clientes', 'fixed-assets', 'employees'];
+            const adminOnlySections = ['sales-calendar', 'cashflow', 'analysis', 'rotation', 'capital', 'cashflow-projection', 'reports', 'billing', 'settings', 'promotions', 'clientes', 'fixed-assets', 'employees'];
             if (adminOnlySections.includes(sectionId) && !isAdmin()) {
                 showNotification('Acceso restringido solo para administradores', 'error');
                 sectionId = 'sell';
@@ -5275,9 +5299,9 @@
             // tocar Finanzas. Por eso un modal propio en vez de un diálogo nativo.
             // Empleados (sueldos y fichajes) usa la misma contraseña que Finanzas: tus
             // empleados venden desde tu misma sesión de administrador.
-            if ((sectionId === 'cashflow' || sectionId === 'employees') && !financesUnlockedThisSession && (appState.financesPassword || '')) {
+            if ((sectionId === 'cashflow' || sectionId === 'employees' || sectionId === 'capital') && !financesUnlockedThisSession && (appState.financesPassword || '')) {
                 const target = sectionId;
-                openFinancesPasswordModal(() => showSection(target), target === 'employees' ? 'Empleados' : 'Finanzas');
+                openFinancesPasswordModal(() => showSection(target), target === 'employees' ? 'Empleados' : target === 'capital' ? 'Capital' : 'Finanzas');
                 return;
             }
             // Al volver a Vender (donde trabajan los empleados) se vuelve a bloquear todo
@@ -5353,6 +5377,7 @@
                 'clientes': 'Clientes',
                 'fixed-assets': 'Equipamiento',
                 'rotation': 'Rotación',
+                'capital': 'Capital',
                 'employees': 'Empleados',
                 'settings': 'Configuración'
             };
@@ -5408,6 +5433,9 @@
             }
             if (sectionId === 'rotation') {
                 renderRotation();
+            }
+            if (sectionId === 'capital') {
+                renderCapital();
             }
             if (sectionId === 'employees') {
                 renderEmployeesSection();
@@ -10210,6 +10238,389 @@
             showNotification(old.length + ' ventas volvieron a ser ventas', 'success');
         }
         window.undoOldOwnerReclassifications = undoOldOwnerReclassifications;
+
+        // ==================== CAPITAL ====================
+        // <capital-puro> Funciones puras: sin appState ni DOM (las usa tests/capital.test.js)
+        const EXPENSE_CATEGORIES = ['Alquiler', 'Sueldos', 'Servicios', 'Impuestos', 'Descartables', 'Limpieza', 'Gas de cocina', 'Aceite', 'Arreglos', 'Movilidad', 'Pruebas de producto', 'Otros'];
+        const EXPENSE_SHORTAGE_CATEGORY = 'Faltante de caja';
+        const EXPENSE_CATEGORY_WORDS = [
+            ['Alquiler', ['alquiler']],
+            ['Sueldos', ['sueldo', 'adelanto', 'empleado', 'personal']],
+            ['Servicios', ['luz', 'agua', 'wifi', 'internet', 'telefono', 'teléfono', 'google', 'claude', 'hbo', 'kimicode', 'spot']],
+            ['Impuestos', ['monotributo', 'impuesto', 'iibb', 'gestor', 'gestorando', 'afip', 'arca']],
+            ['Gas de cocina', ['gas', 'garrafa']],
+            ['Aceite', ['aceite']],
+            ['Descartables', ['bolsa', 'servilleta', 'vaso', 'film', 'aluminio', 'pote', 'tapa', 'sobre', 'maxibag', 'rollo', 'palito']],
+            ['Limpieza', ['detergente', 'detergete', 'esponja', 'rejilla', 'regilla', 'repasador', 'lavandina', 'guante', 'cif', 'limpieza', 'alcohol', 'felpita', 'ayudin', 'procenex', 'odex', 'destapa', 'aguarras', 'ala', 'limpia']],
+            ['Arreglos', ['plomeria', 'plomería', 'canilla', 'manguera', 'tornillo', 'cable', 'regulador', 'pieza', 'cinta', 'virola', 'fenolico', 'listones', 'disco', 'luces']],
+            ['Movilidad', ['nafta', 'uber', 'cencopay']],
+            ['Pruebas de producto', ['prueba', 'hamburguesa', 'pizza', 'lomito', 'medialuna', 'salsa', 'pan', 'slice', 'media']]
+        ];
+
+        // Propone una categoría por las palabras del concepto; 'Otros' si no reconoce ninguna
+        function suggestExpenseCategory(concept) {
+            const words = String(concept || '').toLowerCase().split(/[^a-záéíóúñ]+/).filter(Boolean);
+            const match = EXPENSE_CATEGORY_WORDS.find(([, keys]) => words.some(w => keys.some(k => w === k || w === k + 's' || w === k + 'es')));
+            return match ? match[0] : 'Otros';
+        }
+
+        function computeCapitalTotal(s) {
+            return (s.merchandise || 0) + (s.equipment || 0) + (s.cash || 0) + (s.fiados || 0) - (s.debts || 0);
+        }
+
+        // Compara dos fotos del negocio (inicio y fin) con la plata que entró y salió de manos del dueño
+        function computeCapitalMonth({ start, end, withdrawals, contributions, withdrawPct, cushion }) {
+            const capitalStart = computeCapitalTotal(start);
+            const capitalEnd = computeCapitalTotal(end);
+            const profit = capitalEnd - capitalStart + withdrawals - contributions;
+            const pct = (n) => profit > 0 ? n / profit * 100 : 0;
+            const part = (key) => { const amount = (end[key] || 0) - (start[key] || 0); return { amount, pct: pct(amount) }; };
+            const plannedWithdrawal = Math.max(0, profit * withdrawPct / 100);
+            const pendingWithdrawal = Math.max(0, plannedWithdrawal - withdrawals);
+            const possibleWithdrawal = Math.max(0, Math.min(pendingWithdrawal, end.cash - cushion));
+            return {
+                capitalStart, capitalEnd, profit,
+                distribution: { merchandise: part('merchandise'), equipment: part('equipment'), cash: part('cash') },
+                plannedWithdrawal, pendingWithdrawal, possibleWithdrawal,
+                leftInvested: pendingWithdrawal - possibleWithdrawal
+            };
+        }
+
+        // Disponible = lo que permite la caja hoy, sin pasarse de lo que permite la ganancia del mes
+        function computeInvestable({ cash, cushion, pendingWithdrawal, stockShortfall, pendingFixed, profit, plannedWithdrawal, alreadyInvested }) {
+            const byCash = Math.max(0, cash - cushion - pendingWithdrawal - stockShortfall - pendingFixed);
+            const rawByProfit = profit - plannedWithdrawal - alreadyInvested;
+            const byProfit = Math.max(0, rawByProfit);
+            return { byCash, byProfit, available: Math.min(byCash, byProfit), overInvested: Math.max(0, -rawByProfit) };
+        }
+
+        function computeStockTarget({ dailyCost, targetDays, stockValue }) {
+            const target = dailyCost * targetDays;
+            const daysOfStock = dailyCost > 0 ? stockValue / dailyCost : 0;
+            return { target, daysOfStock, shortfall: Math.max(0, target - stockValue), daysDiff: daysOfStock - targetDays };
+        }
+
+        // Lo que el equipo le sacó al stock: el menor entre su costo y lo que faltaba para el objetivo
+        function computeEquipmentStockDebt({ cost, stockValue, target }) {
+            return Math.min(cost, Math.max(0, target - stockValue));
+        }
+
+        // La deuda se va pagando con la mercadería que creció en los meses siguientes a la compra
+        function computeEquipmentDebtLeft(debts, closes) {
+            return debts.reduce((left, d) => left + Math.max(0, d.amount - closes
+                .filter(c => c.month > d.month)
+                .reduce((sum, c) => sum + Math.max(0, c.merchandiseIncrease), 0)), 0);
+        }
+        // </capital-puro>
+
+        function getExpenseCategory(e) {
+            if (e.category) return e.category;
+            if (String(e.id || '').startsWith('EXP-SHORTAGE')) return EXPENSE_SHORTAGE_CATEGORY;
+            if (e.withdrawalType === 'salary') return 'Sueldos';
+            return null;
+        }
+
+        function fillExpenseCategorySelect(value) {
+            const options = EXPENSE_CATEGORIES.includes(value) || !value ? EXPENSE_CATEGORIES : [...EXPENSE_CATEGORIES, value];
+            document.getElementById('expense-category').innerHTML = '<option value="">Elegí una categoría</option>' +
+                options.map(c => '<option value="' + c + '"' + (c === value ? ' selected' : '') + '>' + c + '</option>').join('');
+        }
+
+        function suggestExpenseCategoryInForm() {
+            const select = document.getElementById('expense-category');
+            if (!select.value) select.value = suggestExpenseCategory(document.getElementById('expense-concept').value);
+        }
+
+        // Gastos viejos sin categoría: los retiros del dueño no llevan, cuentan aparte como retiro
+        function getUncategorizedExpenses() {
+            return (appState.expenses || []).filter(e => !getExpenseCategory(e) && !isOwnerWithdrawal(e))
+                .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        }
+
+        function saveExpenseCategories() {
+            const selects = Array.from(document.querySelectorAll('.expense-category-review'));
+            const now = Date.now();
+            let saved = 0;
+            selects.forEach(sel => {
+                const expense = appState.expenses.find(e => e.id === sel.dataset.id);
+                if (!expense || !sel.value) return;
+                expense.category = sel.value;
+                expense.timestamp = now; // para que el merge de Firebase tome esta versión
+                saved++;
+            });
+            saveToLocalStorage();
+            renderCapital();
+            showNotification(saved + ' gastos categorizados', 'success');
+        }
+
+        function getCapitalSettings() {
+            const s = appState.capitalSettings || {};
+            const pct = parseFloat(s.withdrawPct);
+            const cushion = parseFloat(s.cushion);
+            return {
+                withdrawPct: pct >= 0 && pct <= 100 ? pct : 50,
+                cushion: cushion >= 0 ? cushion : 100000,
+                stockDaysTarget: getRotationSettings().stockDaysTarget
+            };
+        }
+
+        function saveCapitalSettings() {
+            const withdrawPct = parseFloat(document.getElementById('cap-withdraw-pct').value);
+            const cushion = parseFloat(document.getElementById('cap-cushion').value);
+            const days = parseInt(document.getElementById('cap-days').value);
+            if (!(withdrawPct >= 0 && withdrawPct <= 100) || !(cushion >= 0) || !(days >= 1)) {
+                showNotification('Revisá los valores', 'error');
+                return;
+            }
+            appState.capitalSettings = { withdrawPct, cushion, updatedAt: Date.now() };
+            appState.rotationSettings = { ...appState.rotationSettings, stockDaysTarget: days, updatedAt: Date.now() };
+            saveToLocalStorage();
+            renderCapital();
+        }
+
+        // Costo de la mercadería vendida por día, promedio de los últimos 30 días
+        function getDailyMerchandiseCost() {
+            const from = empDateAdd(formatDateISO(new Date()), -30);
+            const total = (appState.sales || []).filter(s => s.date >= from && !s.anulada)
+                .reduce((sum, s) => sum + (s.items || []).reduce((acc, i) => acc + (i.cost || 0) * (i.quantity || 0), 0), 0);
+            return total / 30;
+        }
+
+        // Cuánto vale el negocio ahora. Fiados de más de 30 días: dudosos, se muestran y no suman
+        function getCapitalSnapshot() {
+            const today = formatDateISO(new Date());
+            const limit = empDateAdd(today, -30);
+            const assets = (appState.fixedAssets || []).filter(a => !a.sold);
+            const pendingFiados = (appState.sales || []).filter(s => s.paymentMethod === 'fiado' && !s.fiadoPaid && !s.anulada);
+            const sumTotal = (list) => list.reduce((sum, s) => sum + (s.total || 0), 0);
+            const supplierDebt = getPendingScheduledPayments().reduce((sum, sp) => sum + (parseFloat(sp.amount) || 0), 0);
+            const salaryDebt = getUnpaidAccruedSalariesBetween(empDateAdd(today, -90), today);
+            const equipmentOwed = assets.reduce((sum, a) => sum + getAssetOwed(a), 0);
+            return {
+                merchandise: getActiveInventory().reduce((sum, p) => sum + getProductBatchCostValue(p), 0),
+                equipment: assets.reduce((sum, a) => sum + (a.totalCost || 0), 0),
+                cash: (appState.cash || 0) + (appState.bank || 0) + (parseFloat(appState.reserve) || 0),
+                fiados: sumTotal(pendingFiados.filter(s => s.date >= limit)),
+                doubtfulFiados: sumTotal(pendingFiados.filter(s => s.date < limit)),
+                supplierDebt, salaryDebt, equipmentOwed,
+                debts: supplierDebt + salaryDebt + equipmentOwed
+            };
+        }
+
+        // Plata que el dueño sacó y puso en el mes. Los gastos "dueño" y sus fiados cuentan una sola
+        // vez. De capitalAdjustments solo son aportes los manuales: el resto corrige arqueos.
+        function getCapitalFlows(from, to) {
+            const inRange = (d) => !!d && d >= from && d <= to;
+            return {
+                withdrawals: (appState.expenses || []).filter(e => inRange(e.date) && isOwnerWithdrawal(e)).reduce((sum, e) => sum + (e.amount || 0), 0),
+                contributions: (appState.capitalAdjustments || []).filter(a => inRange(a.date) && String(a.id || '').startsWith('ADJ-MANUAL-')).reduce((sum, a) => sum + (a.amount || 0), 0)
+            };
+        }
+
+        function capitalMonthRange(month) {
+            const [y, m] = month.split('-').map(Number);
+            return { from: formatDateISO(new Date(y, m - 1, 1)), to: formatDateISO(new Date(y, m, 0)) };
+        }
+
+        function shiftMonthKey(month, delta) {
+            const [y, m] = month.split('-').map(Number);
+            return formatDateISO(new Date(y, m - 1 + delta, 1)).slice(0, 7);
+        }
+
+        function getMonthlyClose(month) {
+            return (appState.monthlyCloses || []).find(c => c.month === month) || null;
+        }
+
+        function getRotationCloseSummary(month) {
+            const { from, to } = capitalMonthRange(month);
+            const today = formatDateISO(new Date());
+            const sum = computeRotationSummary(getRotationReport(from, to < today ? to : today), { stockValue: 0, capitalTotal: 0 });
+            return {
+                missingTotal: Math.round(sum.missingTotal), lostMarginTotal: Math.round(sum.lostMarginTotal),
+                stockouts: sum.stockouts.length + sum.hookStockouts.length,
+                parkedMoney: Math.round(sum.overstock.reduce((acc, r) => acc + r.parkedMoney, 0))
+            };
+        }
+
+        function storeMonthlyClose(close) {
+            const now = Date.now();
+            appState.monthlyCloses = (appState.monthlyCloses || []).filter(c => c.month !== close.month);
+            appState.monthlyCloses.push({ ...close, id: 'CLOSE-' + close.month, closedAt: now, timestamp: now });
+            saveToLocalStorage();
+            renderCapital();
+        }
+
+        async function closeCapitalMonth(month) {
+            if (!isMasterDevice()) {
+                showNotification('El cierre se hace desde la PC principal', 'error');
+                return;
+            }
+            const label = new Date(month + '-15T12:00:00').toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+            const redo = getMonthlyClose(month) ? ' Reemplaza el cierre anterior.' : '';
+            if (!(await showConfirmModal('¿Cerrar ' + label + ' con los números de ahora?' + redo + ' Hacelo después de contar el stock y al final del día, con los gastos y retiros de hoy ya cargados.'))) return;
+            const { from, to } = capitalMonthRange(month);
+            storeMonthlyClose({ month, ...getCapitalSnapshot(), ...getCapitalFlows(from, to), rotation: getRotationCloseSummary(month), manual: false });
+            showNotification('🏦 Cierre guardado', 'success');
+        }
+
+        // Para el primer mes: el inicio se carga a mano, porque antes no se guardaban cierres
+        function saveManualClose(month) {
+            const val = (id) => parseFloat(document.getElementById(id).value) || 0;
+            const snapshot = {
+                merchandise: val('cap-open-merchandise'), equipment: val('cap-open-equipment'), cash: val('cap-open-cash'),
+                fiados: val('cap-open-fiados'), doubtfulFiados: 0, supplierDebt: 0, salaryDebt: 0, equipmentOwed: 0, debts: val('cap-open-debts')
+            };
+            if (!snapshot.merchandise) {
+                showNotification('Ingresá el valor de la mercadería', 'error');
+                return;
+            }
+            storeMonthlyClose({ month, ...snapshot, withdrawals: 0, contributions: 0, rotation: null, manual: true });
+        }
+
+        function getNewEquipmentStockDebt(cost) {
+            const { target } = computeStockTarget({ dailyCost: getDailyMerchandiseCost(), targetDays: getCapitalSettings().stockDaysTarget, stockValue: 0 });
+            const stockValue = getActiveInventory().reduce((sum, p) => sum + getProductBatchCostValue(p), 0);
+            return Math.round(computeEquipmentStockDebt({ cost, stockValue, target }));
+        }
+
+        function getEquipmentDebtLeft() {
+            const closes = (appState.monthlyCloses || []).slice().sort((a, b) => a.month.localeCompare(b.month));
+            const debts = (appState.fixedAssets || []).filter(a => a.stockDebt > 0 && !a.sold).map(a => ({ month: (a.dateAdded || '').slice(0, 7), amount: a.stockDebt }));
+            const increases = closes.slice(1).map((c, i) => ({ month: c.month, merchandiseIncrease: c.merchandise - closes[i].merchandise }));
+            return computeEquipmentDebtLeft(debts, increases);
+        }
+
+        let capitalMonthOffset = 0;
+        function shiftCapitalMonth(delta) {
+            capitalMonthOffset = Math.min(0, capitalMonthOffset + delta);
+            renderCapital();
+        }
+
+        function renderCapital() {
+            const content = document.getElementById('capital-content');
+            if (!content) return;
+            const money = (n) => '$' + Math.round(n || 0).toLocaleString('es-AR');
+            const num = (n) => (Math.round((n || 0) * 10) / 10).toLocaleString('es-AR');
+            const now = new Date();
+            const today = formatDateISO(now);
+            const first = new Date(now.getFullYear(), now.getMonth() + capitalMonthOffset, 1);
+            const month = formatDateISO(first).slice(0, 7);
+            const prevMonth = shiftMonthKey(month, -1);
+            const isCurrent = capitalMonthOffset === 0;
+            const label = first.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+            document.getElementById('capital-label').textContent = label;
+            document.getElementById('capital-next').disabled = capitalMonthOffset >= 0;
+
+            const settings = getCapitalSettings();
+            const { from, to } = capitalMonthRange(month);
+            const end = isCurrent ? getCapitalSnapshot() : getMonthlyClose(month);
+            const start = getMonthlyClose(prevMonth);
+            const close = getMonthlyClose(month);
+            const card = (title, sub, body) => '<div class="bg-white rounded-2xl shadow-lg p-4 md:p-6"><h3 class="font-bold text-gray-800">' + title + '</h3>' + (sub ? '<p class="text-xs text-gray-500 mb-3">' + sub + '</p>' : '') + '<div class="space-y-2 mt-2">' + body + '</div></div>';
+            const row = (name, value, strong) => '<div class="flex items-center justify-between gap-2 border-b py-1 text-sm ' + (strong ? 'font-bold text-gray-800' : 'text-gray-600') + '"><span class="min-w-0">' + name + '</span><span class="shrink-0">' + value + '</span></div>';
+            const stat = (name, value) => '<div class="bg-gray-50 rounded-lg px-2 py-1"><p class="text-[10px] text-gray-500">' + name + '</p><p class="text-sm font-bold text-gray-800">' + value + '</p></div>';
+            const top = (name, value, sub) => '<div class="bg-white rounded-2xl shadow-lg p-4"><p class="text-xs font-bold text-gray-500 uppercase">' + name + '</p><p class="text-2xl font-bold text-indigo-800">' + value + '</p>' + (sub ? '<p class="text-xs text-gray-500 mt-1">' + sub + '</p>' : '') + '</div>';
+
+            if (!end) {
+                content.innerHTML = '<div class="bg-white rounded-2xl shadow-lg p-6 text-sm text-gray-500">No hay cierre guardado de ' + label + '.</div>' + renderCapitalCloseButton(month, label, close, isCurrent);
+                return;
+            }
+
+            const stock = computeStockTarget({ dailyCost: getDailyMerchandiseCost(), targetDays: settings.stockDaysTarget, stockValue: end.merchandise });
+            const equipmentDebt = getEquipmentDebtLeft();
+            const settingsHtml = '<div class="flex flex-wrap gap-3 text-xs text-gray-600 items-center">' +
+                '<label>Retiro % <input id="cap-withdraw-pct" type="number" min="0" max="100" step="1" value="' + settings.withdrawPct + '" onchange="saveCapitalSettings()" class="w-16 border rounded-lg px-2 py-1 text-right"></label>' +
+                '<label>Colchón de caja <input id="cap-cushion" type="number" min="0" step="any" value="' + settings.cushion + '" onchange="saveCapitalSettings()" class="w-24 border rounded-lg px-2 py-1 text-right"></label>' +
+                '<label>Días de stock objetivo <input id="cap-days" type="number" min="1" step="1" value="' + settings.stockDaysTarget + '" onchange="saveCapitalSettings()" class="w-16 border rounded-lg px-2 py-1 text-right"></label></div>';
+            const stockText = stock.daysDiff >= 0 ? 'Sobran ' + num(stock.daysDiff) + ' días de stock' : 'Faltan ' + num(-stock.daysDiff) + ' días de stock';
+            const worth = card('Cuánto vale el negocio', isCurrent ? 'Con los números de ahora.' : 'Con los números del cierre.',
+                row('Mercadería al costo', money(end.merchandise)) + row('Equipos', money(end.equipment)) + row('Caja, Cuenta y Reserva', money(end.cash)) +
+                row('Fiados pendientes', money(end.fiados)) + row('Deudas', '−' + money(end.debts)) + row('Capital', money(computeCapitalTotal(end)), true) +
+                (end.doubtfulFiados > 0 ? '<p class="text-xs text-orange-600">Fiados dudosos, de más de 30 días: ' + money(end.doubtfulFiados) + '. No suman.</p>' : '') +
+                (end.debts > 0 && !end.manual ? '<p class="text-xs text-gray-500">Deudas: proveedores ' + money(end.supplierDebt) + ' · sueldos sin pagar ' + money(end.salaryDebt) + ' · saldo de equipos ' + money(end.equipmentOwed) + '</p>' : ''));
+
+            let topHtml, startHtml = '', detailHtml = '';
+            if (!start) {
+                topHtml = '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800">Para calcular la ganancia de ' + label + ' falta cómo arrancó el mes. Cargá acá abajo los números del cierre anterior.</div>';
+                const field = (id, name) => '<label class="text-xs text-gray-600">' + name + '<input id="' + id + '" type="number" min="0" step="any" class="w-full border rounded-lg px-2 py-2 text-sm mt-1"></label>';
+                startHtml = card('Cómo arrancó ' + label, 'Solo hace falta para el primer mes. Después sale de cada cierre.',
+                    '<div class="grid grid-cols-2 gap-2">' + field('cap-open-merchandise', 'Mercadería al costo') + field('cap-open-equipment', 'Equipos') + field('cap-open-cash', 'Caja, Cuenta y Reserva') + field('cap-open-fiados', 'Fiados pendientes') + field('cap-open-debts', 'Deudas') + '</div>' +
+                    '<button onclick="saveManualClose(\'' + prevMonth + '\')" class="mt-2 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold text-sm">Guardar inicio del mes</button>');
+            } else {
+                const flows = getCapitalFlows(from, to);
+                const m = computeCapitalMonth({ start, end, ...flows, withdrawPct: settings.withdrawPct, cushion: settings.cushion });
+                const pendingFixed = isCurrent ? generateProjectedExpenses(today, Math.max(0, Math.round((new Date(to + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000))).reduce((sum, x) => sum + (x.amount || 0), 0) : 0;
+                const d = m.distribution;
+                const inv = computeInvestable({
+                    cash: end.cash, cushion: settings.cushion, pendingWithdrawal: m.pendingWithdrawal,
+                    stockShortfall: Math.max(stock.shortfall, equipmentDebt), pendingFixed,
+                    profit: m.profit, plannedWithdrawal: m.plannedWithdrawal, alreadyInvested: d.merchandise.amount + d.equipment.amount
+                });
+                topHtml = '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">' +
+                    top('Ganancia del mes', money(m.profit), 'Capital ' + money(m.capitalStart) + ' → ' + money(m.capitalEnd) + (flows.contributions !== 0 ? ' · aportes ' + (flows.contributions < 0 ? '−' : '') + money(Math.abs(flows.contributions)) : '')) +
+                    top('Retiro posible', money(m.possibleWithdrawal), 'Planificado ' + money(m.plannedWithdrawal) + ' · ya retiraste ' + money(flows.withdrawals)) +
+                    top('Disponible para invertir', isCurrent ? money(inv.available) : '—', isCurrent ? 'Por caja ' + money(inv.byCash) + ' · por ganancia ' + money(inv.byProfit) : '') + '</div>';
+
+                const parts = [['Mercadería', d.merchandise, 'bg-indigo-500'], ['Equipos', d.equipment, 'bg-amber-500'], ['Caja', d.cash, 'bg-emerald-500']];
+                const barTotal = parts.reduce((sum, [, p]) => sum + Math.max(0, p.amount), 0);
+                const bar = barTotal > 0 ? '<div class="flex h-4 rounded-full overflow-hidden bg-gray-100">' + parts.filter(([, p]) => p.amount > 0).map(([, p, color]) => '<div class="' + color + '" style="width:' + (p.amount / barTotal * 100) + '%"></div>').join('') + '</div>' : '';
+                const distribution = card('Adónde fue la ganancia', '', bar + parts.map(([name, p, color]) => '<div class="flex items-center justify-between gap-2 text-sm"><span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full ' + color + '"></span>' + name + '</span><span class="font-bold">' + (p.amount < 0 ? '−' : '') + money(Math.abs(p.amount)) + ' <span class="text-xs text-gray-500">' + num(p.pct) + '%</span></span></div>').join(''));
+
+                const notes = [];
+                if (m.leftInvested > 0) notes.push(money(m.leftInvested) + ' de tu retiro quedó invertido de tu parte.');
+                if (isCurrent && inv.overInvested > 0) notes.push('Este mes invertiste ' + money(inv.overInvested) + ' más de lo que permitía la ganancia.');
+                if (isCurrent && flows.withdrawals > m.plannedWithdrawal) notes.push('Ya retiraste ' + money(flows.withdrawals - m.plannedWithdrawal) + ' más de lo planificado.');
+                if (d.merchandise.amount !== 0 && start.merchandise > 0) notes.push('La mercadería ' + (d.merchandise.amount > 0 ? 'creció ' : 'bajó ') + money(Math.abs(d.merchandise.amount)) + ' (' + num(Math.abs(d.merchandise.amount) / start.merchandise * 100) + '%).');
+                if (equipmentDebt > 0) notes.push('Hay deuda de equipos con mercadería por ' + money(equipmentDebt) + '.');
+                notes.push(stockText + ': tenés ' + num(stock.daysOfStock) + ' y el objetivo es ' + settings.stockDaysTarget + '.');
+                const rotation = isCurrent ? getRotationCloseSummary(month) : (end.rotation || null);
+                if (rotation && rotation.missingTotal > 0) notes.push('Te faltó ' + money(rotation.missingTotal) + ' en mercadería en ' + rotation.stockouts + ' productos (lo ves en Rotación).');
+                const notesHtml = card('Para tener en cuenta', '', notes.map(n => '<p class="text-sm text-gray-700">• ' + n + '</p>').join(''));
+
+                const totals = getFinancePeriodTotals({ from, to });
+                const fiadosDelta = (end.fiados || 0) - (start.fiados || 0);
+                const rest = m.profit - totals.netBalance - flows.withdrawals - fiadosDelta;
+                const difference = card('Diferencia con el Balance de Finanzas', 'El Balance mira ventas y gastos. Capital mira cuánto creció el negocio, por eso pueden no dar igual.',
+                    row('Balance de Finanzas', money(totals.netBalance)) + row('+ Tus retiros, que acá se suman de vuelta', money(flows.withdrawals)) +
+                    row('+ Cambio en fiados pendientes', (fiadosDelta < 0 ? '−' : '') + money(Math.abs(fiadosDelta))) +
+                    row('+ Conteos de stock, arqueos y otros ajustes', (rest < 0 ? '−' : '') + money(Math.abs(rest))) + row('= Ganancia en Capital', money(m.profit), true));
+
+                const monthExpenses = totals.monthExpenses.filter(e => !isOwnerWithdrawal(e));
+                const byCategory = {};
+                monthExpenses.forEach(e => { const c = getExpenseCategory(e) || 'Sin categoría'; byCategory[c] = (byCategory[c] || 0) + (e.amount || 0); });
+                const extraordinary = monthExpenses.filter(e => e.extraordinary).reduce((sum, e) => sum + (e.amount || 0), 0);
+                const shortage = byCategory[EXPENSE_SHORTAGE_CATEGORY] || 0;
+                delete byCategory[EXPENSE_SHORTAGE_CATEGORY];
+                const categories = card('Gastos por categoría', '', Object.keys(byCategory).sort((a, b) => byCategory[b] - byCategory[a]).map(c => row(escapeHtml(c), money(byCategory[c]))).join('') +
+                    (extraordinary > 0 ? '<p class="text-xs text-gray-500">Incluye ' + money(extraordinary) + ' de gastos extraordinarios.</p>' : '') +
+                    '<p class="text-sm font-bold text-red-700">Faltante de caja del mes: ' + money(shortage) + '</p>');
+                detailHtml = distribution + notesHtml + difference + categories;
+            }
+
+            const uncategorized = getUncategorizedExpenses();
+            const options = (selected) => EXPENSE_CATEGORIES.map(c => '<option value="' + c + '"' + (c === selected ? ' selected' : '') + '>' + c + '</option>').join('');
+            const reviewHtml = uncategorized.length ? '<details class="bg-white rounded-2xl shadow-lg p-4 md:p-6"><summary class="font-bold text-gray-800 cursor-pointer">Gastos viejos para categorizar (' + uncategorized.length + ')</summary>' +
+                '<p class="text-xs text-gray-500 my-2">La categoría está propuesta por el concepto. Revisala y guardá.</p>' +
+                uncategorized.map(e => '<div class="flex items-center justify-between gap-2 border-b py-2 text-sm"><span class="min-w-0"><span class="block truncate">' + escapeHtml(e.concept || 'Sin concepto') + '</span><span class="text-xs text-gray-500">' + e.date.split('-').reverse().join('/') + ' · ' + money(e.amount) + '</span></span>' +
+                    '<select data-id="' + escapeHtml(e.id) + '" class="expense-category-review border rounded-lg px-1 py-1 text-xs shrink-0">' + options(suggestExpenseCategory(e.concept)) + '</select></div>').join('') +
+                '<button onclick="saveExpenseCategories()" class="mt-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold text-sm">Guardar categorías</button></details>' : '';
+
+            const closes = (appState.monthlyCloses || []).slice().sort((a, b) => b.month.localeCompare(a.month));
+            const history = card('Mes a mes', closes.length ? '' : 'Todavía no hay cierres.', closes.map((c, i) => {
+                const before = closes[i + 1];
+                const profit = before ? computeCapitalTotal(c) - computeCapitalTotal(before) + c.withdrawals - c.contributions : null;
+                return '<div class="border rounded-xl p-3"><p class="font-bold text-gray-800 mb-2">' + new Date(c.month + '-15T12:00:00').toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }) + (c.manual ? ' <span class="text-xs text-gray-400 font-normal">cargado a mano</span>' : '') + '</p>' +
+                    '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">' + stat('Capital', money(computeCapitalTotal(c))) + stat('Mercadería', money(c.merchandise)) + stat('Equipos', money(c.equipment)) + stat('Caja', money(c.cash)) + stat('Ganancia', profit === null ? '—' : money(profit)) + stat('Retiro', money(c.withdrawals)) + '</div></div>';
+            }).join(''));
+
+            content.innerHTML = topHtml + startHtml + detailHtml + worth + renderCapitalCloseButton(month, label, close, isCurrent) + reviewHtml + history + '<div class="bg-white rounded-2xl shadow-lg p-4 md:p-6">' + settingsHtml + '</div>';
+        }
+
+        function renderCapitalCloseButton(month, label, close, isCurrent) {
+            const canClose = isCurrent || month === shiftMonthKey(formatDateISO(new Date()).slice(0, 7), -1);
+            if (!canClose) return '';
+            return '<button onclick="closeCapitalMonth(\'' + month + '\')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold">' + (close ? 'Rehacer cierre de ' : 'Cerrar ') + label + '</button>';
+        }
 
         function showTicketNotification(sale) {
             const notif = document.createElement('div');
@@ -17779,40 +18190,10 @@
             renderFinanceMonthSummary();
         }
 
-        // "Resumen" -- antes vivía en Historial de Ventas (atado al mes que se estuviera
-        // navegando ahí); ahora vive en Finanzas y muestra el período elegido arriba de las
-        // tarjetas (por defecto, el mes calendario actual).
-        function renderFinanceMonthSummary() {
-            // Al igual que renderInventory/renderBilling/renderPredictions: se llama
-            // desde renderAll() (que se dispara tras casi cualquier acción), así que
-            // si la página de Finanzas no está abierta no vale la pena recorrer el
-            // historial del mes para actualizar algo que nadie está mirando.
-            const financeSection = document.getElementById('cashflow');
-            if (!financeSection || financeSection.classList.contains('hidden')) return;
-
-            const monthSalesEl = document.getElementById('calendar-month-sales');
-            if (!monthSalesEl) return; // la sección de Finanzas ni está en el DOM
-
-            if (syncOwnerConsumptionExpenses()) saveToLocalStorage();
-            const period = getFinancePeriod();
+        // Totales del Resumen de Finanzas para un período: de acá salen la Ganancia, los Gastos y el Balance
+        function getFinancePeriodTotals(period) {
             const inPeriod = (d) => { const x = String(d || '').slice(0, 10); return !!x && x >= period.from && x <= period.to; };
             const today = formatDateISO(new Date());
-
-            const labelEl = document.getElementById('fin-period-label');
-            if (labelEl) labelEl.textContent = period.label;
-            const modeEl = document.getElementById('fin-period-mode');
-            if (modeEl) modeEl.value = finPeriodMode;
-            const isCustom = finPeriodMode === 'custom';
-            document.getElementById('fin-period-nav').classList.toggle('hidden', isCustom);
-            const customEl = document.getElementById('fin-period-custom');
-            customEl.classList.toggle('hidden', !isCustom);
-            customEl.classList.toggle('flex', isCustom);
-            document.getElementById('fin-period-note').classList.toggle('hidden', !isCustom);
-            document.getElementById('fin-period-next').disabled = finPeriodOffset >= 0;
-            if (isCustom) {
-                document.getElementById('fin-period-from').value = finPeriodFrom;
-                document.getElementById('fin-period-to').value = finPeriodTo;
-            }
 
             const monthSales = appState.sales.filter(s => inPeriod(saleRevenueDate(s)));
             // Sueldos: cuentan en el período trabajado (expenseProfitDate), y lo ganado sin pagar también se resta
@@ -17844,6 +18225,48 @@
                 .filter(l => inPeriod(l.date))
                 .reduce((sum, l) => sum + (l.cost || 0), 0);
 
+            // Ganancia mostrada  = ganancia de ventas + sobrantes de caja + stock gratis
+            // Gastos mostrados   = gastos reales (ya incluyen el faltante de caja) + mermas
+            const displayedProfit = monthProfitTotal + monthSurplus + monthFoundStock;
+            const displayedExpenses = monthExpensesTotal + monthLosses + monthAccruedSalaries;
+            return { monthSales, monthExpenses, monthSalesTotal, monthInvestmentsTotal, monthAccruedSalaries, monthSurplus, monthShortage, monthFoundStock, monthLosses, displayedProfit, displayedExpenses, netBalance: displayedProfit - displayedExpenses };
+        }
+
+        // "Resumen" -- antes vivía en Historial de Ventas (atado al mes que se estuviera
+        // navegando ahí); ahora vive en Finanzas y muestra el período elegido arriba de las
+        // tarjetas (por defecto, el mes calendario actual).
+        function renderFinanceMonthSummary() {
+            // Al igual que renderInventory/renderBilling/renderPredictions: se llama
+            // desde renderAll() (que se dispara tras casi cualquier acción), así que
+            // si la página de Finanzas no está abierta no vale la pena recorrer el
+            // historial del mes para actualizar algo que nadie está mirando.
+            const financeSection = document.getElementById('cashflow');
+            if (!financeSection || financeSection.classList.contains('hidden')) return;
+
+            const monthSalesEl = document.getElementById('calendar-month-sales');
+            if (!monthSalesEl) return; // la sección de Finanzas ni está en el DOM
+
+            if (syncOwnerConsumptionExpenses()) saveToLocalStorage();
+            const period = getFinancePeriod();
+
+            const labelEl = document.getElementById('fin-period-label');
+            if (labelEl) labelEl.textContent = period.label;
+            const modeEl = document.getElementById('fin-period-mode');
+            if (modeEl) modeEl.value = finPeriodMode;
+            const isCustom = finPeriodMode === 'custom';
+            document.getElementById('fin-period-nav').classList.toggle('hidden', isCustom);
+            const customEl = document.getElementById('fin-period-custom');
+            customEl.classList.toggle('hidden', !isCustom);
+            customEl.classList.toggle('flex', isCustom);
+            document.getElementById('fin-period-note').classList.toggle('hidden', !isCustom);
+            document.getElementById('fin-period-next').disabled = finPeriodOffset >= 0;
+            if (isCustom) {
+                document.getElementById('fin-period-from').value = finPeriodFrom;
+                document.getElementById('fin-period-to').value = finPeriodTo;
+            }
+
+            const { monthSales, monthSalesTotal, monthInvestmentsTotal, monthAccruedSalaries, monthSurplus, monthShortage, monthFoundStock, monthLosses, displayedProfit, displayedExpenses, netBalance } = getFinancePeriodTotals(period);
+
             const monthSalesCountEl = document.getElementById('calendar-month-sales-count');
             const monthProfitEl = document.getElementById('calendar-month-profit');
             const monthProfitExtraEl = document.getElementById('calendar-month-profit-extra');
@@ -17854,11 +18277,6 @@
 
             monthSalesEl.textContent = '$' + formatMoney(monthSalesTotal);
             if (monthSalesCountEl) monthSalesCountEl.textContent = monthSales.length + ' ventas';
-
-            // Ganancia mostrada  = ganancia de ventas + sobrantes de caja + stock gratis
-            // Gastos mostrados   = gastos reales (ya incluyen el faltante de caja) + mermas
-            const displayedProfit = monthProfitTotal + monthSurplus + monthFoundStock;
-            const displayedExpenses = monthExpensesTotal + monthLosses + monthAccruedSalaries;
 
             if (monthProfitEl) monthProfitEl.textContent = '$' + formatMoney(displayedProfit);
             if (monthProfitExtraEl) {
@@ -17876,7 +18294,6 @@
                 monthExpensesExtraEl.textContent = p.join(' · ');
             }
 
-            const netBalance = displayedProfit - displayedExpenses;
             if (monthBalanceEl) monthBalanceEl.textContent = '$' + formatMoney(netBalance);
 
             if (monthInvestmentsEl) monthInvestmentsEl.textContent = '$' + formatMoney(monthInvestmentsTotal);
@@ -25697,6 +26114,8 @@
             document.getElementById('asset-description').value = '';
             document.getElementById('asset-total-cost').value = '';
             document.getElementById('asset-date').value = formatDateISO(appState.activeDate || new Date());
+            document.getElementById('asset-monthly-sales').value = '';
+            document.getElementById('asset-margin-pct').value = '';
             document.getElementById('asset-has-initial-payment').checked = false;
             document.getElementById('asset-initial-payment-section').classList.add('hidden');
             document.getElementById('asset-initial-payment').value = '';
@@ -25722,6 +26141,9 @@
             const asset = {
                 id: 'ASSET-' + Date.now(),
                 name, description, totalCost, dateAdded: date,
+                monthlySales: parseFloat(document.getElementById('asset-monthly-sales').value) || 0,
+                marginPct: parseFloat(document.getElementById('asset-margin-pct').value) || 0,
+                stockDebt: getNewEquipmentStockDebt(totalCost),
                 payments: [],
                 sold: false, soldAmount: null, soldDate: null, soldSource: null
             };
@@ -25879,6 +26301,8 @@
             document.getElementById('expense-source').value = 'cash';
             document.getElementById('expense-date').value = formatDateISO(appState.activeDate || new Date());
             setExpenseHasInvoice(false);
+            fillExpenseCategorySelect('');
+            document.getElementById('expense-extraordinary').checked = false;
             document.getElementById('expense-modal').classList.add('active');
             setTimeout(() => document.getElementById('expense-concept').focus(), 100);
         }
@@ -25893,6 +26317,8 @@
             document.getElementById('expense-source').value = expense.source || 'cash';
             document.getElementById('expense-date').value = expense.date || formatDateISO(appState.activeDate || new Date());
             setExpenseHasInvoice(!!expense.hasInvoice);
+            fillExpenseCategorySelect(getExpenseCategory(expense) || suggestExpenseCategory(expense.concept));
+            document.getElementById('expense-extraordinary').checked = !!expense.extraordinary;
             document.getElementById('expense-modal').classList.add('active');
         }
 
@@ -25916,6 +26342,8 @@
             const source = document.getElementById('expense-source').value;
             const date = document.getElementById('expense-date').value || formatDateISO(appState.activeDate || new Date());
             const hasInvoice = document.getElementById('expense-has-invoice').value === '1';
+            const category = document.getElementById('expense-category').value;
+            const extraordinary = document.getElementById('expense-extraordinary').checked;
 
             if (!concept) {
                 showNotification('Ingresá un concepto', 'error');
@@ -25923,6 +26351,10 @@
             }
             if (!amount || amount <= 0) {
                 showNotification('Ingresá un monto válido', 'error');
+                return;
+            }
+            if (!category) {
+                showNotification('Elegí una categoría', 'error');
                 return;
             }
 
@@ -25957,7 +26389,9 @@
                     amount: amount,
                     source: source,
                     date: date,
-                    hasInvoice: hasInvoice
+                    hasInvoice: hasInvoice,
+                    category,
+                    extraordinary
                 };
 
                 saveToLocalStorage();
@@ -25989,6 +26423,8 @@
                     source: source,
                     type: 'expense',
                     hasInvoice: hasInvoice,
+                    category,
+                    extraordinary,
                     timestamp: Date.now()
                 });
 
@@ -29849,7 +30285,7 @@ RESULTADOS:
             appState.expiryHistory = Array.isArray(appState.expiryHistory) ? appState.expiryHistory : [];
             appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
             appState.scheduledPayments = Array.isArray(appState.scheduledPayments) ? appState.scheduledPayments : [];
-            for (const k of ['employees', 'timeClock', 'attendanceDays', 'payrollPayments', 'stockoutEvents', 'stockHistoryRebuilt', 'stockHistoryAliases']) appState[k] = Array.isArray(appState[k]) ? appState[k] : [];
+            for (const k of ['employees', 'timeClock', 'attendanceDays', 'payrollPayments', 'stockoutEvents', 'stockHistoryRebuilt', 'stockHistoryAliases', 'monthlyCloses']) appState[k] = Array.isArray(appState[k]) ? appState[k] : [];
             appState.suppliers = Array.isArray(appState.suppliers) ? appState.suppliers : [];
             appState.businessHours = Array.isArray(appState.businessHours) && appState.businessHours.length === 7
                 ? appState.businessHours
@@ -31844,6 +32280,7 @@ RESULTADOS:
                 main_stockoutEvents: 'stockoutEvents',
                 main_stockHistoryRebuilt: 'stockHistoryRebuilt',
                 main_stockHistoryAliases: 'stockHistoryAliases',
+                main_monthlyCloses: 'monthlyCloses',
                 main_fixedAssets: 'fixedAssets',
                 main_invoiceNameMappings: 'invoiceNameMappings',
                 main_invoiceSupplierCorrections: 'invoiceSupplierCorrections',
@@ -31871,6 +32308,7 @@ RESULTADOS:
                 percentSettingsUpdatedAt: parseInt(appState.percentSettingsUpdatedAt) || 0,
                 payrollSettings: appState.payrollSettings || null,
                 rotationSettings: appState.rotationSettings || null,
+                capitalSettings: appState.capitalSettings || null,
                 stockLedgerOpening: appState.stockLedgerOpening || null,
                 comprasAppPassword: appState.comprasAppPassword || '',
                 financesPassword: appState.financesPassword || '',
@@ -32152,7 +32590,7 @@ RESULTADOS:
         function normalizeFirebaseData(downloaded) {
             const normalized = {};
             const main = downloaded && (downloaded.main || downloaded);
-            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','qrFee','debitFee','percentSettingsUpdatedAt','payrollSettings','rotationSettings','stockLedgerOpening','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
+            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','qrFee','debitFee','percentSettingsUpdatedAt','payrollSettings','rotationSettings','capitalSettings','stockLedgerOpening','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
             for (const f of baseFields) {
                 if (main && main[f] !== undefined) normalized[f] = main[f];
             }
@@ -33082,6 +33520,8 @@ RESULTADOS:
                 appState.stockHistoryAliases = smartMergeArrays(appState.stockHistoryAliases || [], data.stockHistoryAliases || []);
                 if (data.stockLedgerOpening && (parseInt(data.stockLedgerOpening.at) || 0) > (parseInt((appState.stockLedgerOpening || {}).at) || 0)) appState.stockLedgerOpening = data.stockLedgerOpening;
                 if (data.rotationSettings && typeof data.rotationSettings === 'object' && (parseInt(data.rotationSettings.updatedAt) || 0) > (parseInt((appState.rotationSettings || {}).updatedAt) || 0)) appState.rotationSettings = { ...data.rotationSettings };
+                if (data.capitalSettings && typeof data.capitalSettings === 'object' && (parseInt(data.capitalSettings.updatedAt) || 0) > (parseInt((appState.capitalSettings || {}).updatedAt) || 0)) appState.capitalSettings = { ...data.capitalSettings };
+                appState.monthlyCloses = smartMergeArrays(appState.monthlyCloses || [], data.monthlyCloses || []);
                 appState.invoiceNameMappings = smartMergeArrays(appState.invoiceNameMappings || [], data.invoiceNameMappings || []);
                 appState.invoiceSupplierCorrections = smartMergeArrays(appState.invoiceSupplierCorrections || [], data.invoiceSupplierCorrections || []);
                 appState.specialPriceCodes = smartMergeArrays(appState.specialPriceCodes || [], data.specialPriceCodes || []);
@@ -33185,6 +33625,8 @@ RESULTADOS:
                 appState.stockHistoryAliases = smartMergeArrays(appState.stockHistoryAliases || [], data.stockHistoryAliases || []);
                 if (data.stockLedgerOpening && (parseInt(data.stockLedgerOpening.at) || 0) > (parseInt((appState.stockLedgerOpening || {}).at) || 0)) appState.stockLedgerOpening = data.stockLedgerOpening;
                 if (data.rotationSettings && typeof data.rotationSettings === 'object' && (parseInt(data.rotationSettings.updatedAt) || 0) > (parseInt((appState.rotationSettings || {}).updatedAt) || 0)) appState.rotationSettings = { ...data.rotationSettings };
+                if (data.capitalSettings && typeof data.capitalSettings === 'object' && (parseInt(data.capitalSettings.updatedAt) || 0) > (parseInt((appState.capitalSettings || {}).updatedAt) || 0)) appState.capitalSettings = { ...data.capitalSettings };
+                appState.monthlyCloses = smartMergeArrays(appState.monthlyCloses || [], data.monthlyCloses || []);
                 appState.invoiceNameMappings = smartMergeArrays(appState.invoiceNameMappings || [], data.invoiceNameMappings || []);
                 appState.invoiceSupplierCorrections = smartMergeArrays(appState.invoiceSupplierCorrections || [], data.invoiceSupplierCorrections || []);
                 appState.specialPriceCodes = smartMergeArrays(appState.specialPriceCodes || [], data.specialPriceCodes || []);
@@ -34088,7 +34530,7 @@ RESULTADOS:
                     appState.losses = Array.isArray(appState.losses) ? appState.losses : [];
                     appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
                     appState.scheduledPayments = Array.isArray(appState.scheduledPayments) ? appState.scheduledPayments : [];
-                    for (const k of ['employees', 'timeClock', 'attendanceDays', 'payrollPayments', 'stockoutEvents', 'stockHistoryRebuilt', 'stockHistoryAliases']) appState[k] = Array.isArray(appState[k]) ? appState[k] : [];
+                    for (const k of ['employees', 'timeClock', 'attendanceDays', 'payrollPayments', 'stockoutEvents', 'stockHistoryRebuilt', 'stockHistoryAliases', 'monthlyCloses']) appState[k] = Array.isArray(appState[k]) ? appState[k] : [];
                     if (!appState.cashFlowSettings || typeof appState.cashFlowSettings !== 'object') {
                         appState.cashFlowSettings = { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 };
                     } else {
@@ -34663,11 +35105,16 @@ RESULTADOS:
                 <input type="hidden" id="expense-edit-id">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Concepto</label>
-                    <input type="text" id="expense-concept" class="w-full border-2 border-red-200 rounded-xl px-4 py-2" placeholder="Ej: Alquiler, Luz, Sueldo...">
+                    <input type="text" id="expense-concept" onchange="suggestExpenseCategoryInForm()" class="w-full border-2 border-red-200 rounded-xl px-4 py-2" placeholder="Ej: Alquiler, Luz, Sueldo...">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Monto ($)</label>
                     <input type="number" id="expense-amount" class="w-full border-2 border-red-200 rounded-xl px-4 py-2 text-xl font-bold text-center" placeholder="0" min="0.01" step="any">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                    <select id="expense-category" class="w-full border-2 border-red-200 rounded-xl px-4 py-2"></select>
+                    <label class="flex items-center gap-2 mt-2 text-sm text-gray-700"><input type="checkbox" id="expense-extraordinary"> Gasto extraordinario (no se repite)</label>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Fuente</label>
@@ -34742,6 +35189,16 @@ RESULTADOS:
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
                     <input type="date" id="asset-date" class="w-full border rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Venta mensual que genera</label>
+                        <input type="number" min="0" step="any" id="asset-monthly-sales" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Estimada">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Margen %</label>
+                        <input type="number" min="0" step="any" id="asset-margin-pct" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0">
+                    </div>
                 </div>
                 <div class="border-t pt-3">
                     <label class="flex items-center gap-2 text-sm font-medium text-gray-700 mb-1">

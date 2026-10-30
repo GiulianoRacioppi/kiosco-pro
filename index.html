@@ -10490,6 +10490,9 @@
             return computeEquipmentDebtLeft(debts, increases);
         }
 
+        // Cierre de septiembre 2026, el primero: sale del backup del 30/09 más lo que se cargó esa noche
+        const CAPITAL_FIRST_OPENING = { month: '2026-09', 'cap-open-merchandise': 2115542, 'cap-open-equipment': 372199, 'cap-open-cash': 926442, 'cap-open-fiados': 124000, 'cap-open-debts': 0 };
+
         let capitalMonthOffset = 0;
         function shiftCapitalMonth(delta) {
             capitalMonthOffset = Math.min(0, capitalMonthOffset + delta);
@@ -10542,7 +10545,8 @@
             let topHtml, startHtml = '', detailHtml = '';
             if (!start) {
                 topHtml = '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800">Para calcular la ganancia de ' + label + ' falta cómo arrancó el mes. Cargá acá abajo los números del cierre anterior.</div>';
-                const field = (id, name) => '<label class="text-xs text-gray-600">' + name + '<input id="' + id + '" type="number" min="0" step="any" class="w-full border rounded-lg px-2 py-2 text-sm mt-1"></label>';
+                const opening = prevMonth === CAPITAL_FIRST_OPENING.month ? CAPITAL_FIRST_OPENING : {};
+                const field = (id, name) => '<label class="text-xs text-gray-600">' + name + '<input id="' + id + '" type="number" min="0" step="any" value="' + (opening[id] ?? '') + '" class="w-full border rounded-lg px-2 py-2 text-sm mt-1"></label>';
                 startHtml = card('Cómo arrancó ' + label, 'Solo hace falta para el primer mes. Después sale de cada cierre.',
                     '<div class="grid grid-cols-2 gap-2">' + field('cap-open-merchandise', 'Mercadería al costo') + field('cap-open-equipment', 'Equipos') + field('cap-open-cash', 'Caja, Cuenta y Reserva') + field('cap-open-fiados', 'Fiados pendientes') + field('cap-open-debts', 'Deudas') + '</div>' +
                     '<button onclick="saveManualClose(\'' + prevMonth + '\')" class="mt-2 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold text-sm">Guardar inicio del mes</button>');

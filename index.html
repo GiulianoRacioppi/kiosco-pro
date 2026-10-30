@@ -1107,6 +1107,11 @@
                 <i class="fas fa-chart-pie w-4 text-xs"></i> Análisis
             </button>
 
+            <!-- ROTACIÓN (quiebres, demanda real, sobrestock): Solo admin -->
+            <button onclick="showSection('rotation')" id="nav-rotation" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm">
+                <i class="fas fa-sync-alt w-4 text-xs"></i> Rotación
+            </button>
+
             <!-- CLIENTES (cuentas creadas en Kiosco47: nombre/teléfono/email/direcciones): Solo admin -->
             <button onclick="showSection('clientes')" id="nav-clientes" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-purple-50 transition flex items-center gap-2 text-gray-600 text-sm" data-section="clientes">
                 <i class="fas fa-address-book w-4 text-xs"></i> Clientes
@@ -2327,7 +2332,26 @@
 
             <!-- Resumen del mes (movido acá desde Historial de Ventas) -->
             <div class="bg-white rounded-2xl shadow-lg p-6">
-                <h4 class="text-sm font-bold text-gray-600 mb-3 uppercase">Resumen del mes</h4>
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <h4 class="text-sm font-bold text-gray-600 uppercase">Resumen <span id="fin-period-label" class="text-gray-800"></span></h4>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <select id="fin-period-mode" onchange="setFinancePeriodMode(this.value)" class="border rounded-lg px-2 py-1 text-sm bg-white" title="Período del resumen">
+                            <option value="month">Mes</option>
+                            <option value="quincena">Quincena</option>
+                            <option value="year">Año</option>
+                            <option value="custom">Elegir fechas</option>
+                        </select>
+                        <span id="fin-period-nav" class="flex items-center gap-1">
+                            <button onclick="shiftFinancePeriod(-1)" class="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700" title="Período anterior"><i class="fas fa-chevron-left"></i></button>
+                            <button id="fin-period-next" onclick="shiftFinancePeriod(1)" class="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 disabled:opacity-30" title="Período siguiente"><i class="fas fa-chevron-right"></i></button>
+                        </span>
+                        <span id="fin-period-custom" class="hidden flex-wrap items-center gap-1 text-sm">
+                            <input type="date" id="fin-period-from" onchange="setFinancePeriodDates()" class="border rounded-lg px-2 py-1">
+                            <span class="text-gray-500">a</span>
+                            <input type="date" id="fin-period-to" onchange="setFinancePeriodDates()" class="border rounded-lg px-2 py-1">
+                        </span>
+                    </div>
+                </div>
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
                     <div class="bg-purple-50 rounded-xl p-3 text-center">
                         <p class="text-xs text-purple-600 font-bold uppercase">Ventas</p>
@@ -2354,6 +2378,8 @@
                         <p class="text-xl font-bold text-blue-800" id="calendar-month-investments">$0</p>
                     </div>
                 </div>
+                <button onclick="openOwnerConsumptionModal()" class="mt-2 text-xs text-gray-500 hover:text-indigo-700 underline" id="fin-owner-consumption"></button>
+                <p id="fin-period-note" class="hidden text-[11px] text-gray-400 mt-2">Los sueldos se cuentan enteros al terminar cada quincena: si elegís unos días sueltos, pueden no entrar o entrar completos.</p>
             </div>
 
             <!-- Tarjetas Principales: Caja y Cuenta -->
@@ -2801,6 +2827,21 @@
         </div>
 
         <!-- EQUIPAMIENTO / ACTIVOS FIJOS -->
+        <div id="rotation" class="section hidden space-y-6 fade-in">
+            <div class="space-y-2">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-sync-alt text-indigo-600 mr-2"></i>Rotación</h2>
+                    <p class="text-sm text-gray-500">Qué se vendió, qué faltó y dónde hay plata parada</p>
+                </div>
+                <div class="flex items-center gap-1">
+                    <button onclick="shiftRotationMonth(-1)" class="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700" title="Mes anterior"><i class="fas fa-chevron-left"></i></button>
+                    <span id="rotation-label" class="px-2 text-sm font-bold text-gray-700"></span>
+                    <button id="rotation-next" onclick="shiftRotationMonth(1)" class="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 disabled:opacity-30" title="Mes siguiente"><i class="fas fa-chevron-right"></i></button>
+                </div>
+            </div>
+            <div id="rotation-content" class="space-y-6"></div>
+        </div>
+
         <div id="fixed-assets" class="section hidden space-y-6 fade-in">
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
@@ -4747,6 +4788,18 @@
             // algo si el número final no cierra -- en vez de confiar solo en el número
             // final, que un bug puede corromper sin dejar rastro.
             stockLedger: [],
+            // Quiebres de stock: cuándo un producto llegó a 0 y cuándo se repuso.
+            // A diferencia del libro, no se recorta. { id, productId, startAt(ms), endAt(ms|null), timestamp }
+            stockoutEvents: [],
+            // Punto de arranque del "debería haber": stock de cada producto en ese momento.
+            // { at(ms), stocks: { productId: cantidad } }. El libro cuenta de ahí en adelante.
+            stockLedgerOpening: null,
+            // Historial reconstruido antes del libro (aparte de stockLedger): una fila de resumen
+            // por producto, id = productId. Y nombres viejos asignados a mano a un producto.
+            stockHistoryRebuilt: [],
+            stockHistoryAliases: [],
+            // Pantalla Rotación: margen de seguridad y días de stock objetivo
+            rotationSettings: { safetyPct: 20, stockDaysTarget: 10, updatedAt: 0 },
             invoiceNameMappings: [],
             invoiceSupplierCorrections: [],
             // Flujo de caja
@@ -5209,7 +5262,7 @@
             }
             
             // Protección: colaboradores no pueden ver ciertas secciones
-            const adminOnlySections = ['sales-calendar', 'cashflow', 'analysis', 'cashflow-projection', 'reports', 'billing', 'settings', 'promotions', 'clientes', 'fixed-assets', 'employees'];
+            const adminOnlySections = ['sales-calendar', 'cashflow', 'analysis', 'rotation', 'cashflow-projection', 'reports', 'billing', 'settings', 'promotions', 'clientes', 'fixed-assets', 'employees'];
             if (adminOnlySections.includes(sectionId) && !isAdmin()) {
                 showNotification('Acceso restringido solo para administradores', 'error');
                 sectionId = 'sell';
@@ -5299,6 +5352,7 @@
                 'discount-tickets': 'Tickets de Descuento',
                 'clientes': 'Clientes',
                 'fixed-assets': 'Equipamiento',
+                'rotation': 'Rotación',
                 'employees': 'Empleados',
                 'settings': 'Configuración'
             };
@@ -5351,6 +5405,9 @@
             }
             if (sectionId === 'fixed-assets') {
                 renderFixedAssets();
+            }
+            if (sectionId === 'rotation') {
+                renderRotation();
             }
             if (sectionId === 'employees') {
                 renderEmployeesSection();
@@ -5580,7 +5637,7 @@
             
             // Para la lista de ventas del día, siempre mostrar el día activo (independiente del filtro de período)
             const today = formatDateISO(appState.activeDate);
-            const todaySales = appState.sales.filter(s => s.date === today);
+            const todaySales = appState.sales.filter(s => s.date === today && !s.ownerConsumption);
             
             const isAdmin = appState.currentUser && appState.currentUser.role === 'admin';
 
@@ -8056,18 +8113,28 @@
                 showNotification('Código no válido', 'error');
                 return;
             }
+            // El código del dueño (0%) solo lo usa él: otro usuario necesita la contraseña de Finanzas
+            if (isOwnerConsumptionCode(entry) && !(appState.currentUser && appState.currentUser.role === 'admin')) {
+                requireFinancesPassword(() => activateSpecialPriceCode(entry), 'Código del dueño');
+                return;
+            }
+            activateSpecialPriceCode(entry);
+        }
+        window.applySpecialPriceCode = applySpecialPriceCode;
+
+        function activateSpecialPriceCode(entry) {
+            const input = document.getElementById('special-price-code-input');
             const markupPct = entry.markupPct != null ? entry.markupPct : 10;
             appState.activeSpecialPriceCode = { id: entry.id, name: entry.name, code: entry.code, markupPct };
             applySpecialPriceToCart();
             if (input) input.value = '';
             // El recuadro queda visible: se puede sumar también un ticket de descuento
             document.getElementById('applied-special-price-section').classList.remove('hidden');
-            document.getElementById('applied-special-price-name').textContent = entry.name;
+            document.getElementById('applied-special-price-name').textContent = entry.name + (isOwnerConsumptionCode(entry) ? ' — Consumo del dueño: no entra plata' : '');
             updateCartTotals();
             renderCart();
             showNotification('🏷️ Precio especial aplicado: ' + entry.name, 'success');
         }
-        window.applySpecialPriceCode = applySpecialPriceCode;
 
         function clearSpecialPriceCode(render = true) {
             if (!appState.activeSpecialPriceCode) return;
@@ -8282,12 +8349,14 @@
         // cualquier otra venta = su propia fecha.
         // Las LISTAS de ventas siguen filtrando por s.date; solo los TOTALES usan esto.
         function saleRevenueDate(s) {
+            if (s.ownerConsumption) return null; // consumo del dueño: no es venta
             if (s.paymentMethod === 'fiado') return s.fiadoPaid ? (s.fiadoPaidDate || s.date) : null;
             return s.date;
         }
 
         // Etiqueta legible del método de pago para badges y reportes
         function paymentMethodLabel(s) {
+            if (s.ownerConsumption) return 'Consumo del dueño';
             if (s.paymentMethod === 'cash') return 'Efectivo';
             if (s.paymentMethod === 'fiado') return s.fiadoPaid ? 'Fiado (pagado)' : 'Fiado';
             if (s.paymentMethod === 'qr') return 'QR';
@@ -8483,7 +8552,7 @@
             currentFiadoPaySaleId = null;
         }
 
-        function confirmFiadoPayment(method) {
+        function confirmFiadoPayment(method, silent) {
             const sale = appState.sales.find(s => s.id === currentFiadoPaySaleId);
             if (!sale || sale.fiadoPaid) {
                 closeFiadoPayModal();
@@ -8535,7 +8604,8 @@
             // se evalúan las reglas con el método real de cobro (para que "facturar según
             // efectivo/débito" tenga sentido), y facturarVenta() usa saleRevenueDate(sale)
             // (= fiadoPaidDate, hoy) como fecha fiscal de la factura.
-            try {
+            // Descontado del sueldo no se factura solo: ese pago se puede deshacer, una factura no.
+            if (method !== 'salary') try {
                 const saleParaReglas = { ...sale, paymentMethod: method };
                 const reglasIdx = saleItemsFacturables(saleParaReglas);
                 if (reglasIdx.length > 0 && passesAutoAlternateGate()) {
@@ -8552,7 +8622,7 @@
             closeFiadoPayModal();
             renderFiados();
             updateSidebar();
-            showNotification(`Cobro registrado: ${sale.customerName || 'Cliente'} pagó $${formatMoney(sale.total)} en ${method === 'cash' ? 'efectivo' : 'cuenta'}`, 'success');
+            if (!silent) showNotification(`Cobro registrado: ${sale.customerName || 'Cliente'} pagó $${formatMoney(sale.total)} en ${method === 'cash' ? 'efectivo' : 'cuenta'}`, 'success');
         }
 
         function renderFiados() {
@@ -8668,7 +8738,7 @@
         }
         
         // 2. Descontar stock con snapshot para rollback
-        function deductStockWithSnapshot(cart, saleId) {
+        function deductStockWithSnapshot(cart, saleId, reason = 'sale') {
             const snapshot = []; // { productId, previousTotalStock, previousBatches }
             let saleWhiteTotal = 0;
             let saleBlackTotal = 0;
@@ -8761,7 +8831,7 @@
                         }
                         const compQtyDeducted = compQtyRequested - compQtyToDeduct;
                         if (compQtyDeducted > 0) {
-                            recordStockMovement(compProduct.id, -compQtyDeducted, 'sale', saleId, 'Componente de ' + (product.name || product.id) + ' x' + item.quantity);
+                            recordStockMovement(compProduct.id, -compQtyDeducted, reason, saleId, 'Componente de ' + (product.name || product.id) + ' x' + item.quantity);
                         }
                     }
                 } else {
@@ -8810,7 +8880,7 @@
                     product.updatedAt = new Date().toISOString();
                     const qtyDeducted = qtyRequested - qtyToDeduct;
                     if (qtyDeducted > 0) {
-                        recordStockMovement(product.id, -qtyDeducted, 'sale', saleId, item.name + ' x' + item.quantity);
+                        recordStockMovement(product.id, -qtyDeducted, reason, saleId, item.name + ' x' + item.quantity);
                     }
                 }
                 itemBreakdown.push({ white: itemWhite, black: itemBlack });
@@ -8837,7 +8907,9 @@
         }
         
         // 4. Rollback: restaurar stock desde snapshot
-        function rollbackStockFromSnapshot(snapshot) {
+        function rollbackStockFromSnapshot(snapshot, saleId) {
+            // Los movimientos de una venta que no se concretó no pueden quedar en el libro
+            if (saleId) appState.stockLedger = (appState.stockLedger || []).filter(m => m.refId !== saleId);
             for (const snap of snapshot) {
                 const product = appState.inventory.find(p => p.id === snap.productId);
                 if (!product) continue;
@@ -8911,6 +8983,8 @@
             if (appState.cart.length === 0) return;
             if (saleInProgress) return; // doble click / doble Enter: ignorar el segundo
             saleInProgress = true;
+
+            if (isOwnerConsumptionCode(appState.activeSpecialPriceCode)) { await completeOwnerConsumption(); return; }
 
             // El respaldo automático en carpeta es obligatorio para poder vender: si no
             // está activo, se muestra el cartel grande (checkBackupRequired) y se frena
@@ -9132,7 +9206,7 @@
             const verifyErrors = verifyStockDeduction(stockSnapshot);
             if (verifyErrors.length > 0) {
                 // ROLLBACK: algo falló, restaurar stock (y sacar el Stock Gratis recién cargado)
-                rollbackStockFromSnapshot(stockSnapshot);
+                rollbackStockFromSnapshot(stockSnapshot, sale.id);
                 undoFreeStock();
                 showNotification('❌ Error al descontar stock. Venta cancelada:\n' + verifyErrors.join('\n'), 'error');
                 console.error('Stock deduction verification failed:', verifyErrors);
@@ -9252,24 +9326,7 @@
                 if (wasBorrowedCart) {
                     skipPostSaleCartClear = false;
                 } else {
-                    appState.cart = [];
-                    window.comboNotified = false;
-                    appState.cartSubtotal = 0;
-                    appState.cartDiscount = 0;
-                    appState.cartFinalTotal = 0;
-                    appState.activePromoInfo = null;
-                    appState.appliedTicket = null;
-                    document.getElementById('applied-ticket-section').classList.add('hidden');
-                    document.getElementById('ticket-input-section').classList.add('hidden');
-                    document.getElementById('cart-ticket-code').value = '';
-                    document.getElementById('cash-received').value = '';
-                    // El precio especial es por venta -- no tiene que quedar pegado para
-                    // el próximo cliente.
-                    appState.activeSpecialPriceCode = null;
-                    const appliedSpecialSection = document.getElementById('applied-special-price-section');
-                    const specialInputSection = document.getElementById('special-price-input-section');
-                    if (appliedSpecialSection) appliedSpecialSection.classList.add('hidden');
-                    if (specialInputSection) specialInputSection.classList.remove('hidden');
+                    clearCartAfterSale();
                 }
 
                 // Mostrar notificación para imprimir ticket de venta
@@ -9319,6 +9376,767 @@
                 }
             }, 1500);
         }
+
+        function clearCartAfterSale() {
+            appState.cart = [];
+            window.comboNotified = false;
+            appState.cartSubtotal = 0;
+            appState.cartDiscount = 0;
+            appState.cartFinalTotal = 0;
+            appState.activePromoInfo = null;
+            appState.appliedTicket = null;
+            document.getElementById('applied-ticket-section').classList.add('hidden');
+            document.getElementById('ticket-input-section').classList.add('hidden');
+            document.getElementById('cart-ticket-code').value = '';
+            document.getElementById('cash-received').value = '';
+            // El precio especial es por venta -- no tiene que quedar pegado para
+            // el próximo cliente.
+            appState.activeSpecialPriceCode = null;
+            const appliedSpecialSection = document.getElementById('applied-special-price-section');
+            const specialInputSection = document.getElementById('special-price-input-section');
+            if (appliedSpecialSection) appliedSpecialSection.classList.add('hidden');
+            if (specialInputSection) specialInputSection.classList.remove('hidden');
+        }
+
+        // ==================== ROTACIÓN ====================
+        // <rotacion-puro> Funciones puras: sin appState ni DOM (las usa tests/rotacion.test.js)
+        const SOLD_REASONS = new Set(['sale', 'sale-edit', 'sale-cancelled']);
+        const ROTATION_MIN_WEEKS = 3;
+
+        function rotationDaysBetween(from, to) {
+            const out = [];
+            const [y, m, d] = from.split('-').map(Number);
+            for (let i = 0; i < 4000; i++) {
+                const dt = new Date(y, m - 1, d + i);
+                const iso = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+                if (iso > to) break;
+                out.push(iso);
+            }
+            return out;
+        }
+
+        function rotationDayOf(ms) {
+            const dt = new Date(ms);
+            return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+        }
+
+        // Una fila por producto. movements: { timestamp, delta, stockAfter, reason } del producto.
+        // Días sin stock: los que estuvo en 0 de punta a punta (el día que se agotó todavía vendió).
+        // Demanda real: las semanas enteras sin quiebre; si no hay ninguna, los días con stock.
+        function computeProductRotation({ movements, from, to, currentStock, cost, price, coverageDays, safetyPct, stockDaysTarget }) {
+            const moves = movements.slice().sort((a, b) => a.timestamp - b.timestamp);
+            const days = rotationDaysBetween(from, to);
+            const movesByDay = new Map();
+            let before = null, firstInside = null;
+            moves.forEach(m => {
+                const date = rotationDayOf(m.timestamp);
+                if (date < from) { before = m; return; }
+                if (!firstInside) firstInside = m;
+                if (!movesByDay.has(date)) movesByDay.set(date, []);
+                movesByDay.get(date).push(m);
+            });
+            let stock = before ? before.stockAfter : (firstInside ? firstInside.stockAfter - firstInside.delta : currentStock);
+
+            let peak = stock, lastCyclePeak = null, maxStock = stock;
+            // Tramo de quiebre: arranca al llegar a 0 y termina con la siguiente entrada de stock.
+            // Si en el medio hay un found-stock, el stock estaba mal registrado: el tramo no cuenta.
+            const runs = [];
+            let run = stock <= 0 ? { days: [], found: false } : null;
+            const closeRun = () => { if (run) runs.push(run); run = null; };
+            const perDay = days.map(date => {
+                const dayMoves = movesByDay.get(date) || [];
+                const day = { date, hadStock: stock > 0, sold: 0, endStock: stock, ignored: false };
+                dayMoves.forEach(m => {
+                    if (SOLD_REASONS.has(m.reason)) day.sold -= m.delta;
+                    if (run && m.reason === 'found-stock') run.found = true;
+                    stock = m.stockAfter;
+                    if (stock > 0) { day.hadStock = true; closeRun(); }
+                    maxStock = Math.max(maxStock, stock);
+                    // Stock habitual: hasta dónde se llegó en la última reposición antes del quiebre
+                    peak = m.delta > 0 && !SOLD_REASONS.has(m.reason) ? stock : Math.max(peak, stock);
+                    if (stock <= 0) {
+                        if (peak > 0) lastCyclePeak = peak;
+                        peak = 0;
+                        if (!run) run = { days: [], found: false };
+                    }
+                });
+                day.endStock = stock;
+                if (day.sold > 0) day.hadStock = true;
+                if (run && !day.hadStock) run.days.push(day);
+                return day;
+            });
+            closeRun();
+            runs.filter(r => r.found).forEach(r => r.days.forEach(d => { d.ignored = true; }));
+
+            const stockDays = perDay.filter(d => d.hadStock);
+            const daysOut = perDay.filter(d => !d.hadStock && !d.ignored).length;
+            let cleanUnits = 0, cleanWeeks = 0;
+            for (let i = 0; i + 7 <= perDay.length; i += 7) {
+                const week = perDay.slice(i, i + 7);
+                if (week.every(d => d.hadStock && d.endStock > 0)) { cleanWeeks++; cleanUnits += week.reduce((s, d) => s + d.sold, 0); }
+            }
+            const unitsOnStockDays = stockDays.reduce((s, d) => s + d.sold, 0);
+            const demandDaily = cleanWeeks > 0 ? cleanUnits / (cleanWeeks * 7) : (stockDays.length > 0 ? unitsOnStockDays / stockDays.length : 0);
+
+            const sold = perDay.reduce((s, d) => s + d.sold, 0);
+            const avgStock = perDay.length > 0 ? perDay.reduce((s, d) => s + Math.max(0, d.endStock), 0) / perDay.length : 0;
+            const unitMargin = price - cost;
+            const lostUnits = daysOut * demandDaily;
+            const rotation = avgStock > 0 && perDay.length > 0 ? (sold / perDay.length) * 30 / avgStock : 0;
+            const marginPct = cost > 0 ? unitMargin / cost : 0;
+            const recommendedStock = demandDaily * coverageDays * (1 + safetyPct / 100);
+            const usualStock = lastCyclePeak !== null ? lastCyclePeak : maxStock;
+            const daysOfStock = demandDaily > 0 ? currentStock / demandDaily : (currentStock > 0 ? Infinity : 0);
+            const firstDay = moves.length ? rotationDayOf(moves[0].timestamp) : null;
+            const weeksOfHistory = firstDay && firstDay <= to ? Math.floor(rotationDaysBetween(firstDay, to).length / 7) : 0;
+            return {
+                daysOut, stockDays: stockDays.length, weeksOfHistory, lowData: weeksOfHistory < ROTATION_MIN_WEEKS,
+                foundStockouts: runs.filter(r => r.found).length, sold, demandDaily, avgStock, rotation, marginPct,
+                lostUnits, lostSale: lostUnits * price, lostMargin: lostUnits * unitMargin,
+                returnScore: marginPct * rotation,
+                recommendedStock, usualStock,
+                missingUnits: Math.max(0, recommendedStock - usualStock),
+                missingInvestment: Math.max(0, recommendedStock - usualStock) * cost,
+                daysOfStock,
+                overstocked: daysOfStock > stockDaysTarget,
+                parkedMoney: Math.max(0, currentStock - demandDaily * stockDaysTarget) * cost
+            };
+        }
+
+        // Un costo de menos del 5% del precio es un error de carga: daría márgenes irreales.
+        // Con menos de 3 días con stock, el promedio sale de muy pocas ventas.
+        const ROTATION_MIN_COST_RATIO = 0.05;
+        const ROTATION_MIN_STOCK_DAYS = 3;
+        function rotationReviewReason(r) {
+            if (r.price > 0 && r.cost < r.price * ROTATION_MIN_COST_RATIO) return 'cost';
+            if (r.daysOut > 0 && r.stockDays < ROTATION_MIN_STOCK_DAYS) return 'fewDays';
+            return null;
+        }
+
+        function computeRotationSummary(allRows, { stockValue, capitalTotal }) {
+            const rows = allRows.filter(r => !rotationReviewReason(r));
+            const withStockout = rows.filter(r => r.daysOut > 0);
+            const missingTotal = withStockout.reduce((s, r) => s + r.missingInvestment, 0);
+            const byLostMargin = (a, b) => b.lostMargin - a.lostMargin;
+            return {
+                missingTotal,
+                missingPctOfStock: stockValue > 0 ? missingTotal / stockValue * 100 : 0,
+                missingPctOfCapital: capitalTotal > 0 ? missingTotal / capitalTotal * 100 : 0,
+                lostMarginTotal: withStockout.reduce((s, r) => s + r.lostMargin, 0),
+                stockouts: withStockout.filter(r => !r.isHook).sort(byLostMargin),
+                hookStockouts: withStockout.filter(r => r.isHook).sort(byLostMargin),
+                overstock: allRows.filter(r => r.overstocked && r.parkedMoney > 0 && rotationReviewReason(r) !== 'cost').sort((a, b) => b.parkedMoney - a.parkedMoney),
+                badCost: allRows.filter(r => rotationReviewReason(r) === 'cost'),
+                foundStock: allRows.filter(r => r.foundStockouts > 0).sort((a, b) => b.foundStockouts - a.foundStockouts),
+                almostNoStock: allRows.filter(r => rotationReviewReason(r) === 'fewDays').sort((a, b) => b.daysOut - a.daysOut),
+                ranking: rows.filter(r => r.sold > 0).sort((a, b) => b.returnScore - a.returnScore)
+            };
+        }
+
+        // "Debería haber": el stock del arranque más lo que se movió después
+        function reconcileLedger(movements, opening, productId, actual) {
+            const at = opening ? opening.at : 0;
+            const start = opening ? (opening.stocks[productId] || 0) : 0;
+            let running = start;
+            const trail = movements.filter(m => m.productId === productId && m.timestamp > at)
+                .sort((a, b) => a.timestamp - b.timestamp)
+                .map(m => { running += m.delta; return { ...m, runningTotal: running }; });
+            return { movements: trail, opening: opening ? { at, stock: start } : null, expectedFromLedger: running, actual, matches: Math.abs(running - actual) < 0.001 };
+        }
+
+        // Al recortar el libro, lo que se saca pasa al arranque: si no, el "debería haber" deja de cerrar
+        function rollLedgerOpening(opening, dropped) {
+            if (!opening || !dropped.length) return opening;
+            const stocks = { ...opening.stocks };
+            let at = opening.at;
+            dropped.forEach(m => {
+                if (m.timestamp <= opening.at) return;
+                stocks[m.productId] = (stocks[m.productId] || 0) + m.delta;
+                at = Math.max(at, m.timestamp);
+            });
+            return { at, stocks };
+        }
+
+        // ---------- Historial reconstruido (antes del libro de movimientos) ----------
+        function normalizeProductName(name) {
+            return String(name || '').trim().toLowerCase();
+        }
+
+        // Saca producto y cantidad del texto de una compra. Sin cantidad escrita (ajustes), qty null.
+        function parseStockConcept(concept) {
+            const c = String(concept || '');
+            let m = /^(?:Compra|Reposición): (.+) \(\+?([\d.,]+) ?(unidades|unidad|u|g)\b/.exec(c);
+            if (m) return { name: m[1], qty: parseFloat(m[2].replace(',', '.')), grams: m[3] === 'g', sign: 1 };
+            m = /^Ajuste stock: (.+) \(([+-])\$/.exec(c);
+            if (m) return { name: m[1], qty: null, grams: false, sign: m[2] === '-' ? -1 : 1 };
+            return null;
+        }
+
+        // Movimientos por producto y día a partir de ventas, compras, mermas, stock gratis y
+        // devoluciones. Va por id y, si no, por nombre o por lo que asignó el dueño (aliases).
+        function buildStockHistoryEvents({ sales, investments, losses, foundStock, returns, inventory, aliases, from, to }) {
+            const byId = new Map(), byName = new Map();
+            inventory.forEach(p => { byId.set(p.id, p); byName.set(normalizeProductName(p.name), p); });
+            const events = new Map(), unmatched = new Map();
+            const resolve = (id, name) => {
+                const key = normalizeProductName(name);
+                return byId.get(id) || byName.get(key) || byId.get((aliases || {})[key]) || null;
+            };
+            const miss = (name, qty) => {
+                const key = normalizeProductName(name) || '(sin nombre)';
+                const e = unmatched.get(key) || { name: name || '(sin nombre)', qty: 0, moves: 0 };
+                e.qty += Math.abs(qty);
+                e.moves++;
+                unmatched.set(key, e);
+            };
+            const add = (product, date, delta, { sold = 0, estimated = false } = {}) => {
+                if (!events.has(product.id)) events.set(product.id, new Map());
+                const days = events.get(product.id);
+                const d = days.get(date) || { delta: 0, sold: 0, moved: 0, estimated: 0 };
+                d.delta += delta;
+                d.sold += sold;
+                d.moved += Math.abs(delta);
+                if (estimated) d.estimated += Math.abs(delta);
+                days.set(date, d);
+            };
+            const inRange = (date) => !!date && date >= from && date < to;
+            const addSold = (product, date, qty) => {
+                if (product.isComposite && Array.isArray(product.components) && product.components.length) {
+                    // Con la receta de hoy: pudo ser otra en ese momento
+                    product.components.forEach(c => {
+                        const ing = byId.get(c.productId);
+                        if (ing) add(ing, date, -qty * (c.quantity || 1), { sold: qty * (c.quantity || 1), estimated: true });
+                    });
+                } else add(product, date, -qty, { sold: qty });
+            };
+            (sales || []).forEach(s => {
+                if (!inRange(s.date) || (s.ownerConsumption && s.ownerConsumption.cancelled)) return;
+                const items = s.ownerConsumption ? s.ownerConsumption.items : (s.items || []);
+                items.forEach(i => {
+                    if (i.isManual) return;
+                    const product = resolve(i.productId, i.name);
+                    if (product) addSold(product, s.date, i.quantity || 0); else miss(i.name, i.quantity || 0);
+                });
+            });
+            (investments || []).forEach(inv => {
+                if (!inRange(inv.date) || !/^(purchase|restock|adjustment)$/.test(inv.type || '')) return;
+                const parsed = parseStockConcept(inv.concept);
+                if (!parsed && !inv.productId) return; // preparaciones y compras sin producto
+                const product = resolve(inv.productId, parsed ? parsed.name : null);
+                if (!product) { miss(parsed ? parsed.name : inv.concept, parsed && parsed.qty ? parsed.qty : 0); return; }
+                if (product.isComposite) return;
+                // Los productos por peso se compraron en gramos o en "unidades" que eran gramos: solo se
+                // confía en la cantidad si la unidad del texto coincide con cómo se vende hoy.
+                const isWeight = !!product.saleByWeight && product.weightPerUnit > 0;
+                if (parsed && parsed.qty !== null && parsed.grams === isWeight) {
+                    add(product, inv.date, isWeight ? parsed.qty / product.weightPerUnit : parsed.qty);
+                } else if ((product.cost || 0) > 0) {
+                    const sign = parsed ? parsed.sign : 1;
+                    add(product, inv.date, sign * Math.abs(inv.amount || 0) / product.cost, { estimated: true });
+                }
+            });
+            const addSimple = (list, sign) => (list || []).forEach(x => {
+                if (!inRange(x.date)) return;
+                const product = resolve(x.productId, x.productName);
+                if (product) add(product, x.date, sign * (x.quantity || 0)); else miss(x.productName, x.quantity || 0);
+            });
+            addSimple(losses, -1);
+            addSimple(foundStock, 1);
+            addSimple(returns, 1);
+            return { events, unmatched: Array.from(unmatched.values()).sort((a, b) => b.qty - a.qty) };
+        }
+
+        // Va para atrás desde el stock conocido: stock_ayer = stock_hoy − movimiento_hoy.
+        // Stock negativo = dato dudoso: esos días no se usan para quiebres.
+        function rebuildProductHistory({ dayEvents, stockAtEnd, from, to, isOpenDate }) {
+            const dates = Array.from(dayEvents.keys()).sort();
+            if (!dates.length) return null;
+            const allDays = rotationDaysBetween(from < dates[0] ? dates[0] : from, to).filter(d => d < to);
+            const days = [];
+            let stock = stockAtEnd;
+            for (let i = allDays.length - 1; i >= 0; i--) {
+                const e = dayEvents.get(allDays[i]) || { delta: 0, sold: 0 };
+                days.unshift({ date: allDays[i], stock, sold: e.sold }); // stock al cierre de ese día
+                stock -= e.delta;
+            }
+            days.forEach(d => { d.doubtful = d.stock < -1e-6; d.zero = !d.doubtful && d.stock <= 1e-6 && d.sold <= 0; });
+
+            const saleDays = days.filter(d => d.sold > 0);
+            const soldTotal = days.reduce((s, d) => s + d.sold, 0);
+            const span = saleDays.length ? days.indexOf(saleDays[saleDays.length - 1]) - days.indexOf(saleDays[0]) + 1 : 0;
+            const sellsDaily = span > 0 && soldTotal / span >= 1;
+            let runStart = -1;
+            const markRun = (end) => { if (runStart >= 0 && end - runStart >= 2) for (let k = runStart; k < end; k++) days[k].probable = !days[k].doubtful && !days[k].zero; runStart = -1; };
+            days.forEach((d, i) => {
+                if (!sellsDaily || !saleDays.length || d.date < saleDays[0].date) return;
+                if (d.sold > 0) { markRun(i); return; }
+                if (!isOpenDate(d.date)) return;
+                if (runStart < 0) runStart = i;
+            });
+            markRun(days.length);
+
+            const moved = dates.reduce((s, d) => s + (dayEvents.get(d).moved || 0), 0);
+            const estimated = dates.reduce((s, d) => s + (dayEvents.get(d).estimated || 0), 0);
+            const estimatedPct = moved > 0 ? estimated / moved * 100 : 0;
+            const doubtfulDays = days.filter(d => d.doubtful).length;
+            const doubtfulPct = days.length ? doubtfulDays / days.length * 100 : 0;
+            const weeks = Math.floor(days.length / 7);
+            const confidence = doubtfulPct > 20 || estimatedPct > 50 || weeks < 3 ? 'baja' : (doubtfulDays === 0 && estimatedPct <= 20 ? 'alta' : 'media');
+            return {
+                firstDate: days[0].date, weeks, confidence, doubtfulDays, estimatedPct,
+                stockoutDays: days.filter(d => d.zero).length,
+                probableDays: days.filter(d => d.probable).length
+            };
+        }
+        // </rotacion-puro>
+
+        function getRotationSettings() {
+            const s = appState.rotationSettings || {};
+            return {
+                safetyPct: s.safetyPct != null ? s.safetyPct : 20,
+                stockDaysTarget: s.stockDaysTarget != null ? s.stockDaysTarget : 10,
+                coverageDays: appState.stockTargetDays || 7
+            };
+        }
+
+        let rotationCache = { key: '', report: null };
+        // Filas de un rango. Va sobre el libro de movimientos, que incluye los ingredientes;
+        // quedan afuera las preparaciones (no tienen stock propio) y lo que no tiene precio de venta.
+        function getRotationReport(from, to) {
+            const settings = getRotationSettings();
+            const ledger = appState.stockLedger || [];
+            const key = [from, to, ledger.length, ledger.length ? ledger[ledger.length - 1].id : '', JSON.stringify(settings)].join('|');
+            if (rotationCache.key === key) return rotationCache.report;
+            const byProduct = new Map();
+            ledger.forEach(m => {
+                if (!byProduct.has(m.productId)) byProduct.set(m.productId, []);
+                byProduct.get(m.productId).push(m);
+            });
+            const rows = getActiveInventory()
+                .filter(p => p && !p.isComposite && (p.salePrice || 0) > 0 && (p.cost || 0) > 0)
+                .map(p => ({
+                    productId: p.id, name: p.name, isHook: !!p.isHook, cost: p.cost, price: p.salePrice,
+                    stock: getProductStock(p),
+                    ...computeProductRotation({
+                        movements: byProduct.get(p.id) || [], from, to, currentStock: getProductStock(p),
+                        cost: p.cost, price: p.salePrice, ...settings
+                    })
+                }));
+            rotationCache = { key, report: rows };
+            return rows;
+        }
+
+        // Se recalcula cada 10 minutos: la lista de compras se arma en cada venta
+        let recentRotationCache = { at: 0, rows: new Map() };
+        function getRecentRotationRow(productId) {
+            if (Date.now() - recentRotationCache.at > 10 * 60 * 1000) {
+                const now = new Date();
+                const from = formatDateISO(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29));
+                recentRotationCache = { at: Date.now(), rows: new Map(getRotationReport(from, formatDateISO(now)).map(r => [r.productId, r])) };
+            }
+            const row = recentRotationCache.rows.get(productId) || null;
+            return row && !rotationReviewReason(row) ? row : null;
+        }
+
+        const STOCK_HISTORY_START = '2026-05-16';
+
+        function getStockHistoryContext() {
+            const ledger = appState.stockLedger || [];
+            if (!ledger.length) return null;
+            const to = formatDateISO(new Date(ledger.reduce((min, m) => Math.min(min, m.timestamp), Infinity)));
+            const aliases = {};
+            (appState.stockHistoryAliases || []).forEach(a => { aliases[a.id] = a.productId; });
+            const { events, unmatched } = buildStockHistoryEvents({ ...appState, inventory: getActiveInventory(), aliases, from: STOCK_HISTORY_START, to });
+            return { to, ledger, events, unmatched };
+        }
+
+        function rebuildStockHistory() {
+            const ctx = getStockHistoryContext();
+            if (!ctx) { showNotification('No hay movimientos de stock para arrancar', 'error'); return; }
+            const firstMove = new Map();
+            ctx.ledger.slice().sort((a, b) => b.timestamp - a.timestamp).forEach(m => firstMove.set(m.productId, m));
+            const now = Date.now();
+            const rows = [];
+            getActiveInventory().forEach(p => {
+                const dayEvents = ctx.events.get(p.id);
+                if (!dayEvents) return;
+                const first = firstMove.get(p.id);
+                const stockAtEnd = first ? first.stockAfter - first.delta : getProductStock(p);
+                const r = rebuildProductHistory({ dayEvents, stockAtEnd, from: STOCK_HISTORY_START, to: ctx.to, isOpenDate: (d) => isOpenDay(parseDateLocal(d).getDay()) });
+                if (r) rows.push({ id: p.id, name: p.name, ...r, timestamp: now });
+            });
+            appState.stockHistoryRebuilt = rows;
+            saveToLocalStorage();
+            renderRotation();
+            showNotification('Historial reconstruido: ' + rows.length + ' productos', 'success');
+        }
+
+        function assignStockHistoryName(oldName, productName) {
+            const product = getActiveInventory().find(p => normalizeProductName(p.name) === normalizeProductName(productName));
+            if (!product) { showNotification('Elegí un producto de la lista', 'error'); return; }
+            if (!Array.isArray(appState.stockHistoryAliases)) appState.stockHistoryAliases = [];
+            appState.stockHistoryAliases.push({ id: normalizeProductName(oldName), productId: product.id, timestamp: Date.now() });
+            saveToLocalStorage();
+            rebuildStockHistory();
+        }
+
+        let stockHistoryFilter = 'baja';
+        function setStockHistoryFilter(value) {
+            stockHistoryFilter = value;
+            renderRotation();
+        }
+
+        function renderStockHistoryCard() {
+            const ctx = getStockHistoryContext();
+            if (!ctx) return '';
+            const rows = appState.stockHistoryRebuilt || [];
+            const fmtDay = (ds) => ds.split('-').reverse().join('/');
+            const range = fmtDay(STOCK_HISTORY_START) + ' al ' + fmtDay(ctx.to);
+            const head = '<h3 class="font-bold text-gray-800">Historial reconstruido</h3><p class="text-xs text-gray-500 mb-3">Del ' + range + ', estimado para atrás. Es aparte: no entra en ninguna cuenta de arriba.</p>';
+            const button = '<button onclick="rebuildStockHistory()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm">' + (rows.length ? 'Volver a reconstruir' : 'Reconstruir historial') + '</button>';
+            const count = (c) => rows.filter(r => r.confidence === c).length;
+            const pill = (c, label) => '<button onclick="setStockHistoryFilter(\'' + c + '\')" class="px-3 py-1 rounded-lg text-xs font-bold ' + (stockHistoryFilter === c ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600') + '">' + label + ' (' + count(c) + ')</button>';
+            const shown = rows.filter(r => r.confidence === stockHistoryFilter).sort((a, b) => (b.stockoutDays + b.probableDays) - (a.stockoutDays + a.probableDays));
+            const rowsHtml = shown.slice(0, 40).map(r => '<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 border-b py-2 text-sm"><span class="min-w-0 truncate">' + escapeHtml(r.name) + '</span><span class="sm:shrink-0 text-xs text-gray-500">' +
+                r.stockoutDays + ' sin stock · ' + r.probableDays + ' probables' + (r.doubtfulDays ? ' · ' + r.doubtfulDays + ' dudosos' : '') + ' · ' + r.weeks + ' sem.</span></div>').join('') +
+                (shown.length > 40 ? '<p class="text-xs text-gray-400">Y ' + (shown.length - 40) + ' más</p>' : '');
+            const options = '<datalist id="rot-products">' + getActiveInventory().map(p => '<option value="' + escapeHtml(p.name) + '">').join('') + '</datalist>';
+            const unmatched = ctx.unmatched.slice(0, 40).map((u, i) => '<div class="flex flex-wrap items-center justify-between gap-2 border-b py-2 text-sm"><span class="min-w-0">' + escapeHtml(u.name) + ' <span class="text-xs text-gray-500">(' + (Math.round(u.qty * 10) / 10).toLocaleString('es-AR') + ' u.)</span></span>' +
+                '<input list="rot-products" placeholder="Es este producto…" class="border rounded-lg px-2 py-1 text-xs w-full sm:w-56" data-old-name="' + escapeHtml(u.name) + '" onchange="assignStockHistoryName(this.dataset.oldName, this.value)"></div>').join('');
+            return '<div class="bg-white rounded-2xl shadow-lg p-4 md:p-6">' + head + button +
+                (rows.length ? '<div class="flex flex-wrap gap-2 mt-3 mb-2">' + pill('alta', 'Alta') + pill('media', 'Media') + pill('baja', 'Baja') + '</div><div>' + (rowsHtml || '<p class="text-sm text-gray-400">Ninguno</p>') + '</div>' : '') +
+                (ctx.unmatched.length ? '<h4 class="font-bold text-gray-700 mt-4">No coinciden (' + ctx.unmatched.length + ')</h4><p class="text-xs text-gray-500 mb-1">Productos renombrados o borrados. Asignalos y se reconstruye solo.</p>' + options + unmatched + (ctx.unmatched.length > 40 ? '<p class="text-xs text-gray-400">Y ' + (ctx.unmatched.length - 40) + ' más</p>' : '') : '') +
+                '</div>';
+        }
+
+        let rotationMonthOffset = 0;
+        function shiftRotationMonth(delta) {
+            rotationMonthOffset = Math.min(0, rotationMonthOffset + delta);
+            renderRotation();
+        }
+
+        function saveRotationSettings() {
+            const safetyPct = parseFloat(document.getElementById('rot-safety').value);
+            const stockDaysTarget = parseFloat(document.getElementById('rot-days').value);
+            if (isNaN(safetyPct) || safetyPct < 0 || isNaN(stockDaysTarget) || stockDaysTarget <= 0) { showNotification('Valor inválido', 'error'); return; }
+            appState.rotationSettings = { safetyPct, stockDaysTarget, updatedAt: Date.now() };
+            saveToLocalStorage();
+            renderRotation();
+        }
+
+        function toggleProductHook(productId) {
+            const product = appState.inventory.find(p => p.id === productId);
+            if (!product) return;
+            product.isHook = !product.isHook;
+            product.updatedAt = new Date().toISOString();
+            rotationCache.key = '';
+            saveToLocalStorage();
+            renderRotation();
+        }
+
+        function renderRotation() {
+            const content = document.getElementById('rotation-content');
+            if (!content) return;
+            const money = (n) => '$' + Math.round(n || 0).toLocaleString('es-AR');
+            const num = (n) => (Math.round((n || 0) * 10) / 10).toLocaleString('es-AR');
+            const now = new Date();
+            const today = formatDateISO(now);
+            const first = new Date(now.getFullYear(), now.getMonth() + rotationMonthOffset, 1);
+            const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+            let from = formatDateISO(first);
+            const monthEnd = formatDateISO(last);
+            const to = monthEnd < today ? monthEnd : today;
+            document.getElementById('rotation-label').textContent = first.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+            document.getElementById('rotation-next').disabled = rotationMonthOffset >= 0;
+
+            const ledger = appState.stockLedger || [];
+            const ledgerStart = ledger.length ? ledger.reduce((min, m) => Math.min(min, m.timestamp), Infinity) : null;
+            const ledgerDay = ledgerStart ? formatDateISO(new Date(ledgerStart)) : null;
+            if (!ledgerDay || ledgerDay > to) {
+                content.innerHTML = '<div class="bg-white rounded-2xl shadow-lg p-6 text-sm text-gray-500">No hay movimientos de stock guardados de ese mes.</div>';
+                return;
+            }
+            const partial = ledgerDay > from;
+            if (partial) from = ledgerDay;
+
+            const settings = getRotationSettings();
+            const rows = getRotationReport(from, to);
+            const active = getActiveInventory();
+            const stockValue = active.reduce((sum, p) => sum + getProductBatchCostValue(p), 0);
+            const equipment = (appState.fixedAssets || []).filter(a => !a.sold).reduce((sum, a) => sum + (a.totalCost || 0), 0);
+            const capitalTotal = stockValue + equipment + (appState.cash || 0) + (appState.bank || 0) + (appState.reserve || 0);
+            const sum = computeRotationSummary(rows, { stockValue, capitalTotal });
+            const fmtDay = (ds) => ds.split('-').reverse().slice(0, 2).join('/');
+
+            const hookBtn = (r) => '<button onclick="toggleProductHook(\'' + r.productId + '\')" class="' + (r.isHook ? 'text-amber-500' : 'text-gray-300 hover:text-amber-500') + '" title="' + (r.isHook ? 'Es producto gancho: tocá para sacarlo' : 'Marcar como producto gancho') + '"><i class="fas fa-star"></i></button>';
+            const stat = (label, value) => '<div class="bg-gray-50 rounded-lg px-2 py-1"><p class="text-[10px] text-gray-500">' + label + '</p><p class="text-sm font-bold text-gray-800">' + value + '</p></div>';
+            const stockoutCard = (r) => '<div class="border rounded-xl p-3"><div class="flex items-center justify-between gap-2 mb-2"><p class="font-bold text-gray-800 min-w-0 truncate">' + escapeHtml(r.name) + '</p><span class="flex items-center gap-2 shrink-0 text-xs text-gray-500">' + r.weeksOfHistory + ' sem.' + (r.lowData ? ' <span class="text-orange-600 font-bold">poco dato</span>' : '') + hookBtn(r) + '</span></div>' +
+                '<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">' +
+                stat('Días sin stock', r.daysOut) + stat('Unidades perdidas', num(r.lostUnits)) + stat('Margen perdido', money(r.lostMargin)) + stat('Comprar de más', num(r.missingUnits) + ' (' + money(r.missingInvestment) + ')') + '</div></div>';
+            const list = (items, limit, render, empty) => !items.length ? '<p class="text-sm text-gray-400">' + empty + '</p>'
+                : items.slice(0, limit).map(render).join('') + (items.length > limit ? '<p class="text-xs text-gray-400">Y ' + (items.length - limit) + ' más</p>' : '');
+            const card = (title, sub, body) => '<div class="bg-white rounded-2xl shadow-lg p-4 md:p-6"><h3 class="font-bold text-gray-800">' + title + '</h3>' + (sub ? '<p class="text-xs text-gray-500 mb-3">' + sub + '</p>' : '') + '<div class="space-y-2">' + body + '</div></div>';
+
+            content.innerHTML =
+                (partial ? '<p class="text-sm text-orange-600">⚠️ Hay movimientos de stock desde el ' + fmtDay(ledgerDay) + ': el cálculo arranca ese día.</p>' : '') +
+                '<div class="bg-white rounded-2xl shadow-lg p-4 md:p-6">' +
+                    '<p class="text-sm text-gray-500">Del ' + fmtDay(from) + ' al ' + fmtDay(to) + ', tendrías que haber puesto en mercadería</p>' +
+                    '<p class="text-3xl font-bold text-indigo-800">' + money(sum.missingTotal) + ' más</p>' +
+                    '<p class="text-xs text-gray-500 mt-1">' + num(sum.missingPctOfStock) + '% del stock al costo · ' + num(sum.missingPctOfCapital) + '% del capital · ' + money(sum.lostMarginTotal) + ' de margen perdido</p>' +
+                    '<div class="flex flex-wrap gap-3 mt-3 text-xs text-gray-600 items-center">' +
+                        '<label>Margen de seguridad % <input id="rot-safety" type="number" min="0" step="1" value="' + settings.safetyPct + '" onchange="saveRotationSettings()" class="w-16 border rounded-lg px-2 py-1 text-right"></label>' +
+                        '<label>Días de stock objetivo <input id="rot-days" type="number" min="1" step="1" value="' + settings.stockDaysTarget + '" onchange="saveRotationSettings()" class="w-16 border rounded-lg px-2 py-1 text-right"></label>' +
+                        '<span>Días de cobertura: ' + settings.coverageDays + ' (se cambia en Reponer)</span>' +
+                    '</div>' +
+                    '<div class="mt-3 text-xs text-gray-600">' + (appState.stockLedgerOpening
+                        ? '📒 Libro de stock: cuenta desde el ' + fmtDay(formatDateISO(new Date(appState.stockLedgerOpening.at))) + ' · '
+                        : '📒 Libro de stock: todavía no arrancó. ') +
+                        '<button onclick="startStockLedgerFromNow()" class="text-indigo-700 underline font-bold">' + (appState.stockLedgerOpening ? 'Volver a arrancar' : 'Arrancar desde ahora') + '</button> <span class="text-gray-400">(no cambia el stock)</span></div>' +
+                '</div>' +
+                card('Productos gancho con quiebre', 'Traen gente aunque dejen poco margen. Marcalos con la estrella.', list(sum.hookStockouts, 20, stockoutCard, 'Ninguno')) +
+                card('Se quedaron sin stock', 'Ordenados por margen perdido. Un día sin stock es un día entero en 0.', list(sum.stockouts, 30, stockoutCard, 'Ninguno se quedó un día entero sin stock')) +
+                card('Ranking por retorno', 'Margen sobre el costo × rotación por mes: cuánta ganancia por mes deja cada peso puesto.', list(sum.ranking, 20, (r, i) =>
+                    '<div class="flex items-center justify-between gap-2 border-b py-2 text-sm"><span class="min-w-0 truncate"><span class="text-gray-400 mr-1">' + (i + 1) + '.</span>' + escapeHtml(r.name) + '</span><span class="shrink-0 text-right"><span class="font-bold text-gray-800">' + num(r.returnScore * 100) + '%</span> <span class="text-xs text-gray-500">rota ' + num(r.rotation) + ' veces</span></span></div>', 'Sin ventas en este período')) +
+                card('Para revisar', 'No entran en las cuentas de arriba porque los datos no alcanzan o están mal cargados.',
+                    '<p class="text-sm font-bold text-gray-700">Costo mal cargado (' + sum.badCost.length + ')</p>' +
+                    list(sum.badCost, 15, (r) => '<div class="flex items-center justify-between gap-2 border-b py-1 text-sm"><span class="min-w-0 truncate">' + escapeHtml(r.name) + '</span><span class="shrink-0 text-xs text-gray-500">costo ' + money(r.cost) + ' · venta ' + money(r.price) + '</span></div>', 'Ninguno') +
+                    '<p class="text-sm font-bold text-gray-700 mt-3">Stock mal registrado (' + sum.foundStock.length + ')</p>' +
+                    '<p class="text-xs text-gray-500">Hubo stock gratis en medio de un quiebre: esos quiebres no cuentan como venta perdida.</p>' +
+                    list(sum.foundStock, 15, (r) => '<div class="flex items-center justify-between gap-2 border-b py-1 text-sm"><span class="min-w-0 truncate">' + escapeHtml(r.name) + '</span><span class="shrink-0 text-xs text-gray-500">' + r.foundStockouts + ' veces</span></div>', 'Ninguno') +
+                    '<p class="text-sm font-bold text-gray-700 mt-3">Casi todo el período en 0 (' + sum.almostNoStock.length + ')</p>' +
+                    '<p class="text-xs text-gray-500">¿Los seguís vendiendo? Si no, conviene darlos de baja.</p>' +
+                    list(sum.almostNoStock, 15, (r) => '<div class="flex items-center justify-between gap-2 border-b py-1 text-sm"><span class="min-w-0 truncate">' + escapeHtml(r.name) + '</span><span class="shrink-0 text-xs text-gray-500">' + r.daysOut + ' días en 0</span></div>', 'Ninguno')) +
+                card('Sobrestock', 'Más días de stock que el objetivo. Plata parada al costo: ' + money(sum.overstock.reduce((s, r) => s + r.parkedMoney, 0)) + '.', list(sum.overstock, 30, (r) =>
+                    '<div class="flex items-center justify-between gap-2 border-b py-2 text-sm"><span class="min-w-0 truncate">' + escapeHtml(r.name) + '</span><span class="shrink-0 text-right"><span class="font-bold text-gray-800">' + money(r.parkedMoney) + '</span> <span class="text-xs text-gray-500">' + (r.demandDaily > 0 ? num(r.daysOfStock) + ' días' : 'sin ventas') + '</span></span></div>', 'Ninguno')) +
+                renderStockHistoryCard();
+        }
+
+        // ==================== CONSUMO DEL DUEÑO ====================
+        // Un código especial a 0% de ganancia no es una venta: es mercadería que el dueño se
+        // lleva al costo. Queda en appState.sales con ownerConsumption y SIN items/total/profit
+        // (van adentro de ownerConsumption), así ningún total, ticket promedio, margen o
+        // demanda lo cuenta. No se borra de sales porque el merge de Firebase lo reviviría.
+        // Anotado como fiado es un retiro del dueño (moneyIn 0). Pagado con efectivo, débito,
+        // etc. es una compra al costo con plata del dueño: entra esa plata y no es retiro.
+        function isOwnerConsumptionCode(entry) {
+            return !!entry && (entry.markupPct != null ? parseFloat(entry.markupPct) : 10) === 0;
+        }
+
+        function requireFinancesPassword(onOk, title) {
+            if (!(appState.financesPassword || '')) { onOk(); return; }
+            const wasUnlocked = financesUnlockedThisSession;
+            openFinancesPasswordModal(() => { financesUnlockedThisSession = wasUnlocked; onOk(); }, title);
+        }
+
+        async function completeOwnerConsumption() {
+            if (appState.cart.some(i => !i.productId || i.isManual)) {
+                showNotification('Sacá los ítems manuales: el consumo del dueño es solo de productos cargados', 'error');
+                saleInProgress = false;
+                return;
+            }
+            const shortfalls = computeCartShortfalls(appState.cart).filter(s => !approvedStockShortfalls.has(s.product.id));
+            if (shortfalls.length > 0) {
+                const lines = shortfalls.map(s => '• ' + s.product.name + ': faltan ' + formatMoney(s.shortfall)).join('\n');
+                if (!(await showConfirmModal('⚠️ No hay stock cargado suficiente de:\n' + lines + '\n\n¿Seguir igual? Se agrega como Stock Gratis.'))) { saleInProgress = false; return; }
+                shortfalls.forEach(s => approvedStockShortfalls.add(s.product.id));
+            }
+            const stockErrors = validateStockForSale(appState.cart, approvedStockShortfalls);
+            if (stockErrors.length > 0) {
+                showNotification('❌ Stock insuficiente:\n' + stockErrors.join('\n'), 'error');
+                saleInProgress = false;
+                return;
+            }
+            let cost = 0;
+            for (const item of appState.cart) {
+                const product = appState.inventory.find(p => p.id === item.productId);
+                if (!product) continue;
+                if (product.isComposite && product.components) {
+                    item.cost = calculateCompositeCost(product);
+                    item.batchBreakdown = [{ quantity: item.quantity, cost: item.cost, isComposite: true }];
+                } else {
+                    item.batchBreakdown = getFifoBatchBreakdown(product, item.quantity);
+                    const total = item.batchBreakdown.reduce((s, b) => s + (b.quantity * b.cost), 0);
+                    item.cost = item.quantity > 0 ? total / item.quantity : 0;
+                }
+                cost += item.batchBreakdown.reduce((s, b) => s + (b.quantity * b.cost), 0);
+            }
+            cost = Math.round(cost * 100) / 100;
+            const isWithdrawal = appState.paymentMethod === 'fiado';
+            const target = appState.paymentMethod === 'cash' ? 'cash' : 'bank';
+            const howText = isWithdrawal ? 'Retiro del dueño: no entra plata.' : 'Compra al costo: entran $' + formatMoney(cost) + ' a ' + (target === 'cash' ? 'Caja' : 'Cuenta') + '.';
+            if (!(await showConfirmModal('🏠 Consumo del dueño: $' + formatMoney(cost) + ' al costo.\n' + howText + '\nNo cuenta como venta. ¿Registrarlo?'))) { saleInProgress = false; return; }
+
+            const undoFreeStock = coverApprovedShortfallsForSale(appState.cart);
+            const code = appState.activeSpecialPriceCode;
+            const now = Date.now();
+            const sale = {
+                id: 'SALE-' + now,
+                date: formatDateISO(appState.activeDate),
+                time: new Date().toLocaleTimeString('es-ES'),
+                items: [], subtotal: 0, discount: 0, total: 0, profit: 0,
+                paymentMethod: 'owner',
+                user: appState.currentUser ? appState.currentUser.name : null,
+                timestamp: now,
+                specialPriceCode: code.code,
+                specialPriceCodeName: code.name,
+                ownerConsumption: { items: appState.cart.map(item => ({ ...item })), cost, moneyIn: isWithdrawal ? 0 : cost, target: isWithdrawal ? null : target, reclassified: false }
+            };
+            const { snapshot } = deductStockWithSnapshot(appState.cart, sale.id, 'owner-consumption');
+            const verifyErrors = verifyStockDeduction(snapshot);
+            if (verifyErrors.length > 0) {
+                rollbackStockFromSnapshot(snapshot, sale.id);
+                undoFreeStock();
+                showNotification('❌ Error al descontar stock. No se registró:\n' + verifyErrors.join('\n'), 'error');
+                saleInProgress = false;
+                return;
+            }
+            appState.sales.push(sale);
+            if (!isWithdrawal) {
+                if (target === 'cash') appState.cash += cost; else appState.bank += cost;
+                // Como ajuste, para que el arqueo del día cuente esta plata sin que sea una venta
+                if (!Array.isArray(appState.capitalAdjustments)) appState.capitalAdjustments = [];
+                appState.capitalAdjustments.push({ id: 'ADJ-OWNERBUY-' + sale.id, date: sale.date, amount: cost, target, concept: 'Compra al costo del dueño', user: sale.user, timestamp: now });
+            }
+            approvedStockShortfalls.clear();
+            clearCartAfterSale();
+            saleInProgress = false;
+            setPaymentMethod('cash');
+            saveToLocalStorage();
+            renderAll();
+            showNotification('🏠 ' + (isWithdrawal ? 'Retiro' : 'Compra') + ' del dueño registrado: $' + formatMoney(cost) + ' al costo', 'success');
+        }
+
+        // Ventas viejas hechas con un código a 0%, y fiados anotados a nombre del dueño (cobrados o
+        // no), que todavía figuran como venta. Las que ya tienen factura de ARCA quedan como venta:
+        // sacarlas dejaría la factura sin venta.
+        const OWNER_FIADO_NAMES = ['g', 'giu'];
+        function getOwnerConsumptionCandidates() {
+            const codes = new Set((appState.specialPriceCodes || []).filter(isOwnerConsumptionCode).map(c => c.code));
+            const isOwnerFiado = (s) => s.paymentMethod === 'fiado' && OWNER_FIADO_NAMES.includes(String(s.customerName || '').trim().toLowerCase());
+            return (appState.sales || []).filter(s => !s.ownerConsumption && ((s.specialPriceCode && codes.has(s.specialPriceCode)) || isOwnerFiado(s)))
+                .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        }
+
+        // Plata que ya entró por esa venta: no se toca, porque ya pasó por los arqueos
+        function saleMoneyIn(s) {
+            if (s.paymentMethod === 'fiado') return s.fiadoPaid ? (s.total || 0) : 0;
+            return s.total || 0;
+        }
+
+        function reclassifySaleAsOwnerConsumption(s) {
+            const items = s.items || [];
+            s.ownerConsumption = {
+                items,
+                cost: Math.round(items.reduce((sum, i) => sum + ((i.cost || 0) * (i.quantity || 0)), 0) * 100) / 100,
+                moneyIn: saleMoneyIn(s),
+                reclassified: true,
+                original: { total: s.total, subtotal: s.subtotal, profit: s.profit, paymentMethod: s.paymentMethod, fiadoPaid: s.fiadoPaid, timestamp: s.timestamp }
+            };
+            s.items = [];
+            s.total = 0;
+            s.subtotal = 0;
+            s.profit = 0;
+            s.paymentMethod = 'owner';
+            s.timestamp = Date.now(); // para que el merge de Firebase tome esta versión
+        }
+
+        function undoSaleReclassification(s) {
+            const oc = s.ownerConsumption;
+            if (!oc || !oc.reclassified) return;
+            const o = oc.original;
+            s.items = oc.items;
+            s.total = o.total;
+            s.subtotal = o.subtotal;
+            s.profit = o.profit;
+            s.paymentMethod = o.paymentMethod;
+            s.fiadoPaid = o.fiadoPaid;
+            s.timestamp = Date.now();
+            delete s.ownerConsumption;
+        }
+
+        function ownerConsumptionsInRange(from, to) {
+            return (appState.sales || []).filter(s => s.ownerConsumption && !s.ownerConsumption.cancelled && s.date >= from && s.date <= to);
+        }
+
+        function openOwnerConsumptionModal() {
+            renderOwnerConsumptionModal();
+            document.getElementById('owner-consumption-modal').classList.add('active');
+        }
+        window.openOwnerConsumptionModal = openOwnerConsumptionModal;
+
+        function closeOwnerConsumptionModal() {
+            document.getElementById('owner-consumption-modal').classList.remove('active');
+        }
+        window.closeOwnerConsumptionModal = closeOwnerConsumptionModal;
+
+        function renderOwnerConsumptionModal() {
+            const fmtD = (ds) => ds.split('-').reverse().join('/');
+            const itemsText = (items) => escapeHtml(items.map(i => i.quantity + ' ' + i.name).join(', '));
+            const today = formatDateISO(new Date());
+            const candidates = getOwnerConsumptionCandidates();
+            const registered = (appState.sales || []).filter(s => s.ownerConsumption && !s.ownerConsumption.cancelled).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+            const money = (s) => s.paymentMethod === 'fiado' ? (s.fiadoPaid ? 'Fiado cobrado' : 'Fiado sin cobrar') : paymentMethodLabel(s);
+            const kindOf = (oc) => oc.moneyIn > 0 ? 'Compra al costo: pagaste $' + formatMoney(oc.moneyIn) : 'Retiro al costo';
+            const candidateRows = candidates.map(s => {
+                const locked = (s.facturas || []).length > 0 || s.date >= today;
+                const why = (s.facturas || []).length > 0 ? 'Tiene factura: queda como venta' : (s.date >= today ? 'Es de hoy: revisala mañana, después del cierre' : '');
+                return '<label class="flex items-start gap-2 py-2 border-b text-sm ' + (locked ? 'opacity-60' : '') + '">' +
+                    '<input type="checkbox" class="owner-candidate mt-1" value="' + s.id + '"' + (locked ? ' disabled' : ' checked') + '>' +
+                    '<span class="min-w-0 flex-1"><span class="font-bold">' + fmtD(s.date) + ' · $' + formatMoney(s.total) + '</span> <span class="text-gray-500">' + escapeHtml(money(s)) + '</span>' +
+                    '<span class="block text-xs text-gray-500">' + itemsText(s.items || []) + '</span>' + (why ? '<span class="block text-xs text-orange-600">' + why + '</span>' : '') + '</span></label>';
+            }).join('');
+            const registeredRows = registered.map(s => {
+                const oc = s.ownerConsumption;
+                return '<div class="flex items-start justify-between gap-2 py-2 border-b text-sm"><span class="min-w-0"><span class="font-bold">' + fmtD(s.date) + ' · $' + formatMoney(oc.cost) + '</span> <span class="text-gray-500">al costo</span>' +
+                    '<span class="block text-xs text-gray-500">' + kindOf(oc) + ' · ' + itemsText(oc.items) + '</span></span>' +
+                    '<button onclick="undoOwnerConsumption(\'' + s.id + '\')" class="text-xs text-gray-400 hover:text-red-600 underline shrink-0">Deshacer</button></div>';
+            }).join('');
+            document.getElementById('owner-consumption-content').innerHTML =
+                (candidates.length ? '<h4 class="font-bold text-gray-700 mb-1">Ventas para pasar a consumo</h4>' +
+                    '<p class="text-xs text-gray-500 mb-2">Se hicieron con un código a 0% o quedaron como fiado a tu nombre. Destildá las que fueron ventas de verdad. Los fiados sin cobrar pasan a retiro del dueño y salen de Fiados. Las pagadas quedan como compra al costo: esa plata sigue en Caja o Cuenta.</p>' +
+                    candidateRows +
+                    '<button onclick="saveOwnerConsumptionReclass()" class="mt-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold text-sm">Guardar como consumo del dueño</button>' : '') +
+                '<h4 class="font-bold text-gray-700 mt-4 mb-1">Registrados</h4>' +
+                (registeredRows || '<p class="text-sm text-gray-400">Todavía no hay consumos registrados</p>');
+        }
+
+        function saveOwnerConsumptionReclass() {
+            const ids = new Set(Array.from(document.querySelectorAll('.owner-candidate:checked')).map(c => c.value));
+            if (ids.size === 0) { showNotification('No tildaste ninguna', 'warning'); return; }
+            getOwnerConsumptionCandidates().filter(s => ids.has(s.id)).forEach(reclassifySaleAsOwnerConsumption);
+            saveToLocalStorage();
+            renderAll();
+            renderOwnerConsumptionModal();
+            showNotification('🏠 ' + ids.size + ' ventas pasadas a consumo del dueño', 'success');
+        }
+        window.saveOwnerConsumptionReclass = saveOwnerConsumptionReclass;
+
+        async function undoOwnerConsumption(saleId) {
+            const s = appState.sales.find(x => x.id === saleId && x.ownerConsumption);
+            if (!s) return;
+            const oc = s.ownerConsumption;
+            if (oc.reclassified) {
+                if (!(await showConfirmModal('¿Volver a dejarla como venta?'))) return;
+                undoSaleReclassification(s);
+            } else {
+                if (!(await showConfirmModal('¿Deshacer este consumo? La mercadería vuelve al stock.'))) return;
+                oc.items.forEach(item => {
+                    const product = appState.inventory.find(p => p.id === item.productId);
+                    if (product) restoreProductStock(product, item.quantity, 'sale-cancelled', s.id);
+                });
+                if (oc.moneyIn > 0) {
+                    if (oc.target === 'cash') appState.cash -= oc.moneyIn; else appState.bank -= oc.moneyIn;
+                    appState.capitalAdjustments = (appState.capitalAdjustments || []).filter(a => a.id !== 'ADJ-OWNERBUY-' + s.id);
+                }
+                oc.cancelled = true;
+                s.timestamp = Date.now();
+            }
+            saveToLocalStorage();
+            renderAll();
+            renderOwnerConsumptionModal();
+            showNotification('Consumo deshecho', 'success');
+        }
+        window.undoOwnerConsumption = undoOwnerConsumption;
 
         function showTicketNotification(sale) {
             const notif = document.createElement('div');
@@ -9788,6 +10606,7 @@
             const code = input ? input.value.trim() : '';
             if (!code) { showNotification('Ingresá un código', 'error'); return; }
             const entry = findSpecialPriceCode(code);
+            if (isOwnerConsumptionCode(entry)) { showNotification('El consumo del dueño se carga desde Vender, no en una comanda', 'error'); return; }
             if (entry) {
                 pendingPedidoSpecial = { id: entry.id, name: entry.name, code: entry.code, markupPct: entry.markupPct != null ? entry.markupPct : 10 };
                 if (input) input.value = '';
@@ -12969,13 +13788,23 @@
         }
 
         // Edición rápida desde la lista de Stock Actual (sin abrir el modal completo).
-        function updateInventoryField(productId, field, value) {
+        // Hamburguesas y combos: su precio solo se cambia con la contraseña de Finanzas
+        function isPriceLockedProduct(product) {
+            return !!product && !!product.isComposite && /hamburguesa|combo/i.test(product.name || '');
+        }
+
+        function updateInventoryField(productId, field, value, priceUnlocked) {
             const product = appState.inventory.find(p => p.id === productId);
             if (!product) return;
             if (field === 'cost' || field === 'salePrice') {
                 const num = parseFloat(value);
                 if (isNaN(num) || num < 0) {
                     showNotification('Valor inválido', 'error');
+                    renderInventory();
+                    return;
+                }
+                if (field === 'salePrice' && isPriceLockedProduct(product) && num !== product.salePrice && !priceUnlocked) {
+                    requireFinancesPassword(() => updateInventoryField(productId, field, value, true), 'Cambiar precio de ' + product.name);
                     renderInventory();
                     return;
                 }
@@ -13996,11 +14825,28 @@
                 refId: refId || null,
                 note: note || null
             });
-            // Tope para que no crezca sin límite (últimos ~5000 movimientos entre todos los productos).
-            // Se recorta de a 500 (al pasar 5500) y no de a 1: recortar el más viejo en CADA
+            if (product) trackStockoutEvent(product.id, getProductStock(product));
+            // Tope para que no crezca sin límite (últimos ~8000 movimientos entre todos los productos,
+            // unos 50 días: Rotación necesita el mes anterior completo).
+            // Se recorta de a 500 (al pasar 8500) y no de a 1: recortar el más viejo en CADA
             // movimiento corría todo el array y obligaba a re-subir todos sus chunks a Firebase.
-            if (appState.stockLedger.length > 5500) {
-                appState.stockLedger = appState.stockLedger.slice(-5000);
+            if (appState.stockLedger.length > 8500) {
+                const dropped = appState.stockLedger.slice(0, -8000);
+                appState.stockLedgerOpening = rollLedgerOpening(appState.stockLedgerOpening, dropped);
+                appState.stockLedger = appState.stockLedger.slice(-8000);
+            }
+        }
+
+        // Abre un evento cuando el producto llega a 0 y lo cierra cuando se repone
+        function trackStockoutEvent(productId, stock) {
+            if (!Array.isArray(appState.stockoutEvents)) appState.stockoutEvents = [];
+            const now = Date.now();
+            const open = appState.stockoutEvents.find(e => e.productId === productId && !e.endAt);
+            if (stock <= 0 && !open) {
+                appState.stockoutEvents.push({ id: 'OUT-' + now + '-' + Math.random().toString(36).slice(2, 7), productId, startAt: now, endAt: null, timestamp: now });
+            } else if (stock > 0 && open) {
+                open.endAt = now;
+                open.timestamp = now;
             }
         }
 
@@ -14008,22 +14854,20 @@
         // stock DEBERÍA haber para un producto -- útil para detectar en qué
         // movimiento se rompió algo si el número actual no cierra.
         function reconcileProductStock(productId) {
-            const movements = (appState.stockLedger || [])
-                .filter(m => m.productId === productId)
-                .sort((a, b) => a.timestamp - b.timestamp);
-            let running = 0;
-            const trail = movements.map(m => {
-                running += m.delta;
-                return { ...m, runningTotal: running };
-            });
             const product = appState.inventory.find(p => p.id === productId);
-            const actual = product ? getProductStock(product) : 0;
-            return {
-                movements: trail,
-                expectedFromLedger: running,
-                actual: actual,
-                matches: Math.abs(running - actual) < 0.001
-            };
+            return reconcileLedger(appState.stockLedger || [], appState.stockLedgerOpening, productId, product ? getProductStock(product) : 0);
+        }
+
+        // Arranca el "debería haber" con el stock de ahora. No toca el stock ni borra movimientos:
+        // Rotación los sigue usando.
+        async function startStockLedgerFromNow() {
+            if (!(await showConfirmModal('¿Arrancar el libro de stock desde ahora?\nToma el stock que hay hoy como punto de partida. No cambia ningún stock.'))) return;
+            const stocks = {};
+            getActiveInventory().forEach(p => { if (!p.isComposite) stocks[p.id] = getProductStock(p); });
+            appState.stockLedgerOpening = { at: Date.now(), stocks };
+            saveToLocalStorage();
+            renderRotation();
+            showNotification('📒 Libro de stock arrancado con ' + Object.keys(stocks).length + ' productos', 'success');
         }
 
         const STOCK_LEDGER_REASON_LABELS = {
@@ -14034,6 +14878,8 @@
             'found-stock': '🎁 Stock gratis/encontrado',
             loss: '💔 Merma',
             'loss-deleted': '↩️ Merma eliminada',
+            'owner-consumption': '🏠 Consumo del dueño',
+            'found-deleted': '↩️ Stock gratis eliminado',
             'sale-cancelled': '🚫 Venta anulada',
             'sale-edit': '✏️ Venta editada',
             'manual-edit': '✏️ Edición manual',
@@ -14049,12 +14895,12 @@
             document.getElementById('stock-ledger-product-name').textContent = product ? product.name : productId;
 
             const banner = document.getElementById('stock-ledger-match-banner');
-            if (result.movements.length === 0) {
+            if (result.movements.length === 0 && !result.opening) {
                 banner.className = 'rounded-xl p-3 mb-4 text-sm font-bold bg-gray-100 text-gray-500';
                 banner.textContent = 'Todavía no hay movimientos registrados para este producto (o son de antes de armar este libro).';
             } else if (result.matches) {
                 banner.className = 'rounded-xl p-3 mb-4 text-sm font-bold bg-green-100 text-green-700';
-                banner.textContent = `✅ Cierra bien: el libro dice ${result.expectedFromLedger} y el stock actual es ${result.actual}.`;
+                banner.textContent = `✅ Cierra bien: el libro dice ${result.expectedFromLedger} y el stock actual es ${result.actual}.` + (result.opening ? ` Arrancó con ${result.opening.stock}.` : '');
             } else {
                 banner.className = 'rounded-xl p-3 mb-4 text-sm font-bold bg-red-100 text-red-700';
                 banner.textContent = `⚠️ No cierra: el libro dice que debería haber ${result.expectedFromLedger}, pero el stock actual es ${result.actual}. Revisá los movimientos de abajo.`;
@@ -16458,11 +17304,16 @@
             document.getElementById('edit-product-modal').classList.remove('active');
         }
 
-        function saveProductEdit() {
+        function saveProductEdit(priceUnlocked) {
             const productId = document.getElementById('edit-product-modal').dataset.productId;
             const product = appState.inventory.find(p => p.id === productId);
             
             if (product) {
+                const newSalePrice = parseFloat(document.getElementById('edit-prod-price').value) || 0;
+                if (isPriceLockedProduct(product) && newSalePrice !== product.salePrice && priceUnlocked !== true) {
+                    requireFinancesPassword(() => saveProductEdit(true), 'Cambiar precio de ' + product.name);
+                    return;
+                }
                 const oldCost = product.cost || 0;
                 const stockBeforeEdit = getProductStock(product);
                 product.name = document.getElementById('edit-prod-name').value.trim();
@@ -16801,10 +17652,63 @@
             document.getElementById('calendar-grid').innerHTML = html;
         }
 
-        // "Resumen del mes" -- antes vivía en Historial de Ventas (atado al mes que
-        // se estuviera navegando ahí); ahora vive en Finanzas, así que muestra el mes
-        // CALENDARIO ACTUAL siempre (no depende de qué mes se haya navegado en el
-        // calendario de Historial).
+        // Período del Resumen de Finanzas: mes, quincena, año o fechas elegidas. Offset 0 = el actual.
+        let finPeriodMode = 'month';
+        let finPeriodOffset = 0;
+        let finPeriodFrom = '';
+        let finPeriodTo = '';
+
+        function getFinancePeriod() {
+            const now = new Date();
+            const today = formatDateISO(now);
+            if (finPeriodMode === 'quincena') {
+                let q = getQuincena(today);
+                for (let i = 0; i < Math.abs(finPeriodOffset); i++) q = shiftQuincena(q, finPeriodOffset);
+                return { from: q.start, to: q.end, label: q.label };
+            }
+            if (finPeriodMode === 'year') {
+                const y = now.getFullYear() + finPeriodOffset;
+                return { from: y + '-01-01', to: y + '-12-31', label: 'año ' + y };
+            }
+            if (finPeriodMode === 'custom') {
+                const from = finPeriodFrom <= finPeriodTo ? finPeriodFrom : finPeriodTo;
+                const to = finPeriodFrom <= finPeriodTo ? finPeriodTo : finPeriodFrom;
+                const fmt = (ds) => ds.split('-').reverse().join('/');
+                return { from, to, label: fmt(from) + ' al ' + fmt(to) };
+            }
+            const first = new Date(now.getFullYear(), now.getMonth() + finPeriodOffset, 1);
+            const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+            return { from: formatDateISO(first), to: formatDateISO(last), label: first.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }) };
+        }
+
+        function setFinancePeriodMode(mode) {
+            finPeriodMode = mode;
+            finPeriodOffset = 0;
+            if (mode === 'custom' && !finPeriodFrom) {
+                const now = new Date();
+                finPeriodFrom = formatDateISO(new Date(now.getFullYear(), now.getMonth(), 1));
+                finPeriodTo = formatDateISO(now);
+            }
+            renderFinanceMonthSummary();
+        }
+
+        function shiftFinancePeriod(delta) {
+            finPeriodOffset = Math.min(0, finPeriodOffset + delta);
+            renderFinanceMonthSummary();
+        }
+
+        function setFinancePeriodDates() {
+            const from = document.getElementById('fin-period-from').value;
+            const to = document.getElementById('fin-period-to').value;
+            if (!from || !to) return;
+            finPeriodFrom = from;
+            finPeriodTo = to;
+            renderFinanceMonthSummary();
+        }
+
+        // "Resumen" -- antes vivía en Historial de Ventas (atado al mes que se estuviera
+        // navegando ahí); ahora vive en Finanzas y muestra el período elegido arriba de las
+        // tarjetas (por defecto, el mes calendario actual).
         function renderFinanceMonthSummary() {
             // Al igual que renderInventory/renderBilling/renderPredictions: se llama
             // desde renderAll() (que se dispara tras casi cualquier acción), así que
@@ -16816,14 +17720,34 @@
             const monthSalesEl = document.getElementById('calendar-month-sales');
             if (!monthSalesEl) return; // la sección de Finanzas ni está en el DOM
 
-            const now = new Date();
-            const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            const period = getFinancePeriod();
+            const inPeriod = (d) => { const x = String(d || '').slice(0, 10); return !!x && x >= period.from && x <= period.to; };
+            const today = formatDateISO(new Date());
 
-            const monthSales = appState.sales.filter(s => { const d = saleRevenueDate(s); return d && d.startsWith(monthPrefix); });
-            // Sueldos: cuentan en el mes trabajado (expenseProfitDate), y lo ganado sin pagar también se resta
-            const monthExpenses = appState.expenses.filter(e => { const d = expenseProfitDate(e); return d && d.startsWith(monthPrefix); });
-            const monthInvestments = appState.investments.filter(i => i.date && i.date.startsWith(monthPrefix));
-            const monthAccruedSalaries = getUnpaidAccruedSalaries(monthPrefix);
+            const labelEl = document.getElementById('fin-period-label');
+            if (labelEl) labelEl.textContent = period.label;
+            const modeEl = document.getElementById('fin-period-mode');
+            if (modeEl) modeEl.value = finPeriodMode;
+            const isCustom = finPeriodMode === 'custom';
+            document.getElementById('fin-period-nav').classList.toggle('hidden', isCustom);
+            const customEl = document.getElementById('fin-period-custom');
+            customEl.classList.toggle('hidden', !isCustom);
+            customEl.classList.toggle('flex', isCustom);
+            document.getElementById('fin-period-note').classList.toggle('hidden', !isCustom);
+            document.getElementById('fin-period-next').disabled = finPeriodOffset >= 0;
+            if (isCustom) {
+                document.getElementById('fin-period-from').value = finPeriodFrom;
+                document.getElementById('fin-period-to').value = finPeriodTo;
+            }
+
+            const monthSales = appState.sales.filter(s => inPeriod(saleRevenueDate(s)));
+            // Sueldos: cuentan en el período trabajado (expenseProfitDate), y lo ganado sin pagar también se resta
+            const monthExpenses = appState.expenses.filter(e => {
+                const d = expenseProfitDate(e);
+                return inPeriod(e.withdrawalType === 'salary' ? capQuincenaEnd(d, today) : d);
+            });
+            const monthInvestments = appState.investments.filter(i => inPeriod(i.date));
+            const monthAccruedSalaries = getUnpaidAccruedSalariesBetween(period.from, period.to);
 
             const monthSalesTotal = monthSales.reduce((sum, s) => sum + s.total, 0);
             const monthProfitTotal = monthSales.reduce((sum, s) => sum + s.profit, 0);
@@ -16834,16 +17758,16 @@
             //   ganancia += sobrantes de caja + stock gratis/encontrado
             //   gastos   += mermas/pérdidas   (el faltante de caja ya está cargado como gasto real)
             const monthSurplus = (appState.cashDifferences || [])
-                .filter(d => d.date && d.date.startsWith(monthPrefix) && d.type === 'surplus')
+                .filter(d => inPeriod(d.date) && d.type === 'surplus')
                 .reduce((sum, d) => sum + d.amount, 0);
             const monthShortage = (appState.cashDifferences || [])
-                .filter(d => d.date && d.date.startsWith(monthPrefix) && d.type === 'shortage')
+                .filter(d => inPeriod(d.date) && d.type === 'shortage')
                 .reduce((sum, d) => sum + Math.abs(d.amount), 0);
             const monthFoundStock = (appState.foundStock || [])
-                .filter(f => f.date && f.date.startsWith(monthPrefix) && !f.reconciledAsPurchase)
+                .filter(f => inPeriod(f.date) && !f.reconciledAsPurchase)
                 .reduce((sum, f) => sum + (f.cost || 0), 0);
             const monthLosses = (appState.losses || [])
-                .filter(l => l.date && l.date.startsWith(monthPrefix))
+                .filter(l => inPeriod(l.date))
                 .reduce((sum, l) => sum + (l.cost || 0), 0);
 
             const monthSalesCountEl = document.getElementById('calendar-month-sales-count');
@@ -16882,6 +17806,13 @@
             if (monthBalanceEl) monthBalanceEl.textContent = '$' + formatMoney(netBalance);
 
             if (monthInvestmentsEl) monthInvestmentsEl.textContent = '$' + formatMoney(monthInvestmentsTotal);
+
+            const ownerEl = document.getElementById('fin-owner-consumption');
+            if (ownerEl) {
+                const ownerCost = ownerConsumptionsInRange(period.from, period.to).reduce((sum, s) => sum + s.ownerConsumption.cost, 0);
+                const pending = getOwnerConsumptionCandidates().length;
+                ownerEl.textContent = '🏠 Consumo del dueño: $' + formatMoney(ownerCost) + ' al costo' + (pending ? ' · ' + pending + ' para revisar' : '');
+            }
         }
 
         function changeCalendarMonth(delta) {
@@ -16931,7 +17862,7 @@
             appState.activeDate = parseDateLocal(dateStr);
             updateDateDisplay();
             
-            const daySales = appState.sales.filter(s => s.date === dateStr);
+            const daySales = appState.sales.filter(s => s.date === dateStr && !s.ownerConsumption);
             const dayExpenses = appState.expenses.filter(e => e.date === dateStr);
             const dayInvestments = appState.investments.filter(i => i.date === dateStr);
             // Totales de plata/ganancia: cuentan el día que entra la plata (fiados, el día del cobro)
@@ -17962,7 +18893,7 @@
             if (!container) return;
             
             const today = formatDateISO(appState.activeDate);
-            const todaySales = appState.sales.filter(s => s.date === today);
+            const todaySales = appState.sales.filter(s => s.date === today && !s.ownerConsumption);
             
             if (cashflowViewMode === 'category') {
                 // Agrupar ventas del día por categoría
@@ -19173,6 +20104,14 @@
             return (appState.payrollPayments || []).find(p => p && p.employeeId === empId && p.periodKey === periodKey && p.status !== 'deleted' && p.kind !== 'advance') || null;
         }
 
+        // Fiados sin cobrar de un empleado: los hechos con su código o a su nombre (los más viejos primero)
+        function getEmployeePendingFiados(emp) {
+            const norm = (v) => String(v || '').trim().toLowerCase();
+            const name = norm(emp.name);
+            return (appState.sales || []).filter(s => s.paymentMethod === 'fiado' && !s.fiadoPaid && (norm(s.specialPriceCodeName) === name || norm(s.customerName) === name))
+                .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        }
+
         // Adelantos de sueldo cargados a una quincena
         function getEmployeeAdvances(empId, periodKey) {
             return (appState.payrollPayments || []).filter(p => p && p.kind === 'advance' && p.employeeId === empId && p.periodKey === periodKey && p.status !== 'deleted');
@@ -19231,16 +20170,29 @@
         // Sueldos ganados en un mes (YYYY-MM) que todavía no se pagaron: lo trabajado hasta hoy.
         // Se restan de la ganancia de ese mes; cuando se registra el pago, el gasto ocupa su lugar.
         function getUnpaidAccruedSalaries(monthPrefix) {
+            return getUnpaidAccruedSalariesBetween(monthPrefix + '-01', monthPrefix + '-31');
+        }
+
+        // El sueldo de una quincena cuenta entero en su último día; la quincena en curso, hoy
+        function capQuincenaEnd(dateStr, todayStr) {
+            return dateStr && dateStr > todayStr && getQuincena(dateStr).start <= todayStr ? todayStr : dateStr;
+        }
+
+        function getUnpaidAccruedSalariesBetween(from, to) {
             const nowMs = Date.now();
             const todayStr = formatDateISO(new Date(nowMs));
+            const quincenas = [];
+            for (let q = getQuincena(from); q.start <= to && q.start <= todayStr; q = shiftQuincena(q, 1)) {
+                const d = capQuincenaEnd(q.end, todayStr);
+                if (d >= from && d <= to) quincenas.push(q);
+            }
             let total = 0;
             getActiveEmployees().forEach(emp => {
-                [monthPrefix + '-01', monthPrefix + '-16'].forEach(start => {
-                    if (start > todayStr) return;
-                    const c = computeEmployeeQuincena(emp, getQuincena(start), nowMs);
+                quincenas.forEach(q => {
+                    const c = computeEmployeeQuincena(emp, q, nowMs);
                     // Los adelantos ya figuran como gasto de sueldo de ese mes: no contarlos dos veces
                     // y si se pagó menos de lo ganado, lo que falta sigue siendo deuda
-                    if (c.configured) total += Math.max(0, c.earnedToDateAmount - c.advancesAmount - (c.payment ? (parseFloat(c.payment.amount) || 0) : 0));
+                    if (c.configured) total += Math.max(0, c.earnedToDateAmount - c.advancesAmount - (c.payment ? (parseFloat(c.payment.amount) || 0) + (parseFloat(c.payment.fiadoDiscount) || 0) : 0));
                 });
             });
             return Math.round(total * 100) / 100;
@@ -19696,19 +20648,42 @@
             if (!calc.configured) { showNotification('Cargá primero el precio por hora o el sueldo', 'error'); return; }
             const source = calc.source === 'bank' ? 'bank' : 'cash';
             const advNote = calc.advancesAmount > 0 ? ' — ya se le adelantaron $' + formatMoney(calc.advancesAmount) + ' de $' + formatMoney(calc.grossAmount) : '';
-            const raw = await showPromptModal('Monto a pagarle a ' + emp.name + ' por la quincena ' + empPeriodQuincena.label + advNote + ' (sale de ' + (source === 'bank' ? 'Cuenta' : 'Caja') + '):', String(calc.amount));
+            // Fiados: se descuentan enteros, de los más viejos, mientras entren en lo que cobra
+            let fiadosToDiscount = [];
+            const pendingFiados = getEmployeePendingFiados(emp);
+            if (pendingFiados.length > 0) {
+                let room = calc.amount;
+                pendingFiados.forEach(s => { if (s.total <= room) { fiadosToDiscount.push(s); room -= s.total; } });
+                const sumF = fiadosToDiscount.reduce((sum, s) => sum + s.total, 0);
+                const totalF = pendingFiados.reduce((sum, s) => sum + s.total, 0);
+                if (sumF > 0 && !(await showConfirmModal(emp.name + ' tiene $' + formatMoney(totalF) + ' de fiado sin cobrar.\n¿Descontar $' + formatMoney(sumF) + ' de este sueldo?'))) fiadosToDiscount = [];
+            }
+            const fiadoDiscount = Math.round(fiadosToDiscount.reduce((sum, s) => sum + s.total, 0) * 100) / 100;
+            const discountNote = fiadoDiscount > 0 ? ' — con $' + formatMoney(fiadoDiscount) + ' de fiado descontado' : '';
+            const raw = await showPromptModal('Monto a pagarle a ' + emp.name + ' por la quincena ' + empPeriodQuincena.label + advNote + discountNote + ' (sale de ' + (source === 'bank' ? 'Cuenta' : 'Caja') + '):', String(Math.round((calc.amount - fiadoDiscount) * 100) / 100));
             if (raw === null || raw === undefined) return;
             const amount = Math.round((parseFloat(String(raw).replace(',', '.')) || 0) * 100) / 100;
             const now = Date.now();
             const today = formatDateISO(new Date(now));
             if (!Array.isArray(appState.payrollPayments)) appState.payrollPayments = [];
-            // Todo adelantado: se cierra la quincena sin mover plata
-            if (amount === 0 && calc.advancesAmount > 0) {
-                appState.payrollPayments.push(touchEmp({ id: 'PAY-' + now, employeeId: empId, recId: calc.rec ? calc.rec.id : null, periodKey, amount: 0, date: today, source, expenseId: null, status: 'active' }));
+            // El fiado se cobra con el sueldo: no mueve plata, pero ese sueldo es gasto igual
+            const applyFiadoDiscount = () => {
+                if (!(fiadoDiscount > 0)) return {};
+                fiadosToDiscount.forEach(s => { currentFiadoPaySaleId = s.id; confirmFiadoPayment('salary', true); });
+                const offsetExpenseId = 'WITHDRAW-OFFSET-' + now;
+                appState.expenses.push({
+                    id: offsetExpenseId, date: today, accrualDate: empPeriodQuincena.end, concept: 'Sueldo ' + emp.name + ': fiado descontado (' + empPeriodQuincena.label + ')', amount: fiadoDiscount, source: 'fiado-offset',
+                    type: 'withdrawal', withdrawalType: 'salary', user: appState.currentUser ? appState.currentUser.name : null, timestamp: now
+                });
+                return { fiadoDiscount, fiadoSaleIds: fiadosToDiscount.map(s => s.id), offsetExpenseId };
+            };
+            // Todo adelantado o descontado: se cierra la quincena sin mover plata
+            if (amount === 0 && (calc.advancesAmount > 0 || fiadoDiscount > 0)) {
+                appState.payrollPayments.push(touchEmp({ id: 'PAY-' + now, employeeId: empId, recId: calc.rec ? calc.rec.id : null, periodKey, amount: 0, date: today, source, expenseId: null, status: 'active', ...applyFiadoDiscount() }));
                 saveToLocalStorage();
                 renderEmployeePeriod();
                 renderAll(); // Caja/Cuenta del costado y Finanzas
-                showNotification('Quincena de ' + emp.name + ' cerrada: ya estaba cubierta con adelantos', 'success');
+                showNotification('Quincena de ' + emp.name + ' cerrada: no quedaba nada por pagar', 'success');
                 return;
             }
             if (!(amount > 0)) { showNotification('Monto inválido', 'error'); return; }
@@ -19720,7 +20695,7 @@
                 id: expenseId, date: today, accrualDate: empPeriodQuincena.end, concept: 'Sueldo ' + emp.name + ' (' + empPeriodQuincena.label + ')', amount, source,
                 type: 'withdrawal', withdrawalType: 'salary', user: appState.currentUser ? appState.currentUser.name : null, timestamp: now
             });
-            appState.payrollPayments.push(touchEmp({ id: 'PAY-' + now, employeeId: empId, recId: calc.rec ? calc.rec.id : null, periodKey, amount, date: today, source, expenseId, status: 'active' }));
+            appState.payrollPayments.push(touchEmp({ id: 'PAY-' + now, employeeId: empId, recId: calc.rec ? calc.rec.id : null, periodKey, amount, date: today, source, expenseId, status: 'active', ...applyFiadoDiscount() }));
             saveToLocalStorage();
             renderEmployeePeriod();
             renderAll(); // Caja/Cuenta del costado y Finanzas
@@ -19739,6 +20714,19 @@
                 if (exp.source === 'bank') appState.bank += exp.amount; else appState.cash += exp.amount;
                 appState.expenses.splice(idx, 1);
             }
+            if (pay.offsetExpenseId) appState.expenses = appState.expenses.filter(e => e.id !== pay.offsetExpenseId);
+            (pay.fiadoSaleIds || []).forEach(id => {
+                const s = appState.sales.find(x => x.id === id);
+                if (!s) return;
+                s.fiadoPaid = false;
+                s.fiadoPaidDate = null;
+                s.fiadoPaidMethod = null;
+                if (s.profitOriginal !== undefined) s.profit = s.profitOriginal;
+                delete s.profitOriginal;
+                delete s.costAtCollection;
+                delete s.profitBasis;
+                s.timestamp = Date.now();
+            });
             pay.status = 'deleted';
             touchEmp(pay);
             saveToLocalStorage();
@@ -19913,10 +20901,11 @@
                         (c.payment ? '' : '<button onclick="registerSalaryAdvance(\'' + emp.id + '\', \'' + c.q.key + '\')" class="mt-1 text-[11px] font-bold text-orange-700 hover:text-orange-900">+ Adelanto</button>') + '</div>' +
                     '<div class="bg-indigo-50 rounded-xl p-3"><p class="text-xs text-indigo-700">A pagar</p><p class="font-bold text-indigo-800 text-lg">$' + formatMoney(c.amount) + '</p><p class="text-[10px] text-indigo-700">el ' + fmtD(c.payDate) + ' (4.º día hábil)' + (c.advancesAmount > 0 ? '<br>de $' + formatMoney(c.grossAmount) + ' menos adelantos' : '') + '</p></div>' +
                     '<div class="rounded-xl p-3 flex items-center justify-center">' + (c.payment
-                        ? '<div class="text-center"><p class="text-xs text-green-700 font-bold">✅ Pagado $' + formatMoney(c.payment.amount) + '<br>el ' + fmtD(c.payment.date) + '</p>' +
+                        ? '<div class="text-center"><p class="text-xs text-green-700 font-bold">✅ Pagado $' + formatMoney(c.payment.amount) + '<br>el ' + fmtD(c.payment.date) + (c.payment.fiadoDiscount ? '<br>+ $' + formatMoney(c.payment.fiadoDiscount) + ' de fiado' : '') + '</p>' +
                           '<button onclick="undoPayrollPayment(\'' + c.payment.id + '\')" class="mt-1 text-[11px] text-gray-400 hover:text-red-600 underline" title="Deshacer el pago (la plata vuelve)">Deshacer</button></div>'
                         : '<button onclick="registerPayrollPayment(\'' + emp.id + '\', \'' + c.q.key + '\')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold text-xs">Registrar pago</button>') + '</div>' +
                   '</div>' +
+                  (getEmployeePendingFiados(emp).length ? '<p class="text-xs text-amber-700 mt-2">🤝 Tiene $' + formatMoney(getEmployeePendingFiados(emp).reduce((sum, s) => sum + s.total, 0)) + ' de fiado sin cobrar: al registrar el pago podés descontarlo del sueldo.</p>' : '') +
                   (c.missingOutDays.length ? '<p class="text-xs text-orange-600 mt-2">⚠️ Fichajes sin salida: ' + c.missingOutDays.map(fmtD).join(', ') + ' — se tomaron hasta el fin del turno; corregilos abajo.</p>' : '') +
                   '<p class="text-[11px] text-gray-400 mt-2">Los días que todavía no pasaron se cuentan como cumplidos. El monto se actualiza solo con cada fichaje.</p>';
 
@@ -20941,7 +21930,7 @@
                 
                 // Inversión total = capital inicial + inyecciones de capital del dueño
                 const capitalInjected = appState.capitalAdjustments
-                    .filter(adj => adj.amount > 0)
+                    .filter(adj => adj.amount > 0 && !String(adj.id || '').startsWith('ADJ-OWNERBUY-'))
                     .reduce((sum, adj) => sum + adj.amount, 0);
                 const totalInvested = (appState.initialCapital || 0) + capitalInjected;
                 
@@ -22870,6 +23859,7 @@
                 const unitsDiff = isWeight ? diff / product.weightPerUnit : diff;
                 const qtyAbs = Math.abs(unitsDiff);
                 const costValue = Math.round((product.cost || 0) * qtyAbs * 100) / 100;
+                const stockBeforeCount = getProductStock(product);
 
                 if (diff < 0) {
                     // Faltante: descontar del lote que vence primero (FEFO), igual que Registrar Merma
@@ -22939,6 +23929,7 @@
                     });
                     adjustFound++;
                 }
+                recordStockMovement(product.id, getProductStock(product) - stockBeforeCount, diff < 0 ? 'loss' : 'found-stock', null, 'Conteo de stock');
                 product.updatedAt = new Date().toISOString();
             });
 
@@ -23939,6 +24930,7 @@
             if (product) {
                 const isWeight = product.saleByWeight && product.weightPerUnit > 0;
                 const deductUnits = (isWeight && found.grams) ? (found.grams / product.weightPerUnit) : found.quantity;
+                const stockBeforeDelete = getProductStock(product);
                 
                 if (product.batches && product.batches.length > 0) {
                     const firstBatch = product.batches[0];
@@ -23946,9 +24938,11 @@
                         firstBatch.stock = Math.max(0, firstBatch.stock - deductUnits);
                     }
                     product.batches = product.batches.filter(b => b.stock > 0);
+                    product.stock = getProductStock(product);
                 } else {
                     product.stock = Math.max(0, (product.stock || 0) - deductUnits);
                 }
+                recordStockMovement(product.id, getProductStock(product) - stockBeforeDelete, 'found-deleted', found.id, null);
             }
             
             appState.foundStock.splice(idx, 1);
@@ -25359,7 +26353,13 @@
                 if (!prediction || !prediction.stats) return;
                 
                 // Demanda promedio por período (sobre días abiertos)
-                const avgPeriodDemand = prediction.stats.avgPeriodDemand || 0;
+                let avgPeriodDemand = prediction.stats.avgPeriodDemand || 0;
+                // Si se quedó sin stock en los últimos 30 días, el promedio histórico viene bajo:
+                // manda la demanda real de Rotación (solo días con stock), con su margen de seguridad.
+                const rotationRow = getRecentRotationRow(product.id);
+                if (rotationRow && rotationRow.daysOut > 0) {
+                    avgPeriodDemand = Math.max(avgPeriodDemand, rotationRow.demandDaily * targetDays * (1 + getRotationSettings().safetyPct / 100));
+                }
                 // Demanda diaria real (por día abierto) para calcular días hasta agotarse
                 const avgDaily = targetDays > 0 ? (avgPeriodDemand / targetDays) : (prediction.stats.avgDaily || 0);
                 const currentStock = getProductStock(product);
@@ -28267,7 +29267,7 @@ Total de productos a comprar: ${shoppingList.length}
             const startDate = document.getElementById('report-start-date').value;
             const endDate = document.getElementById('report-end-date').value;
             
-            let filteredSales = appState.sales;
+            let filteredSales = appState.sales.filter(s => !s.ownerConsumption);
             if (startDate) filteredSales = filteredSales.filter(s => s.date >= startDate);
             if (endDate) filteredSales = filteredSales.filter(s => s.date <= endDate);
 
@@ -28774,7 +29774,7 @@ RESULTADOS:
             appState.expiryHistory = Array.isArray(appState.expiryHistory) ? appState.expiryHistory : [];
             appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
             appState.scheduledPayments = Array.isArray(appState.scheduledPayments) ? appState.scheduledPayments : [];
-            for (const k of ['employees', 'timeClock', 'attendanceDays', 'payrollPayments']) appState[k] = Array.isArray(appState[k]) ? appState[k] : [];
+            for (const k of ['employees', 'timeClock', 'attendanceDays', 'payrollPayments', 'stockoutEvents', 'stockHistoryRebuilt', 'stockHistoryAliases']) appState[k] = Array.isArray(appState[k]) ? appState[k] : [];
             appState.suppliers = Array.isArray(appState.suppliers) ? appState.suppliers : [];
             appState.businessHours = Array.isArray(appState.businessHours) && appState.businessHours.length === 7
                 ? appState.businessHours
@@ -30766,6 +31766,9 @@ RESULTADOS:
                 main_reserveMovements: 'reserveMovements',
                 main_shiftCounts: 'shiftCounts',
                 main_stockLedger: 'stockLedger',
+                main_stockoutEvents: 'stockoutEvents',
+                main_stockHistoryRebuilt: 'stockHistoryRebuilt',
+                main_stockHistoryAliases: 'stockHistoryAliases',
                 main_fixedAssets: 'fixedAssets',
                 main_invoiceNameMappings: 'invoiceNameMappings',
                 main_invoiceSupplierCorrections: 'invoiceSupplierCorrections',
@@ -30792,6 +31795,8 @@ RESULTADOS:
                 debitFee: parseFloat(appState.debitFee) || 0,
                 percentSettingsUpdatedAt: parseInt(appState.percentSettingsUpdatedAt) || 0,
                 payrollSettings: appState.payrollSettings || null,
+                rotationSettings: appState.rotationSettings || null,
+                stockLedgerOpening: appState.stockLedgerOpening || null,
                 comprasAppPassword: appState.comprasAppPassword || '',
                 financesPassword: appState.financesPassword || '',
                 stockTargetDays: parseInt(appState.stockTargetDays) || 7,
@@ -31072,7 +32077,7 @@ RESULTADOS:
         function normalizeFirebaseData(downloaded) {
             const normalized = {};
             const main = downloaded && (downloaded.main || downloaded);
-            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','qrFee','debitFee','percentSettingsUpdatedAt','payrollSettings','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
+            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','qrFee','debitFee','percentSettingsUpdatedAt','payrollSettings','rotationSettings','stockLedgerOpening','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
             for (const f of baseFields) {
                 if (main && main[f] !== undefined) normalized[f] = main[f];
             }
@@ -31997,6 +33002,11 @@ RESULTADOS:
                 appState.investments = appState.investments.filter(i => !deletedInvIdsMaster.has(i.id));
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 appState.stockLedger = smartMergeArrays(appState.stockLedger || [], data.stockLedger || []);
+                appState.stockoutEvents = smartMergeArrays(appState.stockoutEvents || [], data.stockoutEvents || []);
+                appState.stockHistoryRebuilt = smartMergeArrays(appState.stockHistoryRebuilt || [], data.stockHistoryRebuilt || []);
+                appState.stockHistoryAliases = smartMergeArrays(appState.stockHistoryAliases || [], data.stockHistoryAliases || []);
+                if (data.stockLedgerOpening && (parseInt(data.stockLedgerOpening.at) || 0) > (parseInt((appState.stockLedgerOpening || {}).at) || 0)) appState.stockLedgerOpening = data.stockLedgerOpening;
+                if (data.rotationSettings && typeof data.rotationSettings === 'object' && (parseInt(data.rotationSettings.updatedAt) || 0) > (parseInt((appState.rotationSettings || {}).updatedAt) || 0)) appState.rotationSettings = { ...data.rotationSettings };
                 appState.invoiceNameMappings = smartMergeArrays(appState.invoiceNameMappings || [], data.invoiceNameMappings || []);
                 appState.invoiceSupplierCorrections = smartMergeArrays(appState.invoiceSupplierCorrections || [], data.invoiceSupplierCorrections || []);
                 appState.specialPriceCodes = smartMergeArrays(appState.specialPriceCodes || [], data.specialPriceCodes || []);
@@ -32095,6 +33105,11 @@ RESULTADOS:
                 appState.foundStock = smartMergeArrays(appState.foundStock || [], data.foundStock || []);
                 appState.losses = smartMergeArrays(appState.losses || [], data.losses || []);
                 appState.stockLedger = smartMergeArrays(appState.stockLedger || [], data.stockLedger || []);
+                appState.stockoutEvents = smartMergeArrays(appState.stockoutEvents || [], data.stockoutEvents || []);
+                appState.stockHistoryRebuilt = smartMergeArrays(appState.stockHistoryRebuilt || [], data.stockHistoryRebuilt || []);
+                appState.stockHistoryAliases = smartMergeArrays(appState.stockHistoryAliases || [], data.stockHistoryAliases || []);
+                if (data.stockLedgerOpening && (parseInt(data.stockLedgerOpening.at) || 0) > (parseInt((appState.stockLedgerOpening || {}).at) || 0)) appState.stockLedgerOpening = data.stockLedgerOpening;
+                if (data.rotationSettings && typeof data.rotationSettings === 'object' && (parseInt(data.rotationSettings.updatedAt) || 0) > (parseInt((appState.rotationSettings || {}).updatedAt) || 0)) appState.rotationSettings = { ...data.rotationSettings };
                 appState.invoiceNameMappings = smartMergeArrays(appState.invoiceNameMappings || [], data.invoiceNameMappings || []);
                 appState.invoiceSupplierCorrections = smartMergeArrays(appState.invoiceSupplierCorrections || [], data.invoiceSupplierCorrections || []);
                 appState.specialPriceCodes = smartMergeArrays(appState.specialPriceCodes || [], data.specialPriceCodes || []);
@@ -32998,7 +34013,7 @@ RESULTADOS:
                     appState.losses = Array.isArray(appState.losses) ? appState.losses : [];
                     appState.recurringExpenses = Array.isArray(appState.recurringExpenses) ? appState.recurringExpenses : [];
                     appState.scheduledPayments = Array.isArray(appState.scheduledPayments) ? appState.scheduledPayments : [];
-                    for (const k of ['employees', 'timeClock', 'attendanceDays', 'payrollPayments']) appState[k] = Array.isArray(appState[k]) ? appState[k] : [];
+                    for (const k of ['employees', 'timeClock', 'attendanceDays', 'payrollPayments', 'stockoutEvents', 'stockHistoryRebuilt', 'stockHistoryAliases']) appState[k] = Array.isArray(appState[k]) ? appState[k] : [];
                     if (!appState.cashFlowSettings || typeof appState.cashFlowSettings !== 'object') {
                         appState.cashFlowSettings = { projectionDays: 30, estimatedDailyIncome: null, lowBalanceThreshold: 0 };
                     } else {
@@ -33985,6 +35000,16 @@ RESULTADOS:
                 <button onclick="closeDniClockModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cerrar</button>
                 <button onclick="submitDniClock()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold shadow-lg">Fichar</button>
             </div>
+        </div>
+    </div>
+
+    <div id="owner-consumption-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 max-h-[85vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-lg font-bold text-gray-800">🏠 Consumo del dueño</h3>
+                <button onclick="closeOwnerConsumptionModal()" class="text-gray-400 hover:text-gray-700 px-2" title="Cerrar"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="owner-consumption-content"></div>
         </div>
     </div>
 

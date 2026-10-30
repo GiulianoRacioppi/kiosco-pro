@@ -10297,7 +10297,7 @@
         function computeStockTarget({ dailyCost, targetDays, stockValue }) {
             const target = dailyCost * targetDays;
             const daysOfStock = dailyCost > 0 ? stockValue / dailyCost : 0;
-            return { target, daysOfStock, shortfall: Math.max(0, target - stockValue), daysDiff: daysOfStock - targetDays };
+            return { target, dailyCost, daysOfStock, shortfall: Math.max(0, target - stockValue), daysDiff: daysOfStock - targetDays };
         }
 
         // Lo que el equipo le sacó al stock: el menor entre su costo y lo que faltaba para el objetivo
@@ -10310,6 +10310,30 @@
             return debts.reduce((left, d) => left + Math.max(0, d.amount - closes
                 .filter(c => c.month > d.month)
                 .reduce((sum, c) => sum + Math.max(0, c.merchandiseIncrease), 0)), 0);
+        }
+
+        // Qué pasó con la plata: lo ganado menos lo sacado es lo que había para reinvertir.
+        // Si se puso más que eso, la diferencia salió de deudas, fiados cobrados o liquidez.
+        function computeMoneyStory({ start, end, profit, withdrawals, contributions }) {
+            const delta = (key) => (end[key] || 0) - (start[key] || 0);
+            const takenOut = withdrawals - contributions;
+            const leftToReinvest = profit - takenOut;
+            const invested = delta('merchandise') + delta('equipment');
+            return {
+                merchandise: delta('merchandise'), equipment: delta('equipment'), cash: delta('cash'),
+                takenOut, leftToReinvest, invested, over: invested - leftToReinvest,
+                debtsUp: delta('debts'), fiadosCollected: -delta('fiados'), cashUsed: -delta('cash')
+            };
+        }
+
+        // La plata que queda después de separar lo que ya tiene destino
+        function computeFreeMoney({ cash, debts, cushion, pendingWithdrawal }) {
+            const left = cash - debts - cushion - pendingWithdrawal;
+            return { free: Math.max(0, left), short: Math.max(0, -left) };
+        }
+
+        function computeStockVsMoney({ stockValue, target }) {
+            return { needed: Math.min(stockValue, target), extra: Math.max(0, stockValue - target), missing: Math.max(0, target - stockValue) };
         }
         // </capital-puro>
 
@@ -10561,7 +10585,7 @@
                     profit: m.profit, plannedWithdrawal: m.plannedWithdrawal, alreadyInvested: d.merchandise.amount + d.equipment.amount
                 });
                 topHtml = '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">' +
-                    top('Ganancia del mes', money(m.profit), 'Capital ' + money(m.capitalStart) + ' → ' + money(m.capitalEnd) + (flows.contributions !== 0 ? ' · aportes ' + (flows.contributions < 0 ? '−' : '') + money(Math.abs(flows.contributions)) : '')) +
+                    top('Ganancia del mes', money(m.profit - flows.withdrawals), 'Después de tus retiros. Antes de retirar: ' + money(m.profit) + ' · capital ' + money(m.capitalStart) + ' → ' + money(m.capitalEnd) + (flows.contributions !== 0 ? ' · aportes ' + (flows.contributions < 0 ? '−' : '') + money(Math.abs(flows.contributions)) : '')) +
                     top('Retiro posible', money(m.possibleWithdrawal), 'Planificado ' + money(m.plannedWithdrawal) + ' · ya retiraste ' + money(flows.withdrawals)) +
                     top('Disponible para invertir', isCurrent ? money(inv.available) : '—', isCurrent ? 'Por caja ' + money(inv.byCash) + ' · por ganancia ' + money(inv.byProfit) : '') + '</div>';
 
@@ -10587,7 +10611,8 @@
                 const difference = card('Diferencia con el Balance de Finanzas', 'El Balance mira ventas y gastos. Capital mira cuánto creció el negocio, por eso pueden no dar igual.',
                     row('Balance de Finanzas', money(totals.netBalance)) + row('+ Tus retiros, que acá se suman de vuelta', money(flows.withdrawals)) +
                     row('+ Cambio en fiados pendientes', (fiadosDelta < 0 ? '−' : '') + money(Math.abs(fiadosDelta))) +
-                    row('+ Conteos de stock, arqueos y otros ajustes', (rest < 0 ? '−' : '') + money(Math.abs(rest))) + row('= Ganancia en Capital', money(m.profit), true));
+                    row('+ Conteos de stock, arqueos y otros ajustes', (rest < 0 ? '−' : '') + money(Math.abs(rest))) + row('= Ganancia antes de tus retiros', money(m.profit), true) +
+                    row('− Tus retiros', '−' + money(flows.withdrawals)) + row('= Ganancia del mes', money(m.profit - flows.withdrawals), true));
 
                 const monthExpenses = totals.monthExpenses.filter(e => !isOwnerWithdrawal(e));
                 const byCategory = {};
@@ -10598,7 +10623,47 @@
                 const categories = card('Gastos por categoría', '', Object.keys(byCategory).sort((a, b) => byCategory[b] - byCategory[a]).map(c => row(escapeHtml(c), money(byCategory[c]))).join('') +
                     (extraordinary > 0 ? '<p class="text-xs text-gray-500">Incluye ' + money(extraordinary) + ' de gastos extraordinarios.</p>' : '') +
                     '<p class="text-sm font-bold text-red-700">Faltante de caja del mes: ' + money(shortage) + '</p>');
-                detailHtml = distribution + notesHtml + difference + categories;
+
+                const story = computeMoneyStory({ start, end, profit: m.profit, ...flows });
+                const free = computeFreeMoney({ cash: end.cash, debts: end.debts, cushion: settings.cushion, pendingWithdrawal: m.pendingWithdrawal });
+                const stockMoney = computeStockVsMoney({ stockValue: end.merchandise, target: stock.target });
+                const change = (name, n) => row(name, n === 0 ? 'Igual que al empezar' : (n > 0 ? '+' + money(n) + ' de más' : '−' + money(-n) + ' de menos'));
+                const paragraph = (text) => '<p class="text-sm text-gray-700">' + text + '</p>';
+                const sourceList = [[story.debtsUp, 'deudas nuevas'], [story.fiadosCollected, 'fiados cobrados'], [story.cashUsed, 'liquidez']].filter(([n]) => n > 0).map(([n, name]) => name + ' ' + money(n));
+                const storyCard = card('Qué pasó con la plata este mes', 'Comparado con cómo arrancó el mes.',
+                    change('Mercadería', story.merchandise) + change('Equipos', story.equipment) + change('Liquidez', story.cash) +
+                    paragraph('El negocio ganó ' + money(m.profit) + (story.takenOut > 0 ? ' y sacaste ' + money(story.takenOut) + ' entre tus retiros y devoluciones de préstamo' : '') + ': quedaron ' + money(story.leftToReinvest) + ' para reinvertir.') +
+                    paragraph(story.over > 0
+                        ? 'Pusiste ' + money(story.invested) + ' en mercadería y equipos: ' + money(story.over) + ' más de lo que quedaba.' + (sourceList.length ? ' Eso salió de: ' + sourceList.join(', ') + '.' : '')
+                        : 'Pusiste ' + money(story.invested) + ' en mercadería y equipos, y sobraron ' + money(-story.over) + '.'));
+
+                const bar2 = (parts) => {
+                    const total = parts.reduce((sum, p) => sum + Math.max(0, p.value), 0);
+                    if (total <= 0) return '';
+                    return '<div class="flex gap-[2px] h-4 rounded overflow-hidden">' + parts.filter(p => p.value > 0).map(p => '<div title="' + p.name + ': ' + money(p.value) + '" style="width:' + (p.value / total * 100) + '%;background:' + p.color + '"></div>').join('') + '</div>' +
+                        parts.filter(p => p.value > 0).map(p => '<div class="flex items-center justify-between gap-2 text-sm text-gray-700"><span class="flex items-center gap-2 min-w-0"><span class="w-3 h-3 rounded-full shrink-0" style="background:' + p.color + '"></span>' + p.name + '</span><span class="font-bold shrink-0">' + money(p.value) + ' <span class="text-xs font-normal text-gray-500">' + Math.round(p.value / total * 100) + '%</span></span></div>').join('');
+                };
+                const freeCard = card('Cuánta plata es libre de verdad', 'Tenés ' + money(end.cash) + ' en Caja, Cuenta y Reserva, pero parte ya tiene destino.',
+                    bar2([
+                        { name: 'Deudas por pagar', value: end.debts, color: '#e11d48' },
+                        { name: 'Colchón', value: settings.cushion, color: '#8b5cf6' },
+                        { name: 'Tu retiro pendiente', value: m.pendingWithdrawal, color: '#f59e0b' },
+                        { name: 'Plata para moverte', value: free.free, color: '#10b981' }
+                    ]) +
+                    (free.short > 0
+                        ? paragraph('La plata no alcanza para todo: te faltan ' + money(free.short) + '.')
+                        : paragraph('Esos ' + money(free.free) + ' son, sobre todo, mercadería hecha plata: cada venta te devuelve lo que costó el producto, y con eso volvés a comprar. Por eso podés ver mucha plata y no tenerla libre. Te alcanza para ' + num(stock.dailyCost > 0 ? free.free / stock.dailyCost : 0) + ' días de compras.')));
+                const stockMoneyCard = card('Mercadería y plata: lo mismo en dos formas', 'Cuando comprás, la plata pasa a la góndola. Cuando vendés, la góndola vuelve a ser plata.',
+                    bar2([
+                        { name: 'Mercadería que necesitás (' + settings.stockDaysTarget + ' días)', value: stockMoney.needed, color: '#4f46e5' },
+                        { name: 'Mercadería de más', value: stockMoney.extra, color: '#0ea5e9' },
+                        { name: 'Plata para moverte', value: free.free, color: '#10b981' }
+                    ]) +
+                    (stockMoney.extra > 0
+                        ? paragraph('Si comprás menos de lo que sobra, esos ' + money(stockMoney.extra) + ' se van haciendo plata a medida que se venden. No hay que hacer nada más: la góndola se transforma sola.')
+                        : paragraph('Te faltan ' + money(stockMoney.missing) + ' de mercadería para llegar al objetivo.')) +
+                    paragraph('Si pasaras toda la plata a mercadería, tendrías góndolas llenas y nada para pagar. Si no repusieras, tendrías plata y góndolas vacías. El negocio necesita las dos cosas: por eso una parte se queda como plata y no vuelve a ser mercadería.'));
+                detailHtml = distribution + storyCard + freeCard + stockMoneyCard + notesHtml + difference + categories;
             }
 
             const uncategorized = getUncategorizedExpenses();
@@ -10614,7 +10679,7 @@
                 const before = closes[i + 1];
                 const profit = before ? computeCapitalTotal(c) - computeCapitalTotal(before) + c.withdrawals - c.contributions : null;
                 return '<div class="border rounded-xl p-3"><p class="font-bold text-gray-800 mb-2">' + new Date(c.month + '-15T12:00:00').toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }) + (c.manual ? ' <span class="text-xs text-gray-400 font-normal">cargado a mano</span>' : '') + '</p>' +
-                    '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">' + stat('Capital', money(computeCapitalTotal(c))) + stat('Mercadería', money(c.merchandise)) + stat('Equipos', money(c.equipment)) + stat('Caja', money(c.cash)) + stat('Ganancia', profit === null ? '—' : money(profit)) + stat('Retiro', money(c.withdrawals)) + '</div></div>';
+                    '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">' + stat('Capital', money(computeCapitalTotal(c))) + stat('Mercadería', money(c.merchandise)) + stat('Equipos', money(c.equipment)) + stat('Caja', money(c.cash)) + stat('Ganancia', profit === null ? '—' : money(profit - c.withdrawals)) + stat('Retiro', money(c.withdrawals)) + '</div></div>';
             }).join(''));
 
             content.innerHTML = topHtml + startHtml + detailHtml + worth + renderCapitalCloseButton(month, label, close, isCurrent) + reviewHtml + history + '<div class="bg-white rounded-2xl shadow-lg p-4 md:p-6">' + settingsHtml + '</div>';

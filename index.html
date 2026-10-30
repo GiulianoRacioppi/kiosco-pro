@@ -9425,7 +9425,7 @@
         // Demanda real: las semanas enteras sin quiebre; si no hay ninguna, los días con stock.
         function computeProductRotation({ movements, from, to, currentStock, cost, price, coverageDays, safetyPct, stockDaysTarget }) {
             const moves = movements.slice().sort((a, b) => a.timestamp - b.timestamp);
-            const days = rotationDaysBetween(from, to);
+            let days = rotationDaysBetween(from, to);
             const movesByDay = new Map();
             let before = null, firstInside = null;
             moves.forEach(m => {
@@ -9436,6 +9436,12 @@
                 movesByDay.get(date).push(m);
             });
             let stock = before ? before.stockAfter : (firstInside ? firstInside.stockAfter - firstInside.delta : currentStock);
+            // Producto nuevo: los días antes de su primera entrada no son quiebre, todavía no existía
+            if (!before && stock <= 0) {
+                const firstEntry = moves.find(m => m.stockAfter > 0);
+                const firstDay = firstEntry ? rotationDayOf(firstEntry.timestamp) : null;
+                days = firstDay ? days.filter(d => d >= firstDay) : [];
+            }
 
             let peak = stock, lastCyclePeak = null, maxStock = stock;
             // Tramo de quiebre: arranca al llegar a 0 y termina con la siguiente entrada de stock.
@@ -9963,8 +9969,9 @@
             cost = Math.round(cost * 100) / 100;
             const isWithdrawal = appState.paymentMethod === 'fiado';
             const target = appState.paymentMethod === 'cash' ? 'cash' : 'bank';
-            const howText = isWithdrawal ? 'Retiro del dueño: no entra plata.' : 'Compra al costo: entran $' + formatMoney(cost) + ' a ' + (target === 'cash' ? 'Caja' : 'Cuenta') + '.';
-            if (!(await showConfirmModal('🏠 Consumo del dueño: $' + formatMoney(cost) + ' al costo.\n' + howText + '\nNo cuenta como venta. ¿Registrarlo?'))) { saleInProgress = false; return; }
+            const howText = 'Compra al costo: entran $' + formatMoney(cost) + ' a ' + (target === 'cash' ? 'Caja' : 'Cuenta') + '.';
+            // Fiado = se anota directo. Si entra plata, se confirma el monto.
+            if (!isWithdrawal && !(await showConfirmModal('🏠 Consumo del dueño: $' + formatMoney(cost) + ' al costo.\n' + howText + '\nNo cuenta como venta. ¿Registrarlo?'))) { saleInProgress = false; return; }
 
             const undoFreeStock = coverApprovedShortfallsForSale(appState.cart);
             const code = appState.activeSpecialPriceCode;
@@ -9997,13 +10004,14 @@
                 if (!Array.isArray(appState.capitalAdjustments)) appState.capitalAdjustments = [];
                 appState.capitalAdjustments.push({ id: 'ADJ-OWNERBUY-' + sale.id, date: sale.date, amount: cost, target, concept: 'Compra al costo del dueño', user: sale.user, timestamp: now });
             }
+            syncOwnerConsumptionExpenses();
             approvedStockShortfalls.clear();
             clearCartAfterSale();
             saleInProgress = false;
             setPaymentMethod('cash');
             saveToLocalStorage();
             renderAll();
-            showNotification('🏠 ' + (isWithdrawal ? 'Retiro' : 'Compra') + ' del dueño registrado: $' + formatMoney(cost) + ' al costo', 'success');
+            showNotification(isWithdrawal ? '🏠 Anotado como gasto dueño: $' + formatMoney(cost) + ' al costo' : '🏠 Compra del dueño registrada: $' + formatMoney(cost) + ' al costo', 'success');
         }
 
         // Ventas viejas hechas con un código a 0%, y fiados anotados a nombre del dueño (cobrados o
@@ -10054,6 +10062,35 @@
             delete s.ownerConsumption;
         }
 
+        // Un retiro de mercadería va en Gastos igual que los retiros "dueño" (sueldo del dueño): baja
+        // el Balance y suma en "Retiró el dueño". Con source 'owner-goods' no mueve Caja ni Cuenta.
+        function syncOwnerConsumptionExpenses() {
+            let changed = false;
+            (appState.sales || []).forEach(s => {
+                const oc = s.ownerConsumption;
+                if (!oc) return;
+                const id = 'OWNERGOODS-' + s.id;
+                const idx = appState.expenses.findIndex(e => e.id === id);
+                const wanted = !oc.cancelled && !(oc.moneyIn > 0);
+                const concept = 'dueño: ' + oc.items.map(i => i.quantity + ' ' + i.name).join(', ');
+                if (wanted && idx >= 0 && appState.expenses[idx].concept !== concept) {
+                    appState.expenses[idx].concept = concept;
+                    changed = true;
+                }
+                if (wanted && idx < 0) {
+                    appState.expenses.push({
+                        id, date: s.date, concept, amount: oc.cost, source: 'owner-goods',
+                        type: 'withdrawal', withdrawalType: 'owner', isOwnerDraw: true, user: s.user || null, timestamp: Date.now()
+                    });
+                    changed = true;
+                } else if (!wanted && idx >= 0) {
+                    appState.expenses.splice(idx, 1);
+                    changed = true;
+                }
+            });
+            return changed;
+        }
+
         function ownerConsumptionsInRange(from, to) {
             return (appState.sales || []).filter(s => s.ownerConsumption && !s.ownerConsumption.cancelled && s.date >= from && s.date <= to);
         }
@@ -10076,7 +10113,7 @@
             const candidates = getOwnerConsumptionCandidates();
             const registered = (appState.sales || []).filter(s => s.ownerConsumption && !s.ownerConsumption.cancelled).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
             const money = (s) => s.paymentMethod === 'fiado' ? (s.fiadoPaid ? 'Fiado cobrado' : 'Fiado sin cobrar') : paymentMethodLabel(s);
-            const kindOf = (oc) => oc.moneyIn > 0 ? 'Compra al costo: pagaste $' + formatMoney(oc.moneyIn) : 'Retiro al costo';
+            const kindOf = (oc) => oc.moneyIn > 0 ? 'Compra al costo: pagaste $' + formatMoney(oc.moneyIn) : 'Retiro al costo, va en Gastos';
             const candidateRows = candidates.map(s => {
                 const locked = (s.facturas || []).length > 0 || s.date >= today;
                 const why = (s.facturas || []).length > 0 ? 'Tiene factura: queda como venta' : (s.date >= today ? 'Es de hoy: revisala mañana, después del cierre' : '');
@@ -10093,7 +10130,7 @@
             }).join('');
             document.getElementById('owner-consumption-content').innerHTML =
                 (candidates.length ? '<h4 class="font-bold text-gray-700 mb-1">Ventas para pasar a consumo</h4>' +
-                    '<p class="text-xs text-gray-500 mb-2">Se hicieron con un código a 0% o quedaron como fiado a tu nombre. Destildá las que fueron ventas de verdad. Los fiados sin cobrar pasan a retiro del dueño y salen de Fiados. Las pagadas quedan como compra al costo: esa plata sigue en Caja o Cuenta.</p>' +
+                    '<p class="text-xs text-gray-500 mb-2">Se hicieron con un código a 0% o quedaron como fiado a tu nombre. Destildá las que fueron ventas de verdad. Los fiados sin cobrar pasan a retiro del dueño al costo: salen de Fiados y van en Gastos, igual que tu sueldo. Las pagadas quedan como compra al costo: esa plata sigue en Caja o Cuenta.</p>' +
                     candidateRows +
                     '<button onclick="saveOwnerConsumptionReclass()" class="mt-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold text-sm">Guardar como consumo del dueño</button>' : '') +
                 '<h4 class="font-bold text-gray-700 mt-4 mb-1">Registrados</h4>' +
@@ -10104,6 +10141,7 @@
             const ids = new Set(Array.from(document.querySelectorAll('.owner-candidate:checked')).map(c => c.value));
             if (ids.size === 0) { showNotification('No tildaste ninguna', 'warning'); return; }
             getOwnerConsumptionCandidates().filter(s => ids.has(s.id)).forEach(reclassifySaleAsOwnerConsumption);
+            syncOwnerConsumptionExpenses();
             saveToLocalStorage();
             renderAll();
             renderOwnerConsumptionModal();
@@ -10131,6 +10169,7 @@
                 oc.cancelled = true;
                 s.timestamp = Date.now();
             }
+            appState.expenses = appState.expenses.filter(e => !(e.id === 'OWNERGOODS-' + saleId && (!s.ownerConsumption || s.ownerConsumption.cancelled)));
             saveToLocalStorage();
             renderAll();
             renderOwnerConsumptionModal();
@@ -17720,6 +17759,7 @@
             const monthSalesEl = document.getElementById('calendar-month-sales');
             if (!monthSalesEl) return; // la sección de Finanzas ni está en el DOM
 
+            if (syncOwnerConsumptionExpenses()) saveToLocalStorage();
             const period = getFinancePeriod();
             const inPeriod = (d) => { const x = String(d || '').slice(0, 10); return !!x && x >= period.from && x <= period.to; };
             const today = formatDateISO(new Date());
@@ -18171,6 +18211,7 @@
         }
 
         async function deleteExpense(expenseId, dateStr) {
+            if (String(expenseId).startsWith('OWNERGOODS-')) { showNotification('Se deshace desde Finanzas → Consumo del dueño', 'warning'); return; }
             if (!(await showConfirmModal('¿Estás seguro de que deseas eliminar este gasto? Se devolverá el dinero.'))) return;
 
             const expenseIndex = appState.expenses.findIndex(e => e.id === expenseId);

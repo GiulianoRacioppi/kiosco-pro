@@ -8533,8 +8533,16 @@
                 document.getElementById('fiado-customer-name').focus();
                 return;
             }
-            pendingFiadoCustomerName = name;
+            // Fiado a nombre del dueño: va directo a gasto, igual que con su código
+            const ownerCode = OWNER_FIADO_NAMES.includes(name.toLowerCase()) ? (appState.specialPriceCodes || []).find(isOwnerConsumptionCode) : null;
             closeFiadoModal();
+            if (ownerCode) {
+                if (appState.cart.length === 0 || saleInProgress) return;
+                saleInProgress = true;
+                completeOwnerConsumption(ownerCode);
+                return;
+            }
+            pendingFiadoCustomerName = name;
             completeSale();
         }
 
@@ -9934,7 +9942,7 @@
             openFinancesPasswordModal(() => { financesUnlockedThisSession = wasUnlocked; onOk(); }, title);
         }
 
-        async function completeOwnerConsumption() {
+        async function completeOwnerConsumption(ownerCode) {
             if (appState.cart.some(i => !i.productId || i.isManual)) {
                 showNotification('Sacá los ítems manuales: el consumo del dueño es solo de productos cargados', 'error');
                 saleInProgress = false;
@@ -9974,7 +9982,7 @@
             if (!isWithdrawal && !(await showConfirmModal('🏠 Consumo del dueño: $' + formatMoney(cost) + ' al costo.\n' + howText + '\nNo cuenta como venta. ¿Registrarlo?'))) { saleInProgress = false; return; }
 
             const undoFreeStock = coverApprovedShortfallsForSale(appState.cart);
-            const code = appState.activeSpecialPriceCode;
+            const code = ownerCode || appState.activeSpecialPriceCode;
             const now = Date.now();
             const sale = {
                 id: 'SALE-' + now,
@@ -10017,7 +10025,7 @@
         // Ventas viejas hechas con un código a 0%, y fiados anotados a nombre del dueño (cobrados o
         // no), que todavía figuran como venta. Las que ya tienen factura de ARCA quedan como venta:
         // sacarlas dejaría la factura sin venta.
-        const OWNER_FIADO_NAMES = ['g', 'giu'];
+        const OWNER_FIADO_NAMES = ['g', 'giu', 'giuliano'];
         function getOwnerConsumptionCandidates() {
             const codes = new Set((appState.specialPriceCodes || []).filter(isOwnerConsumptionCode).map(c => c.code));
             const isOwnerFiado = (s) => s.paymentMethod === 'fiado' && OWNER_FIADO_NAMES.includes(String(s.customerName || '').trim().toLowerCase());

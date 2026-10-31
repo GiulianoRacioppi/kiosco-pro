@@ -26159,6 +26159,7 @@
         let assetPaymentSource = 'cash';
         let currentAssetPaymentId = null;
         let currentAssetSellId = null;
+        let currentAssetCostId = null;
 
         function getAssetPaid(asset) {
             return (asset.payments || []).reduce((s, p) => s + (p.amount || 0), 0);
@@ -26268,6 +26269,41 @@
             showNotification('✅ Pago registrado', 'success');
         }
 
+        function openAssetCostModal(assetId) {
+            if (!isMasterDevice()) {
+                showNotification('El precio se edita desde la PC principal', 'error');
+                return;
+            }
+            currentAssetCostId = assetId;
+            const asset = (appState.fixedAssets || []).find(a => a.id === assetId);
+            if (!asset) return;
+            const paid = getAssetPaid(asset);
+            document.getElementById('asset-cost-context').textContent = paid > 0 ? `${asset.name} — ya pagaste $${formatMoney(paid)}` : asset.name;
+            document.getElementById('asset-cost-amount').value = asset.totalCost || '';
+            document.getElementById('asset-cost-modal').classList.add('active');
+        }
+        function closeAssetCostModal() {
+            document.getElementById('asset-cost-modal').classList.remove('active');
+            currentAssetCostId = null;
+        }
+        // Cambia lo que se debe, no la plata: los pagos ya hechos quedan como están. Por eso no
+        // puede bajar de lo pagado: el capital perdería esa diferencia sin que haya pasado nada.
+        function saveAssetCost() {
+            const asset = (appState.fixedAssets || []).find(a => a.id === currentAssetCostId);
+            if (!asset) return;
+            const totalCost = parseFloat(document.getElementById('asset-cost-amount').value) || 0;
+            const paid = getAssetPaid(asset);
+            if (totalCost <= 0) { showNotification('Ingresá un monto válido', 'error'); return; }
+            if (totalCost < paid) { showNotification(`Ya pagaste $${formatMoney(paid)}: el precio no puede ser menor`, 'error'); return; }
+            asset.totalCost = totalCost;
+            asset.stockDebt = Math.min(asset.stockDebt || 0, totalCost);
+            asset.priceEditedAt = Date.now();
+            saveToLocalStorage();
+            closeAssetCostModal();
+            renderFixedAssets();
+            showNotification('✅ Precio actualizado', 'success');
+        }
+
         function openAssetSellModal(assetId) {
             currentAssetSellId = assetId;
             const asset = (appState.fixedAssets || []).find(a => a.id === assetId);
@@ -26353,8 +26389,9 @@
                     </div>
                     ${paymentsHtml ? `<div class="border-t pt-2 mt-2 space-y-1">${paymentsHtml}</div>` : ''}
                     ${asset.sold ? `<p class="text-xs text-blue-600 font-bold mt-2">💰 Vendido el ${asset.soldDate} por $${formatMoney(asset.soldAmount)}</p>` : ''}
-                    <div class="flex gap-2 mt-3">
+                    <div class="flex flex-wrap gap-2 mt-3">
                         ${owed > 0 ? `<button onclick="openAssetPaymentModal('${asset.id}')" class="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg font-bold"><i class="fas fa-hand-holding-usd"></i> Registrar pago</button>` : ''}
+                        <button onclick="openAssetCostModal('${asset.id}')" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg font-bold"><i class="fas fa-pen"></i> Editar precio</button>
                         ${!asset.sold ? `<button onclick="openAssetSellModal('${asset.id}')" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1.5 rounded-lg font-bold"><i class="fas fa-tag"></i> Marcar vendido</button>` : ''}
                         <button onclick="deleteFixedAsset('${asset.id}')" class="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-bold ml-auto"><i class="fas fa-trash"></i></button>
                     </div>
@@ -33005,6 +33042,7 @@ RESULTADOS:
         
         function getItemTimestamp(item) {
             if (!item || typeof item !== 'object') return 0;
+            if (item.priceEditedAt) return item.priceEditedAt;
             if (item.createdAt) {
                 const t = new Date(item.createdAt).getTime();
                 if (!isNaN(t)) return t;
@@ -35310,6 +35348,24 @@ RESULTADOS:
             <div class="flex gap-2 mt-5">
                 <button onclick="closeAssetPaymentModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
                 <button onclick="saveAssetPayment()" class="flex-1 bg-purple-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-purple-700">Registrar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="asset-cost-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4">
+            <h3 class="text-xl font-bold mb-1 text-purple-700"><i class="fas fa-pen"></i> Editar precio</h3>
+            <p class="text-sm text-gray-500 mb-4" id="asset-cost-context">-</p>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Costo total</label>
+                    <input type="number" min="0" step="any" id="asset-cost-amount" class="w-full border rounded-lg px-3 py-2 text-sm">
+                </div>
+                <p class="text-[11px] text-gray-400">No mueve plata de la caja: cambia cuánto te falta pagar.</p>
+            </div>
+            <div class="flex gap-2 mt-5">
+                <button onclick="closeAssetCostModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                <button onclick="saveAssetCost()" class="flex-1 bg-purple-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-purple-700">Guardar</button>
             </div>
         </div>
     </div>

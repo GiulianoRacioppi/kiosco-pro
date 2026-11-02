@@ -8376,7 +8376,16 @@
         // fiado no pago = null (no cuenta en totales), fiado pago = día del cobro,
         // cualquier otra venta = su propia fecha.
         // Las LISTAS de ventas siguen filtrando por s.date; solo los TOTALES usan esto.
+        // Desde FIADO_AT_SALE_FROM los fiados cuentan el día de la venta; los anteriores
+        // siguen contando al cobrarse, para no tocar los meses cerrados.
+        const FIADO_AT_SALE_FROM = '2026-11-01';
         function saleRevenueDate(s) {
+            if (s.paymentMethod === 'fiado' && !s.ownerConsumption && s.date >= FIADO_AT_SALE_FROM) return s.date;
+            return saleCollectionDate(s);
+        }
+
+        // El día que entró la plata: es la fecha fiscal (percibido)
+        function saleCollectionDate(s) {
             if (s.ownerConsumption) return null; // consumo del dueño: no es venta
             if (s.paymentMethod === 'fiado') return s.fiadoPaid ? (s.fiadoPaidDate || s.date) : null;
             return s.date;
@@ -8604,7 +8613,8 @@
 
             // Recalcular la ganancia con el COSTO ACTUAL de la mercadería (a la fecha del cobro).
             // En contexto de inflación importa a cuánto reponés hoy, no a cuánto costaba al fiar.
-            try {
+            // Los fiados que cuentan al vender no se recalculan: su mes puede estar cerrado.
+            if (sale.date < FIADO_AT_SALE_FROM) try {
                 if (sale.profitOriginal === undefined) sale.profitOriginal = sale.profit; // guardar la del momento de la venta
                 let costoActual = 0;
                 for (const item of (sale.items || [])) {
@@ -8638,7 +8648,7 @@
 
             // Auto-facturación ARCA recién ahora que se cobró (no al hacer la venta fiada):
             // se evalúan las reglas con el método real de cobro (para que "facturar según
-            // efectivo/débito" tenga sentido), y facturarVenta() usa saleRevenueDate(sale)
+            // efectivo/débito" tenga sentido), y facturarVenta() usa saleCollectionDate(sale)
             // (= fiadoPaidDate, hoy) como fecha fiscal de la factura.
             // Descontado del sueldo no se factura solo: ese pago se puede deshacer, una factura no.
             if (method !== 'salary') try {
@@ -8659,6 +8669,77 @@
             renderFiados();
             updateSidebar();
             if (!silent) showNotification(`Cobro registrado: ${sale.customerName || 'Cliente'} pagó $${formatMoney(sale.total)} en ${method === 'cash' ? 'efectivo' : 'cuenta'}`, 'success');
+        }
+
+        let currentFiadoDateSaleId = null;
+
+        // Un descuento de sueldo depende de esa quincena, y una factura ya salió con su fecha
+        function canChangeFiadoDate(s) {
+            return s.fiadoPaidMethod !== 'salary' && !(s.facturas || []).length;
+        }
+
+        function getFiadoDateGroup(sale) {
+            return appState.sales.filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid && s.fiadoPaidDate === sale.fiadoPaidDate && canChangeFiadoDate(s));
+        }
+
+        function openFiadoDateModal(saleId) {
+            if (!isMasterDevice()) {
+                showNotification('La fecha se cambia desde la PC principal', 'error');
+                return;
+            }
+            const sale = appState.sales.find(s => s.id === saleId);
+            if (!sale) return;
+            currentFiadoDateSaleId = saleId;
+            const group = getFiadoDateGroup(sale);
+            const groupTotal = group.reduce((sum, s) => sum + s.total, 0);
+            document.getElementById('fiado-date-context').textContent = `${sale.customerName || 'Cliente'} — $${formatMoney(sale.total)}, cobrado el ${sale.fiadoPaidDate}`;
+            document.getElementById('fiado-date-value').value = sale.fiadoPaidDate;
+            document.getElementById('fiado-date-value').max = formatDateISO(new Date());
+            document.getElementById('fiado-date-group').checked = group.length > 1;
+            document.getElementById('fiado-date-group-row').classList.toggle('hidden', group.length < 2);
+            document.getElementById('fiado-date-group-label').textContent = `Pasar los ${group.length} cobros de ese día ($${formatMoney(groupTotal)})`;
+            document.getElementById('fiado-date-modal').classList.add('active');
+        }
+
+        function closeFiadoDateModal() {
+            document.getElementById('fiado-date-modal').classList.remove('active');
+            currentFiadoDateSaleId = null;
+        }
+
+        // Cambia en qué día cuenta el cobro, no la plata: Caja y Cuenta quedan como están.
+        // Los cierres de los dos días se recalculan contra lo que ya se contó.
+        async function saveFiadoDate() {
+            const sale = appState.sales.find(s => s.id === currentFiadoDateSaleId);
+            if (!sale) return;
+            const date = document.getElementById('fiado-date-value').value;
+            const oldDate = sale.fiadoPaidDate;
+            if (!date || date > formatDateISO(new Date())) { showNotification('Elegí una fecha válida', 'error'); return; }
+            if (date === oldDate) { closeFiadoDateModal(); return; }
+            const sales = document.getElementById('fiado-date-group').checked ? getFiadoDateGroup(sale) : [sale];
+            if (sales.some(s => date < s.date)) { showNotification('Un fiado no se puede cobrar antes de venderse', 'error'); return; }
+            const total = sales.reduce((sum, s) => sum + s.total, 0);
+            const label = date.split('-').reverse().join('/');
+            const cobros = sales.length === 1 ? 'el cobro' : 'los ' + sales.length + ' cobros';
+            if (!(await showConfirmModal(`¿Pasar ${cobros} por $${formatMoney(total)} al ${label}?\n\nCaja y Cuenta no cambian. Si ese día está cerrado, su diferencia se recalcula.`))) return;
+
+            const now = Date.now();
+            sales.forEach(s => {
+                s.fiadoPaidDate = date;
+                s.timestamp = now; // para que smartMergeArrays no lo pise con la copia vieja
+            });
+            const closed = (appState.cashCounts || []).filter(c => (c.date === oldDate || c.date === date) && c.closingAmount !== null && c.closingAmount !== undefined);
+            closed.forEach(c => {
+                writeCloseResult(c, c.date, calculateCashExpected(c.date));
+                c.timestamp = now;
+            });
+
+            saveToLocalStorage();
+            closeFiadoDateModal();
+            renderFiados();
+            renderCashCountsList();
+            renderCashDifferences();
+            renderAll();
+            showNotification('Cobro pasado al ' + label, 'success');
         }
 
         function renderFiados() {
@@ -8730,7 +8811,10 @@
                         <p class="font-bold text-gray-800">${escapeHtml(s.customerName || 'Cliente')}</p>
                         <p class="text-xs text-gray-500">Fiado del ${s.date} • Pagado el ${s.fiadoPaidDate || '-'} (${fiadoPaidMethodLabel(s)})</p>
                     </div>
-                    <p class="font-bold text-green-600">+$${formatMoney(s.total)}</p>
+                    <div class="flex items-center gap-2">
+                        ${isMasterDevice() && canChangeFiadoDate(s) ? `<button onclick="event.stopPropagation(); openFiadoDateModal('${s.id}')" class="bg-white border border-green-300 text-green-700 px-2 py-1 rounded-lg text-xs font-bold">Cambiar fecha</button>` : ''}
+                        <p class="font-bold text-green-600">+$${formatMoney(s.total)}</p>
+                    </div>
                 </div>`).join('');
             }
         }
@@ -10441,6 +10525,14 @@
             };
         }
 
+        // Capital gana al vender. Lo que el Balance cuenta en otro mes es la diferencia entre los dos
+        function getFiadoProfitGap(from, to) {
+            const inRange = (d) => !!d && d >= from && d <= to;
+            return (appState.sales || []).filter(s => s.paymentMethod === 'fiado' && !s.ownerConsumption).reduce((sum, s) => {
+                return sum + (s.profit || 0) * ((inRange(s.date) ? 1 : 0) - (inRange(saleRevenueDate(s)) ? 1 : 0));
+            }, 0);
+        }
+
         function capitalMonthRange(month) {
             const [y, m] = month.split('-').map(Number);
             return { from: formatDateISO(new Date(y, m - 1, 1)), to: formatDateISO(new Date(y, m, 0)) };
@@ -10606,11 +10698,11 @@
                 const notesHtml = card('Para tener en cuenta', '', notes.map(n => '<p class="text-sm text-gray-700">• ' + n + '</p>').join(''));
 
                 const totals = getFinancePeriodTotals({ from, to });
-                const fiadosDelta = (end.fiados || 0) - (start.fiados || 0);
-                const rest = m.profit - totals.netBalance - flows.withdrawals - fiadosDelta;
+                const fiadosGap = getFiadoProfitGap(from, to);
+                const rest = m.profit - totals.netBalance - flows.withdrawals - fiadosGap;
                 const difference = card('Diferencia con el Balance de Finanzas', 'El Balance mira ventas y gastos. Capital mira cuánto creció el negocio, por eso pueden no dar igual.',
                     row('Balance de Finanzas', money(totals.netBalance)) + row('+ Tus retiros, que acá se suman de vuelta', money(flows.withdrawals)) +
-                    row('+ Cambio en fiados pendientes', (fiadosDelta < 0 ? '−' : '') + money(Math.abs(fiadosDelta))) +
+                    row('+ Ganancia de fiados que el Balance cuenta en otro mes', (fiadosGap < 0 ? '−' : '') + money(Math.abs(fiadosGap))) +
                     row('+ Conteos de stock, arqueos y otros ajustes', (rest < 0 ? '−' : '') + money(Math.abs(rest))) + row('= Ganancia antes de tus retiros', money(m.profit), true) +
                     row('− Tus retiros', '−' + money(flows.withdrawals)) + row('= Ganancia del mes', money(m.profit - flows.withdrawals), true));
 
@@ -12620,7 +12712,7 @@
                     docNro: 0,
                     // Fecha fiscal = fecha de ingreso real de la plata (percibido): en un
                     // fiado es el día que se cobró, no el día que se hizo la venta.
-                    fecha: saleRevenueDate(sale) || sale.date,
+                    fecha: saleCollectionDate(sale) || sale.date,
                     total: total,
                     itemIndexes: indexes
                 });
@@ -18147,7 +18239,7 @@
             // la grilla de un mes.
             const salesByDate = new Map();
             for (const s of appState.sales) {
-                const d = saleRevenueDate(s); // percibido: un fiado cuenta el día que se cobra, no el que se hizo
+                const d = saleRevenueDate(s);
                 if (!d || !d.startsWith(calendarMonthPrefix)) continue;
                 (salesByDate.get(d) || salesByDate.set(d, []).get(d)).push(s);
             }
@@ -18425,7 +18517,7 @@
             const daySales = appState.sales.filter(s => s.date === dateStr && !s.ownerConsumption);
             const dayExpenses = appState.expenses.filter(e => e.date === dateStr);
             const dayInvestments = appState.investments.filter(i => i.date === dateStr);
-            // Totales de plata/ganancia: cuentan el día que entra la plata (fiados, el día del cobro)
+            // Totales de plata/ganancia: los fiados cuentan según saleRevenueDate
             const revenueSales = appState.sales.filter(s => saleRevenueDate(s) === dateStr);
             const totalSales = revenueSales.reduce((sum, s) => sum + s.total, 0);
             const totalExpenses = dayExpenses.reduce((sum, e) => sum + e.amount, 0);
@@ -22450,7 +22542,7 @@
                 const totalCapital = appState.cash + appState.bank + inventoryValue;
                 
                 // Ganancia BRUTA = suma del profit de TODAS las ventas (precio de venta - costo al momento de la venta)
-                // Los fiados cuentan solo cuando están cobrados
+                // Los fiados cuentan según saleRevenueDate
                 const salesProfit = appState.sales.filter(s => saleRevenueDate(s) !== null).reduce((sum, s) => sum + (s.profit || 0), 0);
 
                 // Ganancia fantasma = sobrantes de caja + stock gratis - pérdidas por mermas (todo el historial)
@@ -22495,7 +22587,7 @@
                     .reduce((sum, adj) => sum + adj.amount, 0);
                 const totalInvested = (appState.initialCapital || 0) + capitalInjected;
                 
-                // Calcular margen de ganancia neta sobre ventas totales (fiados solo si están cobrados)
+                // Calcular margen de ganancia neta sobre ventas totales
                 const totalSalesAmount = appState.sales.filter(s => saleRevenueDate(s) !== null).reduce((sum, s) => sum + (s.total || 0), 0);
                 const netProfitMargin = totalSalesAmount > 0 ? ((netProfit / totalSalesAmount) * 100) : 0;
                 
@@ -23416,10 +23508,12 @@
                 
                 const closingCashInput = document.getElementById('cash-count-closing');
                 const closingBankInput = document.getElementById('cash-count-closing-bank');
-                // En edición, precargar los montos guardados; en cierre nuevo, los saldos actuales
+                // En edición, precargar lo contado más lo que se movió después del cierre: si no, un
+                // retiro posterior aparece como sobrante. En cierre nuevo, los saldos actuales
                 // (formato numérico plano: los inputs type=number no aceptan el formato localizado con coma)
-                closingCashInput.value = (isEdit && existing.closingCash != null ? existing.closingCash : (parseFloat(appState.cash) || 0)).toFixed(2);
-                closingBankInput.value = (isEdit && existing.closingBank != null ? existing.closingBank : (parseFloat(appState.bank) || 0)).toFixed(2);
+                const afterClose = (key, saved) => saved + (existing['expected' + key] != null ? expected[key.toLowerCase()] - existing['expected' + key] : 0);
+                closingCashInput.value = (isEdit && existing.closingCash != null ? afterClose('Cash', existing.closingCash) : (parseFloat(appState.cash) || 0)).toFixed(2);
+                closingBankInput.value = (isEdit && existing.closingBank != null ? afterClose('Bank', existing.closingBank) : (parseFloat(appState.bank) || 0)).toFixed(2);
                 document.getElementById('cash-count-notes').value = existing.notes || '';
                 document.getElementById('cash-count-date').textContent = today + (isEdit ? ' · editando cierre' : '');
                 const saveClosingBtn = document.getElementById('btn-save-cash-closing');
@@ -23587,6 +23681,12 @@
             totalAmount.textContent = '$' + formatMoney(Math.abs(diffTotal));
         }
 
+        // Lo que el cierre de ese día ajustó en Caja y Cuenta
+        function getCloseAdjustment(date) {
+            const sum = (prefix) => (appState.capitalAdjustments || []).filter(a => a.id && a.id.startsWith(prefix) && a.date === date).reduce((total, a) => total + (a.amount || 0), 0);
+            return { cash: sum('ADJ-CLOSE-CASH-'), bank: sum('ADJ-CLOSE-BANK-') };
+        }
+
         async function deleteCashCount(date) {
             const modal = document.getElementById('cash-count-modal');
             const targetDate = date || modal.dataset.cashCountDate || formatDateISO(appState.activeDate || new Date());
@@ -23644,6 +23744,12 @@
             record.difference = null;
             record.timestamp = Date.now();
 
+            // Deshacer solo lo que el cierre ajustó. Recalcular desde cero no sirve: el historial
+            // no alcanza para reconstruir los saldos y la caja quedaba en cualquier número.
+            const adjustment = getCloseAdjustment(date);
+            appState.cash -= adjustment.cash;
+            appState.bank -= adjustment.bank;
+
             // Eliminar los artefactos del cierre (mismos filtros que deleteCashCount)
             if (appState.cashDifferences) {
                 appState.cashDifferences = appState.cashDifferences.filter(d => d.date !== date);
@@ -23655,7 +23761,6 @@
                 appState.capitalAdjustments = appState.capitalAdjustments.filter(a => !(a.id && (a.id.startsWith('ADJ-SURPLUS-') || a.id.startsWith('ADJ-CLOSE-CASH-') || a.id.startsWith('ADJ-CLOSE-BANK-')) && a.date === date));
             }
 
-            recalculateBalances();
             saveToLocalStorage();
             renderCashCountsList();
             renderCashDifferences();
@@ -23711,58 +23816,19 @@
             }).join('');
         }
 
-        async function saveCashClosing() {
-            const closingCashRaw = document.getElementById('cash-count-closing').value;
-            const closingBankRaw = document.getElementById('cash-count-closing-bank').value;
-            const closingCash = closingCashRaw === '' ? expected.cash : parseFloat(closingCashRaw);
-            const closingBank = closingBankRaw === '' ? expected.bank : parseFloat(closingBankRaw);
-            if (isNaN(closingCash) || closingCash < 0 || isNaN(closingBank) || closingBank < 0) {
-                showNotification('Ingrese montos válidos para caja y cuenta', 'error');
-                return;
-            }
-            const modal = document.getElementById('cash-count-modal');
-            const targetDate = modal.dataset.cashCountDate || formatDateISO(appState.activeDate || new Date());
-
-            // Validación de seguridad: la fecha del modal debe coincidir con la fecha activa
-            const activeDate = formatDateISO(appState.activeDate || new Date());
-            if (targetDate !== activeDate) {
-                if (!(await showConfirmModal(`⚠️ La fecha del arqueo (${targetDate}) no coincide con la fecha activa (${activeDate}). ¿Guardar el cierre igual para ${targetDate}?`))) {
-                    return;
-                }
-            }
-            
-            const record = appState.cashCounts ? appState.cashCounts.find(c => c.date === targetDate) : null;
-            if (!record) {
-                showNotification('Primero debe registrar la apertura', 'error');
-                return;
-            }
-            const wasEdit = record.closingAmount !== null && record.closingAmount !== undefined;
-            
-            const expected = calculateCashExpected(targetDate);
-            record.closingCash = closingCash;
-            record.closingBank = closingBank;
-            record.closingAmount = closingCash + closingBank;
+        // Guarda lo esperado y la diferencia de un cierre, con su faltante y sus ajustes.
+        // Reemplaza lo que ese cierre ya tuviera; los saldos de Caja y Cuenta no se tocan acá.
+        function writeCloseResult(record, targetDate, expected) {
             record.expectedCash = expected.cash;
             record.expectedBank = expected.bank;
             record.expectedAmount = expected.total;
-            record.differenceCash = closingCash - expected.cash;
-            record.differenceBank = closingBank - expected.bank;
-            record.difference = (closingCash + closingBank) - expected.total;
-            record.notes = document.getElementById('cash-count-notes').value || '';
-            record.closingUser = appState.currentUser ? appState.currentUser.name : null;
-            record.timestamp = Date.now();
+            record.differenceCash = record.closingCash - expected.cash;
+            record.differenceBank = record.closingBank - expected.bank;
+            record.difference = record.closingAmount - expected.total;
 
-            // Si el cierre ya existía (edición), revertir sus efectos previos para no duplicarlos
             appState.expenses = (appState.expenses || []).filter(e => !(e.id && e.id.startsWith('EXP-SHORTAGE-') && e.date === targetDate));
             appState.capitalAdjustments = (appState.capitalAdjustments || []).filter(a => !(a.id && (a.id.startsWith('ADJ-SURPLUS-') || a.id.startsWith('ADJ-CLOSE-CASH-') || a.id.startsWith('ADJ-CLOSE-BANK-')) && a.date === targetDate));
 
-            // Ajustar saldos reales de caja y banco al monto contado (solo si es el día activo;
-            // para fechas pasadas los saldos se recalculan más abajo con los ajustes de cierre)
-            if (targetDate === activeDate) {
-                appState.cash = closingCash;
-                appState.bank = closingBank;
-            }
-            
             // Registrar sobrante o faltante en cashDifferences
             if (!appState.cashDifferences) appState.cashDifferences = [];
             // Eliminar registro previo del mismo día si existe
@@ -23780,7 +23846,7 @@
                     timestamp: Date.now()
                 });
             }
-            
+
             // Faltante → gasto real (reduce Ganancia). El sobrante NO se registra acá aparte --
             // ya queda capturado íntegro (y con el destino correcto, caja o cuenta) por los
             // ajustes ADJ-CLOSE-CASH/ADJ-CLOSE-BANK de abajo. Antes se guardaba también como
@@ -23819,12 +23885,62 @@
                     note: 'Ajuste por cierre de cuenta del ' + targetDate
                 });
             }
-            appState.balancesUpdatedAt = closeNow;
+        }
 
-            // Si se editó el cierre de una fecha distinta a la activa, recalcular los saldos
-            // actuales incluyendo los ajustes de cierre recién registrados
-            if (targetDate !== activeDate && typeof recalculateBalances === 'function') {
-                recalculateBalances();
+        async function saveCashClosing() {
+            const closingCashRaw = document.getElementById('cash-count-closing').value;
+            const closingBankRaw = document.getElementById('cash-count-closing-bank').value;
+            const closingCash = closingCashRaw === '' ? expected.cash : parseFloat(closingCashRaw);
+            const closingBank = closingBankRaw === '' ? expected.bank : parseFloat(closingBankRaw);
+            if (isNaN(closingCash) || closingCash < 0 || isNaN(closingBank) || closingBank < 0) {
+                showNotification('Ingrese montos válidos para caja y cuenta', 'error');
+                return;
+            }
+            const modal = document.getElementById('cash-count-modal');
+            const targetDate = modal.dataset.cashCountDate || formatDateISO(appState.activeDate || new Date());
+
+            // Validación de seguridad: la fecha del modal debe coincidir con la fecha activa
+            const activeDate = formatDateISO(appState.activeDate || new Date());
+            if (targetDate !== activeDate) {
+                if (!(await showConfirmModal(`⚠️ La fecha del arqueo (${targetDate}) no coincide con la fecha activa (${activeDate}). ¿Guardar el cierre igual para ${targetDate}?`))) {
+                    return;
+                }
+            }
+            
+            const record = appState.cashCounts ? appState.cashCounts.find(c => c.date === targetDate) : null;
+            if (!record) {
+                showNotification('Primero debe registrar la apertura', 'error');
+                return;
+            }
+            const wasEdit = record.closingAmount !== null && record.closingAmount !== undefined;
+            
+            const expected = calculateCashExpected(targetDate);
+            record.closingCash = closingCash;
+            record.closingBank = closingBank;
+            record.closingAmount = closingCash + closingBank;
+            record.notes = document.getElementById('cash-count-notes').value || '';
+            record.closingUser = appState.currentUser ? appState.currentUser.name : null;
+            record.timestamp = Date.now();
+
+            // Si el cierre ya existía (edición), revertir sus efectos previos para no duplicarlos
+            const previousAdjustment = getCloseAdjustment(targetDate);
+
+            // Ajustar saldos reales de caja y banco al monto contado (solo si es el día activo;
+            // para fechas pasadas los saldos se recalculan más abajo con los ajustes de cierre)
+            if (targetDate === activeDate) {
+                appState.cash = closingCash;
+                appState.bank = closingBank;
+            }
+            
+            writeCloseResult(record, targetDate, expected);
+            appState.balancesUpdatedAt = Date.now();
+
+            // Si se editó el cierre de una fecha distinta a la activa, aplicar a los saldos
+            // actuales solo lo que cambió el ajuste de ese cierre
+            if (targetDate !== activeDate) {
+                const adjustment = getCloseAdjustment(targetDate);
+                appState.cash += adjustment.cash - previousAdjustment.cash;
+                appState.bank += adjustment.bank - previousAdjustment.bank;
             }
             
             saveToLocalStorage();
@@ -29897,7 +30013,6 @@ Total de productos a comprar: ${shoppingList.length}
             if (endDate) filteredInvestments = filteredInvestments.filter(i => i.date <= endDate);
 
             // ===== KPIs =====
-            // Fiados sin cobrar no suman plata ni ganancia
             const revenueSales = filteredSales.filter(s => saleRevenueDate(s) !== null);
             const totalSales = revenueSales.reduce((sum, s) => sum + s.total, 0);
             const totalProfit = revenueSales.reduce((sum, s) => sum + s.profit, 0);
@@ -30016,7 +30131,6 @@ Total de productos a comprar: ${shoppingList.length}
         }
 
         function exportFinancialReport() {
-            // Fiados sin cobrar no suman plata ni ganancia
             const revenueSales = appState.sales.filter(s => saleRevenueDate(s) !== null);
             const totalSales = revenueSales.reduce((sum, s) => sum + s.total, 0);
             const totalProfit = revenueSales.reduce((sum, s) => sum + s.profit, 0);
@@ -35348,6 +35462,28 @@ RESULTADOS:
             <div class="flex gap-2 mt-5">
                 <button onclick="closeAssetPaymentModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
                 <button onclick="saveAssetPayment()" class="flex-1 bg-purple-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-purple-700">Registrar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="fiado-date-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4">
+            <h3 class="text-xl font-bold mb-1 text-green-700"><i class="fas fa-calendar-day"></i> Cambiar fecha de cobro</h3>
+            <p class="text-sm text-gray-500 mb-4" id="fiado-date-context">-</p>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Fecha del cobro</label>
+                    <input type="date" id="fiado-date-value" class="w-full border rounded-lg px-3 py-2 text-sm">
+                </div>
+                <label id="fiado-date-group-row" class="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" id="fiado-date-group">
+                    <span id="fiado-date-group-label">-</span>
+                </label>
+                <p class="text-[11px] text-gray-400">No mueve plata: cambia el día en que cuenta el cobro.</p>
+            </div>
+            <div class="flex gap-2 mt-5">
+                <button onclick="closeFiadoDateModal()" class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button>
+                <button onclick="saveFiadoDate()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-green-700">Guardar</button>
             </div>
         </div>
     </div>

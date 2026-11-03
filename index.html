@@ -14686,23 +14686,6 @@
             }
         }
 
-        // Calcular días hasta la próxima compra posible según buyDays del proveedor (solo días abiertos)
-        function getDaysUntilNextBuy(product) {
-            const buyDays = getSupplierBuyDays(product);
-            if (!buyDays || buyDays.length === 0) return null;
-
-            const today = new Date();
-            const todayDayOfWeek = today.getDay();
-
-            for (let i = 0; i <= 14; i++) {
-                const checkDay = (todayDayOfWeek + i) % 7;
-                if (isOpenDay(checkDay) && buyDays.includes(checkDay)) {
-                    return i; // 0 = hoy, 1 = mañana, etc.
-                }
-            }
-            return null;
-        }
-
         // Calcular días de stock restantes según demanda
         function getDaysOfStock(product, avgDailyDemand) {
             const totalStock = getProductStock(product);
@@ -14728,9 +14711,12 @@
                 const totalStock = getProductStock(p);
                 const stats = calculateProductStats(p.id);
                 const avgDaily = stats ? stats.avgDaily : 0;
-                const daysUntilBuy = getDaysUntilNextBuy(p);
+                // Días abiertos hasta que llega el próximo pedido de este proveedor
+                const arrival = getSupplierArrival(p);
+                const daysUntilBuy = arrival ? arrival.daysToArrival : null;
                 const daysOfStock = getDaysOfStock(p, avgDaily);
                 const targetDays = appState.stockTargetDays || 7;
+                const coverDays = targetDays + (arrival && arrival.leadDays > 0 ? arrival.daysToArrival : 0);
                 const bufferDays = Math.ceil(targetDays / 2);
                 
                 const requiredDays = (daysUntilBuy !== null ? daysUntilBuy : 0) + targetDays;
@@ -14762,10 +14748,10 @@
                 
                 let toBuy = 0;
                 if (priority && priority.includes('🔴')) {
-                    toBuy = Math.max(0, Math.ceil(avgDaily * targetDays) - totalStock);
-                    if (toBuy === 0 && totalStock === 0) toBuy = Math.max(2, Math.ceil(avgDaily * targetDays) || 5);
+                    toBuy = Math.max(0, Math.ceil(avgDaily * coverDays) - totalStock);
+                    if (toBuy === 0 && totalStock === 0) toBuy = Math.max(2, Math.ceil(avgDaily * coverDays) || 5);
                 } else if (priority && priority.includes('🟠')) {
-                    toBuy = Math.max(0, Math.ceil(avgDaily * targetDays) - totalStock);
+                    toBuy = Math.max(0, Math.ceil(avgDaily * coverDays) - totalStock);
                 }
                 
                 if (p.saleByWeight && toBuy > 0 && toBuy < 1) {
@@ -27107,11 +27093,20 @@
                 // termina en 5 igual). El campo manual sigue funcionando para las alertas de
                 // "Stock Bajo" en otras pantallas, pero la Lista de Compras usa solo lo calculado.
                 const spikeMargin = avgDaily > 0 ? Math.max(1, Math.ceil(avgDaily)) : 1;
-                const minStock = Math.ceil(avgPeriodDemand) + spikeMargin;
+                // Si el proveedor tarda en llegar, el stock que importa es el de ese día: lo que
+                // se venda hasta entonces sale del stock actual, y lo que se pide tiene que
+                // alcanzar para el período elegido contando desde que llega. Nunca se resta más
+                // de lo que hay, porque lo que no se pudo vender no vuelve.
+                const arrival = getSupplierArrival(product);
+                const leadWaitDays = arrival && arrival.leadDays > 0 ? arrival.daysToArrival : 0;
+                const coverDemand = avgPeriodDemand + avgDaily * (arrival ? arrival.extraCoverDays : 0);
+                const targetStock = Math.ceil(coverDemand) + spikeMargin;
+                const minStock = Math.ceil(targetStock + avgDaily * leadWaitDays);
+                const stockOnArrival = Math.max(0, currentStock - avgDaily * leadWaitDays);
 
-                const targetStock = minStock;
-                let suggestedQty = Math.max(0, targetStock - currentStock);
-                
+                let suggestedQty = Math.max(0, targetStock - stockOnArrival);
+                if (leadWaitDays > 0) suggestedQty = Math.ceil(suggestedQty - 1e-9);
+
                 // Para productos por peso, sugerir compra en bolsas enteras
                 if (product.saleByWeight && suggestedQty > 0 && suggestedQty < 1) {
                     suggestedQty = 1;
@@ -27180,10 +27175,9 @@
                 // Productos sin historial de ventas pero por debajo del stock mínimo
                 else if (avgDaily === 0 && currentStock < minStock) priority = 'MEDIA';
                 
-                // Si el próximo día de compra es después de que se agote el stock, aumentar prioridad
-                if (daysUntilBuy !== null && daysUntilStockout < daysUntilBuy) {
-                    priority = 'CRÍTICO';
-                }
+                // Si el pedido llega después de que se agote el stock, aumentar prioridad
+                const runsOutBeforeArrival = !!arrival && daysUntilStockout < arrival.daysToArrival;
+                if (runsOutBeforeArrival) priority = 'CRÍTICO';
                 
                 const supplierName = getSupplierName(product);
                 const supplierObj = getSupplierByName(product.supplier);
@@ -27201,6 +27195,8 @@
                     nextBuyDay: nextBuyDay,
                     daysUntilBuy: daysUntilBuy,
                     buyDayName: nextBuyDay !== null ? getDayName(nextBuyDay) : 'Sin definir',
+                    arrivalDayName: arrival && arrival.leadDays > 0 ? getDayName(arrival.arrivalDow) : null,
+                    runsOutBeforeArrival: runsOutBeforeArrival,
                     optimalExpiryDays: optimalExpiryDays,
                     optimalExpiryDate: formatDateISO(optimalExpiryDate),
                     shelfLifeInfo: shelfLifeInfo,
@@ -27612,7 +27608,8 @@
                         <tr class="hover:bg-gray-50 border-l-4 ${item.priority === 'CRÍTICO' ? 'border-red-500' : item.priority === 'ALTA' ? 'border-orange-500' : item.priority === 'MEDIA' ? 'border-yellow-500' : 'border-green-500'}">
                             <td class="px-4 py-3 cell-notes">
                                 <div class="font-medium text-gray-900">${item.product.name}</div>
-                                ${item.nextBuyDay !== null ? `<div class="text-xs text-gray-500">Próx.compra: ${item.buyDayName}</div>` : ''}
+                                ${item.nextBuyDay !== null || item.arrivalDayName ? `<div class="text-xs text-gray-500">${item.nextBuyDay !== null ? `Próx.compra: ${item.buyDayName}` : 'Pidiendo hoy'}${item.arrivalDayName ? ` · llega ${item.arrivalDayName}` : ''}</div>` : ''}
+                                ${item.runsOutBeforeArrival && item.currentStock > 0 ? '<div class="text-xs text-red-600 font-bold">⚠️ Se queda sin stock antes de que llegue</div>' : ''}
                             </td>
                             <td class="px-4 py-3 text-center">
                                 <span class="${item.currentStock === 0 ? 'text-red-600 font-bold' : 'text-gray-600'}">${stockDisplay}</span>
@@ -27948,6 +27945,7 @@ Total de productos a comprar: ${shoppingList.length}
                     text += `   ├── Mínimo recomendado (según venta + margen por pico): ${item.minStock}u\n`;
                     text += `   ├── Promedio diario: ${fmtNumber(item.avgDaily, 2)} unidades/día\n`;
                     text += `   ├── Días de stock restantes: ${item.daysUntilStockout}\n`;
+                    if (item.arrivalDayName) text += `   ├── Llega: ${item.arrivalDayName}${item.runsOutBeforeArrival ? ' (se queda sin stock antes)' : ''}\n`;
                     text += `   ├── Demanda/semana: ${fmtNumber(item.weeklyDemand, 1)}\n`;
                     if (item.weeklyPeak > 0 || item.weeklyAvgHistorical > 0) {
                         text += `   ├── Histórico semanal: pico ${fmtNumber(item.weeklyPeak, 0)}u · promedio ${fmtNumber(item.weeklyAvgHistorical, 1)}u\n`;
@@ -29694,6 +29692,41 @@ Total de productos a comprar: ${shoppingList.length}
             showNotification('💾 Backup descargado. Ahora puedes reiniciar con seguridad.', 'success');
         }
 
+        // <proveedores-puro> Funciones puras: sin appState ni DOM (las usa tests/proveedores.test.js)
+        // Cuándo llega lo que se pide en el próximo día de pedido, contando desde hoy.
+        // daysToArrival = días abiertos que hay que vender con el stock actual hasta que llega.
+        // extraCoverDays = días que faltan cubrir si la entrega siguiente llega más tarde que
+        // los días de stock objetivo (ej: se pide solo los lunes y el objetivo son 3 días).
+        function computeSupplierArrival({ todayDow, buyDays, leadDays, targetDays, isOpen }) {
+            const dow = i => (todayDow + i) % 7;
+            const openDaysBetween = (from, to) => {
+                let count = 0;
+                for (let i = from; i < to; i++) if (isOpen(dow(i))) count++;
+                return count;
+            };
+            const nextOrder = from => {
+                for (let i = from; i < from + 14; i++) if (isOpen(dow(i)) && buyDays.includes(dow(i))) return i;
+                return null;
+            };
+            // Si cae un día cerrado, recién se recibe el siguiente día abierto
+            const arrivalOf = order => {
+                let i = order + leadDays;
+                for (let guard = 0; guard < 7 && !isOpen(dow(i)); guard++) i++;
+                return i;
+            };
+            const orderIn = nextOrder(0) ?? 0;
+            const arrivalIn = arrivalOf(orderIn);
+            const nextOrderIn = nextOrder(orderIn + 1);
+            const cycleDays = nextOrderIn !== null ? openDaysBetween(arrivalIn, arrivalOf(nextOrderIn)) : 0;
+            return {
+                leadDays,
+                arrivalDow: dow(arrivalIn),
+                daysToArrival: openDaysBetween(0, arrivalIn),
+                extraCoverDays: leadDays > 0 ? Math.max(0, cycleDays - targetDays) : 0
+            };
+        }
+        // </proveedores-puro>
+
         // ==================== PROVEEDORES Y HORARIOS ====================
         function getSupplierByName(name) {
             if (!name) return null;
@@ -29793,7 +29826,8 @@ Total de productos a comprar: ${shoppingList.length}
                 phone: phone,
                 type: type,
                 categories: [],
-                buyDays: []
+                buyDays: [],
+                leadDays: 0
             });
             if (nameInput) nameInput.value = '';
             if (phoneInput) phoneInput.value = '';
@@ -29839,6 +29873,30 @@ Total de productos a comprar: ${shoppingList.length}
             return Array.isArray(product.buyDays) ? product.buyDays : [];
         }
 
+        // null = el producto no tiene días de pedido ni demora cargados
+        function getSupplierArrival(product) {
+            const supplier = getSupplierByName(product.supplier);
+            const leadDays = supplier ? (parseInt(supplier.leadDays) || 0) : 0;
+            const buyDays = getSupplierBuyDays(product);
+            if (buyDays.length === 0 && leadDays === 0) return null;
+            return computeSupplierArrival({
+                todayDow: new Date().getDay(),
+                buyDays,
+                leadDays,
+                targetDays: appState.stockTargetDays || 7,
+                isOpen: isOpenDay
+            });
+        }
+
+        // Días que tarda en llegar el pedido (0 = llega en el día)
+        function setSupplierLeadDays(supplierId, value) {
+            const supplier = (appState.suppliers || []).find(s => s.id === supplierId);
+            if (!supplier) return;
+            supplier.leadDays = Math.max(0, parseInt(value) || 0);
+            saveToLocalStorage();
+            renderSuppliersList();
+        }
+
         async function deleteSupplier(supplierId) {
             if (!(await showConfirmModal('¿Eliminar este proveedor? Los productos asociados mantendrán el nombre pero no se vincularán más.'))) return;
             appState.suppliers = (appState.suppliers || []).filter(s => s.id !== supplierId);
@@ -29870,8 +29928,13 @@ Total de productos a comprar: ${shoppingList.length}
                         ${s.phone ? `<p class="text-xs text-gray-500"><i class="fab fa-whatsapp text-green-600"></i> ${escapeHtml(s.phone)}</p>` : ''}
                         ${s.categories && s.categories.length > 0 ? `<p class="text-xs text-gray-500">Categorías: ${s.categories.map(c => `<span class="inline-block bg-white rounded px-1.5 py-0.5 border border-gray-200 ml-1">${escapeHtml(c)}</span>`).join('')}</p>` : ''}
                         <div class="flex items-center gap-1 mt-1">
-                            <span class="text-[10px] text-gray-400 mr-1">📅 Días que pasa:</span>
+                            <span class="text-[10px] text-gray-400 mr-1">📅 Días que le pedís:</span>
                             ${dayButtons}
+                        </div>
+                        <div class="flex items-center gap-1 mt-1">
+                            <span class="text-[10px] text-gray-400 mr-1">🚚 Tarda en llegar:</span>
+                            <input type="number" min="0" max="30" step="1" value="${parseInt(s.leadDays) || 0}" onchange="setSupplierLeadDays('${s.id}', this.value)" class="w-12 text-xs border border-gray-300 rounded px-1 py-0.5 text-center">
+                            <span class="text-[10px] text-gray-400">días</span>
                         </div>
                     </div>
                     <div class="flex items-center gap-2">

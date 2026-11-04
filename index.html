@@ -2007,6 +2007,7 @@
                             </button>
                         </div>
                     </div>
+                    <div id="inv-pay-summary" class="lg:col-span-4 hidden rounded-lg border-2 px-4 py-2"></div>
                     <div class="lg:col-span-4 flex items-end">
                         <button type="submit" tabindex="0" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold shadow">
                             <i class="fas fa-check"></i> Confirmar Compra
@@ -13295,6 +13296,7 @@
                 pendingComponents = [];
                 renderInvComponentsList();
             }
+            updateInvPaySummary();
         }
 
         function addInvComponent() {
@@ -13638,7 +13640,7 @@
             const pack = document.getElementById('inv-pack-section');
             if (cell) cell.classList.toggle('hidden', weight); // por peso el "Costo" ya es el total
             if (pack) pack.classList.toggle('hidden', weight);
-            if (weight) return;
+            if (weight) { updateInvPaySummary(); return; }
             const units = invNum('inv-stock');
             const costInput = document.getElementById('inv-cost');
             const totalInput = document.getElementById('inv-total-cost');
@@ -13662,6 +13664,39 @@
                 if (totalInput && document.activeElement !== totalInput) totalInput.value = total > 0 ? total : '';
                 if (hint) hint.textContent = total > 0 ? 'Costo de la compra: $' + formatMoney(total) : 'Escribí el total y calcula el costo por unidad (o al revés)';
             }
+            updateInvPaySummary();
+        }
+
+        // Cartel arriba de "Confirmar Compra" con la plata que va a salir, con la misma
+        // cuenta que preparePurchase (por peso el costo escrito ya es el total).
+        function updateInvPaySummary() {
+            const box = document.getElementById('inv-pay-summary');
+            if (!box) return;
+            if (document.getElementById('inv-is-composite')?.checked) {
+                box.className = 'lg:col-span-4 rounded-lg border-2 px-4 py-2 border-orange-200 bg-orange-50 text-sm text-orange-800';
+                box.textContent = '📋 Es una preparación: no se paga nada (usa productos que ya tenés).';
+                return;
+            }
+            const cost = invNum('inv-cost');
+            const stock = invNum('inv-stock');
+            const weight = invIsWeight();
+            const total = weight ? cost : Math.round(cost * stock * 100) / 100;
+            if (!(total > 0)) {
+                box.className = 'lg:col-span-4 hidden rounded-lg border-2 px-4 py-2';
+                return;
+            }
+            const method = appState.pendingPurchasePayment || 'cash';
+            const balance = parseFloat(method === 'cash' ? appState.cash : appState.bank) || 0;
+            const detail = weight
+                ? (stock > 0 ? fmtNumber(stock, 0) + ' g' + (cost > 0 ? ' · $' + formatMoney(cost / stock * 1000) + ' el kilo' : '') : 'faltan los gramos')
+                : fmtNumber(stock, 0) + ' unid. × $' + formatMoney(cost);
+            const after = balance - total;
+            box.className = 'lg:col-span-4 rounded-lg border-2 px-4 py-2 flex flex-wrap items-center justify-between gap-2 ' + (after < 0 ? 'border-red-300 bg-red-50' : 'border-green-300 bg-green-50');
+            box.innerHTML = '<div><p class="text-xs text-gray-600">💸 Vas a pagar</p>'
+                + '<p class="text-2xl font-black text-gray-900">$' + formatMoney(total) + '</p>'
+                + '<p class="text-xs text-gray-500">' + detail + '</p></div>'
+                + '<div class="text-right text-sm"><p class="text-gray-600">Sale de ' + (method === 'cash' ? '💵 Caja' : '🏦 Cuenta') + '</p>'
+                + '<p class="font-bold ' + (after < 0 ? 'text-red-700' : 'text-gray-800') + '">Queda: $' + formatMoney(after) + '</p></div>';
         }
         function handleInvCostKeydown(event) {
     if (event.key === 'Enter') {
@@ -13992,6 +14027,7 @@
             const bankEl = document.getElementById('inv-pay-bank-available');
             if (cashEl) cashEl.textContent = formatMoney(appState.cash || 0);
             if (bankEl) bankEl.textContent = formatMoney(appState.bank || 0);
+            updateInvPaySummary();
         }
 
         function closePurchaseModal() {
@@ -26646,6 +26682,8 @@
         // ==================== PREDICTIONS ====================
         // Cache para estadísticas de productos
         const statsCache = new Map();
+        // Días hacia atrás que se miran para el promedio de venta (lista de compras, días de stock)
+        const DEMAND_WINDOW_DAYS = 30;
 
         // ===== Helpers de días/horarios de apertura =====
         function getBusinessHoursConfig(dayIndex) {
@@ -26726,26 +26764,33 @@
                 return defaultResult;
             }
 
-            const totalQty = productSales.reduce((sum, s) => {
+            const qtyOf = (sales) => sales.reduce((sum, s) => {
                 const item = s.items.find(i => i.productId === productId);
                 return sum + (item ? item.quantity : 0);
             }, 0);
+            const totalQty = qtyOf(productSales);
 
             const saleDates = [...new Set(productSales.map(s => s.date))].sort();
-            // Promedio diario sobre días abiertos transcurridos (primer venta -> hoy)
-            const firstSaleDateStr = saleDates[0];
+            // Los promedios salen solo de las ventas del último mes (DEMAND_WINDOW_DAYS): el
+            // primer mes, en el local chico, se vendía menos y bajaba el promedio. Si el
+            // producto empezó a venderse hace menos, se cuenta desde su primera venta.
             const todayStr = formatDateISO(new Date());
+            const windowStartDate = new Date(todayStr + 'T00:00:00');
+            windowStartDate.setDate(windowStartDate.getDate() - DEMAND_WINDOW_DAYS);
+            const windowStartStr = formatDateISO(windowStartDate);
+            const windowSales = productSales.filter(s => s.date && s.date >= windowStartStr);
+            const firstSaleDateStr = saleDates[0] > windowStartStr ? saleDates[0] : windowStartStr;
             const endDateForAvgStr = saleDates[saleDates.length - 1] > todayStr ? saleDates[saleDates.length - 1] : todayStr;
             const firstSaleDate = new Date(firstSaleDateStr + 'T00:00:00');
             const endDateForAvg = new Date(endDateForAvgStr + 'T00:00:00');
             const openDaysBetween = countOpenDaysBetween(firstSaleDate, endDateForAvg);
-            const avgDaily = openDaysBetween > 0 ? totalQty / openDaysBetween : 0;
-            
+            const avgDaily = openDaysBetween > 0 ? qtyOf(windowSales) / openDaysBetween : 0;
+
             // Análisis por día de la semana (0=Domingo, 6=Sábado) - solo días abiertos con ventas
             const dayOfWeekStats = [0, 0, 0, 0, 0, 0, 0];
             const dayOfWeekOpenCounts = [0, 0, 0, 0, 0, 0, 0]; // días abiertos de ese día de semana con venta
-            
-            productSales.forEach(sale => {
+
+            windowSales.forEach(sale => {
                 if (!sale.date) return;
                 const date = new Date(sale.date + 'T00:00:00'); // Forzar hora local
                 const dayOfWeek = date.getDay();
@@ -26796,7 +26841,7 @@
             
             // Calcular demanda promedio por período (basado en stockTargetDays)
             const periodDays = appState.stockTargetDays || 7;
-            const periodDemand = calculatePeriodDemand(productId, productSales, periodDays);
+            const periodDemand = calculatePeriodDemand(productId, windowSales, periodDays, firstSaleDate);
             result.avgPeriodDemand = periodDemand.avg;
             result.periodDays = periodDays;
             result.periodTotals = periodDemand.periods;
@@ -26809,7 +26854,9 @@
         // Si en un período hubo un quiebre de stock (llegó a 0) antes de que terminara,
         // Calcular demanda promedio por períodos completos de N días.
         // Ej: si periodDays = 7, agrupa ventas por semana y devuelve el promedio semanal.
-        function calculatePeriodDemand(productId, productSales, periodDays = 7) {
+        // Con startDate (ventana del último mes) el promedio es venta por día abierto × N, así el
+        // período que va por la mitad no cuenta como uno entero con pocas ventas.
+        function calculatePeriodDemand(productId, productSales, periodDays = 7, startDate = null) {
             if (!productSales || productSales.length === 0) {
                 return { periods: [], avg: 0 };
             }
@@ -26820,7 +26867,7 @@
                 return dateA - dateB;
             });
 
-            const firstSaleDate = new Date(sortedSales[0].date + 'T00:00:00');
+            const firstSaleDate = new Date(startDate || (sortedSales[0].date + 'T00:00:00'));
             firstSaleDate.setHours(0, 0, 0, 0);
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -26860,7 +26907,8 @@
                 }
             });
 
-            const avg = periodTotals.reduce((sum, qty) => sum + qty, 0) / numPeriods;
+            const totalQty = periodTotals.reduce((sum, qty) => sum + qty, 0);
+            const avg = startDate ? totalQty / totalOpenDays * periodDays : totalQty / numPeriods;
             return { periods: periodTotals, avg: avg };
         }
 

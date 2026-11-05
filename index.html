@@ -2030,6 +2030,7 @@
                 </div>
                 <div id="shopping-list-content" class="hidden">
                     <div class="px-6 pb-6">
+                        <div id="shopping-budget-summary" class="hidden"></div>
                         <div class="overflow-x-auto">
                             <table class="w-full">
                                 <thead class="bg-purple-50">
@@ -2038,7 +2039,7 @@
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Stock Actual</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Stock Mínimo</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Comprar</th>
-                                        <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Prom/Día</th>
+                                        <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase" title="Venta por día contando solo los días en que hubo stock">Venta/día con stock</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase" title="Referencia histórica por semana, para productos de poca venta donde igual querés mantener un mínimo">Pico/Prom Semanal</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Días Stock</th>
                                         <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Prioridad</th>
@@ -9817,6 +9818,47 @@
                 probableDays: days.filter(d => d.probable).length
             };
         }
+
+        // Venta diaria de un producto contando solo los días abiertos en que tuvo stock (para la
+        // lista de compras). Sale del libro de stock, así que incluye lo que se usa como
+        // ingrediente de los compuestos (las salchichas de los panchos), que en las ventas no
+        // figura con el id del producto. Día sin stock: arrancó en 0, no entró nada y no vendió.
+        // Devuelve null si el producto no tiene movimientos (se usa el promedio de ventas).
+        function computeStockDayDemand({ movements, from, to, isOpenDow }) {
+            const moves = movements.slice().sort((a, b) => a.timestamp - b.timestamp);
+            if (!moves.length) return null;
+            let days = rotationDaysBetween(from, to);
+            let stock = null;
+            const byDay = new Map();
+            moves.forEach(m => {
+                const date = rotationDayOf(m.timestamp);
+                if (date < from) { stock = m.stockAfter; return; }
+                if (date > to) return;
+                if (!byDay.has(date)) byDay.set(date, []);
+                byDay.get(date).push(m);
+            });
+            if (stock === null) {
+                // Producto nuevo: cuenta desde su primer movimiento, antes no existía
+                const firstDay = rotationDayOf(moves[0].timestamp);
+                days = days.filter(d => d >= firstDay);
+                stock = moves[0].stockAfter - moves[0].delta;
+            }
+            let sold = 0, stockDays = 0, daysOut = 0;
+            days.forEach(date => {
+                let hadStock = stock > 0, daySold = 0;
+                (byDay.get(date) || []).forEach(m => {
+                    if (SOLD_REASONS.has(m.reason)) daySold -= m.delta;
+                    stock = m.stockAfter;
+                    if (stock > 0) hadStock = true;
+                });
+                if (daySold > 0) hadStock = true;
+                sold += daySold;
+                const [y, mo, d] = date.split('-').map(Number);
+                if (!isOpenDow(new Date(y, mo - 1, d).getDay()) && daySold <= 0) return;
+                if (hadStock) stockDays++; else daysOut++;
+            });
+            return { sold, stockDays, daysOut, demandDaily: stockDays > 0 ? Math.max(0, sold) / stockDays : 0 };
+        }
         // </rotacion-puro>
 
         function getRotationSettings() {
@@ -9856,17 +9898,28 @@
         }
 
         // Se recalcula cada 10 minutos: la lista de compras se arma en cada venta
-        let recentRotationCache = { at: 0, rows: new Map() };
-        function getRecentRotationRow(productId) {
-            if (Date.now() - recentRotationCache.at > 10 * 60 * 1000) {
-                const now = new Date();
-                const from = formatDateISO(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29));
-                recentRotationCache = { at: Date.now(), rows: new Map(getRotationReport(from, formatDateISO(now)).map(r => [r.productId, r])) };
-            }
-            const row = recentRotationCache.rows.get(productId) || null;
-            return row && !rotationReviewReason(row) ? row : null;
-        }
 
+        // Venta por día con stock de los últimos DEMAND_WINDOW_DAYS, por producto (null = sin libro)
+        let stockDayDemandCache = { key: '', byProduct: new Map() };
+        function getStockDayDemand(productId) {
+            const ledger = appState.stockLedger || [];
+            const now = new Date();
+            const to = formatDateISO(now);
+            const key = to + '|' + ledger.length + '|' + (ledger.length ? ledger[ledger.length - 1].timestamp : 0);
+            if (stockDayDemandCache.key !== key) {
+                const from = formatDateISO(new Date(now.getFullYear(), now.getMonth(), now.getDate() - DEMAND_WINDOW_DAYS));
+                const moves = new Map();
+                ledger.forEach(m => {
+                    if (!m || !m.productId) return;
+                    if (!moves.has(m.productId)) moves.set(m.productId, []);
+                    moves.get(m.productId).push(m);
+                });
+                const byProduct = new Map();
+                moves.forEach((list, id) => byProduct.set(id, computeStockDayDemand({ movements: list, from, to, isOpenDow: isOpenDay })));
+                stockDayDemandCache = { key, byProduct };
+            }
+            return stockDayDemandCache.byProduct.get(productId) || null;
+        }
         const STOCK_HISTORY_START = '2026-05-16';
 
         function getStockHistoryContext() {
@@ -27210,6 +27263,9 @@
             };
         }
 
+        // Desde cuántos días agotado (en DEMAND_WINDOW_DAYS) la lista suma el margen de seguridad de
+        // Rotación. Con 1 se mantiene lo que hacía antes (cualquier quiebre del último mes lo sumaba).
+        const STOCKOUT_SAFETY_MIN_DAYS = 1;
         function generateShoppingList() {
             const list = [];
             const today = new Date();
@@ -27226,13 +27282,18 @@
                 const prediction = predictDemand(product.id, targetDays);
                 if (!prediction || !prediction.stats) return;
                 
-                // Demanda promedio por período (sobre días abiertos)
+                // Demanda promedio por período (sobre días abiertos). Manda la venta de los días con
+                // stock del libro (un día sin stock no es un día sin demanda, e incluye lo usado como
+                // ingrediente); el promedio de ventas queda de piso para productos sin libro.
                 let avgPeriodDemand = prediction.stats.avgPeriodDemand || 0;
-                // Si se quedó sin stock en los últimos 30 días, el promedio histórico viene bajo:
-                // manda la demanda real de Rotación (solo días con stock), con su margen de seguridad.
-                const rotationRow = getRecentRotationRow(product.id);
-                if (rotationRow && rotationRow.daysOut > 0) {
-                    avgPeriodDemand = Math.max(avgPeriodDemand, rotationRow.demandDaily * targetDays * (1 + getRotationSettings().safetyPct / 100));
+                const stockDemand = getStockDayDemand(product.id);
+                const daysOut = stockDemand ? stockDemand.daysOut : 0;
+                let stockoutSafetyPct = 0;
+                if (stockDemand) {
+                    // Varios días agotado: la venta con stock también viene recortada (se agotó en
+                    // el medio del día, la gente dejó de pedirlo), así que se le suma el margen de Rotación.
+                    if (daysOut >= STOCKOUT_SAFETY_MIN_DAYS) stockoutSafetyPct = getRotationSettings().safetyPct;
+                    avgPeriodDemand = Math.max(avgPeriodDemand, stockDemand.demandDaily * targetDays * (1 + stockoutSafetyPct / 100));
                 }
                 // Demanda diaria real (por día abierto) para calcular días hasta agotarse
                 const avgDaily = targetDays > 0 ? (avgPeriodDemand / targetDays) : (prediction.stats.avgDaily || 0);
@@ -27358,6 +27419,9 @@
                     priority: priority,
                     trend: prediction.stats.trend || 0,
                     avgDaily: avgDaily,
+                    daysOut: daysOut,
+                    stockoutSafetyPct: stockoutSafetyPct,
+                    salesPerStockDay: avgDaily / (1 + stockoutSafetyPct / 100),
                     supplier: supplierName,
                     supplierObj: supplierObj
                 });
@@ -27713,6 +27777,8 @@
             
             // Generar y renderizar lista de compras (agrupada por proveedor)
             const shoppingList = generateShoppingList();
+            const shoppingBudget = shoppingList.length ? applyShoppingBudget(shoppingList) : null;
+            renderShoppingBudgetSummary(shoppingBudget);
             const shoppingContainer = document.getElementById('auto-shopping-list');
             if (shoppingContainer) {
                 if (shoppingList.length === 0) {
@@ -27739,7 +27805,7 @@
                     
                     function renderItemRow(item) {
                         const minStock = item.minStock;
-                        const avgDailyDisplay = item.avgDaily > 0 ? fmtNumber(item.avgDaily, 2) : '-';
+                        const avgDailyDisplay = item.salesPerStockDay > 0 ? fmtNumber(item.salesPerStockDay, 2) : '-';
                         const stockDisplay = item.product.saleByWeight && item.product.weightPerUnit ? Math.round(item.currentStock * item.product.weightPerUnit) + 'g' : item.currentStock;
                         const buyDisplay = item.product.saleByWeight && item.product.weightPerUnit ? Math.round(item.suggestedQty * item.product.weightPerUnit) + 'g' : item.suggestedQty + ' u.';
                         const sli = item.shelfLifeInfo;
@@ -27773,11 +27839,19 @@
                                 <span class="text-gray-500">${minStock}</span>
                             </td>
                             <td class="px-4 py-3 text-center cell-notes">
-                                <span class="font-bold text-blue-600">${buyDisplay}</span>
+                                <span class="font-bold ${item.budgetQty !== undefined && item.budgetQty < item.suggestedQty ? 'text-gray-400 line-through' : 'text-blue-600'}">${buyDisplay}</span>
+                                ${item.budgetQty !== undefined && item.budgetQty < item.suggestedQty
+                                    ? (item.budgetQty > 0
+                                        ? `<div class="text-xs font-bold text-orange-700">Con la plata de hoy: ${item.product.saleByWeight && item.product.weightPerUnit ? Math.round(item.budgetQty * item.product.weightPerUnit) + 'g' : item.budgetQty + ' u.'}</div>`
+                                        : '<div class="text-xs font-bold text-gray-500">⏸ Esperar</div>')
+                                    : ''}
+                                ${item.unitCost > 0 ? `<div class="text-[11px] text-gray-500">$${formatMoney(Math.min(item.budgetQty ?? item.suggestedQty, item.suggestedQty) * item.unitCost)}</div>` : ''}
                                 ${shelfLifeNote}
                             </td>
-                            <td class="px-4 py-3 text-center">
+                            <td class="px-4 py-3 text-center cell-notes">
                                 <span class="text-sm text-gray-600">${avgDailyDisplay}</span>
+                                ${item.daysOut > 0 ? `<div class="text-[11px] ${item.stockoutSafetyPct > 0 ? 'text-red-600 font-bold' : 'text-gray-500'}">Sin stock: ${item.daysOut} día${item.daysOut === 1 ? '' : 's'}</div>` : ''}
+                                ${item.stockoutSafetyPct > 0 ? `<div class="text-[11px] text-red-600">Se agotó ${item.daysOut} día${item.daysOut === 1 ? '' : 's'}, demanda posiblemente mayor (+${item.stockoutSafetyPct}%)</div>` : ''}
                             </td>
                             <td class="px-4 py-3 text-center cell-notes">
                                 ${item.weeklyPeak > 0 || item.weeklyAvgHistorical > 0
@@ -28044,6 +28118,50 @@
             renderTopProductsAnalysis();
         }
 
+        // Le pone a cada producto de la lista cuánto comprar con la plata de "Podés gastar o
+        // invertir hoy" (Flujo de caja): item.budgetQty y item.unitCost. Devuelve el resumen.
+        const SHOPPING_PRIORITY_RANK = { 'CRÍTICO': 0, 'ALTA': 1, 'MEDIA': 2, 'BAJA': 3 };
+        function applyShoppingBudget(shoppingList) {
+            let available = null;
+            try { available = calculateAvailableToSpend().available; } catch (e) { return null; }
+            const items = shoppingList.map((item, i) => {
+                item.unitCost = Math.max(0, parseFloat(item.product.cost) || 0);
+                return {
+                    key: i, qty: item.suggestedQty, unitCost: item.unitCost, avgDaily: item.avgDaily || 0,
+                    currentStock: item.currentStock || 0, priorityRank: SHOPPING_PRIORITY_RANK[item.priority] ?? 3,
+                    daysUntilStockout: item.daysUntilStockout, unitMargin: Math.max(0, (parseFloat(item.product.salePrice) || 0) - item.unitCost)
+                };
+            });
+            const result = allocateShoppingBudget(items, available);
+            shoppingList.forEach((item, i) => { item.budgetQty = result.qty.get(i); });
+            return {
+                ...result,
+                noCost: shoppingList.filter(i => !(i.unitCost > 0)).length,
+                fullCount: shoppingList.filter(i => i.budgetQty >= i.suggestedQty).length,
+                waitCount: shoppingList.filter(i => !(i.budgetQty > 0)).length,
+                count: shoppingList.length
+            };
+        }
+
+        function renderShoppingBudgetSummary(budget) {
+            const box = document.getElementById('shopping-budget-summary');
+            if (!box) return;
+            if (!budget) { box.className = 'hidden'; return; }
+            const fits = budget.total <= budget.budget;
+            box.className = 'mb-4 rounded-xl border-2 p-3 text-sm ' + (fits ? 'border-green-200 bg-green-50' : 'border-orange-300 bg-orange-50');
+            const head = '<div class="flex flex-wrap gap-x-6 gap-y-1">'
+                + '<span>💡 Podés gastar hoy (Flujo de caja): <b>$' + formatMoney(Math.max(0, budget.budget)) + '</b></span>'
+                + '<span>🛒 Lista completa: <b>$' + formatMoney(budget.total) + '</b></span></div>';
+            box.innerHTML = head + (fits
+                ? '<p class="mt-1 text-green-700 font-medium">Te alcanza para comprar todo lo sugerido.</p>'
+                : (budget.budget <= 0
+                    ? '<p class="mt-1 text-red-700 font-bold">Según Flujo de caja hoy no hay plata libre: todo queda en "Esperar". Mirá Flujo de caja antes de comprar.</p>'
+                    : '<p class="mt-1 text-orange-800 font-medium">No alcanza para todo: con $' + formatMoney(budget.spent) + ' cubrís primero lo más urgente ('
+                        + (budget.count - budget.waitCount) + ' de ' + budget.count + ' productos, ' + budget.fullCount + ' completos). '
+                        + 'En "Comprar" está lo que conviene comprar hoy; lo que dice "Esperar" va cuando entre plata.</p>'))
+                + (budget.noCost ? '<p class="mt-1 text-xs text-gray-500">' + budget.noCost + ' producto' + (budget.noCost === 1 ? '' : 's') + ' sin costo cargado: no se cuentan en el total.</p>' : '');
+        }
+
         function exportShoppingList() {
             const shoppingList = generateShoppingList();
             
@@ -28051,6 +28169,7 @@
                 showNotification('No hay productos para comprar', 'info');
                 return;
             }
+            const budget = applyShoppingBudget(shoppingList);
 
             const today = new Date();
             const dateStr = today.toLocaleDateString('es-ES');
@@ -28077,7 +28196,9 @@
 ════════════════════════════════════════════════════════════════════════
 Fecha de generación: ${dateStr}
 Total de productos a comprar: ${shoppingList.length}
-
+${budget ? `Plata disponible hoy (Flujo de caja): $${formatMoney(Math.max(0, budget.budget))} · Lista completa: $${formatMoney(budget.total)}${budget.total > budget.budget ? `
+No alcanza para todo: "Con la plata de hoy" es lo que conviene comprar primero ($${formatMoney(budget.spent)}).` : ''}
+` : ''}
 `;
             
             sortedSuppliers.forEach(([supplierName, group]) => {
@@ -28096,9 +28217,10 @@ Total de productos a comprar: ${shoppingList.length}
                     text += `${idx + 1}. ${product.name.toUpperCase()}\n`;
                     text += `   ├── Stock actual: ${stockDisplay}\n`;
                     text += `   ├── COMPRAR: ${buyDisplay}\n`;
+                    if (budget && item.budgetQty < item.suggestedQty) text += `   ├── Con la plata de hoy: ${item.budgetQty > 0 ? item.budgetQty + 'u' : 'esperar'}\n`;
                     text += `   ├── Prioridad: ${item.priority}\n`;
                     text += `   ├── Mínimo recomendado (según venta + margen por pico): ${item.minStock}u\n`;
-                    text += `   ├── Promedio diario: ${fmtNumber(item.avgDaily, 2)} unidades/día\n`;
+                    text += `   ├── Venta/día con stock: ${fmtNumber(item.salesPerStockDay, 2)} unidades${item.daysOut > 0 ? ' · sin stock ' + item.daysOut + ' días' + (item.stockoutSafetyPct > 0 ? ' (demanda posiblemente mayor, +' + item.stockoutSafetyPct + '%)' : '') : ''}\n`;
                     text += `   ├── Días de stock restantes: ${item.daysUntilStockout}\n`;
                     if (item.arrivalDayName) text += `   ├── Llega: ${item.arrivalDayName}${item.runsOutBeforeArrival ? ' (se queda sin stock antes)' : ''}\n`;
                     text += `   ├── Demanda/semana: ${fmtNumber(item.weeklyDemand, 1)}\n`;
@@ -29880,6 +30002,36 @@ Total de productos a comprar: ${shoppingList.length}
                 daysToArrival: openDaysBetween(0, arrivalIn),
                 extraCoverDays: leadDays > 0 ? Math.max(0, cycleDays - targetDays) : 0
             };
+        }
+
+        // Reparte la plata disponible entre lo que sugiere la lista de compras. Por escalones:
+        // primero a cada producto le alcanza para coverDays[0] días de venta, después para
+        // coverDays[1], y recién al final se completa lo sugerido. Dentro de un escalón va primero
+        // lo que más ganancia deja por día (lo que más se pierde si se agota): la urgencia ya la
+        // pone el escalón, porque lo que tiene stock para esos días no pide nada. Así un producto
+        // de poca venta que está en 0 no se come la plata de uno que se vende mucho y se agota en 2
+        // días. La última vuelta completa por prioridad y días hasta agotarse. items: { key, qty, unitCost, avgDaily,
+        // currentStock, priorityRank, daysUntilStockout, unitMargin }. Sin costo cargado entra
+        // siempre (no se puede saber cuánto sale).
+        function allocateShoppingBudget(items, budget, coverDays = [3, 7]) {
+            const dailyProfit = (it) => it.avgDaily * it.unitMargin;
+            const byProfit = items.slice().sort((a, b) => (dailyProfit(b) - dailyProfit(a)) || (a.priorityRank - b.priorityRank));
+            const byUrgency = items.slice().sort((a, b) =>
+                (a.priorityRank - b.priorityRank) || (a.daysUntilStockout - b.daysUntilStockout) || (dailyProfit(b) - dailyProfit(a)));
+            let left = Math.max(0, budget || 0);
+            const qty = new Map(items.map(it => [it.key, 0]));
+            const take = (it, wanted) => {
+                const want = Math.min(wanted, it.qty) - qty.get(it.key);
+                if (want <= 0) return;
+                const q = it.unitCost > 0 ? Math.min(want, Math.floor(left / it.unitCost + 1e-9)) : want;
+                if (q <= 0) return;
+                qty.set(it.key, qty.get(it.key) + q);
+                left -= q * it.unitCost;
+            };
+            coverDays.forEach(days => byProfit.forEach(it => take(it, Math.max(0, Math.ceil(it.avgDaily * days - it.currentStock - 1e-9)))));
+            byUrgency.forEach(it => take(it, it.qty));
+            const total = items.reduce((s, it) => s + it.qty * it.unitCost, 0);
+            return { qty, total, spent: Math.max(0, budget || 0) - left, left, budget: budget || 0 };
         }
         // </proveedores-puro>
 

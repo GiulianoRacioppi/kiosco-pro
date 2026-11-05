@@ -4786,6 +4786,8 @@
             deletedInvestmentIds: [],
             // Promociones eliminadas (para evitar que vuelvan por sync)
             deletedPromotionIds: [],
+            // Registros de cierres de caja borrados o reemplazados (faltante, ajustes): { id, date, deletedAt }
+            deletedCloseRecordIds: [],
             // Códigos de precio especial (empleados, "socios", etc.): de uso ilimitado,
             // uno por persona para poder ver quién lo usó. Al aplicarse en una venta,
             // todos los productos pasan a costo + 10% (redondeado a $100).
@@ -23465,7 +23467,16 @@
                 document.getElementById('cc-opening').textContent = '$' + formatMoney(openingCash);
                 document.getElementById('cc-sales').textContent = '$' + formatMoney(todayCashSales);
                 document.getElementById('cc-fiados').textContent = '$' + formatMoney(expected.cashFiados || 0);
-                document.getElementById('cc-expenses').textContent = '$' + formatMoney(todayCashExpenses);
+                // Los adelantos de sueldo van en su propia línea (el esperado no cambia: siguen siendo gastos)
+                const advanceExpenseIds = new Set((appState.payrollPayments || []).filter(p => p && p.kind === 'advance' && p.status !== 'deleted' && p.expenseId).map(p => p.expenseId));
+                const todayAdvances = (source) => appState.expenses.filter(e => e.date === today && e.source === source && advanceExpenseIds.has(e.id)).reduce((sum, e) => sum + e.amount, 0);
+                const cashAdvances = todayAdvances('cash');
+                const bankAdvances = todayAdvances('bank');
+                document.getElementById('cc-expenses').textContent = '$' + formatMoney(todayCashExpenses - cashAdvances);
+                document.getElementById('cc-advances').textContent = '$' + formatMoney(cashAdvances);
+                document.getElementById('cc-advances-row').classList.toggle('hidden', !(cashAdvances > 0));
+                document.getElementById('cc-advances-bank').textContent = '$' + formatMoney(bankAdvances);
+                document.getElementById('cc-advances-row-bank').classList.toggle('hidden', !(bankAdvances > 0));
                 document.getElementById('cc-investments').textContent = '$' + formatMoney(todayCashInvestments);
                 // Neto a reserva: positivo = plata que salió del cajón a la caja fuerte
                 const reserveNet = expected.reserveNet || 0;
@@ -23498,7 +23509,7 @@
                 document.getElementById('cc-opening-bank').textContent = '$' + formatMoney(openingBank);
                 document.getElementById('cc-sales-bank').textContent = '$' + formatMoney(todayBankSales);
                 document.getElementById('cc-fiados-bank').textContent = '$' + formatMoney(expected.bankFiados || 0);
-                document.getElementById('cc-expenses-bank').textContent = '$' + formatMoney(todayBankExpenses);
+                document.getElementById('cc-expenses-bank').textContent = '$' + formatMoney(todayBankExpenses - bankAdvances);
                 document.getElementById('cc-investments-bank').textContent = '$' + formatMoney(todayBankInvestments);
                 document.getElementById('cc-expected-bank').textContent = '$' + formatMoney(expected.bank);
 
@@ -23703,6 +23714,110 @@
             totalAmount.textContent = '$' + formatMoney(Math.abs(diffTotal));
         }
 
+        // ==================== REGISTROS DEL CIERRE DE CAJA ====================
+        // Cada cierre graba un faltante (EXP-SHORTAGE-) y ajustes (ADJ-CLOSE-CASH-/-BANK-; ADJ-SURPLUS-
+        // en cierres viejos y conteos de turno). Al cerrar de nuevo se borran los anteriores, pero
+        // smartMergeArrays nunca borra: si la nube todavía los tenía, volvían, y como el id llevaba
+        // Date.now() se acumulaban (el 2026-11-04 quedaron 3 faltantes y 4 ajustes de caja).
+        // Ahora el id es por fecha y lo borrado deja una lápida { id, date, deletedAt } en
+        // deletedCloseRecordIds: se descarta todo registro con ese id y timestamp <= deletedAt.
+        const CLOSE_RECORD_PREFIXES = ['EXP-SHORTAGE-', 'ADJ-SURPLUS-', 'ADJ-CLOSE-CASH-', 'ADJ-CLOSE-BANK-'];
+        const CLOSE_TOMBSTONES_MAX = 1000;
+        function isCloseRecordId(id) {
+            return typeof id === 'string' && CLOSE_RECORD_PREFIXES.some(p => id.startsWith(p));
+        }
+
+        function addCloseTombstones(records) {
+            if (!records.length) return;
+            const extra = records.map(r => ({ id: r.id, date: r.date, deletedAt: getItemTimestamp(r) }));
+            appState.deletedCloseRecordIds = mergeCloseTombstones(appState.deletedCloseRecordIds, extra);
+        }
+
+        function mergeCloseTombstones(localList, remoteList) {
+            const map = new Map();
+            for (const t of [...(Array.isArray(localList) ? localList : []), ...(Array.isArray(remoteList) ? remoteList : [])]) {
+                if (!t || !t.id) continue;
+                const prev = map.get(t.id);
+                if (!prev || (t.deletedAt || 0) > (prev.deletedAt || 0)) map.set(t.id, t);
+            }
+            return Array.from(map.values()).sort((a, b) => (a.deletedAt || 0) - (b.deletedAt || 0)).slice(-CLOSE_TOMBSTONES_MAX);
+        }
+
+        function getLatestCloseTombstone(date) {
+            return (appState.deletedCloseRecordIds || []).filter(t => t && t.date === date).reduce((max, t) => Math.max(max, t.deletedAt || 0), 0);
+        }
+
+        // Saca los registros del cierre de esa fecha (también los faltantes/sobrantes de los
+        // conteos de turno, como hacía antes: el cierre del día ya los incluye) y deja la lápida.
+        function removeCloseRecords(date) {
+            const removed = [];
+            const keep = (r) => {
+                if (r && isCloseRecordId(r.id) && r.date === date) { removed.push(r); return false; }
+                return true;
+            };
+            appState.expenses = (appState.expenses || []).filter(keep);
+            appState.capitalAdjustments = (appState.capitalAdjustments || []).filter(keep);
+            addCloseTombstones(removed);
+        }
+
+        // Aplica las lápidas y deja, por fecha, solo los registros del último cierre (los que se
+        // grabaron juntos, con el mismo timestamp): si el último cierre dio sobrante, un faltante
+        // de un cierre anterior del mismo día no corresponde aunque sea más nuevo que otros.
+        // No toca Caja ni Cuenta: estos registros no mueven saldos, solo cuentan como gasto o
+        // ajuste. Lo que borra queda en la consola y en localStorage['kioscopro-close-cleanup-log'].
+        function cleanupCloseRecords() {
+            const tombs = new Map((appState.deletedCloseRecordIds || []).filter(t => t && t.id).map(t => [t.id, t.deletedAt || 0]));
+            const isDead = (r) => tombs.has(r.id) && getItemTimestamp(r) <= tombs.get(r.id);
+            const removed = [];
+
+            // Último cierre de cada fecha (los de turno llevan "user" y pueden ser varios por día)
+            const latestBatch = new Map();
+            for (const r of [...(appState.expenses || []), ...(appState.capitalAdjustments || [])]) {
+                if (!r || !isCloseRecordId(r.id) || r.user || isDead(r)) continue;
+                latestBatch.set(r.date, Math.max(latestBatch.get(r.date) || 0, getItemTimestamp(r)));
+            }
+            const seenKinds = new Set();
+            const filterList = (list) => {
+                // Del más nuevo al más viejo: si hay dos del mismo tipo queda el último
+                const order = list.map((r, i) => i).filter(i => list[i] && isCloseRecordId(list[i].id))
+                    .sort((a, b) => getItemTimestamp(list[b]) - getItemTimestamp(list[a]));
+                const drop = new Set();
+                for (const i of order) {
+                    const r = list[i];
+                    if (isDead(r)) { drop.add(i); removed.push(r); continue; }
+                    if (r.user) continue;
+                    const kind = r.date + '|' + CLOSE_RECORD_PREFIXES.find(p => r.id.startsWith(p)) + (r.id.includes('-BANK-') ? 'BANK' : '');
+                    // Un cierre graba todo junto; 2 s de margen para cierres viejos que no usaban un solo Date.now()
+                    if (getItemTimestamp(r) < latestBatch.get(r.date) - 2000 || seenKinds.has(kind)) { drop.add(i); removed.push(r); continue; }
+                    seenKinds.add(kind);
+                }
+                return drop.size ? list.filter((_, i) => !drop.has(i)) : list;
+            };
+            appState.expenses = filterList(appState.expenses || []);
+            appState.capitalAdjustments = filterList(appState.capitalAdjustments || []);
+            if (!removed.length) return removed;
+
+            addCloseTombstones(removed.filter(r => !isDead(r)));
+            const total = (test) => Math.round(removed.filter(test).reduce((s, r) => s + (r.amount || 0), 0) * 100) / 100;
+            const entry = {
+                at: new Date().toISOString(),
+                removed: removed.map(r => ({ id: r.id, date: r.date, amount: r.amount, timestamp: r.timestamp })),
+                totals: {
+                    faltantes: total(r => r.id.startsWith('EXP-SHORTAGE-')),
+                    ajustesCaja: total(r => r.id.startsWith('ADJ-CLOSE-CASH-')),
+                    ajustesCuenta: total(r => r.id.startsWith('ADJ-CLOSE-BANK-')),
+                    sobrantes: total(r => r.id.startsWith('ADJ-SURPLUS-'))
+                }
+            };
+            console.warn('🧹 Registros de cierre duplicados o borrados que habían vuelto:', entry);
+            try {
+                const log = JSON.parse(localStorage.getItem('kioscopro-close-cleanup-log') || '[]');
+                log.push(entry);
+                localStorage.setItem('kioscopro-close-cleanup-log', JSON.stringify(log.slice(-50)));
+            } catch (e) { /* sin registro, sigue igual */ }
+            return removed;
+        }
+
         // Lo que el cierre de ese día ajustó en Caja y Cuenta
         function getCloseAdjustment(date) {
             const sum = (prefix) => (appState.capitalAdjustments || []).filter(a => a.id && a.id.startsWith(prefix) && a.date === date).reduce((total, a) => total + (a.amount || 0), 0);
@@ -23728,12 +23843,7 @@
                 appState.cashDifferences = appState.cashDifferences.filter(d => d.date !== targetDate);
             }
             // Eliminar gasto por faltante o capital adjustment por sobrante/ajustes de cierre asociados a esa fecha
-            if (appState.expenses) {
-                appState.expenses = appState.expenses.filter(e => !(e.id && e.id.startsWith('EXP-SHORTAGE-') && e.date === targetDate));
-            }
-            if (appState.capitalAdjustments) {
-                appState.capitalAdjustments = appState.capitalAdjustments.filter(a => !(a.id && (a.id.startsWith('ADJ-SURPLUS-') || a.id.startsWith('ADJ-CLOSE-CASH-') || a.id.startsWith('ADJ-CLOSE-BANK-')) && a.date === targetDate));
-            }
+            removeCloseRecords(targetDate);
             saveToLocalStorage();
             closeCashCountModal();
             renderCashCountsList();
@@ -23776,12 +23886,7 @@
             if (appState.cashDifferences) {
                 appState.cashDifferences = appState.cashDifferences.filter(d => d.date !== date);
             }
-            if (appState.expenses) {
-                appState.expenses = appState.expenses.filter(e => !(e.id && e.id.startsWith('EXP-SHORTAGE-') && e.date === date));
-            }
-            if (appState.capitalAdjustments) {
-                appState.capitalAdjustments = appState.capitalAdjustments.filter(a => !(a.id && (a.id.startsWith('ADJ-SURPLUS-') || a.id.startsWith('ADJ-CLOSE-CASH-') || a.id.startsWith('ADJ-CLOSE-BANK-')) && a.date === date));
-            }
+            removeCloseRecords(date);
 
             saveToLocalStorage();
             renderCashCountsList();
@@ -23848,8 +23953,7 @@
             record.differenceBank = record.closingBank - expected.bank;
             record.difference = record.closingAmount - expected.total;
 
-            appState.expenses = (appState.expenses || []).filter(e => !(e.id && e.id.startsWith('EXP-SHORTAGE-') && e.date === targetDate));
-            appState.capitalAdjustments = (appState.capitalAdjustments || []).filter(a => !(a.id && (a.id.startsWith('ADJ-SURPLUS-') || a.id.startsWith('ADJ-CLOSE-CASH-') || a.id.startsWith('ADJ-CLOSE-BANK-')) && a.date === targetDate));
+            removeCloseRecords(targetDate);
 
             // Registrar sobrante o faltante en cashDifferences
             if (!appState.cashDifferences) appState.cashDifferences = [];
@@ -23873,10 +23977,13 @@
             // ya queda capturado íntegro (y con el destino correcto, caja o cuenta) por los
             // ajustes ADJ-CLOSE-CASH/ADJ-CLOSE-BANK de abajo. Antes se guardaba también como
             // ADJ-SURPLUS con el mismo monto, duplicando el capital registrado.
-            const closeNow = Date.now();
+            // Ids fijos por fecha: un cierre nuevo del mismo día reemplaza al anterior (y en la
+            // fusión por id con la nube gana el más nuevo). Nunca menor que lo que se borró recién,
+            // para que la lápida de removeCloseRecords no lo tape.
+            const closeNow = Math.max(Date.now(), getLatestCloseTombstone(targetDate) + 1);
             if (record.difference < 0) {
                 appState.expenses.push({
-                    id: 'EXP-SHORTAGE-' + closeNow,
+                    id: 'EXP-SHORTAGE-' + targetDate,
                     date: targetDate,
                     concept: 'Faltante de caja' + (record.notes ? ': ' + record.notes : ''),
                     amount: Math.abs(record.difference),
@@ -23889,7 +23996,7 @@
             if (!Array.isArray(appState.capitalAdjustments)) appState.capitalAdjustments = [];
             if (Math.abs(record.differenceCash) > 0.001) {
                 appState.capitalAdjustments.push({
-                    id: 'ADJ-CLOSE-CASH-' + closeNow,
+                    id: 'ADJ-CLOSE-CASH-' + targetDate,
                     amount: Math.round(record.differenceCash * 100) / 100,
                     target: 'cash',
                     date: targetDate,
@@ -23899,11 +24006,11 @@
             }
             if (Math.abs(record.differenceBank) > 0.001) {
                 appState.capitalAdjustments.push({
-                    id: 'ADJ-CLOSE-BANK-' + (closeNow + 1),
+                    id: 'ADJ-CLOSE-BANK-' + targetDate,
                     amount: Math.round(record.differenceBank * 100) / 100,
                     target: 'bank',
                     date: targetDate,
-                    timestamp: closeNow + 1,
+                    timestamp: closeNow,
                     note: 'Ajuste por cierre de cuenta del ' + targetDate
                 });
             }
@@ -29683,6 +29790,7 @@ Total de productos a comprar: ${shoppingList.length}
                 deletedProductIds: [],
                 deletedInvestmentIds: [],
                 deletedPromotionIds: [],
+                deletedCloseRecordIds: [],
                 losses: [],
                 returns: [],
                 stockLedger: [],
@@ -30350,6 +30458,7 @@ RESULTADOS:
             // Asegurar que productos eliminados no estén en el inventario
             cleanupDeletedProducts();
             cleanupDeletedInvestments();
+            cleanupCloseRecords();
 
             try {
                 renderDashboard();
@@ -30608,6 +30717,7 @@ RESULTADOS:
             appState.deletedProductIds = Array.isArray(appState.deletedProductIds) ? appState.deletedProductIds : [];
             appState.deletedInvestmentIds = Array.isArray(appState.deletedInvestmentIds) ? appState.deletedInvestmentIds : [];
             appState.deletedPromotionIds = Array.isArray(appState.deletedPromotionIds) ? appState.deletedPromotionIds : [];
+            appState.deletedCloseRecordIds = Array.isArray(appState.deletedCloseRecordIds) ? appState.deletedCloseRecordIds : [];
             appState.billedDays = Array.isArray(appState.billedDays) ? appState.billedDays : [];
             appState.promotions = Array.isArray(appState.promotions) ? appState.promotions : [];
             appState.discountTickets = Array.isArray(appState.discountTickets) ? appState.discountTickets : [];
@@ -32654,6 +32764,7 @@ RESULTADOS:
                 deletedProductIds: appState.deletedProductIds || [],
                 deletedInvestmentIds: appState.deletedInvestmentIds || [],
                 deletedPromotionIds: appState.deletedPromotionIds || [],
+                deletedCloseRecordIds: appState.deletedCloseRecordIds || [],
                 lastRoundPriceEnabled: !!appState.lastRoundPriceEnabled,
                 lastInvoiceType: appState.lastInvoiceType || 'white',
                 lastCategory: appState.lastCategory || null,
@@ -32921,7 +33032,7 @@ RESULTADOS:
         function normalizeFirebaseData(downloaded) {
             const normalized = {};
             const main = downloaded && (downloaded.main || downloaded);
-            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','qrFee','debitFee','percentSettingsUpdatedAt','payrollSettings','rotationSettings','capitalSettings','stockLedgerOpening','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
+            const baseFields = ['cash','bank','reserve','initialCapital','defaultMargin','mercadoCreditoFee','qrFee','debitFee','percentSettingsUpdatedAt','payrollSettings','rotationSettings','capitalSettings','stockLedgerOpening','stockTargetDays','balancesUpdatedAt','cashFlowSettings','invoiceTracking','chartVisibleMetrics','dashboardVisibleMetrics','suppliers','businessHours','deletedProductIds','deletedInvestmentIds','deletedPromotionIds','deletedCloseRecordIds','currentDate','lastSync','lastMasterSync','deviceId','clearedAt','restoredFromBackup','restoredAt','chunkCounts'];
             for (const f of baseFields) {
                 if (main && main[f] !== undefined) normalized[f] = main[f];
             }
@@ -34030,6 +34141,10 @@ RESULTADOS:
             // Restaurar carrito local
             appState.cart = localCart;
             
+            // Registros de cierres borrados: que no vuelvan desde la nube, y sin duplicados
+            appState.deletedCloseRecordIds = mergeCloseTombstones(appState.deletedCloseRecordIds, data.deletedCloseRecordIds);
+            cleanupCloseRecords();
+
             // Reconstruir sobrantes/faltantes desde los arqueos por si cashDifferences quedó vacío en sync
             rebuildCashDifferences();
             
@@ -35071,6 +35186,7 @@ RESULTADOS:
                     <div class="flex justify-between"><span>Ventas efectivo:</span><span class="font-bold text-green-600" id="cc-sales">$0</span></div>
                     <div class="flex justify-between"><span>Cobros fiados:</span><span class="font-bold text-green-600" id="cc-fiados">$0</span></div>
                     <div class="flex justify-between"><span>Gastos efectivo:</span><span class="font-bold text-red-600" id="cc-expenses">$0</span></div>
+                    <div class="flex justify-between hidden" id="cc-advances-row"><span>Adelantos de sueldo:</span><span class="font-bold text-red-600" id="cc-advances">$0</span></div>
                     <div class="flex justify-between"><span>Compras efectivo:</span><span class="font-bold text-orange-600" id="cc-investments">$0</span></div>
                     <div class="flex justify-between" id="cc-reserve-row"><span>A reserva (caja fuerte):</span><span class="font-bold text-amber-600" id="cc-reserve">$0</span></div>
                     <div class="flex justify-between" id="cc-capital-row"><span>Capital (no es ganancia):</span><span class="font-bold text-purple-600" id="cc-capital">$0</span></div>
@@ -35083,6 +35199,7 @@ RESULTADOS:
                     <div class="flex justify-between"><span>Ventas a cuenta (débito/transf./QR):</span><span class="font-bold text-green-600" id="cc-sales-bank">$0</span></div>
                     <div class="flex justify-between"><span>Cobros fiados:</span><span class="font-bold text-green-600" id="cc-fiados-bank">$0</span></div>
                     <div class="flex justify-between"><span>Gastos débito:</span><span class="font-bold text-red-600" id="cc-expenses-bank">$0</span></div>
+                    <div class="flex justify-between hidden" id="cc-advances-row-bank"><span>Adelantos de sueldo:</span><span class="font-bold text-red-600" id="cc-advances-bank">$0</span></div>
                     <div class="flex justify-between"><span>Compras débito:</span><span class="font-bold text-orange-600" id="cc-investments-bank">$0</span></div>
                     <div class="flex justify-between" id="cc-capital-row-bank"><span>Capital (no es ganancia):</span><span class="font-bold text-purple-600" id="cc-capital-bank">$0</span></div>
                     <div class="flex justify-between" id="cc-asset-row-bank"><span>Equipamiento (no es ganancia):</span><span class="font-bold text-purple-600" id="cc-asset-bank">$0</span></div>

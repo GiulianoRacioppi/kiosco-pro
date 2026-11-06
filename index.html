@@ -746,11 +746,25 @@
                     <p class="text-sm font-bold text-teal-800 mb-2">🧀 Agregados / Toppings (suman $ extra al vender)</p>
                     <div class="flex gap-2">
                         <input type="text" id="edit-prod-topping-name" class="flex-1 border rounded-lg px-3 py-2 text-sm" placeholder="Nombre (ej: Mayonesa)">
-                        <input type="number" id="edit-prod-topping-price" class="w-24 border rounded-lg px-3 py-2 text-sm" placeholder="$" min="0" step="1" onkeydown="if(event.key==='Enter'){event.preventDefault();addEditProdTopping();}">
+                        <input type="number" id="edit-prod-topping-price" class="w-24 border rounded-lg px-3 py-2 text-sm" placeholder="$" min="0" step="any" oninput="this.dataset.manual = this.value ? '1' : ''" onkeydown="if(event.key==='Enter'){event.preventDefault();addEditProdTopping();}">
                         <button type="button" onclick="addEditProdTopping()" class="bg-teal-500 hover:bg-teal-600 text-white px-3 py-2 rounded-lg text-sm font-bold">+</button>
                     </div>
+                    <!-- Ingredientes del agregado (opcional): otros productos del inventario -->
+                    <div class="mt-2 bg-white/60 rounded-lg p-2 border border-teal-100">
+                        <p class="text-xs text-teal-700 font-bold mb-1">Ingredientes del agregado (opcional, ej: 10 g de jamón + 10 g de queso)</p>
+                        <div class="flex gap-2">
+                            <div class="flex-1 relative">
+                                <input type="text" id="edit-prod-topping-comp-search" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Buscar producto..." oninput="filterToppingComponents()" onkeydown="if(event.key==='Enter'){event.preventDefault();addToppingDraftComponent();}">
+                                <input type="hidden" id="edit-prod-topping-comp-selected-id">
+                                <div id="edit-prod-topping-comp-results" class="absolute z-20 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto hidden"></div>
+                            </div>
+                            <input type="number" id="edit-prod-topping-comp-qty" class="w-24 border rounded-lg px-3 py-2 text-sm" placeholder="Cant" min="0.01" step="any" onkeydown="if(event.key==='Enter'){event.preventDefault();addToppingDraftComponent();}">
+                            <button type="button" onclick="addToppingDraftComponent()" class="bg-teal-400 hover:bg-teal-500 text-white px-3 py-2 rounded-lg text-sm font-bold">+</button>
+                        </div>
+                        <div id="edit-prod-topping-comp-list" class="space-y-1 mt-1"></div>
+                    </div>
                     <div id="edit-prod-toppings-list" class="space-y-1 mt-2"></div>
-                    <p class="text-xs text-gray-500 mt-2">Al vender este producto, el que cobra elige cuáles agregar -- cada uno suma su precio al de este producto.</p>
+                    <p class="text-xs text-gray-500 mt-2">Al vender este producto, el que cobra elige cuáles agregar -- cada uno suma su precio al de este producto. Si el agregado tiene ingredientes, al venderlo se descuentan del stock y su costo entra en la ganancia.</p>
                 </div>
                 <div id="edit-prod-global-invoice-section">
                     <label class="block text-sm font-medium text-gray-700 mb-2">Facturación del producto</label>
@@ -6622,6 +6636,12 @@
             document.getElementById('topping-picker-modal').classList.add('active');
         }
 
+        // Preparación del agregado con ingredientes (ver syncToppingProducts), si sigue existiendo
+        function getToppingLinkedProduct(t) {
+            if (!t || !t.productId || !Array.isArray(t.components) || t.components.length === 0) return null;
+            return getActiveInventory().find(p => p.id === t.productId) || null;
+        }
+
         function renderToppingPickerList() {
             const container = document.getElementById('topping-picker-list');
             if (!container || !currentToppingProduct) return;
@@ -6634,7 +6654,7 @@
                 <label class="flex items-center justify-between gap-2 p-2 border rounded-lg cursor-pointer hover:bg-teal-50">
                     <span class="flex items-center gap-2 text-sm text-gray-800">
                         <input type="checkbox" onchange="toggleToppingSelection('${t.id}', this.checked)" ${selectedToppingIds.has(t.id) ? 'checked' : ''}>
-                        ${escapeHtml(t.name)}
+                        <span>${escapeHtml(t.name)}${(Array.isArray(t.components) && t.components.length) ? `<span class="block text-[11px] text-gray-500">${t.components.map(c => escapeHtml(c.name || '') + ' ' + toppingComponentQtyLabel(c)).join(' + ')}</span>` : ''}</span>
                     </span>
                     <span class="text-teal-700 font-bold text-sm">+$${formatMoney(t.price)}</span>
                 </label>
@@ -6665,11 +6685,19 @@
         async function confirmToppingPicker() {
             const product = currentToppingProduct;
             if (!product) return;
-            const chosenToppings = (product.toppings || []).filter(t => selectedToppingIds.has(t.id)).map(t => ({ name: t.name, price: t.price }));
+            const selected = (product.toppings || []).filter(t => selectedToppingIds.has(t.id));
+            // Agregados con ingredientes: van en su propio renglón (su preparación
+            // descuenta el stock de los ingredientes y pone su costo). Los demás suman
+            // su precio al del producto, como siempre.
+            const linked = selected.map(t => ({ t, tp: getToppingLinkedProduct(t) })).filter(x => x.tp);
+            const linkedIds = new Set(linked.map(x => x.t.id));
+            const chosenToppings = selected.filter(t => !linkedIds.has(t.id)).map(t => ({ name: t.name, price: t.price }));
             const unitPrice = (product.salePrice || 0) + chosenToppings.reduce((s, t) => s + t.price, 0);
             const qty = currentToppingQty;
             const signature = chosenToppings.map(t => t.name).sort().join('|');
-            const toppingsLabel = chosenToppings.length ? ' (' + chosenToppings.map(t => t.name).join(', ') + ')' : '';
+            const allNames = selected.map(t => t.name);
+            const toppingsLabel = allNames.length ? ' (' + allNames.join(', ') + ')' : '';
+            const toppingLine = ({ t, tp }) => ({ productId: tp.id, name: '➕ ' + t.name, price: t.price, quantity: qty, toppingFor: product.name });
 
             if (currentToppingDestination === 'pedido') {
                 const existing = pendingPedidoItems.find(i => i.productId === product.id && (i.toppingSignature || '') === signature);
@@ -6677,6 +6705,10 @@
                     existing.quantity += qty;
                 } else {
                     pendingPedidoItems.push({ productId: product.id, name: product.name, price: unitPrice, quantity: qty, toppings: chosenToppings, toppingSignature: signature });
+                }
+                for (const x of linked) {
+                    const ex = pendingPedidoItems.find(i => i.productId === x.tp.id);
+                    if (ex) ex.quantity += qty; else pendingPedidoItems.push(toppingLine(x));
                 }
                 closeToppingPickerModal();
                 renderPedidoItemsList();
@@ -6690,6 +6722,10 @@
             const existingTotalQty = appState.cart.filter(i => i.productId === product.id).reduce((s, i) => s + (i.quantity || 0), 0);
             const canSell = await ensureStockForSale(product, existingTotalQty + qty);
             if (!canSell) return;
+            for (const x of linked) {
+                const inCart = appState.cart.filter(i => i.productId === x.tp.id).reduce((s, i) => s + (i.quantity || 0), 0);
+                if (!(await ensureStockForSale(x.tp, inCart + qty))) return;
+            }
 
             const existing = appState.cart.find(i => i.productId === product.id && (i.toppingSignature || '') === signature);
             if (existing) {
@@ -6704,6 +6740,11 @@
                     toppings: chosenToppings,
                     toppingSignature: signature
                 });
+            }
+            for (const x of linked) {
+                const ex = appState.cart.find(i => i.productId === x.tp.id);
+                if (ex) ex.quantity += qty;
+                else appState.cart.push({ ...toppingLine(x), cost: calculateCompositeCost(x.tp) });
             }
             bumpMercadoPagoPollSpeed();
             closeToppingPickerModal();
@@ -13484,6 +13525,29 @@
         // propio precio al vender. Se configuran acá (Editar Producto) y se eligen
         // al momento de agregar el producto al carrito (ver openToppingPickerModal).
         let editProdToppings = [];
+        // Ingredientes del agregado que se está cargando (antes de tocar "+")
+        let toppingDraftComponents = [];
+
+        // Costo y venta de una lista de ingredientes ({productId, quantity} en unidades
+        // de stock): costo de referencia y precio de venta de cada producto.
+        function getToppingComponentTotals(components) {
+            let cost = 0, sale = 0;
+            for (const comp of (components || [])) {
+                const p = appState.inventory.find(x => x.id === comp.productId);
+                if (!p) continue;
+                const unitCost = p.isComposite ? calculateCompositeCost(p) : (p.cost || 0);
+                cost += unitCost * (comp.quantity || 0);
+                sale += (p.salePrice || 0) * (comp.quantity || 0);
+            }
+            return { cost: Math.round(cost * 100) / 100, sale: Math.round(sale * 100) / 100 };
+        }
+
+        function toppingComponentQtyLabel(comp) {
+            const p = appState.inventory.find(x => x.id === comp.productId);
+            const isWeight = p && p.saleByWeight && p.weightPerUnit > 0;
+            const grams = comp.grams || (isWeight ? Math.round(comp.quantity * p.weightPerUnit) : null);
+            return grams ? `${formatMoney(grams)} g` : `x${Math.round((comp.quantity || 0) * 1000) / 1000}`;
+        }
 
         function addEditProdTopping() {
             const nameInput = document.getElementById('edit-prod-topping-name');
@@ -13493,10 +13557,15 @@
             const price = parseFloat(priceInput.value);
             if (!name) { showNotification('Ingresá el nombre del agregado', 'error'); return; }
             if (!price || price <= 0) { showNotification('Ingresá un precio válido', 'error'); return; }
-            editProdToppings.push({ id: 'TOP-' + Date.now() + Math.random().toString(36).slice(2, 6), name, price });
+            const topping = { id: 'TOP-' + Date.now() + Math.random().toString(36).slice(2, 6), name, price };
+            if (toppingDraftComponents.length > 0) topping.components = toppingDraftComponents;
+            editProdToppings.push(topping);
+            toppingDraftComponents = [];
             nameInput.value = '';
             priceInput.value = '';
+            priceInput.dataset.manual = '';
             nameInput.focus();
+            renderToppingDraftComponents();
             renderEditProdToppingsList();
         }
         window.addEditProdTopping = addEditProdTopping;
@@ -13507,6 +13576,86 @@
         }
         window.removeEditProdTopping = removeEditProdTopping;
 
+        function filterToppingComponents() {
+            const search = document.getElementById('edit-prod-topping-comp-search')?.value.trim() || '';
+            const currentProductId = document.getElementById('edit-product-modal')?.dataset?.productId;
+            const products = getActiveInventory().filter(p => p.id !== currentProductId && !p.toppingOf);
+            const results = search ? fuzzySearchProducts(search, products, 10) : products.slice(0, 10);
+            renderCompDropdown(results, 'edit-prod-topping-comp-results', 'edit-prod-topping-comp-search', 'edit-prod-topping-comp-selected-id', 'top');
+        }
+        window.filterToppingComponents = filterToppingComponents;
+
+        function addToppingDraftComponent() {
+            const hidden = document.getElementById('edit-prod-topping-comp-selected-id');
+            const search = document.getElementById('edit-prod-topping-comp-search');
+            const qtyInput = document.getElementById('edit-prod-topping-comp-qty');
+            if (!hidden || !qtyInput) return;
+            const productId = hidden.value;
+            const quantity = parseFloat(qtyInput.value);
+            if (!productId || !quantity || quantity <= 0) {
+                showNotification('Elegí un producto y una cantidad válida', 'error');
+                return;
+            }
+            const product = appState.inventory.find(p => p.id === productId);
+            if (!product) return;
+            // Igual que en las recetas: los productos por peso se cargan en gramos
+            const isWeight = product.saleByWeight && product.weightPerUnit > 0;
+            const quantityUnits = isWeight ? (quantity / product.weightPerUnit) : quantity;
+            const existing = toppingDraftComponents.find(c => c.productId === productId);
+            if (existing) {
+                existing.quantity += quantityUnits;
+                if (isWeight) existing.grams = (existing.grams || 0) + quantity;
+            } else {
+                const compData = { productId, quantity: quantityUnits, name: product.name };
+                if (isWeight) compData.grams = quantity;
+                toppingDraftComponents.push(compData);
+            }
+            hidden.value = '';
+            if (search) search.value = '';
+            qtyInput.value = '';
+            document.getElementById('edit-prod-topping-comp-results')?.classList.add('hidden');
+            renderToppingDraftComponents();
+            if (search) search.focus();
+        }
+        window.addToppingDraftComponent = addToppingDraftComponent;
+
+        function removeToppingDraftComponent(index) {
+            toppingDraftComponents.splice(index, 1);
+            renderToppingDraftComponents();
+        }
+        window.removeToppingDraftComponent = removeToppingDraftComponent;
+
+        function renderToppingDraftComponents() {
+            const container = document.getElementById('edit-prod-topping-comp-list');
+            if (!container) return;
+            if (toppingDraftComponents.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            const totals = getToppingComponentTotals(toppingDraftComponents);
+            container.innerHTML = toppingDraftComponents.map((comp, i) => {
+                const one = getToppingComponentTotals([comp]);
+                return `
+                    <div class="flex justify-between items-center bg-white rounded p-1.5 border text-xs">
+                        <span>${escapeHtml(comp.name)} ${toppingComponentQtyLabel(comp)}</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-500">costo $${formatMoney(one.cost)} · venta $${formatMoney(one.sale)}</span>
+                            <button type="button" onclick="removeToppingDraftComponent(${i})" class="text-red-500 hover:text-red-700 font-bold">✕</button>
+                        </div>
+                    </div>`;
+            }).join('') + `
+                <div class="flex justify-between text-xs font-bold text-teal-800 pt-1">
+                    <span>Costo: $${formatMoney(totals.cost)}</span>
+                    <span>Venta (suma): $${formatMoney(totals.sale)}</span>
+                </div>`;
+            // El precio del agregado se completa con la suma de los precios de venta,
+            // salvo que ya se haya escrito uno a mano.
+            const priceInput = document.getElementById('edit-prod-topping-price');
+            if (priceInput && priceInput.dataset.manual !== '1') {
+                priceInput.value = totals.sale > 0 ? Math.round(totals.sale * 100) / 100 : '';
+            }
+        }
+
         function renderEditProdToppingsList() {
             const container = document.getElementById('edit-prod-toppings-list');
             if (!container) return;
@@ -13514,15 +13663,69 @@
                 container.innerHTML = '<p class="text-xs text-gray-400">Sin agregados configurados</p>';
                 return;
             }
-            container.innerHTML = editProdToppings.map((t, i) => `
-                <div class="flex justify-between items-center bg-white rounded p-2 border text-sm">
-                    <span>${escapeHtml(t.name)}</span>
-                    <div class="flex items-center gap-2">
-                        <span class="text-xs text-teal-700 font-bold">+$${formatMoney(t.price)}</span>
-                        <button type="button" onclick="removeEditProdTopping(${i})" class="text-red-500 hover:text-red-700 text-xs font-bold">✕</button>
-                    </div>
-                </div>
-            `).join('');
+            container.innerHTML = editProdToppings.map((t, i) => {
+                const hasComps = Array.isArray(t.components) && t.components.length > 0;
+                const totals = hasComps ? getToppingComponentTotals(t.components) : null;
+                const detail = hasComps ? `
+                    <div class="text-[11px] text-gray-500 mt-0.5">${t.components.map(c => escapeHtml(c.name || '') + ' ' + toppingComponentQtyLabel(c)).join(' + ')}</div>
+                    <div class="text-[11px] mt-0.5"><span class="text-orange-700">Costo $${formatMoney(totals.cost)}</span> · <span class="text-gray-600">Venta (suma) $${formatMoney(totals.sale)}</span> · <span class="text-green-700">Ganancia $${formatMoney(t.price - totals.cost)}</span></div>` : '';
+                return `
+                <div class="bg-white rounded p-2 border text-sm">
+                    <div class="flex justify-between items-center">
+                        <span>${escapeHtml(t.name)}</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-teal-700 font-bold">+$${formatMoney(t.price)}</span>
+                            <button type="button" onclick="removeEditProdTopping(${i})" class="text-red-500 hover:text-red-700 text-xs font-bold">✕</button>
+                        </div>
+                    </div>${detail}
+                </div>`;
+            }).join('');
+        }
+
+        // Los agregados con ingredientes se guardan como una preparación propia (oculta
+        // de la venta, `toppingOf` = producto padre). Así al venderlos se descuenta el
+        // stock de los ingredientes y el costo entra en la venta con la lógica de
+        // siempre de los compuestos. El id queda en topping.productId.
+        function syncToppingProducts(product, previousToppings) {
+            const now = new Date().toISOString();
+            const keepIds = new Set();
+            for (const t of (product.toppings || [])) {
+                const hasComps = Array.isArray(t.components) && t.components.length > 0;
+                if (!hasComps) { delete t.productId; continue; }
+                let tp = t.productId ? appState.inventory.find(p => p.id === t.productId) : null;
+                if (!tp) {
+                    tp = {
+                        id: 'PROD-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                        barcode: '',
+                        min: 0,
+                        stock: 0,
+                        batches: [],
+                        createdAt: now,
+                        lastSale: null
+                    };
+                    appState.inventory.push(tp);
+                    t.productId = tp.id;
+                }
+                tp.name = `${t.name} (agregado de ${product.name})`;
+                tp.category = product.category;
+                tp.isComposite = true;
+                tp.components = JSON.parse(JSON.stringify(t.components));
+                tp.invoiceType = product.invoiceType || 'white';
+                tp.salePrice = t.price;
+                tp.cost = calculateCompositeCost(tp);
+                tp.hiddenFromSale = true;
+                tp.toppingOf = product.id;
+                tp.stock = 0;
+                tp.updatedAt = now;
+                keepIds.add(tp.id);
+            }
+            // Agregados con ingredientes que se sacaron: su preparación se borra
+            for (const old of (previousToppings || [])) {
+                if (!old.productId || keepIds.has(old.productId)) continue;
+                appState.inventory = appState.inventory.filter(p => p.id !== old.productId);
+                if (!appState.deletedProductIds) appState.deletedProductIds = [];
+                appState.deletedProductIds.push({ id: old.productId, deletedAt: Date.now() });
+            }
         }
 
         function toggleCompositeSection() {
@@ -13789,7 +13992,7 @@
             if (input) input.value = productName;
             if (hidden) hidden.value = productId;
             if (container) container.classList.add('hidden');
-            const qtyId = prefix === 'inv' ? 'inv-component-qty' : 'edit-prod-component-qty';
+            const qtyId = prefix === 'inv' ? 'inv-component-qty' : (prefix === 'top' ? 'edit-prod-topping-comp-qty' : 'edit-prod-component-qty');
             updateCompQtyPlaceholder(productId, qtyId);
         }
 
@@ -15159,9 +15362,21 @@
                         }
                     });
                 } catch(e) { console.warn('Error limpiando componentes:', e); }
-                
+
+                // Ingredientes de agregados, y las preparaciones de los agregados de este producto
+                const toppingProductIds = appState.inventory.filter(p => p.toppingOf === productId).map(p => p.id);
+                appState.inventory.forEach(p => {
+                    (p.toppings || []).forEach(t => {
+                        if (Array.isArray(t.components)) t.components = t.components.filter(c => c.productId !== productId);
+                    });
+                });
+
                 // Eliminar del inventario
-                appState.inventory = appState.inventory.filter(p => p.id !== productId);
+                appState.inventory = appState.inventory.filter(p => p.id !== productId && !toppingProductIds.includes(p.id));
+                if (toppingProductIds.length) {
+                    if (!appState.deletedProductIds) appState.deletedProductIds = [];
+                    toppingProductIds.forEach(id => appState.deletedProductIds.push({ id, deletedAt: Date.now() }));
+                }
                 
                 // Registrar en lista de eliminados
                 if (!appState.deletedProductIds) appState.deletedProductIds = [];
@@ -18108,6 +18323,10 @@
 
             // Cargar agregados/toppings (cualquier producto, no solo compuestos)
             editProdToppings = product.toppings ? JSON.parse(JSON.stringify(product.toppings)) : [];
+            toppingDraftComponents = [];
+            const toppingPriceInput = document.getElementById('edit-prod-topping-price');
+            if (toppingPriceInput) toppingPriceInput.dataset.manual = '';
+            renderToppingDraftComponents();
             renderEditProdToppingsList();
 
             // Cargar estado de IVA
@@ -18387,7 +18606,9 @@
                 }
 
                 // Guardar agregados/toppings (independiente de si es compuesto o no)
+                const previousToppings = product.toppings || [];
                 product.toppings = editProdToppings.length > 0 ? editProdToppings : [];
+                syncToppingProducts(product, previousToppings);
 
                 // Guardar venta por peso
                 const saleByWeightEdit = document.getElementById('edit-prod-sale-by-weight')?.checked || false;
@@ -32780,13 +33001,8 @@ RESULTADOS:
             }
         }
 
-        function printTicketById(id) {
-            const ticket = appState.discountTickets.find(t => t.id === id);
-            if (!ticket) return;
-            
+        function getDiscountTicketPrintTexts(ticket) {
             const isExpired = !ticket.used && new Date(ticket.expiryDate) <= new Date();
-            const statusText = ticket.used ? 'USADO' : (isExpired ? 'VENCIDO' : 'VÁLIDO');
-            
             const appliesTo = ticket.appliesToText || buildTicketAppliesText(ticket.productIds);
             const printTypeLabels = {
                 'percent': `${ticket.discount}% de descuento en ${appliesTo}`,
@@ -32796,14 +33012,27 @@ RESULTADOS:
                 '4x3': `4x3 en ${appliesTo}`,
                 'bogo': `Lleva ${ticket.bogoBuy || 2} paga ${ticket.bogoPay || 1} en ${appliesTo}`
             };
-            
+            return {
+                discount: printTypeLabels[ticket.ticketPromoType] || `${ticket.discount}% de descuento en ${appliesTo}`,
+                min: ticket.minAmount > 0 ? `Válido en compras de más de $${ticket.minAmount}` : '',
+                date: new Date(ticket.createdAt).toLocaleDateString('es-ES'),
+                expiry: new Date(ticket.expiryDate).toLocaleDateString('es-ES'),
+                status: ticket.used ? 'USADO' : (isExpired ? 'VENCIDO' : 'VÁLIDO')
+            };
+        }
+
+        function printTicketById(id) {
+            const ticket = appState.discountTickets.find(t => t.id === id);
+            if (!ticket) return;
+            window.currentPrintTicketId = id;
+            const tx = getDiscountTicketPrintTexts(ticket);
+
             document.getElementById('print-ticket-number').textContent = ticket.ticketNumber;
-            document.getElementById('print-ticket-discount').textContent = printTypeLabels[ticket.ticketPromoType] || `${ticket.discount}% de descuento en ${appliesTo}`;
-            const printMinText = ticket.minAmount > 0 ? `Válido en compras de más de $${ticket.minAmount}` : '';
-            document.getElementById('print-ticket-min').textContent = printMinText;
-            document.getElementById('print-ticket-date').textContent = new Date(ticket.createdAt).toLocaleDateString('es-ES');
-            document.getElementById('print-ticket-expiry').textContent = new Date(ticket.expiryDate).toLocaleDateString('es-ES');
-            document.getElementById('print-ticket-status').textContent = statusText;
+            document.getElementById('print-ticket-discount').textContent = tx.discount;
+            document.getElementById('print-ticket-min').textContent = tx.min;
+            document.getElementById('print-ticket-date').textContent = tx.date;
+            document.getElementById('print-ticket-expiry').textContent = tx.expiry;
+            document.getElementById('print-ticket-status').textContent = tx.status;
             
             // Generar código de barras
             try {
@@ -32823,7 +33052,77 @@ RESULTADOS:
             document.getElementById('ticket-print-modal').classList.add('hidden');
         }
 
+        // Código de barras del ticket como PNG (base64) para la impresora térmica:
+        // ancho múltiplo de 8 y como mucho 384 puntos (papel de 58 mm).
+        function discountTicketBarcodePng(number) {
+            try {
+                if (typeof JsBarcode !== 'function' || !number) return '';
+                let src = null;
+                for (const width of [2, 1]) {
+                    src = document.createElement('canvas');
+                    JsBarcode(src, String(number), { format: 'CODE128', width, height: 60, displayValue: false, margin: 8 });
+                    if (src.width <= 384) break;
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.min(384, Math.ceil(src.width / 8) * 8);
+                canvas.height = src.height;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(src, Math.floor((canvas.width - src.width) / 2), 0);
+                return canvas.toDataURL('image/png').split(',')[1] || '';
+            } catch (e) {
+                console.error('Código de barras del ticket:', e);
+                return '';
+            }
+        }
+
+        function buildDiscountTicketPayload(ticket) {
+            const biz = getTicketBusinessInfo();
+            const tx = getDiscountTicketPrintTexts(ticket);
+            const lines = [
+                { text: 'TICKET DE DESCUENTO', align: 'center', bold: true },
+                { hr: true },
+                { text: 'NUMERO DE TICKET', align: 'center' },
+                { text: String(ticket.ticketNumber || ''), align: 'center', bold: true, size: 'large' },
+                { hr: true },
+                { text: tx.discount, align: 'center', bold: true }
+            ];
+            if (tx.min) lines.push({ text: tx.min, align: 'center' });
+            lines.push({ hr: true });
+            lines.push({ left: 'Emitido:', right: tx.date });
+            lines.push({ left: 'Valido hasta:', right: tx.expiry });
+            lines.push({ left: 'Estado:', right: tx.status });
+            lines.push({ hr: true });
+            lines.push({ text: 'Presente este ticket en su proxima compra', align: 'center' });
+            lines.push({ text: 'No acumulable con otras promociones', align: 'center' });
+            const barcode = discountTicketBarcodePng(ticket.ticketNumber);
+            if (barcode) lines.push({ qrImage: barcode });
+            lines.push({ text: String(ticket.ticketNumber || ''), align: 'center' });
+            return { header: biz.fantasia, mixedSizes: true, lines };
+        }
+
         function printTicketWindow() {
+            // App de escritorio (Electron): directo a la impresora térmica. El diálogo
+            // de impresión de window.print() ahí no aparece y el ticket no salía.
+            if (window.kioscoDesktop && window.kioscoDesktop.isElectron) {
+                const ticket = (appState.discountTickets || []).find(t => t.id === window.currentPrintTicketId);
+                if (!ticket) {
+                    showNotification('No se encontró el ticket para imprimir', 'error');
+                    return;
+                }
+                window.kioscoDesktop.print(buildDiscountTicketPayload(ticket)).then(res => {
+                    if (!res || !res.ok) {
+                        showNotification('❌ No se pudo imprimir el ticket: ' + ((res && res.error) || 'error desconocido'), 'error', 8000);
+                    } else {
+                        showNotification('🖨️ Ticket de descuento impreso', 'success');
+                    }
+                }).catch(err => {
+                    showNotification('❌ Error al imprimir: ' + (err && err.message ? err.message : err), 'error', 8000);
+                });
+                return;
+            }
+
             const content = document.getElementById('ticket-print-content').innerHTML;
             const w = window.open('', '_blank');
             w.document.write(`

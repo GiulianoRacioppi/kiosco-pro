@@ -2386,6 +2386,7 @@
                     </div>
                 </div>
                 <button onclick="openOwnerConsumptionModal()" class="mt-2 text-xs text-gray-500 hover:text-indigo-700 underline" id="fin-owner-consumption"></button>
+                <div id="fin-internal-consumption" class="hidden mt-1 text-xs text-gray-500"></div>
                 <p id="fin-period-note" class="hidden text-[11px] text-gray-400 mt-2">Los sueldos se cuentan enteros al terminar cada quincena: si elegís unos días sueltos, pueden no entrar o entrar completos.</p>
             </div>
 
@@ -3586,6 +3587,11 @@
                             <input type="number" id="special-price-markup-input" class="w-full border rounded-lg px-3 py-2" placeholder="10" min="0" step="0.1" value="10">
                             <p class="text-xs text-gray-500 mt-1">Precio = costo + este %, redondeado a $100. Cada código puede tener el suyo.</p>
                         </div>
+                        <label class="flex items-start gap-2 cursor-pointer">
+                            <input type="checkbox" id="special-price-exclude-input" class="mt-1">
+                            <span class="text-sm text-gray-700"><b>No contar como venta (consumo interno)</b>
+                                <span class="block text-xs text-gray-500">Para alguien que se lleva mercadería al costo (ej: un familiar): baja el stock y la plata entra a Caja o Cuenta, pero no suma en ventas, tickets ni ganancia. Si es fiado, queda en Fiados hasta que pague.</span></span>
+                        </label>
                         <div class="flex gap-2">
                             <button onclick="cancelEditSpecialPriceCode()" id="btn-cancel-edit-special-price" class="hidden flex-1 bg-gray-200 text-gray-700 py-2 rounded-xl font-bold text-sm">Cancelar</button>
                             <button onclick="saveSpecialPriceCode()" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-xl font-bold shadow-lg">
@@ -8157,12 +8163,12 @@
         function activateSpecialPriceCode(entry) {
             const input = document.getElementById('special-price-code-input');
             const markupPct = entry.markupPct != null ? entry.markupPct : 10;
-            appState.activeSpecialPriceCode = { id: entry.id, name: entry.name, code: entry.code, markupPct };
+            appState.activeSpecialPriceCode = { id: entry.id, name: entry.name, code: entry.code, markupPct, excludeFromSales: !!entry.excludeFromSales };
             applySpecialPriceToCart();
             if (input) input.value = '';
             // El recuadro queda visible: se puede sumar también un ticket de descuento
             document.getElementById('applied-special-price-section').classList.remove('hidden');
-            document.getElementById('applied-special-price-name').textContent = entry.name + (isOwnerConsumptionCode(entry) ? ' — Consumo del dueño: no entra plata' : '');
+            document.getElementById('applied-special-price-name').textContent = entry.name + (entry.excludeFromSales ? ' — Consumo interno: no cuenta como venta' : (isOwnerConsumptionCode(entry) ? ' — Consumo del dueño: no entra plata' : ''));
             updateCartTotals();
             renderCart();
             showNotification('🏷️ Precio especial aplicado: ' + entry.name, 'success');
@@ -8397,6 +8403,7 @@
 
         // Etiqueta legible del método de pago para badges y reportes
         function paymentMethodLabel(s) {
+            if (s.ownerConsumption && s.ownerConsumption.internal) return 'Consumo interno (' + s.ownerConsumption.internal.name + ')';
             if (s.ownerConsumption) return 'Consumo del dueño';
             if (s.paymentMethod === 'cash') return 'Efectivo';
             if (s.paymentMethod === 'fiado') return s.fiadoPaid ? 'Fiado (pagado)' : 'Fiado';
@@ -8592,7 +8599,7 @@
             if (!sale) return;
             currentFiadoPaySaleId = saleId;
             document.getElementById('fiado-pay-customer').textContent = sale.customerName || 'Cliente';
-            document.getElementById('fiado-pay-amount').textContent = '$' + formatMoney(sale.total);
+            document.getElementById('fiado-pay-amount').textContent = '$' + formatMoney(isInternalConsumption(sale) ? sale.ownerConsumption.internal.total : sale.total);
             document.getElementById('fiado-pay-modal').classList.add('active');
         }
 
@@ -8605,6 +8612,17 @@
             const sale = appState.sales.find(s => s.id === currentFiadoPaySaleId);
             if (!sale || sale.fiadoPaid) {
                 closeFiadoPayModal();
+                return;
+            }
+            if (isInternalConsumption(sale)) {
+                if (method === 'salary') { showNotification('Un consumo interno no se descuenta del sueldo', 'error'); return; }
+                collectInternalConsumption(sale, method);
+                saveToLocalStorage();
+                closeFiadoPayModal();
+                renderFiados();
+                updateSidebar();
+                renderAll();
+                if (!silent) showNotification('Cobro registrado: ' + (sale.customerName || sale.ownerConsumption.internal.name) + ' pagó $' + formatMoney(sale.ownerConsumption.internal.total) + ' (consumo interno, no cuenta como venta)', 'success');
                 return;
             }
 
@@ -8751,12 +8769,16 @@
             if (!section) return;
 
             const today = formatDateISO(new Date());
-            const pending = appState.sales.filter(s => s.paymentMethod === 'fiado' && !s.fiadoPaid);
+            // Los consumos internos fiados también se cobran acá (no cuentan como venta)
+            const internalView = (s) => ({ ...s, total: s.ownerConsumption.internal.total, items: s.ownerConsumption.items, specialPriceCodeName: s.specialPriceCodeName || s.ownerConsumption.internal.name, internalView: true });
+            const pending = appState.sales.filter(s => s.paymentMethod === 'fiado' && !s.fiadoPaid)
+                .concat(appState.sales.filter(s => isInternalConsumption(s) && s.ownerConsumption.internal.pending).map(internalView));
             const paid = appState.sales.filter(s => s.paymentMethod === 'fiado' && s.fiadoPaid)
                 .sort((a, b) => (b.fiadoPaidDate || '').localeCompare(a.fiadoPaidDate || '') || (b.timestamp || 0) - (a.timestamp || 0));
 
             const totalPending = pending.reduce((sum, s) => sum + s.total, 0);
-            const collectedToday = paid.filter(s => s.fiadoPaidDate === today).reduce((sum, s) => sum + s.total, 0);
+            const collectedToday = paid.filter(s => s.fiadoPaidDate === today).reduce((sum, s) => sum + s.total, 0)
+                + appState.sales.filter(s => isInternalConsumption(s) && s.ownerConsumption.internal.paidDate === today && s.ownerConsumption.original && s.ownerConsumption.original.paymentMethod === 'fiado').reduce((sum, s) => sum + s.ownerConsumption.internal.total, 0);
 
             document.getElementById('fiados-kpi-pending-total').textContent = '$' + formatMoney(totalPending);
             document.getElementById('fiados-kpi-pending-count').textContent = pending.length;
@@ -8791,6 +8813,7 @@
                                     <p class="text-sm font-medium text-gray-700">${s.date} ${s.time || ''} • ${s.items.length} items</p>
                                     <p class="text-xs text-gray-400">Venta #${s.id.slice(-4)}</p>
                                     ${s.specialPriceCodeName ? `<p class="text-xs font-bold text-amber-600">🏷️ Precio especial: ${escapeHtml(s.specialPriceCodeName)}</p>` : ''}
+                                    ${s.internalView ? '<p class="text-xs text-indigo-600">Consumo interno: no cuenta como venta</p>' : ''}
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <span class="font-bold text-gray-800">$${formatMoney(s.total)}</span>
@@ -9312,6 +9335,12 @@
                 sale.pedidoId = pendingPedidoSaleInfo.pedidoId;
                 sale.comandaNumber = pendingPedidoSaleInfo.comandaNumber;
                 sale.pedidoCustomerName = pendingPedidoSaleInfo.customerName;
+                // El precio especial de la comanda ya está en los ítems; queda anotado (y si es de
+                // consumo interno, la venta no cuenta)
+                if (pendingPedidoSaleInfo.specialPriceCode) {
+                    sale.specialPriceCode = pendingPedidoSaleInfo.specialPriceCode;
+                    sale.specialPriceCodeName = pendingPedidoSaleInfo.specialPriceCodeName || pendingPedidoSaleInfo.specialPriceCode;
+                }
                 pendingPedidoSaleInfo = null;
             }
 
@@ -9323,8 +9352,11 @@
                 sale.specialPriceCode = appState.activeSpecialPriceCode.code;
             }
 
+            // Código de consumo interno: el stock y la plata se mueven igual, pero no es venta
+            const internalCode = getInternalConsumptionCode(sale.specialPriceCode);
+
             // ========== FASE 2: DESCONTAR STOCK CON SNAPSHOT ==========
-            const { snapshot: stockSnapshot, saleWhiteTotal, saleBlackTotal, itemBreakdown } = deductStockWithSnapshot(appState.cart, sale.id);
+            const { snapshot: stockSnapshot, saleWhiteTotal, saleBlackTotal, itemBreakdown } = deductStockWithSnapshot(appState.cart, sale.id, internalCode ? 'internal-consumption' : 'sale');
             
             // ========== FASE 3: VERIFICAR QUE EL STOCK REALMENTE CAMBIÓ ==========
             const verifyErrors = verifyStockDeduction(stockSnapshot);
@@ -9361,15 +9393,18 @@
 
             appState.sales.push(sale);
             approvedStockShortfalls.clear(); // las aprobaciones de vender sin stock valen para esta venta
+            if (internalCode) markSaleInternal(sale, internalCode.name);
 
             // Tracking de facturación blanco/negro
             if (!appState.invoiceTracking) {
                 appState.invoiceTracking = { purchasedWhite: 0, purchasedBlack: 0, soldWhite: 0, soldBlack: 0, soldDebit: 0 };
             }
-            appState.invoiceTracking.soldWhite += sale.invoiceBreakdown.white;
-            appState.invoiceTracking.soldBlack += sale.invoiceBreakdown.black;
-            if (isDebitOrTransfer(appState.paymentMethod) || appState.paymentMethod === 'qr') {
-                appState.invoiceTracking.soldDebit += finalTotal;
+            if (!internalCode) {
+                appState.invoiceTracking.soldWhite += sale.invoiceBreakdown.white;
+                appState.invoiceTracking.soldBlack += sale.invoiceBreakdown.black;
+                if (isDebitOrTransfer(appState.paymentMethod) || appState.paymentMethod === 'qr') {
+                    appState.invoiceTracking.soldDebit += finalTotal;
+                }
             }
             
             // Evaluar reglas de generación de tickets
@@ -9377,7 +9412,7 @@
             const today = new Date();
             const currentDay = today.getDay();
             
-            for (const rule of (appState.ticketRules || []).filter(r => r.active)) {
+            for (const rule of (appState.ticketRules || []).filter(r => r.active && !internalCode)) {
                 if (generatedTickets.length > 0) break; // Máximo 1 ticket por venta
                 
                 let shouldGenerate = false;
@@ -9413,7 +9448,7 @@
             // si el cliente cambia algo antes, borrás la venta y no se factura.
             // Los fiados NO se facturan acá: todavía no entró la plata. Se facturan
             // recién cuando se cobran, en confirmFiadoPayment(), con la fecha real del cobro.
-            if (sale.paymentMethod !== 'fiado') {
+            if (sale.paymentMethod !== 'fiado' && !internalCode) {
                 try {
                     const reglasIdx = saleItemsFacturables(sale);
                     if (reglasIdx.length > 0 && passesAutoAlternateGate()) {
@@ -9453,8 +9488,9 @@
                     clearCartAfterSale();
                 }
 
-                // Mostrar notificación para imprimir ticket de venta
-                showTicketNotification(sale);
+                // Mostrar notificación para imprimir ticket de venta (el consumo interno no lleva)
+                if (!internalCode) showTicketNotification(sale);
+                else showNotification('🏷️ Consumo interno (' + internalCode.name + '): $' + formatMoney(sale.ownerConsumption.internal.total) + (sale.ownerConsumption.internal.pending ? ' anotado en Fiados' : ' cobrado') + '. No cuenta como venta.', 'success', 5000);
                 
                 // Si se generaron tickets de descuento, mostrar notificaciones
                 if (generatedTickets.length > 0) {
@@ -10101,7 +10137,7 @@
         // Anotado como fiado es un retiro del dueño (moneyIn 0). Pagado con efectivo, débito,
         // etc. es una compra al costo con plata del dueño: entra esa plata y no es retiro.
         function isOwnerConsumptionCode(entry) {
-            return !!entry && (entry.markupPct != null ? parseFloat(entry.markupPct) : 10) === 0;
+            return !!entry && !entry.excludeFromSales && (entry.markupPct != null ? parseFloat(entry.markupPct) : 10) === 0;
         }
 
         function requireFinancesPassword(onOk, title) {
@@ -10208,7 +10244,7 @@
         // Ventas de meses anteriores que se pasaron a consumo: vuelven a ser ventas con un solo botón
         function getOldOwnerReclassifications() {
             const monthStart = ownerConsumptionMonthStart();
-            return (appState.sales || []).filter(s => s.ownerConsumption && s.ownerConsumption.reclassified && !s.ownerConsumption.cancelled && s.date < monthStart);
+            return (appState.sales || []).filter(s => s.ownerConsumption && s.ownerConsumption.reclassified && !s.ownerConsumption.internal && !s.ownerConsumption.cancelled && s.date < monthStart);
         }
 
         // Plata que ya entró por esa venta: no se toca, porque ya pasó por los arqueos
@@ -10257,7 +10293,7 @@
                 if (!oc) return;
                 const id = 'OWNERGOODS-' + s.id;
                 const idx = appState.expenses.findIndex(e => e.id === id);
-                const wanted = !oc.cancelled && !(oc.moneyIn > 0);
+                const wanted = !oc.cancelled && !oc.internal && !(oc.moneyIn > 0);
                 const concept = 'dueño: ' + oc.items.map(i => i.quantity + ' ' + i.name).join(', ');
                 if (wanted && idx >= 0 && appState.expenses[idx].concept !== concept) {
                     appState.expenses[idx].concept = concept;
@@ -10278,7 +10314,175 @@
         }
 
         function ownerConsumptionsInRange(from, to) {
-            return (appState.sales || []).filter(s => s.ownerConsumption && !s.ownerConsumption.cancelled && s.date >= from && s.date <= to);
+            return (appState.sales || []).filter(s => s.ownerConsumption && !s.ownerConsumption.internal && !s.ownerConsumption.cancelled && s.date >= from && s.date <= to);
+        }
+
+        // ==================== CONSUMO INTERNO AL COSTO ====================
+        // Un código con excludeFromSales (ej: "Tía" al 0%) es mercadería que alguien se lleva al costo
+        // y paga: no es venta, pero baja el stock y la plata entra. Se guarda igual que el consumo
+        // del dueño (items/total/profit en 0 y lo real en ownerConsumption, con internal), así ningún
+        // total, ticket, ranking, demanda o gráfico la cuenta. La plata entra a Caja/Cuenta con un
+        // ajuste ADJ-OWNERBUY- del día del cobro (el arqueo lo cuenta y Capital no lo toma como
+        // aporte). Fiado: queda en Fiados hasta que se cobra, y recién ahí entra la plata.
+        // ownerConsumption.internal = { name, total, pending, paidDate }; la venta lleva excludeFromSales.
+        function getInternalConsumptionCode(code) {
+            const entry = code ? findSpecialPriceCode(code) : null;
+            return entry && entry.excludeFromSales ? entry : null;
+        }
+
+        function isInternalConsumption(s) {
+            return !!(s && s.ownerConsumption && s.ownerConsumption.internal && !s.ownerConsumption.cancelled);
+        }
+
+        // Los movimientos de stock de la venta: 'sale' cuenta como demanda (lista de compras, Rotación)
+        function retagSaleLedger(saleId, fromReason, toReason) {
+            (appState.stockLedger || []).forEach(m => { if (m && m.refId === saleId && m.reason === fromReason) m.reason = toReason; });
+            stockDayDemandCache.key = '';
+        }
+
+        function setInternalMoneyAdjustment(s, date) {
+            const id = 'ADJ-OWNERBUY-' + s.id;
+            const oc = s.ownerConsumption;
+            appState.capitalAdjustments = (appState.capitalAdjustments || []).filter(a => a.id !== id);
+            if (!(oc.moneyIn > 0)) return;
+            appState.capitalAdjustments.push({ id, date, amount: oc.moneyIn, target: oc.target, concept: 'Consumo interno al costo: ' + oc.internal.name, user: s.user || null, timestamp: Date.now() });
+        }
+
+        // Pasa una venta (recién hecha o vieja) a consumo interno. La plata que ya entró no se toca:
+        // deja de contarse como venta en el arqueo y pasa a contarse como ajuste del mismo día.
+        function markSaleInternal(s, name) {
+            const wasFiado = s.paymentMethod === 'fiado';
+            const pending = wasFiado && !s.fiadoPaid;
+            const method = wasFiado ? s.fiadoPaidMethod : s.paymentMethod;
+            const moved = !pending && method !== 'salary';
+            const moneyIn = !moved ? 0 : (method === 'cash' ? (s.total || 0) : (wasFiado ? fiadoBankNet(s) : saleBankNet(s)));
+            const moneyDate = wasFiado ? (s.fiadoPaidDate || s.date) : s.date;
+            const total = s.total || 0;
+            reclassifySaleAsOwnerConsumption(s);
+            const oc = s.ownerConsumption;
+            oc.moneyIn = Math.round(moneyIn * 100) / 100;
+            oc.target = oc.moneyIn > 0 ? (method === 'cash' ? 'cash' : 'bank') : null;
+            oc.internal = { name: name || s.specialPriceCodeName || s.customerName || 'Consumo interno', total, pending, paidDate: pending ? null : moneyDate };
+            s.excludeFromSales = true;
+            setInternalMoneyAdjustment(s, moneyDate);
+            retagSaleLedger(s.id, 'sale', 'internal-consumption');
+        }
+
+        function unmarkSaleInternal(s) {
+            const oc = s.ownerConsumption;
+            if (!oc || !oc.internal) return;
+            undoSaleReclassification(s);
+            delete s.excludeFromSales;
+            appState.capitalAdjustments = (appState.capitalAdjustments || []).filter(a => a.id !== 'ADJ-OWNERBUY-' + s.id);
+            retagSaleLedger(s.id, 'internal-consumption', 'sale');
+        }
+
+        // Cobro de un consumo interno anotado como fiado: entra la plata, no es venta
+        function collectInternalConsumption(s, method) {
+            const oc = s.ownerConsumption;
+            const total = oc.internal.total;
+            const today = formatDateISO(new Date());
+            if (method === 'debit') {
+                s.fiadoPaidFeePct = appState.debitFee || 0;
+                s.fiadoPaidFee = total * (s.fiadoPaidFeePct / 100);
+            } else {
+                delete s.fiadoPaidFee;
+                delete s.fiadoPaidFeePct;
+            }
+            const moneyIn = Math.round((total - (s.fiadoPaidFee || 0)) * 100) / 100;
+            if (method === 'cash') appState.cash += moneyIn; else appState.bank += moneyIn;
+            s.fiadoPaid = true;
+            s.fiadoPaidDate = today;
+            s.fiadoPaidMethod = method;
+            oc.original.fiadoPaid = true; // si se vuelve a contar como venta, queda como fiado cobrado
+            oc.moneyIn = moneyIn;
+            oc.target = method === 'cash' ? 'cash' : 'bank';
+            oc.internal.pending = false;
+            oc.internal.paidDate = today;
+            setInternalMoneyAdjustment(s, today);
+            s.timestamp = Date.now();
+        }
+
+        function internalConsumptionsInRange(from, to) {
+            return (appState.sales || []).filter(s => isInternalConsumption(s) && s.date >= from && s.date <= to);
+        }
+
+        // "Consumo interno al costo: $X (N tickets) · Tía $Y (n)"
+        function internalConsumptionSummaryText(list) {
+            if (!list.length) return '';
+            const byName = new Map();
+            list.forEach(s => {
+                const it = s.ownerConsumption.internal;
+                const g = byName.get(it.name) || { total: 0, count: 0 };
+                g.total += it.total; g.count++;
+                byName.set(it.name, g);
+            });
+            const total = list.reduce((sum, s) => sum + s.ownerConsumption.internal.total, 0);
+            const pending = list.filter(s => s.ownerConsumption.internal.pending).reduce((sum, s) => sum + s.ownerConsumption.internal.total, 0);
+            return 'Consumo interno al costo: $' + formatMoney(total) + ' (' + list.length + ' ticket' + (list.length === 1 ? '' : 's') + ')'
+                + ' · ' + Array.from(byName.entries()).map(([name, g]) => name + ' $' + formatMoney(g.total) + ' (' + g.count + ')').join(' · ')
+                + (pending > 0 ? ' · $' + formatMoney(pending) + ' sin cobrar' : '');
+        }
+
+        async function toggleSaleInternalNow(saleId) {
+            const current = appState.sales.find(x => x.id === saleId);
+            if (!current) return;
+            if (isInternalConsumption(current)) {
+                if (!(await showConfirmModal('¿Volver a contarla como venta? Vuelve a sumar en ventas, tickets y ganancia del ' + current.date + '.'))) return;
+                const s = appState.sales.find(x => x.id === saleId); // el merge puede haber cambiado el objeto
+                if (!s || !isInternalConsumption(s)) return;
+                unmarkSaleInternal(s);
+                showNotification('Vuelve a contar como venta', 'success');
+            } else {
+                if (current.ownerConsumption || current.anulada) return;
+                if ((current.facturas || []).length) { showNotification('Tiene factura de ARCA: queda como venta', 'error'); return; }
+                const name = await showPromptModal('Consumo interno al costo: no cuenta como venta ni ganancia. La plata cobrada sigue en Caja o Cuenta.\nNombre para agruparlo (ej: Tía):', current.specialPriceCodeName || current.customerName || '');
+                if (name === null || name === undefined) return;
+                const s = appState.sales.find(x => x.id === saleId);
+                if (!s || s.ownerConsumption) return;
+                markSaleInternal(s, String(name).trim() || 'Consumo interno');
+                showNotification('🏷️ Ya no cuenta como venta', 'success');
+            }
+            saveToLocalStorage();
+            closeSaleDetail();
+            renderAll();
+            if (document.getElementById('fiados')) renderFiados();
+        }
+        // El botón pide la contraseña de Finanzas (los empleados venden con la sesión del dueño)
+        window.toggleSaleInternal = (saleId) => requireFinancesPassword(() => toggleSaleInternalNow(saleId), 'Consumo interno');
+
+        function renderInternalSaleDetail(sale) {
+            const oc = sale.ownerConsumption;
+            const it = oc.internal;
+            const o = oc.original || {};
+            const how = o.paymentMethod === 'fiado'
+                ? (it.pending ? 'Fiado: pendiente de cobro' : 'Fiado: cobrado el ' + (it.paidDate || '-') + ' (' + fiadoPaidMethodLabel(sale) + ')')
+                : paymentMethodLabel({ paymentMethod: o.paymentMethod });
+            document.getElementById('sale-detail-content').innerHTML = `
+                <div class="mb-4">
+                    <p class="text-sm text-gray-500">Venta #${sale.id}</p>
+                    <p class="text-lg font-bold">${sale.date} ${sale.time || ''}</p>
+                    <p class="mt-1 text-sm font-bold text-indigo-700">🏷️ Consumo interno al costo · ${escapeHtml(it.name)}</p>
+                    <p class="text-xs text-gray-500">No cuenta en ventas, tickets ni ganancia. El stock bajó y la plata ${it.pending ? 'entra cuando se cobre' : 'entró a ' + (oc.target === 'bank' ? 'Cuenta' : 'Caja')}.</p>
+                </div>
+                <div class="space-y-2 mb-4">
+                    ${oc.items.map(item => `
+                        <div class="flex justify-between p-2 bg-gray-50 rounded">
+                            <span>${escapeHtml(item.name)} x${item.quantity}</span>
+                            <span class="font-bold">$${formatMoney(item.price * item.quantity)}</span>
+                        </div>`).join('')}
+                </div>
+                <div class="border-t pt-4 space-y-1">
+                    <div class="flex justify-between text-lg font-bold"><span>Total:</span><span class="text-indigo-700">$${formatMoney(it.total)}</span></div>
+                    <div class="flex justify-between text-sm text-gray-500"><span>Costo:</span><span>$${formatMoney(oc.cost)}</span></div>
+                    <div class="flex justify-between text-sm text-gray-500"><span>Pago:</span><span>${escapeHtml(how)}</span></div>
+                    ${sale.customerName ? `<div class="flex justify-between text-sm text-gray-500"><span>Cliente:</span><span>${escapeHtml(sale.customerName)}</span></div>` : ''}
+                </div>
+                <div class="flex gap-2 mt-4">
+                    <button onclick="toggleSaleInternal('${sale.id}')" class="flex-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-800 py-2 rounded-lg font-bold">Volver a contar como venta</button>
+                    <button onclick="closeSaleDetail()" class="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg font-bold">Cerrar</button>
+                </div>`;
+            document.getElementById('sale-detail-modal').classList.add('active');
         }
 
         function openOwnerConsumptionModal() {
@@ -10297,7 +10501,7 @@
             const itemsText = (items) => escapeHtml(items.map(i => i.quantity + ' ' + i.name).join(', '));
             const today = formatDateISO(new Date());
             const candidates = getOwnerConsumptionCandidates();
-            const registered = (appState.sales || []).filter(s => s.ownerConsumption && !s.ownerConsumption.cancelled).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+            const registered = (appState.sales || []).filter(s => s.ownerConsumption && !s.ownerConsumption.internal && !s.ownerConsumption.cancelled).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
             const money = (s) => s.paymentMethod === 'fiado' ? (s.fiadoPaid ? 'Fiado cobrado' : 'Fiado sin cobrar') : paymentMethodLabel(s);
             const kindOf = (oc) => oc.moneyIn > 0 ? 'Compra al costo: pagaste $' + formatMoney(oc.moneyIn) : 'Retiro al costo, va en Gastos';
             const candidateRows = candidates.map(s => {
@@ -10555,7 +10759,8 @@
             const today = formatDateISO(new Date());
             const limit = empDateAdd(today, -30);
             const assets = (appState.fixedAssets || []).filter(a => !a.sold);
-            const pendingFiados = (appState.sales || []).filter(s => s.paymentMethod === 'fiado' && !s.fiadoPaid && !s.anulada);
+            const pendingFiados = (appState.sales || []).filter(s => s.paymentMethod === 'fiado' && !s.fiadoPaid && !s.anulada)
+                .concat((appState.sales || []).filter(s => isInternalConsumption(s) && s.ownerConsumption.internal.pending).map(s => ({ date: s.date, total: s.ownerConsumption.internal.total })));
             const sumTotal = (list) => list.reduce((sum, s) => sum + (s.total || 0), 0);
             const supplierDebt = getPendingScheduledPayments().reduce((sum, sp) => sum + (parseFloat(sp.amount) || 0), 0);
             const salaryDebt = getUnpaidAccruedSalariesBetween(empDateAdd(today, -90), today);
@@ -12001,7 +12206,7 @@
 
             // Para que completeSale() etiquete la venta con el pedido/comanda de origen
             // (se consume y se limpia solo ahí, o al vaciar el carrito si no llega a venderse).
-            pendingPedidoSaleInfo = { pedidoId: pedido.id, comandaNumber: pedido.comandaNumber || null, customerName: pedido.customerName || null };
+            pendingPedidoSaleInfo = { pedidoId: pedido.id, comandaNumber: pedido.comandaNumber || null, customerName: pedido.customerName || null, specialPriceCode: pedido.specialPriceCode || null, specialPriceCodeName: pedido.specialPriceCodeName || null };
 
             // Ticket de descuento cargado en la comanda: se aplica a esta venta (y completeSale lo marca usado)
             let pedidoTicket = null;
@@ -15601,6 +15806,7 @@
             loss: '💔 Merma',
             'loss-deleted': '↩️ Merma eliminada',
             'owner-consumption': '🏠 Consumo del dueño',
+            'internal-consumption': '🏷️ Consumo interno',
             'found-deleted': '↩️ Stock gratis eliminado',
             'sale-cancelled': '🚫 Venta anulada',
             'sale-edit': '✏️ Venta editada',
@@ -18542,6 +18748,14 @@
                 const pending = getOwnerConsumptionCandidates().length;
                 ownerEl.textContent = '🏠 Consumo del dueño: $' + formatMoney(ownerCost) + ' al costo' + (pending ? ' · ' + pending + ' para revisar' : '');
             }
+            const internalEl = document.getElementById('fin-internal-consumption');
+            if (internalEl) {
+                const list = internalConsumptionsInRange(period.from, period.to).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                internalEl.classList.toggle('hidden', list.length === 0);
+                internalEl.innerHTML = list.length ? '🏷️ ' + escapeHtml(internalConsumptionSummaryText(list)) + ' <span class="text-gray-400">(no cuenta como venta)</span>'
+                    + '<div class="mt-1 flex flex-wrap gap-1">' + list.slice(0, 12).map(s => '<button onclick="showSaleDetail(\'' + s.id + '\')" class="px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700">'
+                        + escapeHtml(s.ownerConsumption.internal.name) + ' ' + s.date.slice(8, 10) + '/' + s.date.slice(5, 7) + ' $' + formatMoney(s.ownerConsumption.internal.total) + (s.ownerConsumption.internal.pending ? ' (fiado)' : '') + '</button>').join('') + '</div>' : '';
+            }
         }
 
         function changeCalendarMonth(delta) {
@@ -18638,6 +18852,8 @@
             if (dayIncomeExtraEl) {
                 const p = [];
                 if (daySurplus > 0) p.push(`+$${formatMoney(daySurplus)} sobrante de caja`);
+                const dayInternal = internalConsumptionsInRange(dateStr, dateStr);
+                if (dayInternal.length) p.push('aparte: ' + internalConsumptionSummaryText(dayInternal));
                 if (dayFoundStock > 0) p.push(`+$${formatMoney(dayFoundStock)} stock gratis`);
                 dayIncomeExtraEl.textContent = p.join(' · ');
             }
@@ -19302,6 +19518,7 @@
         function showSaleDetail(saleId) {
             const sale = findSale(saleId);
             if (!sale) return;
+            if (isInternalConsumption(sale)) { renderInternalSaleDetail(sale); return; }
 
             // Bloque de facturas ARCA (emitidas + ítems pendientes con checkbox)
             const facturasVenta = saleFacturas(sale);
@@ -19448,6 +19665,10 @@
                     ` : ''}
                 </div>
                 ${facturasHtml}
+                ${!sale.anulada && !sale.ownerConsumption && !(sale.facturas || []).length ? `
+                <button onclick="toggleSaleInternal('${sale.id}')" class="w-full mt-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 py-2 rounded-lg font-bold text-sm">
+                    🏷️ No contar como venta (consumo interno al costo)
+                </button>` : ''}
                 <div class="flex gap-2 mt-4">
                     <button onclick="printReceiptFromNotification('${sale.id}')" class="flex-1 bg-purple-500 hover:bg-purple-600 text-white py-2 rounded-lg font-bold">
                         <i class="fas fa-print"></i> Imprimir ticket
@@ -24260,7 +24481,7 @@
             container.innerHTML = codes.map(c => `
                 <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-sm">
                     <div class="flex-1 min-w-0">
-                        <p class="font-bold text-gray-700">🏷️ ${escapeHtml(c.name)} <span class="text-amber-600 font-normal">· costo +${c.markupPct != null ? c.markupPct : 10}%</span></p>
+                        <p class="font-bold text-gray-700">🏷️ ${escapeHtml(c.name)} <span class="text-amber-600 font-normal">· costo +${c.markupPct != null ? c.markupPct : 10}%</span>${c.excludeFromSales ? ' <span class="text-xs font-normal text-gray-500">· no cuenta como venta</span>' : ''}</p>
                         <p class="text-xs text-gray-500 font-mono">${escapeHtml(c.code)}</p>
                     </div>
                     <button onclick="editSpecialPriceCode('${c.id}')" class="text-blue-500 hover:text-blue-700 p-1" title="Editar">
@@ -24278,6 +24499,7 @@
             const name = document.getElementById('special-price-name-input').value.trim();
             const code = document.getElementById('special-price-code-value-input').value.trim();
             const markupPct = parseFloat(document.getElementById('special-price-markup-input').value);
+            const excludeFromSales = !!(document.getElementById('special-price-exclude-input') || {}).checked;
             if (!name || !code) {
                 showNotification('Completá nombre y código', 'error');
                 return;
@@ -24304,9 +24526,10 @@
                 entry.name = name;
                 entry.code = code;
                 entry.markupPct = markupPct;
+                entry.excludeFromSales = excludeFromSales;
                 showNotification('Código actualizado', 'success');
             } else {
-                appState.specialPriceCodes.push({ id: 'SPCODE-' + Date.now(), name, code, markupPct });
+                appState.specialPriceCodes.push({ id: 'SPCODE-' + Date.now(), name, code, markupPct, excludeFromSales });
                 showNotification('Código creado', 'success');
             }
             cancelEditSpecialPriceCode();
@@ -24322,6 +24545,7 @@
             document.getElementById('special-price-name-input').value = entry.name;
             document.getElementById('special-price-code-value-input').value = entry.code;
             document.getElementById('special-price-markup-input').value = entry.markupPct != null ? entry.markupPct : 10;
+            document.getElementById('special-price-exclude-input').checked = !!entry.excludeFromSales;
             document.getElementById('special-price-save-label').textContent = 'Guardar Cambios';
             document.getElementById('btn-cancel-edit-special-price').classList.remove('hidden');
         }
@@ -24332,6 +24556,7 @@
             document.getElementById('special-price-name-input').value = '';
             document.getElementById('special-price-code-value-input').value = '';
             document.getElementById('special-price-markup-input').value = '10';
+            document.getElementById('special-price-exclude-input').checked = false;
             document.getElementById('special-price-save-label').textContent = 'Agregar Código';
             document.getElementById('btn-cancel-edit-special-price').classList.add('hidden');
         }
